@@ -1,0 +1,13 @@
+ID,Rating ID,Service,Rating Date,Rating,Comment,Rater Hash
+6e674cd2-eafd-4024-9477-edeb05d193d7,1,,2024-05-20,5,The customer service was exceptional and very responsive to my needs.,a1b2c3d4e5f6
+a10a5fcb-8734-42ca-8299-f873af35a15f,2,,2024-05-21,3,"The service was okay, but there was a delay in getting my order fulfilled.",f7g8h9i0j1k2
+a673a7df-1192-42f4-a46f-f1343e78a57d,3,,2024-05-22,4,"Good service overall, though the staff could be a bit more knowledgeable about the products.",l3m4n5o6p7q8
+6f32dbbd-d41e-4a57-a2ba-68068d0f15f9,4,Temple Hall Brooming & Mopping,2026-04-21,5,,e3c180a129f01690a247694396a02afa5595b07df94fdb914f7ec1101fc929ea
+af324823-67d1-4511-95e5-2103042243d6,5,TH Furniture Cleaning (MMD),2026-04-21,2,,fe5c1de7c6a4f64e8f2d0a9c9cedf0d4367ff741e16420d80fcda7420c4986de
+b3ff1485-82de-416e-b4ff-3be3ec7d7a69,6,Aarti Plate Cleaning,2026-04-21,5,,a3f4f2fcbdc17957aeff1095bd45e22d0a7c6555ec23f9a05f2f4b535c21f19c
+a59683ec-78c2-45d1-af68-25b538103992,7,Leftover Prasadam Management,2026-04-21,5,Nice Management by Sandeep prabhu,02fc10a4f032098551e26088cb264361904ce809b6e475eee321f1fa068adcde
+d5792758-19ff-47d0-8615-cf15508327d3,8,Water Pots Cleaning & Filling (GF & FF),2026-04-21,5,,1f13f839fb5d700c66d0471848103e57ac96b6ad8f9fd20670f7ea6874db3566
+ca468ddb-1684-487b-9e7b-7f3793512cf1,9,Prasadam Hall Brooming & Mopping,2026-06-18,5,,79e422f0d7a1bf4f77b6875cad6293690fe3cae4d9c150d09854e3d0bf1624b3
+a479b42c-0aa5-4548-8dbb-5686f22e2fd1,10,Utensils Cleaning Morning,2026-06-18,1,,c5de4b05e8f6cc2e21a45dfcf33ec452531a45fb1ab54e41b3fa3a6f42e384f2
+6fc7ba18-d40c-4886-b739-83d38b314d3a,11,Utensils Cleaning Evening,2026-06-18,1,,174f357232734dbbedc0b1f1cfe9ca9cfa819b73dbfb75d48f9246b0d01740d9
+2c086393-915e-4095-b5ae-f1f1adcebb9e,12,Clothes Folding Seva,2026-06-18,1,,e176cf4acb1f4d023695e00f056ae1791a2c342c71605b63416f25fbc5016008

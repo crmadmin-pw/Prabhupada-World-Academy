@@ -1,0 +1,18 @@
+rules_version = '2';
+service cloud.firestore {
+  // -----------------------------------------------------------------
+  // BLOCK DUMMY / TEST EMAILS
+  // -----------------------------------------------------------------
+  // Any request that comes from a signed‑in user whose email contains
+  // "dummy", "test", or "example" will be denied.
+  // -----------------------------------------------------------------
+  match /databases/{database}/documents {
+    // Apply to **all** collections and documents.
+    match /{document=**} {
+      // First, require an authenticated user.
+      allow read, write: if request.auth != null
+                           // Block unwanted emails.
+                           && !request.auth.token.email.matches('.*(dummy|test|example).*');
+    }
+  }
+}

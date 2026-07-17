@@ -1,0 +1,937 @@
+{
+  "config": {
+    "argv": [
+      "/home/vedanarayana_das/.nvm/versions/node/v24.18.0/bin/node",
+      "/home/vedanarayana_das/Prabhupada World Academy/node_modules/.bin/playwright",
+      "test",
+      "tests/e2e/02-frontend-pages.spec.ts",
+      "--config=playwright.config.ts"
+    ],
+    "configFile": "/home/vedanarayana_das/Prabhupada World Academy/playwright.config.ts",
+    "rootDir": "/home/vedanarayana_das/Prabhupada World Academy/tests/e2e",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/home/vedanarayana_das/Prabhupada World Academy/test-results",
+        "repeatEach": 1,
+        "retries": 1,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/home/vedanarayana_das/Prabhupada World Academy/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "html",
+        {
+          "outputFolder": "tests/e2e-report",
+          "open": "never"
+        }
+      ],
+      [
+        "json",
+        {
+          "outputFile": "tests/e2e-results.json"
+        }
+      ],
+      [
+        "list",
+        null
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.61.1",
+    "workers": 8,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "02-frontend-pages.spec.ts",
+      "file": "02-frontend-pages.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Public Pages",
+          "file": "02-frontend-pages.spec.ts",
+          "line": 20,
+          "column": 6,
+          "specs": [
+            {
+              "title": "Home page loads and shows sign-in option",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6124,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-17T07:32:42.277Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-78643-ds-and-shows-sign-in-option-chromium/test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fac3893554c5a675e376-26f0af896fb8c2edb13c",
+              "file": "02-frontend-pages.spec.ts",
+              "line": 21,
+              "column": 7
+            },
+            {
+              "title": "Login page renders email input",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "timedOut",
+                      "duration": 62463,
+                      "error": {
+                        "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m",
+                        "stack": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
+                      },
+                      "errors": [
+                        {
+                          "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
+                        },
+                        {
+                          "location": {
+                            "file": "/home/vedanarayana_das/Prabhupada World Academy/tests/e2e/02-frontend-pages.spec.ts",
+                            "column": 16,
+                            "line": 34
+                          },
+                          "message": "Error: page.waitForFunction: Test timeout of 60000ms exceeded.\n\n\u001b[0m \u001b[90m 32 |\u001b[39m     \u001b[36mawait\u001b[39m waitForApp(page)\u001b[33m;\u001b[39m\n \u001b[90m 33 |\u001b[39m     \u001b[90m// Wait for React hydration — the SPA renders inside next/dynamic(ssr:false)\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 34 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForFunction(\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 35 |\u001b[39m       () \u001b[33m=>\u001b[39m document\u001b[33m.\u001b[39mquerySelector(\u001b[32m'#email'\u001b[39m) \u001b[33m!==\u001b[39m \u001b[36mnull\u001b[39m\u001b[33m,\u001b[39m\n \u001b[90m 36 |\u001b[39m       { timeout\u001b[33m:\u001b[39m \u001b[35m45000\u001b[39m }\n \u001b[90m 37 |\u001b[39m     )\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at /home/vedanarayana_das/Prabhupada World Academy/tests/e2e/02-frontend-pages.spec.ts:34:16\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-17T07:32:48.619Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-343f6-in-page-renders-email-input-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-343f6-in-page-renders-email-input-chromium/video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-343f6-in-page-renders-email-input-chromium/error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-343f6-in-page-renders-email-input-chromium/trace.zip"
+                        }
+                      ]
+                    },
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 15996,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 1,
+                      "startTime": "2026-07-17T07:33:53.424Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-343f6-in-page-renders-email-input-chromium-retry1/test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "flaky"
+                }
+              ],
+              "id": "fac3893554c5a675e376-559e488eaeac281466f3",
+              "file": "02-frontend-pages.spec.ts",
+              "line": 30,
+              "column": 7
+            },
+            {
+              "title": "Registration page loads with guide dropdown",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "timedOut",
+                      "duration": 65357,
+                      "error": {
+                        "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m",
+                        "stack": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
+                      },
+                      "errors": [
+                        {
+                          "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
+                        },
+                        {
+                          "location": {
+                            "file": "/home/vedanarayana_das/Prabhupada World Academy/tests/e2e/02-frontend-pages.spec.ts",
+                            "column": 16,
+                            "line": 47
+                          },
+                          "message": "Error: page.waitForFunction: Test timeout of 60000ms exceeded.\n\n\u001b[0m \u001b[90m 45 |\u001b[39m     \u001b[36mawait\u001b[39m waitForApp(page)\u001b[33m;\u001b[39m\n \u001b[90m 46 |\u001b[39m     \u001b[90m// Wait for React hydration of the registration form\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 47 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForFunction(\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 48 |\u001b[39m       () \u001b[33m=>\u001b[39m (document\u001b[33m.\u001b[39mbody\u001b[33m.\u001b[39minnerText \u001b[33m||\u001b[39m \u001b[32m''\u001b[39m)\u001b[33m.\u001b[39mincludes(\u001b[32m'Sign up'\u001b[39m) \u001b[33m||\u001b[39m (document\u001b[33m.\u001b[39mbody\u001b[33m.\u001b[39minnerText \u001b[33m||\u001b[39m \u001b[32m''\u001b[39m)\u001b[33m.\u001b[39mincludes(\u001b[32m'Register'\u001b[39m)\u001b[33m,\u001b[39m\n \u001b[90m 49 |\u001b[39m       { timeout\u001b[33m:\u001b[39m \u001b[35m45000\u001b[39m }\n \u001b[90m 50 |\u001b[39m     )\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at /home/vedanarayana_das/Prabhupada World Academy/tests/e2e/02-frontend-pages.spec.ts:47:16\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-17T07:34:09.737Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-3ccbb-e-loads-with-guide-dropdown-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-3ccbb-e-loads-with-guide-dropdown-chromium/video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-3ccbb-e-loads-with-guide-dropdown-chromium/error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-3ccbb-e-loads-with-guide-dropdown-chromium/trace.zip"
+                        }
+                      ]
+                    },
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "timedOut",
+                      "duration": 62731,
+                      "error": {
+                        "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m",
+                        "stack": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
+                      },
+                      "errors": [
+                        {
+                          "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
+                        },
+                        {
+                          "location": {
+                            "file": "/home/vedanarayana_das/Prabhupada World Academy/tests/e2e/02-frontend-pages.spec.ts",
+                            "column": 16,
+                            "line": 47
+                          },
+                          "message": "Error: page.waitForFunction: Test timeout of 60000ms exceeded.\n\n\u001b[0m \u001b[90m 45 |\u001b[39m     \u001b[36mawait\u001b[39m waitForApp(page)\u001b[33m;\u001b[39m\n \u001b[90m 46 |\u001b[39m     \u001b[90m// Wait for React hydration of the registration form\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 47 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForFunction(\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 48 |\u001b[39m       () \u001b[33m=>\u001b[39m (document\u001b[33m.\u001b[39mbody\u001b[33m.\u001b[39minnerText \u001b[33m||\u001b[39m \u001b[32m''\u001b[39m)\u001b[33m.\u001b[39mincludes(\u001b[32m'Sign up'\u001b[39m) \u001b[33m||\u001b[39m (document\u001b[33m.\u001b[39mbody\u001b[33m.\u001b[39minnerText \u001b[33m||\u001b[39m \u001b[32m''\u001b[39m)\u001b[33m.\u001b[39mincludes(\u001b[32m'Register'\u001b[39m)\u001b[33m,\u001b[39m\n \u001b[90m 49 |\u001b[39m       { timeout\u001b[33m:\u001b[39m \u001b[35m45000\u001b[39m }\n \u001b[90m 50 |\u001b[39m     )\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at /home/vedanarayana_das/Prabhupada World Academy/tests/e2e/02-frontend-pages.spec.ts:47:16\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 1,
+                      "startTime": "2026-07-17T07:35:17.220Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-3ccbb-e-loads-with-guide-dropdown-chromium-retry1/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-3ccbb-e-loads-with-guide-dropdown-chromium-retry1/video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-3ccbb-e-loads-with-guide-dropdown-chromium-retry1/error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-3ccbb-e-loads-with-guide-dropdown-chromium-retry1/trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "fac3893554c5a675e376-fc041fff0d4812117ebc",
+              "file": "02-frontend-pages.spec.ts",
+              "line": 43,
+              "column": 7
+            },
+            {
+              "title": "Registration page guide dropdown is populated",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 0,
+                      "status": "interrupted",
+                      "duration": 31595,
+                      "error": {
+                        "message": "Error: page.waitForFunction: Test ended.",
+                        "stack": "Error: page.waitForFunction: Test ended.\n    at /home/vedanarayana_das/Prabhupada World Academy/tests/e2e/02-frontend-pages.spec.ts:59:16",
+                        "location": {
+                          "file": "/home/vedanarayana_das/Prabhupada World Academy/tests/e2e/02-frontend-pages.spec.ts",
+                          "column": 16,
+                          "line": 59
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 57 |\u001b[39m     \u001b[36mawait\u001b[39m waitForApp(page)\u001b[33m;\u001b[39m\n \u001b[90m 58 |\u001b[39m     \u001b[90m// Wait for React hydration\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 59 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForFunction(\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 60 |\u001b[39m       () \u001b[33m=>\u001b[39m (document\u001b[33m.\u001b[39mbody\u001b[33m.\u001b[39minnerText \u001b[33m||\u001b[39m \u001b[32m''\u001b[39m)\u001b[33m.\u001b[39mincludes(\u001b[32m'Create Your Account'\u001b[39m) \u001b[33m||\u001b[39m (document\u001b[33m.\u001b[39mbody\u001b[33m.\u001b[39minnerText \u001b[33m||\u001b[39m \u001b[32m''\u001b[39m)\u001b[33m.\u001b[39mincludes(\u001b[32m'Prabhupada'\u001b[39m)\u001b[33m,\u001b[39m\n \u001b[90m 61 |\u001b[39m       { timeout\u001b[33m:\u001b[39m \u001b[35m45000\u001b[39m }\n \u001b[90m 62 |\u001b[39m     )\u001b[33m;\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/home/vedanarayana_das/Prabhupada World Academy/tests/e2e/02-frontend-pages.spec.ts",
+                            "column": 16,
+                            "line": 59
+                          },
+                          "message": "Error: page.waitForFunction: Test ended.\n\n\u001b[0m \u001b[90m 57 |\u001b[39m     \u001b[36mawait\u001b[39m waitForApp(page)\u001b[33m;\u001b[39m\n \u001b[90m 58 |\u001b[39m     \u001b[90m// Wait for React hydration\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 59 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForFunction(\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 60 |\u001b[39m       () \u001b[33m=>\u001b[39m (document\u001b[33m.\u001b[39mbody\u001b[33m.\u001b[39minnerText \u001b[33m||\u001b[39m \u001b[32m''\u001b[39m)\u001b[33m.\u001b[39mincludes(\u001b[32m'Create Your Account'\u001b[39m) \u001b[33m||\u001b[39m (document\u001b[33m.\u001b[39mbody\u001b[33m.\u001b[39minnerText \u001b[33m||\u001b[39m \u001b[32m''\u001b[39m)\u001b[33m.\u001b[39mincludes(\u001b[32m'Prabhupada'\u001b[39m)\u001b[33m,\u001b[39m\n \u001b[90m 61 |\u001b[39m       { timeout\u001b[33m:\u001b[39m \u001b[35m45000\u001b[39m }\n \u001b[90m 62 |\u001b[39m     )\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at /home/vedanarayana_das/Prabhupada World Academy/tests/e2e/02-frontend-pages.spec.ts:59:16\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-17T07:36:21.779Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-10018-guide-dropdown-is-populated-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-10018-guide-dropdown-is-populated-chromium/video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-10018-guide-dropdown-is-populated-chromium/error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-10018-guide-dropdown-is-populated-chromium/trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/home/vedanarayana_das/Prabhupada World Academy/tests/e2e/02-frontend-pages.spec.ts",
+                        "column": 16,
+                        "line": 59
+                      }
+                    }
+                  ],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fac3893554c5a675e376-a46f011630abb41dfc95",
+              "file": "02-frontend-pages.spec.ts",
+              "line": 55,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Mock Login via Email",
+          "file": "02-frontend-pages.spec.ts",
+          "line": 74,
+          "column": 6,
+          "specs": [
+            {
+              "title": "User can log in via email form (mock mode)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fac3893554c5a675e376-2a7a83c748e47db41419",
+              "file": "02-frontend-pages.spec.ts",
+              "line": 75,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "User Dashboard",
+          "file": "02-frontend-pages.spec.ts",
+          "line": 100,
+          "column": 6,
+          "specs": [
+            {
+              "title": "User dashboard loads with correct user name",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fac3893554c5a675e376-f5ac459852dc6dc9fb2b",
+              "file": "02-frontend-pages.spec.ts",
+              "line": 101,
+              "column": 7
+            },
+            {
+              "title": "User dashboard shows sadhana submission section",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fac3893554c5a675e376-25fad0c0286b41b4d9e6",
+              "file": "02-frontend-pages.spec.ts",
+              "line": 113,
+              "column": 7
+            },
+            {
+              "title": "Pending approval page shown for new users",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fac3893554c5a675e376-09eafa108bfe427350e1",
+              "file": "02-frontend-pages.spec.ts",
+              "line": 122,
+              "column": 7
+            },
+            {
+              "title": "History page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fac3893554c5a675e376-e4f3af888c2c153063a4",
+              "file": "02-frontend-pages.spec.ts",
+              "line": 130,
+              "column": 7
+            },
+            {
+              "title": "Profile page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fac3893554c5a675e376-6be0a579fa49e2a084be",
+              "file": "02-frontend-pages.spec.ts",
+              "line": 138,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Guide Dashboard",
+          "file": "02-frontend-pages.spec.ts",
+          "line": 151,
+          "column": 6,
+          "specs": [
+            {
+              "title": "Guide dashboard loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fac3893554c5a675e376-127004bc7d556118fc14",
+              "file": "02-frontend-pages.spec.ts",
+              "line": 152,
+              "column": 7
+            },
+            {
+              "title": "Guide dashboard shows tabs",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fac3893554c5a675e376-0286c365fa4adf0dedc1",
+              "file": "02-frontend-pages.spec.ts",
+              "line": 160,
+              "column": 7
+            },
+            {
+              "title": "Guide reports tab loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fac3893554c5a675e376-8bae789b8f0bacad308f",
+              "file": "02-frontend-pages.spec.ts",
+              "line": 173,
+              "column": 7
+            },
+            {
+              "title": "Guide members tab shows user list",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fac3893554c5a675e376-abcdb9dedb5ec3ce04a2",
+              "file": "02-frontend-pages.spec.ts",
+              "line": 189,
+              "column": 7
+            },
+            {
+              "title": "Residency filter dropdown shows proper labels",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fac3893554c5a675e376-0ba6d8d92c0c199661cb",
+              "file": "02-frontend-pages.spec.ts",
+              "line": 205,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Super Guide Dashboard",
+          "file": "02-frontend-pages.spec.ts",
+          "line": 225,
+          "column": 6,
+          "specs": [
+            {
+              "title": "Super guide dashboard loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fac3893554c5a675e376-bffd65ff2236ad917555",
+              "file": "02-frontend-pages.spec.ts",
+              "line": 226,
+              "column": 7
+            },
+            {
+              "title": "Super guide sees all users panel",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fac3893554c5a675e376-7563cf6a2017bfbc4c65",
+              "file": "02-frontend-pages.spec.ts",
+              "line": 234,
+              "column": 7
+            },
+            {
+              "title": "Super guide tabs are accessible",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fac3893554c5a675e376-cf6ab816714d4eb1af43",
+              "file": "02-frontend-pages.spec.ts",
+              "line": 244,
+              "column": 7
+            },
+            {
+              "title": "Super guide can filter users by residency",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fac3893554c5a675e376-c68e2aaa8f85792aa000",
+              "file": "02-frontend-pages.spec.ts",
+              "line": 257,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Sadhana Mentor Dashboard",
+          "file": "02-frontend-pages.spec.ts",
+          "line": 275,
+          "column": 6,
+          "specs": [
+            {
+              "title": "Mentor dashboard loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fac3893554c5a675e376-c8de8c7fcde906c654f6",
+              "file": "02-frontend-pages.spec.ts",
+              "line": 276,
+              "column": 7
+            },
+            {
+              "title": "Mentor sees their members",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fac3893554c5a675e376-e24b9a0b0a9a75e60e1c",
+              "file": "02-frontend-pages.spec.ts",
+              "line": 284,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "BVSL Dashboard",
+          "file": "02-frontend-pages.spec.ts",
+          "line": 295,
+          "column": 6,
+          "specs": [
+            {
+              "title": "BVSL dashboard loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fac3893554c5a675e376-c5e61a276e2f34f13a9b",
+              "file": "02-frontend-pages.spec.ts",
+              "line": 296,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Navigation & Routing",
+          "file": "02-frontend-pages.spec.ts",
+          "line": 309,
+          "column": 6,
+          "specs": [
+            {
+              "title": "Unauthenticated user is redirected from protected routes",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fac3893554c5a675e376-3a0ab1f1b0df767e9949",
+              "file": "02-frontend-pages.spec.ts",
+              "line": 310,
+              "column": 7
+            },
+            {
+              "title": "Regular user cannot access guide dashboard",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fac3893554c5a675e376-9ce23ec6aaafe65fab70",
+              "file": "02-frontend-pages.spec.ts",
+              "line": 322,
+              "column": 7
+            },
+            {
+              "title": "404 page for unknown routes",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fac3893554c5a675e376-71eb950c0cc687799e50",
+              "file": "02-frontend-pages.spec.ts",
+              "line": 334,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "UI Formatting — Dropdown Labels",
+          "file": "02-frontend-pages.spec.ts",
+          "line": 347,
+          "column": 6,
+          "specs": [
+            {
+              "title": "No dropdown shows raw snake_case values",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "fac3893554c5a675e376-700fdf6fba8048a35a99",
+              "file": "02-frontend-pages.spec.ts",
+              "line": 348,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-07-17T07:32:41.574Z",
+    "duration": 252403.427,
+    "expected": 1,
+    "skipped": 23,
+    "unexpected": 1,
+    "flaky": 1
+  }
+}

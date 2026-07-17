@@ -1,0 +1,53 @@
+ID,Checklist ID,User,Level,Checklist Data JSON,Completed Items,Total Items,Updated At
+61ac0832-c8dd-4a57-9d48-78536683d07f,4,Krishna,Sevak,[],0,,2026-06-12T11:37:08.089Z
+0ff01446-ed0f-42fe-960b-c10ad9ab223f,5,Saurav Rawat,Sadhaka,[],0,,2026-03-21T16:09:14.577Z
+0d3f3875-5781-456e-93ec-e7d06174eea3,6,Madhushrava Bohra,Sevak,"[""chanting_rounds"",""sp_reading"",""books_to_read"",""course_syllabus"",""morning_program"",""class_frequency"",""one_on_one"",""service_hours"",""accept_krishna"",""avoid_onion_garlic"",""avoid_intoxicants"",""fasting"",""sadhana_score"",""donation""]",14,,2026-06-14T17:35:55.915Z
+5ef671f2-2688-4474-bc66-2b31e4190ea1,7,Ritvik Jhawar,Jigyasa,[],0,,2026-03-22T00:56:37.856Z
+6f33ba3d-1850-45e0-bcb4-a24dcf40e29b,8,Aryan Varshney,Jigyasa,[],0,,2026-03-22T05:09:44.163Z
+830d90ec-d5eb-4f70-94e3-2dd73368b740,9,Samanyu Kasukurthi,Shraddhavan,"[""chanting_rounds"",""sp_reading"",""books_to_read"",""course_syllabus"",""morning_program"",""class_frequency"",""one_on_one"",""service_hours"",""accept_krishna"",""avoid_onion_garlic"",""avoid_intoxicants"",""fasting"",""sadhana_score"",""donation""]",14,,2026-03-22T06:25:21.694Z
+05ba9f3e-26b7-4a2a-82c4-0e5fdaff8744,10,Sameer Kumar Epari,Sadhaka,"[""chanting_rounds"",""sp_reading"",""class_frequency"",""one_on_one"",""accept_krishna"",""avoid_onion_garlic"",""no_gambling"",""no_illicit_sex"",""avoid_nonveg"",""fasting"",""sadhana_score"",""donation"",""service_hours"",""books_to_read"",""morning_program"",""course_syllabus"",""avoid_intoxicants""]",17,,2026-03-22T12:35:50.114Z
+8458c08d-109a-46fe-ba94-0d6610afae8e,11,Disha Aggarwal,Sevak,"[""chanting_rounds"",""sp_reading"",""class_frequency"",""service_hours"",""accept_krishna"",""fasting"",""donation"",""books_to_read"",""morning_program"",""avoid_intoxicants"",""avoid_onion_garlic"",""course_syllabus""]",12,,2026-06-27T16:23:24.904Z
+0fafb4a5-9bfe-47fd-99d3-9ade077fd5e3,12,Ayush Kumar Kamal,Shraddhavan,"[""chanting_rounds"",""sp_reading"",""books_to_read"",""morning_program"",""class_frequency"",""one_on_one"",""service_hours"",""avoid_onion_garlic"",""avoid_intoxicants"",""fasting"",""sadhana_score"",""donation"",""accept_krishna"",""course_syllabus""]",14,,2026-06-25T17:49:22.355Z
+c7b2c137-1b86-4e3b-bceb-ff5dccd57e16,13,Tanish Kakkar,Sadhaka,"[""morning_program"",""class_frequency"",""chanting_rounds"",""books_to_read"",""course_syllabus"",""one_on_one"",""service_hours"",""accept_krishna"",""avoid_onion_garlic"",""avoid_intoxicants"",""no_gambling"",""no_illicit_sex"",""avoid_nonveg"",""fasting"",""sadhana_score"",""donation"",""sp_reading""]",17,,2026-04-01T02:33:45.906Z
+9949bd61-c00e-4c42-9fa1-61767af0b8ff,14,Gaura Dasa,Caranashraya,"[""chanting_rounds"",""sp_reading"",""books_to_read"",""class_frequency"",""accept_krishna"",""avoid_onion_garlic"",""avoid_intoxicants"",""no_gambling"",""no_illicit_sex"",""avoid_nonveg"",""fasting"",""kanthi_mala"",""morning_program"",""service_hours""]",14,,2026-04-02T17:58:47.586Z
+1d029f17-f1b3-4805-87f5-940c926de0df,15,,Shraddhavan,"[""chanting_rounds"",""avoid_intoxicants"",""fasting"",""accept_krishna"",""one_on_one""]",5,,2026-04-03T14:01:16.250Z
+af83161c-c880-4862-8f0e-ddcbd7f37a95,16,Jay Ghadiya,Jigyasa,[],0,,2026-05-12T04:37:17.031Z
+ecfd684d-1244-4abf-88b4-d4349946d50a,17,Sudhakar,Shraddhavan,[],0,,2026-04-04T10:49:09.171Z
+7cf0a0cd-fff0-4686-ad95-e346dd78ce94,18,Yash Gupta,Jigyasa,[],0,,2026-04-05T16:58:24.436Z
+a0e292dc-3fba-4173-bba1-ecd251fb3b8a,19,Vinay kumar Maryala,Jigyasa,[],0,,2026-04-06T11:48:23.011Z
+f730e698-fac8-4666-ac49-23063d930053,20,Shivam Gupta,Sevak,[],0,,2026-04-29T07:46:06.885Z
+295432fa-22d3-42af-a1bd-de9ba2c09d66,21,Pārtha,Sadhaka,"[""chanting_rounds"",""sp_reading"",""morning_program"",""class_frequency"",""one_on_one"",""service_hours"",""accept_krishna"",""avoid_onion_garlic"",""avoid_intoxicants"",""no_gambling"",""no_illicit_sex"",""avoid_nonveg"",""fasting"",""sadhana_score"",""donation"",""course_syllabus""]",16,,2026-04-09T15:26:00.672Z
+0ddca611-12ee-42ef-80e1-39ca50e13e12,22,Milind Patkar,Jigyasa,"[""course_syllabus""]",1,,2026-06-30T03:43:24.545Z
+d1440bf0-4262-4ae3-a869-766e37cc6591,23,Sumeet Majumdar,Jigyasa,"[""course_syllabus""]",1,,2026-04-12T11:38:28.199Z
+58489849-3f7f-49d2-ba65-c829485c5390,24,Tanmay Pawar,Jigyasa,"[""course_syllabus""]",1,,2026-04-13T12:28:31.966Z
+56892d75-afe0-4ae0-98a9-6cfccecf2001,25,,Caranashraya,[],0,,2026-05-06T13:50:12.155Z
+ce7679ac-f49a-4415-8cbd-ef14b61e9abe,26,Ravi Kumar Meena,Jigyasa,[],0,,2026-04-16T05:04:56.760Z
+f45ab71e-3a61-44ec-8b41-07ed563b913d,27,Roushan Nigam,Shraddhavan,"[""chanting_rounds"",""sp_reading"",""books_to_read"",""course_syllabus"",""morning_program"",""class_frequency"",""one_on_one"",""service_hours"",""accept_krishna"",""avoid_onion_garlic"",""avoid_intoxicants"",""fasting"",""sadhana_score"",""donation""]",14,,2026-04-20T09:41:48.184Z
+b86af286-f33e-469c-9098-a9b6c5c7686b,28,ankit upadhyay,Jigyasa,"[""course_syllabus""]",1,,2026-04-19T14:07:15.918Z
+8a872bfb-2f4c-4e9d-953e-2f02b6378abc,29,Kaustav Kishor,Sadhaka,"[""avoid_nonveg"",""no_gambling"",""avoid_intoxicants"",""avoid_onion_garlic"",""fasting"",""donation"",""accept_krishna"",""service_hours"",""class_frequency"",""morning_program""]",10,,2026-04-19T15:05:01.297Z
+ce63c04f-6053-4186-9331-158d3316d55a,30,Vaibhav Srivastava,Jigyasa,[],0,,2026-04-20T08:43:16.702Z
+da07b9b9-44f7-4a62-9d55-f5f4304de1ff,31,Mukesh Patil,Jigyasa,[],0,,2026-04-30T17:32:29.717Z
+dcc0daec-0164-40af-b191-f83546cf3e0b,32,Aryan Singh,Jigyasa,"[""course_syllabus""]",1,,2026-04-20T15:32:36.095Z
+9afaaf34-69c0-40da-8ef4-db59dd2d031d,33,Vedang G,Jigyasa,"[""course_syllabus""]",1,,2026-04-20T17:08:24.007Z
+cf1fe4e7-4b09-4e72-a6f5-b76fdf817a33,34,jyoti nanavati,Sevak,[],0,,2026-04-25T18:01:56.362Z
+dfd05c1f-2980-401a-9cc9-31b1ec3217aa,35,Rajesh Saran,Jigyasa,[],0,,2026-05-07T16:32:50.336Z
+83b183df-a040-450b-9410-651ea6822169,36,Rishi Mathur,Jigyasa,"[""course_syllabus""]",1,,2026-05-06T16:57:25.485Z
+4c444961-793a-4315-956c-40c09f247f01,37,Ayush Dodiya,Jigyasa,[],0,,2026-05-09T11:53:42.801Z
+d0c4ac8a-7719-4e86-9f34-eb7aa25d23b5,38,Ujjwal Upadhyay,Jigyasa,[],0,,2026-05-10T02:50:17.108Z
+4992698e-d5a7-404a-a0ad-8555477cc37b,39,Aman Gupta,Upasaka,"[""chanting_rounds"",""sp_reading"",""books_to_read"",""course_syllabus"",""morning_program"",""class_frequency"",""one_on_one"",""service_hours"",""accept_krishna"",""avoid_onion_garlic"",""avoid_intoxicants"",""no_gambling"",""no_illicit_sex"",""avoid_nonveg"",""fasting"",""sadhana_score"",""donation""]",17,,2026-05-12T04:33:55.267Z
+ef619eb1-ad79-4e6f-b766-d1f688c01efe,40,Indraneel Chakraborty,Jigyasa,"[""course_syllabus""]",1,,2026-06-18T03:01:55.583Z
+d3d32731-a543-4b16-ba41-34314ced0ebe,41,Sahil Negi,Jigyasa,[],0,,2026-07-12T18:00:09.193Z
+054d7d93-524f-428b-b43d-17b62964f436,42,Harsh Malik,Jigyasa,[],0,,2026-05-22T07:27:44.842Z
+f5675f0d-cb83-4a57-96a1-836ed53f5372,43,Harsh Malik,Jigyasa,"[""course_syllabus""]",1,,2026-05-22T07:27:37.224Z
+7d0ff433-9dc6-41da-8694-25aa4f31dce0,44,Prateek Pattnaik,Jigyasa,[],0,,2026-05-24T06:52:01.061Z
+edcfabe8-b442-4758-a6fd-eff210dc6a11,45,Manish Kumar,Sevak,[],0,,2026-05-31T02:56:29.623Z
+e247b1e7-e5d7-48cf-ac96-ad37a14dd9bd,46,Sandeep Birua,Jigyasa,[],0,,2026-06-03T13:35:34.124Z
+3226e2d1-5171-47d0-8fc2-ccf801ae0932,47,Aayush Kakadiya,Jigyasa,[],0,,2026-06-23T13:35:40.579Z
+5da687bc-b010-4f4e-b503-169178792fb7,48,Deepak Mohanty,Shraddhavan,[],0,,2026-06-21T14:41:35.022Z
+30266a70-73ad-4544-803a-32b5f7a71025,49,Sandeep More,Shraddhavan,"[""chanting_rounds"",""sp_reading"",""books_to_read"",""course_syllabus"",""morning_program"",""class_frequency"",""one_on_one"",""service_hours"",""accept_krishna"",""avoid_onion_garlic"",""avoid_intoxicants"",""fasting"",""donation"",""sadhana_score""]",14,,2026-06-22T17:07:55.573Z
+8ce86a7d-b72d-416c-ab96-8d14fce0977d,50,Rahul Chachada,Jigyasa,[],0,,2026-07-12T13:52:38.492Z
+1ae0ccda-deaf-4bc5-8cf6-bf4dfbd22346,51,deepak joshi,Jigyasa,[],0,,2026-06-26T18:18:12.981Z
+f00c9e2c-b7a3-4b26-8083-9b93c26bd05c,52,Pawan Goyal,Jigyasa,[],0,,2026-06-30T17:45:20.743Z
+86e6b5c0-2e16-4204-9b82-f552fc024833,53,abhishek Srivastava,Jigyasa,[],0,,2026-07-12T18:33:51.709Z
+57a8a6de-8fc4-4c46-8b71-d39769e7601e,54,Vedanarayana Das,Jigyasa,[],0,,2026-07-13T08:28:37.742Z
+2c9042de-f435-4607-b87a-a56540e69296,55,Vedanarayana Das,Jigyasa,"[""course_syllabus""]",1,,2026-07-13T08:28:37.921Z
