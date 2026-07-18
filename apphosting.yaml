@@ -10,7 +10,7 @@ runConfig:
 env:
   # ── Public Firebase Client SDK (safe as plain values) ──
   - variable: NEXT_PUBLIC_FIREBASE_API_KEY
-    value: AIzaSyDV8AW_0wh5VsgFX7_pdf7NVQ6e3a8ISXA
+    secret: NEXT_PUBLIC_FIREBASE_API_KEY
 
   - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
     value: prabhupada-world-academy.firebaseapp.com
