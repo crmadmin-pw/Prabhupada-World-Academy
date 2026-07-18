@@ -13,19 +13,19 @@ env:
     secret: NEXT_PUBLIC_FIREBASE_API_KEY
 
   - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
-    value: prabhupada-world-academy.firebaseapp.com
+    value: bvpw108.firebaseapp.com
 
   - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
-    value: prabhupada-world-academy
+    value: bvpw108
 
   - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
-    value: prabhupada-world-academy.firebasestorage.app
+    value: bvpw108.firebasestorage.app
 
   - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
-    value: "1027403109704"
+    value: "10237671112"
 
   - variable: NEXT_PUBLIC_FIREBASE_APP_ID
-    value: "1:1027403109704:web:9f772b19feadeaa1934f7d"
+    value: "1:10237671112:web:3ee6046eaef61f0fbe57fd"
 
   # ── App URL ──
   - variable: ZITE_APP_URL
