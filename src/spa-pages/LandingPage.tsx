@@ -62,11 +62,7 @@ export default function LandingPage() {
             size="lg"
             variant="outline"
             onClick={() => {
-              if (isFirebaseEnabled) {
-                window.location.href = REGISTER_URL;
-              } else {
-                navigate('/signup');
-              }
+              navigate('/signup');
             }}
           >
             <UserPlus className="w-4 h-4 mr-2" />
