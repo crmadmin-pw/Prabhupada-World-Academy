@@ -3,7 +3,7 @@ const { getFirestore } = require('firebase-admin/firestore');
 process.env.FIRESTORE_EMULATOR_HOST = '127.0.0.1:8080';
 
 initializeApp({
-  projectId: 'prabhupada-world-academy'
+  projectId: 'bvpw108'
 });
 
 const db = getFirestore();

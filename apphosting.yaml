@@ -29,7 +29,7 @@ env:
 
   # ── App URL ──
   - variable: ZITE_APP_URL
-    value: https://prabhupada-world-academy.web.app
+    value: https://bvpw108.web.app
 
   # ── Secrets (created in Cloud Secret Manager below) ──
   - variable: FIREBASE_SERVICE_ACCOUNT
