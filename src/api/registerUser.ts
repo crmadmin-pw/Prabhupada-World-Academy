@@ -4,7 +4,6 @@ import { generateUniqueUserId } from '../lib/userIdGen';
 import { enforceRateLimit } from '../utils/rateLimit';
 import { serverCacheInvalidate } from '../lib/serverCache';
 import { profileCacheKey } from './getUserProfile';
-import { getDb } from '../lib/db';
 
 export default createEndpoint({
   description: 'Register new user — updates the user sync record with profile data. Phone is primary identifier.',
@@ -90,55 +89,7 @@ export default createEndpoint({
     const appUrl = process.env.ZITE_APP_URL ?? '';
     const ashrayLevel = input.ashrayLevel || 'Jigyasa';
 
-    // Direct SQLite upsert to guarantee physical record creation
-    const db = getDb();
-    const row = db.prepare('SELECT id FROM "Users" WHERE id = ?').get(context.user.id);
-    if (!row) {
-      db.prepare(`
-        INSERT INTO "Users" (
-          id, userId, fullName, phone, email, guide, residency, role, status,
-          residencyClaimed, residencyApproved, residencyJoinDate, ashrayLevel,
-          bvServiceAllocated, createdAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        context.user.id,
-        userId,
-        input.fullName,
-        phone,
-        userEmail,
-        guideRecord.id,
-        residencyRecordId || null,
-        'User',
-        'Pending Approval',
-        input.residencyUserClaim ? 1 : 0,
-        0,
-        input.residencyJoinDate || null,
-        ashrayLevel,
-        0,
-        new Date().toISOString()
-      );
-    } else {
-      db.prepare(`
-        UPDATE "Users" SET
-          userId = ?, fullName = ?, phone = ?, email = ?, guide = ?, residency = ?,
-          status = ?, residencyClaimed = ?, residencyJoinDate = ?, ashrayLevel = ?
-        WHERE id = ?
-      `).run(
-        userId,
-        input.fullName,
-        phone,
-        userEmail,
-        guideRecord.id,
-        residencyRecordId || null,
-        'Pending Approval',
-        input.residencyUserClaim ? 1 : 0,
-        input.residencyJoinDate || null,
-        ashrayLevel,
-        context.user.id
-      );
-    }
-
-    // Upsert the record in Firestore to sync data and prevent blank pending/dashboard pages
+    // Upsert the record in Firestore — single source of truth for all environments
     const firestoreRecord = {
       id: context.user.id,
       userId,

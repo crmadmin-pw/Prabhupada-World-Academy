@@ -1,0 +1,48 @@
+# apphosting.yaml
+# Firebase App Hosting runtime configuration.
+# See: https://firebase.google.com/docs/app-hosting/configure
+
+runConfig:
+  minInstances: 0
+  maxInstances: 10
+  concurrency: 80
+
+env:
+  # ── Public Firebase Client SDK (safe as plain values) ──
+  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+    value: AIzaSyDV8AW_0wh5VsgFX7_pdf7NVQ6e3a8ISXA
+
+  - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    value: prabhupada-world-academy.firebaseapp.com
+
+  - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    value: prabhupada-world-academy
+
+  - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+    value: prabhupada-world-academy.firebasestorage.app
+
+  - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+    value: "1027403109704"
+
+  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
+    value: "1:1027403109704:web:9f772b19feadeaa1934f7d"
+
+  # ── App URL ──
+  - variable: ZITE_APP_URL
+    value: https://prabhupada-world-academy.web.app
+
+  # ── Secrets (created in Cloud Secret Manager below) ──
+  - variable: FIREBASE_SERVICE_ACCOUNT
+    secret: FIREBASE_SERVICE_ACCOUNT
+
+  - variable: ZITE_REMINDER_SECRET
+    secret: ZITE_REMINDER_SECRET
+
+  - variable: ZITE_CRON_SECRET
+    secret: ZITE_CRON_SECRET
+
+  - variable: ZITE_VAPID_PUBLIC_KEY
+    secret: ZITE_VAPID_PUBLIC_KEY
+
+  - variable: ZITE_VAPID_PRIVATE_KEY
+    secret: ZITE_VAPID_PRIVATE_KEY

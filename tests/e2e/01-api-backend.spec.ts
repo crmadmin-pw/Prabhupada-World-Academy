@@ -7,10 +7,19 @@ import { USERS, apiCall } from './helpers';
 
 let testGuideId: string = '9b438709-3d45-48a5-bb45-7cbff4a9ee75';
 
-test.beforeAll(async ({ request }) => {
-  const { body } = await apiCall(request, 'getGuides');
-  if (body?.guides?.length > 0) {
-    testGuideId = body.guides[0].guideId;
+test.beforeAll(async () => {
+  try {
+    const res = await fetch('http://localhost:3000/api/run/getGuides', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    const body = await res.json() as any;
+    if (body?.guides?.length > 0) {
+      testGuideId = body.guides[0].guideId;
+    }
+  } catch (e) {
+    console.error('Error in beforeAll getGuides fetch:', e);
   }
 });
 

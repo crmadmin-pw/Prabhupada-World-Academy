@@ -15,6 +15,8 @@ export interface GuideScope {
   guideId: string;
   /** All FOLK Residency IDs this guide is linked to via folkResidencies */
   residencyIds: string[];
+  /** The full name of the guide to resolve name-based direct assignments */
+  guideName?: string;
 }
 
 /**
@@ -24,13 +26,18 @@ export interface GuideScope {
 export async function getGuideScope(email: string): Promise<GuideScope | null> {
   const guide = await Guides.findOne({
     filters: { email, isActive: true },
-    fields: ['id', 'folkResidencies'],
+    fields: ['id', 'folkResidencies', 'fullName'],
   });
   if (!guide) return null;
-  const residencyIds: string[] = Array.isArray(guide.folkResidencies)
-    ? (guide.folkResidencies as string[])
-    : (guide.folkResidencies ? [guide.folkResidencies as string] : []);
-  return { guideId: guide.id, residencyIds };
+  
+  let residencyIds: string[] = [];
+  if (Array.isArray(guide.folkResidencies)) {
+    residencyIds = guide.folkResidencies;
+  } else if (guide.folkResidencies) {
+    residencyIds = (guide.folkResidencies as string).split(',').map((s: string) => s.trim());
+  }
+
+  return { guideId: guide.id, residencyIds, guideName: guide.fullName };
 }
 
 /**
@@ -46,9 +53,12 @@ export async function getGuideIdsForResidencies(residencyIds: string[]): Promise
   });
   const matchingIds: string[] = [];
   for (const g of guides) {
-    const gResIds: string[] = Array.isArray(g.folkResidencies)
-      ? (g.folkResidencies as string[])
-      : (g.folkResidencies ? [g.folkResidencies as string] : []);
+    let gResIds: string[] = [];
+    if (Array.isArray(g.folkResidencies)) {
+      gResIds = g.folkResidencies;
+    } else if (g.folkResidencies) {
+      gResIds = (g.folkResidencies as string).split(',').map((s: string) => s.trim());
+    }
     if (gResIds.some(rid => residencyIds.includes(rid))) {
       matchingIds.push(g.id);
     }
@@ -75,7 +85,7 @@ export function isUserInGuideScope(
     : userRecord.guide;
   // Center-based: user's residency is one of the guide's centers
   if (userResidencyId && scope.residencyIds.includes(userResidencyId as string)) return true;
-  // Direct assignment: user is directly under this guide
-  if (userGuideId && userGuideId === scope.guideId) return true;
+  // Direct assignment: user is directly under this guide (by ID or by Name)
+  if (userGuideId && (userGuideId === scope.guideId || (scope.guideName && userGuideId === scope.guideName))) return true;
   return false;
 }

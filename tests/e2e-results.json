@@ -4,8 +4,9 @@
       "/home/vedanarayana_das/.nvm/versions/node/v24.18.0/bin/node",
       "/home/vedanarayana_das/Prabhupada World Academy/node_modules/.bin/playwright",
       "test",
-      "tests/e2e/02-frontend-pages.spec.ts",
-      "--config=playwright.config.ts"
+      "tests/e2e/03-additional-pages.spec.ts",
+      "--config=playwright.config.ts",
+      "--workers=1"
     ],
     "configFile": "/home/vedanarayana_das/Prabhupada World Academy/playwright.config.ts",
     "rootDir": "/home/vedanarayana_das/Prabhupada World Academy/tests/e2e",
@@ -69,25 +70,25 @@
     "updateSnapshots": "missing",
     "updateSourceMethod": "patch",
     "version": "1.61.1",
-    "workers": 8,
+    "workers": 1,
     "webServer": null
   },
   "suites": [
     {
-      "title": "02-frontend-pages.spec.ts",
-      "file": "02-frontend-pages.spec.ts",
+      "title": "03-additional-pages.spec.ts",
+      "file": "03-additional-pages.spec.ts",
       "column": 0,
       "line": 0,
       "specs": [],
       "suites": [
         {
-          "title": "Public Pages",
-          "file": "02-frontend-pages.spec.ts",
-          "line": 20,
+          "title": "Additional Pages & Flows",
+          "file": "03-additional-pages.spec.ts",
+          "line": 48,
           "column": 6,
           "specs": [
             {
-              "title": "Home page loads and shows sign-in option",
+              "title": "Signup page renders signup options",
               "ok": true,
               "tags": [],
               "tests": [
@@ -102,18 +103,18 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 6124,
+                      "duration": 4879,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-07-17T07:32:42.277Z",
+                      "startTime": "2026-07-17T09:42:23.472Z",
                       "annotations": [],
                       "attachments": [
                         {
                           "name": "screenshot",
                           "contentType": "image/png",
-                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-78643-ds-and-shows-sign-in-option-chromium/test-finished-1.png"
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-179ec-page-renders-signup-options-chromium/test-finished-1.png"
                         }
                       ]
                     }
@@ -121,13 +122,13 @@
                   "status": "expected"
                 }
               ],
-              "id": "fac3893554c5a675e376-26f0af896fb8c2edb13c",
-              "file": "02-frontend-pages.spec.ts",
-              "line": 21,
+              "id": "163c2668ed475027d9b2-74f5f8a71a9547ee2954",
+              "file": "03-additional-pages.spec.ts",
+              "line": 51,
               "column": 7
             },
             {
-              "title": "Login page renders email input",
+              "title": "Guide login page renders guide authentication form",
               "ok": true,
               "tags": [],
               "tests": [
@@ -142,7 +143,7 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "timedOut",
-                      "duration": 62463,
+                      "duration": 63279,
                       "error": {
                         "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m",
                         "stack": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
@@ -153,38 +154,38 @@
                         },
                         {
                           "location": {
-                            "file": "/home/vedanarayana_das/Prabhupada World Academy/tests/e2e/02-frontend-pages.spec.ts",
+                            "file": "/home/vedanarayana_das/Prabhupada World Academy/tests/e2e/03-additional-pages.spec.ts",
                             "column": 16,
-                            "line": 34
+                            "line": 65
                           },
-                          "message": "Error: page.waitForFunction: Test timeout of 60000ms exceeded.\n\n\u001b[0m \u001b[90m 32 |\u001b[39m     \u001b[36mawait\u001b[39m waitForApp(page)\u001b[33m;\u001b[39m\n \u001b[90m 33 |\u001b[39m     \u001b[90m// Wait for React hydration — the SPA renders inside next/dynamic(ssr:false)\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 34 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForFunction(\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 35 |\u001b[39m       () \u001b[33m=>\u001b[39m document\u001b[33m.\u001b[39mquerySelector(\u001b[32m'#email'\u001b[39m) \u001b[33m!==\u001b[39m \u001b[36mnull\u001b[39m\u001b[33m,\u001b[39m\n \u001b[90m 36 |\u001b[39m       { timeout\u001b[33m:\u001b[39m \u001b[35m45000\u001b[39m }\n \u001b[90m 37 |\u001b[39m     )\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at /home/vedanarayana_das/Prabhupada World Academy/tests/e2e/02-frontend-pages.spec.ts:34:16\u001b[22m"
+                          "message": "Error: page.waitForFunction: Test timeout of 60000ms exceeded.\n\n\u001b[0m \u001b[90m 63 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m'/guide-login'\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 64 |\u001b[39m     \u001b[36mawait\u001b[39m waitForApp(page)\u001b[33m;\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 65 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForFunction(\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 66 |\u001b[39m       () \u001b[33m=>\u001b[39m (document\u001b[33m.\u001b[39mbody\u001b[33m.\u001b[39minnerText \u001b[33m||\u001b[39m \u001b[32m''\u001b[39m)\u001b[33m.\u001b[39mincludes(\u001b[32m'Guide'\u001b[39m)\u001b[33m,\u001b[39m\n \u001b[90m 67 |\u001b[39m       { timeout\u001b[33m:\u001b[39m \u001b[35m45000\u001b[39m }\n \u001b[90m 68 |\u001b[39m     )\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at /home/vedanarayana_das/Prabhupada World Academy/tests/e2e/03-additional-pages.spec.ts:65:16\u001b[22m"
                         }
                       ],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-07-17T07:32:48.619Z",
+                      "startTime": "2026-07-17T09:42:28.540Z",
                       "annotations": [],
                       "attachments": [
                         {
                           "name": "screenshot",
                           "contentType": "image/png",
-                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-343f6-in-page-renders-email-input-chromium/test-failed-1.png"
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-00737-s-guide-authentication-form-chromium/test-failed-1.png"
                         },
                         {
                           "name": "video",
                           "contentType": "video/webm",
-                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-343f6-in-page-renders-email-input-chromium/video.webm"
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-00737-s-guide-authentication-form-chromium/video.webm"
                         },
                         {
                           "name": "error-context",
                           "contentType": "text/markdown",
-                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-343f6-in-page-renders-email-input-chromium/error-context.md"
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-00737-s-guide-authentication-form-chromium/error-context.md"
                         },
                         {
                           "name": "trace",
                           "contentType": "application/zip",
-                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-343f6-in-page-renders-email-input-chromium/trace.zip"
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-00737-s-guide-authentication-form-chromium/trace.zip"
                         }
                       ]
                     },
@@ -192,18 +193,18 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 15996,
+                      "duration": 5680,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 1,
-                      "startTime": "2026-07-17T07:33:53.424Z",
+                      "startTime": "2026-07-17T09:43:32.540Z",
                       "annotations": [],
                       "attachments": [
                         {
                           "name": "screenshot",
                           "contentType": "image/png",
-                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-343f6-in-page-renders-email-input-chromium-retry1/test-finished-1.png"
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-00737-s-guide-authentication-form-chromium-retry1/test-finished-1.png"
                         }
                       ]
                     }
@@ -211,14 +212,14 @@
                   "status": "flaky"
                 }
               ],
-              "id": "fac3893554c5a675e376-559e488eaeac281466f3",
-              "file": "02-frontend-pages.spec.ts",
-              "line": 30,
+              "id": "163c2668ed475027d9b2-c692d626098a28ede910",
+              "file": "03-additional-pages.spec.ts",
+              "line": 62,
               "column": 7
             },
             {
-              "title": "Registration page loads with guide dropdown",
-              "ok": false,
+              "title": "Daily Sadhana form loads successfully",
+              "ok": true,
               "tags": [],
               "tests": [
                 {
@@ -232,7 +233,7 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "timedOut",
-                      "duration": 65357,
+                      "duration": 63445,
                       "error": {
                         "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m",
                         "stack": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
@@ -243,46 +244,246 @@
                         },
                         {
                           "location": {
-                            "file": "/home/vedanarayana_das/Prabhupada World Academy/tests/e2e/02-frontend-pages.spec.ts",
+                            "file": "/home/vedanarayana_das/Prabhupada World Academy/tests/e2e/03-additional-pages.spec.ts",
                             "column": 16,
-                            "line": 47
+                            "line": 76
                           },
-                          "message": "Error: page.waitForFunction: Test timeout of 60000ms exceeded.\n\n\u001b[0m \u001b[90m 45 |\u001b[39m     \u001b[36mawait\u001b[39m waitForApp(page)\u001b[33m;\u001b[39m\n \u001b[90m 46 |\u001b[39m     \u001b[90m// Wait for React hydration of the registration form\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 47 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForFunction(\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 48 |\u001b[39m       () \u001b[33m=>\u001b[39m (document\u001b[33m.\u001b[39mbody\u001b[33m.\u001b[39minnerText \u001b[33m||\u001b[39m \u001b[32m''\u001b[39m)\u001b[33m.\u001b[39mincludes(\u001b[32m'Sign up'\u001b[39m) \u001b[33m||\u001b[39m (document\u001b[33m.\u001b[39mbody\u001b[33m.\u001b[39minnerText \u001b[33m||\u001b[39m \u001b[32m''\u001b[39m)\u001b[33m.\u001b[39mincludes(\u001b[32m'Register'\u001b[39m)\u001b[33m,\u001b[39m\n \u001b[90m 49 |\u001b[39m       { timeout\u001b[33m:\u001b[39m \u001b[35m45000\u001b[39m }\n \u001b[90m 50 |\u001b[39m     )\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at /home/vedanarayana_das/Prabhupada World Academy/tests/e2e/02-frontend-pages.spec.ts:47:16\u001b[22m"
+                          "message": "Error: page.waitForFunction: Test timeout of 60000ms exceeded.\n\n\u001b[0m \u001b[90m 74 |\u001b[39m   test(\u001b[32m'Daily Sadhana form loads successfully'\u001b[39m\u001b[33m,\u001b[39m \u001b[36masync\u001b[39m ({ page }) \u001b[33m=>\u001b[39m {\n \u001b[90m 75 |\u001b[39m     \u001b[36mawait\u001b[39m gotoAs(page\u001b[33m,\u001b[39m \u001b[32m'nileshkund8@gmail.com'\u001b[39m\u001b[33m,\u001b[39m \u001b[32m'/sadhana'\u001b[39m)\u001b[33m;\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 76 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForFunction(\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 77 |\u001b[39m       () \u001b[33m=>\u001b[39m (document\u001b[33m.\u001b[39mbody\u001b[33m.\u001b[39minnerText \u001b[33m||\u001b[39m \u001b[32m''\u001b[39m)\u001b[33m.\u001b[39mincludes(\u001b[32m'Daily Sadhana'\u001b[39m)\u001b[33m,\u001b[39m\n \u001b[90m 78 |\u001b[39m       { timeout\u001b[33m:\u001b[39m \u001b[35m45000\u001b[39m }\n \u001b[90m 79 |\u001b[39m     )\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at /home/vedanarayana_das/Prabhupada World Academy/tests/e2e/03-additional-pages.spec.ts:76:16\u001b[22m"
                         }
                       ],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-07-17T07:34:09.737Z",
+                      "startTime": "2026-07-17T09:43:38.470Z",
                       "annotations": [],
                       "attachments": [
                         {
                           "name": "screenshot",
                           "contentType": "image/png",
-                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-3ccbb-e-loads-with-guide-dropdown-chromium/test-failed-1.png"
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-c8e4f-ana-form-loads-successfully-chromium/test-failed-1.png"
                         },
                         {
                           "name": "video",
                           "contentType": "video/webm",
-                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-3ccbb-e-loads-with-guide-dropdown-chromium/video.webm"
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-c8e4f-ana-form-loads-successfully-chromium/video.webm"
                         },
                         {
                           "name": "error-context",
                           "contentType": "text/markdown",
-                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-3ccbb-e-loads-with-guide-dropdown-chromium/error-context.md"
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-c8e4f-ana-form-loads-successfully-chromium/error-context.md"
                         },
                         {
                           "name": "trace",
                           "contentType": "application/zip",
-                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-3ccbb-e-loads-with-guide-dropdown-chromium/trace.zip"
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-c8e4f-ana-form-loads-successfully-chromium/trace.zip"
                         }
                       ]
                     },
                     {
                       "workerIndex": 2,
                       "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 5890,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 1,
+                      "startTime": "2026-07-17T09:44:42.763Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-c8e4f-ana-form-loads-successfully-chromium-retry1/test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "flaky"
+                }
+              ],
+              "id": "163c2668ed475027d9b2-e2d2c196a45ae7c650c8",
+              "file": "03-additional-pages.spec.ts",
+              "line": 74,
+              "column": 7
+            },
+            {
+              "title": "Sadhana Form Fields Setup page loads and has sync button",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7654,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-17T09:44:48.876Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-ca232-e-loads-and-has-sync-button-chromium/test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "163c2668ed475027d9b2-06bc8e8b8d25ea0ee44a",
+              "file": "03-additional-pages.spec.ts",
+              "line": 85,
+              "column": 7
+            },
+            {
+              "title": "Devotee Details page displays statistics & trend charts",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6874,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-17T09:44:56.544Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-ef155-ays-statistics-trend-charts-chromium/test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "163c2668ed475027d9b2-535826d5ce5a1e435d08",
+              "file": "03-additional-pages.spec.ts",
+              "line": 97,
+              "column": 7
+            },
+            {
+              "title": "Bhakti Vriksha Group detail page loads roster info",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7032,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-17T09:45:03.430Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-997c9-tail-page-loads-roster-info-chromium/test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "163c2668ed475027d9b2-be9f6b0e5971294af077",
+              "file": "03-additional-pages.spec.ts",
+              "line": 109,
+              "column": 7
+            },
+            {
+              "title": "BV Mentor dashboard page loads overview panels",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6780,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-17T09:45:10.483Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-44812--page-loads-overview-panels-chromium/test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "163c2668ed475027d9b2-a91c86696abcc9eb73ca",
+              "file": "03-additional-pages.spec.ts",
+              "line": 120,
+              "column": 7
+            },
+            {
+              "title": "Service Allocation manager loads allocations table",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
                       "status": "timedOut",
-                      "duration": 62731,
+                      "duration": 62833,
                       "error": {
                         "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m",
                         "stack": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
@@ -293,52 +494,71 @@
                         },
                         {
                           "location": {
-                            "file": "/home/vedanarayana_das/Prabhupada World Academy/tests/e2e/02-frontend-pages.spec.ts",
+                            "file": "/home/vedanarayana_das/Prabhupada World Academy/tests/e2e/03-additional-pages.spec.ts",
                             "column": 16,
-                            "line": 47
+                            "line": 133
                           },
-                          "message": "Error: page.waitForFunction: Test timeout of 60000ms exceeded.\n\n\u001b[0m \u001b[90m 45 |\u001b[39m     \u001b[36mawait\u001b[39m waitForApp(page)\u001b[33m;\u001b[39m\n \u001b[90m 46 |\u001b[39m     \u001b[90m// Wait for React hydration of the registration form\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 47 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForFunction(\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 48 |\u001b[39m       () \u001b[33m=>\u001b[39m (document\u001b[33m.\u001b[39mbody\u001b[33m.\u001b[39minnerText \u001b[33m||\u001b[39m \u001b[32m''\u001b[39m)\u001b[33m.\u001b[39mincludes(\u001b[32m'Sign up'\u001b[39m) \u001b[33m||\u001b[39m (document\u001b[33m.\u001b[39mbody\u001b[33m.\u001b[39minnerText \u001b[33m||\u001b[39m \u001b[32m''\u001b[39m)\u001b[33m.\u001b[39mincludes(\u001b[32m'Register'\u001b[39m)\u001b[33m,\u001b[39m\n \u001b[90m 49 |\u001b[39m       { timeout\u001b[33m:\u001b[39m \u001b[35m45000\u001b[39m }\n \u001b[90m 50 |\u001b[39m     )\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at /home/vedanarayana_das/Prabhupada World Academy/tests/e2e/02-frontend-pages.spec.ts:47:16\u001b[22m"
+                          "message": "Error: page.waitForFunction: Test timeout of 60000ms exceeded.\n\n\u001b[0m \u001b[90m 131 |\u001b[39m   test(\u001b[32m'Service Allocation manager loads allocations table'\u001b[39m\u001b[33m,\u001b[39m \u001b[36masync\u001b[39m ({ page }) \u001b[33m=>\u001b[39m {\n \u001b[90m 132 |\u001b[39m     \u001b[36mawait\u001b[39m gotoAs(page\u001b[33m,\u001b[39m \u001b[33mUSERS\u001b[39m\u001b[33m.\u001b[39mguide\u001b[33m.\u001b[39memail\u001b[33m,\u001b[39m \u001b[32m'/service-management'\u001b[39m)\u001b[33m;\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 133 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForFunction(\n \u001b[90m     |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 134 |\u001b[39m       () \u001b[33m=>\u001b[39m (document\u001b[33m.\u001b[39mbody\u001b[33m.\u001b[39minnerText \u001b[33m||\u001b[39m \u001b[32m''\u001b[39m)\u001b[33m.\u001b[39mincludes(\u001b[32m'Service'\u001b[39m) \u001b[33m||\u001b[39m (document\u001b[33m.\u001b[39mbody\u001b[33m.\u001b[39minnerText \u001b[33m||\u001b[39m \u001b[32m''\u001b[39m)\u001b[33m.\u001b[39mincludes(\u001b[32m'Allocation'\u001b[39m)\u001b[33m,\u001b[39m\n \u001b[90m 135 |\u001b[39m       { timeout\u001b[33m:\u001b[39m \u001b[35m45000\u001b[39m }\n \u001b[90m 136 |\u001b[39m     )\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at /home/vedanarayana_das/Prabhupada World Academy/tests/e2e/03-additional-pages.spec.ts:133:16\u001b[22m"
                         }
                       ],
                       "stdout": [],
                       "stderr": [],
-                      "retry": 1,
-                      "startTime": "2026-07-17T07:35:17.220Z",
+                      "retry": 0,
+                      "startTime": "2026-07-17T09:45:17.278Z",
                       "annotations": [],
                       "attachments": [
                         {
                           "name": "screenshot",
                           "contentType": "image/png",
-                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-3ccbb-e-loads-with-guide-dropdown-chromium-retry1/test-failed-1.png"
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-dd693-ger-loads-allocations-table-chromium/test-failed-1.png"
                         },
                         {
                           "name": "video",
                           "contentType": "video/webm",
-                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-3ccbb-e-loads-with-guide-dropdown-chromium-retry1/video.webm"
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-dd693-ger-loads-allocations-table-chromium/video.webm"
                         },
                         {
                           "name": "error-context",
                           "contentType": "text/markdown",
-                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-3ccbb-e-loads-with-guide-dropdown-chromium-retry1/error-context.md"
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-dd693-ger-loads-allocations-table-chromium/error-context.md"
                         },
                         {
                           "name": "trace",
                           "contentType": "application/zip",
-                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-3ccbb-e-loads-with-guide-dropdown-chromium-retry1/trace.zip"
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-dd693-ger-loads-allocations-table-chromium/trace.zip"
+                        }
+                      ]
+                    },
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4792,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 1,
+                      "startTime": "2026-07-17T09:46:20.640Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-dd693-ger-loads-allocations-table-chromium-retry1/test-finished-1.png"
                         }
                       ]
                     }
                   ],
-                  "status": "unexpected"
+                  "status": "flaky"
                 }
               ],
-              "id": "fac3893554c5a675e376-fc041fff0d4812117ebc",
-              "file": "02-frontend-pages.spec.ts",
-              "line": 43,
+              "id": "163c2668ed475027d9b2-1a8da04b6a81c1e6384b",
+              "file": "03-additional-pages.spec.ts",
+              "line": 131,
               "column": 7
             },
             {
-              "title": "Registration page guide dropdown is populated",
+              "title": "Public attendance page handles QR validation state",
               "ok": true,
               "tags": [],
               "tests": [
@@ -352,128 +572,181 @@
                     {
                       "workerIndex": 3,
                       "parallelIndex": 0,
-                      "status": "interrupted",
-                      "duration": 31595,
+                      "status": "timedOut",
+                      "duration": 63365,
                       "error": {
-                        "message": "Error: page.waitForFunction: Test ended.",
-                        "stack": "Error: page.waitForFunction: Test ended.\n    at /home/vedanarayana_das/Prabhupada World Academy/tests/e2e/02-frontend-pages.spec.ts:59:16",
-                        "location": {
-                          "file": "/home/vedanarayana_das/Prabhupada World Academy/tests/e2e/02-frontend-pages.spec.ts",
-                          "column": 16,
-                          "line": 59
-                        },
-                        "snippet": "\u001b[0m \u001b[90m 57 |\u001b[39m     \u001b[36mawait\u001b[39m waitForApp(page)\u001b[33m;\u001b[39m\n \u001b[90m 58 |\u001b[39m     \u001b[90m// Wait for React hydration\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 59 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForFunction(\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 60 |\u001b[39m       () \u001b[33m=>\u001b[39m (document\u001b[33m.\u001b[39mbody\u001b[33m.\u001b[39minnerText \u001b[33m||\u001b[39m \u001b[32m''\u001b[39m)\u001b[33m.\u001b[39mincludes(\u001b[32m'Create Your Account'\u001b[39m) \u001b[33m||\u001b[39m (document\u001b[33m.\u001b[39mbody\u001b[33m.\u001b[39minnerText \u001b[33m||\u001b[39m \u001b[32m''\u001b[39m)\u001b[33m.\u001b[39mincludes(\u001b[32m'Prabhupada'\u001b[39m)\u001b[33m,\u001b[39m\n \u001b[90m 61 |\u001b[39m       { timeout\u001b[33m:\u001b[39m \u001b[35m45000\u001b[39m }\n \u001b[90m 62 |\u001b[39m     )\u001b[33m;\u001b[39m\u001b[0m"
+                        "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m",
+                        "stack": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
                       },
                       "errors": [
                         {
+                          "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
+                        },
+                        {
                           "location": {
-                            "file": "/home/vedanarayana_das/Prabhupada World Academy/tests/e2e/02-frontend-pages.spec.ts",
+                            "file": "/home/vedanarayana_das/Prabhupada World Academy/tests/e2e/03-additional-pages.spec.ts",
                             "column": 16,
-                            "line": 59
+                            "line": 145
                           },
-                          "message": "Error: page.waitForFunction: Test ended.\n\n\u001b[0m \u001b[90m 57 |\u001b[39m     \u001b[36mawait\u001b[39m waitForApp(page)\u001b[33m;\u001b[39m\n \u001b[90m 58 |\u001b[39m     \u001b[90m// Wait for React hydration\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 59 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForFunction(\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 60 |\u001b[39m       () \u001b[33m=>\u001b[39m (document\u001b[33m.\u001b[39mbody\u001b[33m.\u001b[39minnerText \u001b[33m||\u001b[39m \u001b[32m''\u001b[39m)\u001b[33m.\u001b[39mincludes(\u001b[32m'Create Your Account'\u001b[39m) \u001b[33m||\u001b[39m (document\u001b[33m.\u001b[39mbody\u001b[33m.\u001b[39minnerText \u001b[33m||\u001b[39m \u001b[32m''\u001b[39m)\u001b[33m.\u001b[39mincludes(\u001b[32m'Prabhupada'\u001b[39m)\u001b[33m,\u001b[39m\n \u001b[90m 61 |\u001b[39m       { timeout\u001b[33m:\u001b[39m \u001b[35m45000\u001b[39m }\n \u001b[90m 62 |\u001b[39m     )\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at /home/vedanarayana_das/Prabhupada World Academy/tests/e2e/02-frontend-pages.spec.ts:59:16\u001b[22m"
+                          "message": "Error: page.waitForFunction: Test timeout of 60000ms exceeded.\n\n\u001b[0m \u001b[90m 143 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m'/attend/dummy-qr-token-xyz'\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 144 |\u001b[39m     \u001b[36mawait\u001b[39m waitForApp(page)\u001b[33m;\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 145 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForFunction(\n \u001b[90m     |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 146 |\u001b[39m       () \u001b[33m=>\u001b[39m (document\u001b[33m.\u001b[39mbody\u001b[33m.\u001b[39minnerText \u001b[33m||\u001b[39m \u001b[32m''\u001b[39m)\u001b[33m.\u001b[39mincludes(\u001b[32m'Attendance'\u001b[39m) \u001b[33m||\u001b[39m \n \u001b[90m 147 |\u001b[39m             (document\u001b[33m.\u001b[39mbody\u001b[33m.\u001b[39minnerText \u001b[33m||\u001b[39m \u001b[32m''\u001b[39m)\u001b[33m.\u001b[39mincludes(\u001b[32m'Loading'\u001b[39m) \u001b[33m||\u001b[39m\n \u001b[90m 148 |\u001b[39m             (document\u001b[33m.\u001b[39mbody\u001b[33m.\u001b[39minnerText \u001b[33m||\u001b[39m \u001b[32m''\u001b[39m)\u001b[33m.\u001b[39mincludes(\u001b[32m'Invalid'\u001b[39m) \u001b[33m||\u001b[39m\u001b[0m\n\u001b[2m    at /home/vedanarayana_das/Prabhupada World Academy/tests/e2e/03-additional-pages.spec.ts:145:16\u001b[22m"
                         }
                       ],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-07-17T07:36:21.779Z",
+                      "startTime": "2026-07-17T09:46:25.611Z",
                       "annotations": [],
                       "attachments": [
                         {
                           "name": "screenshot",
                           "contentType": "image/png",
-                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-10018-guide-dropdown-is-populated-chromium/test-failed-1.png"
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-fb940-handles-QR-validation-state-chromium/test-failed-1.png"
                         },
                         {
                           "name": "video",
                           "contentType": "video/webm",
-                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-10018-guide-dropdown-is-populated-chromium/video.webm"
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-fb940-handles-QR-validation-state-chromium/video.webm"
                         },
                         {
                           "name": "error-context",
                           "contentType": "text/markdown",
-                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-10018-guide-dropdown-is-populated-chromium/error-context.md"
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-fb940-handles-QR-validation-state-chromium/error-context.md"
                         },
                         {
                           "name": "trace",
                           "contentType": "application/zip",
-                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/02-frontend-pages-Public-P-10018-guide-dropdown-is-populated-chromium/trace.zip"
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-fb940-handles-QR-validation-state-chromium/trace.zip"
+                        }
+                      ]
+                    },
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 5611,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 1,
+                      "startTime": "2026-07-17T09:47:29.870Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-fb940-handles-QR-validation-state-chromium-retry1/test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "flaky"
+                }
+              ],
+              "id": "163c2668ed475027d9b2-3d24c60902190c7c8dfb",
+              "file": "03-additional-pages.spec.ts",
+              "line": 142,
+              "column": 7
+            },
+            {
+              "title": "Attendance Management page loads controls for guide",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 15082,
+                      "error": {
+                        "message": "TimeoutError: page.waitForSelector: Timeout 10000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('body') to be visible\u001b[22m\n\u001b[2m    24 × locator resolved to hidden <body>…</body>\u001b[22m\n",
+                        "stack": "TimeoutError: page.waitForSelector: Timeout 10000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('body') to be visible\u001b[22m\n\u001b[2m    24 × locator resolved to hidden <body>…</body>\u001b[22m\n\n    at waitForApp (/home/vedanarayana_das/Prabhupada World Academy/tests/e2e/helpers.ts:48:14)\n    at gotoAs (/home/vedanarayana_das/Prabhupada World Academy/tests/e2e/03-additional-pages.spec.ts:21:19)\n    at /home/vedanarayana_das/Prabhupada World Academy/tests/e2e/03-additional-pages.spec.ts:156:5",
+                        "location": {
+                          "file": "/home/vedanarayana_das/Prabhupada World Academy/tests/e2e/helpers.ts",
+                          "column": 14,
+                          "line": 48
+                        },
+                        "snippet": "\u001b[90m   at \u001b[39mhelpers.ts:48\n\n\u001b[0m \u001b[90m 46 |\u001b[39m\n \u001b[90m 47 |\u001b[39m \u001b[36mexport\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m waitForApp(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 48 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForSelector(\u001b[32m'body'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m10\u001b[39m_000 })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 49 |\u001b[39m   \u001b[90m// give React a moment to render\u001b[39m\n \u001b[90m 50 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForTimeout(\u001b[35m800\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 51 |\u001b[39m }\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/home/vedanarayana_das/Prabhupada World Academy/tests/e2e/helpers.ts",
+                            "column": 14,
+                            "line": 48
+                          },
+                          "message": "TimeoutError: page.waitForSelector: Timeout 10000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('body') to be visible\u001b[22m\n\u001b[2m    24 × locator resolved to hidden <body>…</body>\u001b[22m\n\n\n\u001b[90m   at \u001b[39mhelpers.ts:48\n\n\u001b[0m \u001b[90m 46 |\u001b[39m\n \u001b[90m 47 |\u001b[39m \u001b[36mexport\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m waitForApp(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 48 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForSelector(\u001b[32m'body'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m10\u001b[39m_000 })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 49 |\u001b[39m   \u001b[90m// give React a moment to render\u001b[39m\n \u001b[90m 50 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForTimeout(\u001b[35m800\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 51 |\u001b[39m }\u001b[0m\n\u001b[2m    at waitForApp (/home/vedanarayana_das/Prabhupada World Academy/tests/e2e/helpers.ts:48:14)\u001b[22m\n\u001b[2m    at gotoAs (/home/vedanarayana_das/Prabhupada World Academy/tests/e2e/03-additional-pages.spec.ts:21:19)\u001b[22m\n\u001b[2m    at /home/vedanarayana_das/Prabhupada World Academy/tests/e2e/03-additional-pages.spec.ts:156:5\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-17T09:47:35.800Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-fbc17-ge-loads-controls-for-guide-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-fbc17-ge-loads-controls-for-guide-chromium/video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-fbc17-ge-loads-controls-for-guide-chromium/error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-fbc17-ge-loads-controls-for-guide-chromium/trace.zip"
                         }
                       ],
                       "errorLocation": {
-                        "file": "/home/vedanarayana_das/Prabhupada World Academy/tests/e2e/02-frontend-pages.spec.ts",
-                        "column": 16,
-                        "line": 59
+                        "file": "/home/vedanarayana_das/Prabhupada World Academy/tests/e2e/helpers.ts",
+                        "column": 14,
+                        "line": 48
                       }
+                    },
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4369,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 1,
+                      "startTime": "2026-07-17T09:47:51.404Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-fbc17-ge-loads-controls-for-guide-chromium-retry1/test-finished-1.png"
+                        }
+                      ]
                     }
                   ],
-                  "status": "skipped"
+                  "status": "flaky"
                 }
               ],
-              "id": "fac3893554c5a675e376-a46f011630abb41dfc95",
-              "file": "02-frontend-pages.spec.ts",
-              "line": 55,
-              "column": 7
-            }
-          ]
-        },
-        {
-          "title": "Mock Login via Email",
-          "file": "02-frontend-pages.spec.ts",
-          "line": 74,
-          "column": 6,
-          "specs": [
-            {
-              "title": "User can log in via email form (mock mode)",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 60000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [],
-                  "status": "skipped"
-                }
-              ],
-              "id": "fac3893554c5a675e376-2a7a83c748e47db41419",
-              "file": "02-frontend-pages.spec.ts",
-              "line": 75,
-              "column": 7
-            }
-          ]
-        },
-        {
-          "title": "User Dashboard",
-          "file": "02-frontend-pages.spec.ts",
-          "line": 100,
-          "column": 6,
-          "specs": [
-            {
-              "title": "User dashboard loads with correct user name",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 60000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [],
-                  "status": "skipped"
-                }
-              ],
-              "id": "fac3893554c5a675e376-f5ac459852dc6dc9fb2b",
-              "file": "02-frontend-pages.spec.ts",
-              "line": 101,
+              "id": "163c2668ed475027d9b2-4ee2cc200dea7c43c9e0",
+              "file": "03-additional-pages.spec.ts",
+              "line": 155,
               "column": 7
             },
             {
-              "title": "User dashboard shows sadhana submission section",
+              "title": "Attendance Dashboard loads statistics",
               "ok": true,
               "tags": [],
               "tests": [
@@ -483,17 +756,37 @@
                   "expectedStatus": "passed",
                   "projectId": "chromium",
                   "projectName": "chromium",
-                  "results": [],
-                  "status": "skipped"
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6338,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-17T09:47:55.981Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-0e714--Dashboard-loads-statistics-chromium/test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
                 }
               ],
-              "id": "fac3893554c5a675e376-25fad0c0286b41b4d9e6",
-              "file": "02-frontend-pages.spec.ts",
-              "line": 113,
+              "id": "163c2668ed475027d9b2-1459db07d9cf8624cc0a",
+              "file": "03-additional-pages.spec.ts",
+              "line": 165,
               "column": 7
             },
             {
-              "title": "Pending approval page shown for new users",
+              "title": "Rejected devotee page shows rejection notice",
               "ok": true,
               "tags": [],
               "tests": [
@@ -503,17 +796,37 @@
                   "expectedStatus": "passed",
                   "projectId": "chromium",
                   "projectName": "chromium",
-                  "results": [],
-                  "status": "skipped"
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6621,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-17T09:48:02.332Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-a463c-page-shows-rejection-notice-chromium/test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
                 }
               ],
-              "id": "fac3893554c5a675e376-09eafa108bfe427350e1",
-              "file": "02-frontend-pages.spec.ts",
-              "line": 122,
+              "id": "163c2668ed475027d9b2-eb74e3c48def5e406005",
+              "file": "03-additional-pages.spec.ts",
+              "line": 175,
               "column": 7
             },
             {
-              "title": "History page loads",
+              "title": "Inactive devotee page shows inactive message",
               "ok": true,
               "tags": [],
               "tests": [
@@ -523,17 +836,37 @@
                   "expectedStatus": "passed",
                   "projectId": "chromium",
                   "projectName": "chromium",
-                  "results": [],
-                  "status": "skipped"
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6114,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-17T09:48:08.975Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-2ddff-page-shows-inactive-message-chromium/test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
                 }
               ],
-              "id": "fac3893554c5a675e376-e4f3af888c2c153063a4",
-              "file": "02-frontend-pages.spec.ts",
-              "line": 130,
+              "id": "163c2668ed475027d9b2-9ffe6bf0fba8b33ab088",
+              "file": "03-additional-pages.spec.ts",
+              "line": 185,
               "column": 7
             },
             {
-              "title": "Profile page loads",
+              "title": "Join Group invite landing page renders form",
               "ok": true,
               "tags": [],
               "tests": [
@@ -543,45 +876,37 @@
                   "expectedStatus": "passed",
                   "projectId": "chromium",
                   "projectName": "chromium",
-                  "results": [],
-                  "status": "skipped"
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6171,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-17T09:48:15.102Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-ecb5d-e-landing-page-renders-form-chromium/test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
                 }
               ],
-              "id": "fac3893554c5a675e376-6be0a579fa49e2a084be",
-              "file": "02-frontend-pages.spec.ts",
-              "line": 138,
-              "column": 7
-            }
-          ]
-        },
-        {
-          "title": "Guide Dashboard",
-          "file": "02-frontend-pages.spec.ts",
-          "line": 151,
-          "column": 6,
-          "specs": [
-            {
-              "title": "Guide dashboard loads",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 60000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [],
-                  "status": "skipped"
-                }
-              ],
-              "id": "fac3893554c5a675e376-127004bc7d556118fc14",
-              "file": "02-frontend-pages.spec.ts",
-              "line": 152,
+              "id": "163c2668ed475027d9b2-e8a4ce00c0f350b4ecc1",
+              "file": "03-additional-pages.spec.ts",
+              "line": 198,
               "column": 7
             },
             {
-              "title": "Guide dashboard shows tabs",
+              "title": "BV Join page loads invite template",
               "ok": true,
               "tags": [],
               "tests": [
@@ -591,17 +916,37 @@
                   "expectedStatus": "passed",
                   "projectId": "chromium",
                   "projectName": "chromium",
-                  "results": [],
-                  "status": "skipped"
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6626,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-17T09:48:21.286Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-76fd8--page-loads-invite-template-chromium/test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
                 }
               ],
-              "id": "fac3893554c5a675e376-0286c365fa4adf0dedc1",
-              "file": "02-frontend-pages.spec.ts",
-              "line": 160,
+              "id": "163c2668ed475027d9b2-50d1e7d72e313e8f82cc",
+              "file": "03-additional-pages.spec.ts",
+              "line": 207,
               "column": 7
             },
             {
-              "title": "Guide reports tab loads",
+              "title": "API Docs page loads OpenAPI Swagger UI wrapper",
               "ok": true,
               "tags": [],
               "tests": [
@@ -611,313 +956,33 @@
                   "expectedStatus": "passed",
                   "projectId": "chromium",
                   "projectName": "chromium",
-                  "results": [],
-                  "status": "skipped"
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6809,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-17T09:48:27.921Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/vedanarayana_das/Prabhupada World Academy/test-results/03-additional-pages-Additi-20b33--OpenAPI-Swagger-UI-wrapper-chromium/test-finished-1.png"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
                 }
               ],
-              "id": "fac3893554c5a675e376-8bae789b8f0bacad308f",
-              "file": "02-frontend-pages.spec.ts",
-              "line": 173,
-              "column": 7
-            },
-            {
-              "title": "Guide members tab shows user list",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 60000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [],
-                  "status": "skipped"
-                }
-              ],
-              "id": "fac3893554c5a675e376-abcdb9dedb5ec3ce04a2",
-              "file": "02-frontend-pages.spec.ts",
-              "line": 189,
-              "column": 7
-            },
-            {
-              "title": "Residency filter dropdown shows proper labels",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 60000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [],
-                  "status": "skipped"
-                }
-              ],
-              "id": "fac3893554c5a675e376-0ba6d8d92c0c199661cb",
-              "file": "02-frontend-pages.spec.ts",
-              "line": 205,
-              "column": 7
-            }
-          ]
-        },
-        {
-          "title": "Super Guide Dashboard",
-          "file": "02-frontend-pages.spec.ts",
-          "line": 225,
-          "column": 6,
-          "specs": [
-            {
-              "title": "Super guide dashboard loads",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 60000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [],
-                  "status": "skipped"
-                }
-              ],
-              "id": "fac3893554c5a675e376-bffd65ff2236ad917555",
-              "file": "02-frontend-pages.spec.ts",
-              "line": 226,
-              "column": 7
-            },
-            {
-              "title": "Super guide sees all users panel",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 60000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [],
-                  "status": "skipped"
-                }
-              ],
-              "id": "fac3893554c5a675e376-7563cf6a2017bfbc4c65",
-              "file": "02-frontend-pages.spec.ts",
-              "line": 234,
-              "column": 7
-            },
-            {
-              "title": "Super guide tabs are accessible",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 60000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [],
-                  "status": "skipped"
-                }
-              ],
-              "id": "fac3893554c5a675e376-cf6ab816714d4eb1af43",
-              "file": "02-frontend-pages.spec.ts",
-              "line": 244,
-              "column": 7
-            },
-            {
-              "title": "Super guide can filter users by residency",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 60000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [],
-                  "status": "skipped"
-                }
-              ],
-              "id": "fac3893554c5a675e376-c68e2aaa8f85792aa000",
-              "file": "02-frontend-pages.spec.ts",
-              "line": 257,
-              "column": 7
-            }
-          ]
-        },
-        {
-          "title": "Sadhana Mentor Dashboard",
-          "file": "02-frontend-pages.spec.ts",
-          "line": 275,
-          "column": 6,
-          "specs": [
-            {
-              "title": "Mentor dashboard loads",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 60000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [],
-                  "status": "skipped"
-                }
-              ],
-              "id": "fac3893554c5a675e376-c8de8c7fcde906c654f6",
-              "file": "02-frontend-pages.spec.ts",
-              "line": 276,
-              "column": 7
-            },
-            {
-              "title": "Mentor sees their members",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 60000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [],
-                  "status": "skipped"
-                }
-              ],
-              "id": "fac3893554c5a675e376-e24b9a0b0a9a75e60e1c",
-              "file": "02-frontend-pages.spec.ts",
-              "line": 284,
-              "column": 7
-            }
-          ]
-        },
-        {
-          "title": "BVSL Dashboard",
-          "file": "02-frontend-pages.spec.ts",
-          "line": 295,
-          "column": 6,
-          "specs": [
-            {
-              "title": "BVSL dashboard loads",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 60000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [],
-                  "status": "skipped"
-                }
-              ],
-              "id": "fac3893554c5a675e376-c5e61a276e2f34f13a9b",
-              "file": "02-frontend-pages.spec.ts",
-              "line": 296,
-              "column": 7
-            }
-          ]
-        },
-        {
-          "title": "Navigation & Routing",
-          "file": "02-frontend-pages.spec.ts",
-          "line": 309,
-          "column": 6,
-          "specs": [
-            {
-              "title": "Unauthenticated user is redirected from protected routes",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 60000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [],
-                  "status": "skipped"
-                }
-              ],
-              "id": "fac3893554c5a675e376-3a0ab1f1b0df767e9949",
-              "file": "02-frontend-pages.spec.ts",
-              "line": 310,
-              "column": 7
-            },
-            {
-              "title": "Regular user cannot access guide dashboard",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 60000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [],
-                  "status": "skipped"
-                }
-              ],
-              "id": "fac3893554c5a675e376-9ce23ec6aaafe65fab70",
-              "file": "02-frontend-pages.spec.ts",
-              "line": 322,
-              "column": 7
-            },
-            {
-              "title": "404 page for unknown routes",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 60000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [],
-                  "status": "skipped"
-                }
-              ],
-              "id": "fac3893554c5a675e376-71eb950c0cc687799e50",
-              "file": "02-frontend-pages.spec.ts",
-              "line": 334,
-              "column": 7
-            }
-          ]
-        },
-        {
-          "title": "UI Formatting — Dropdown Labels",
-          "file": "02-frontend-pages.spec.ts",
-          "line": 347,
-          "column": 6,
-          "specs": [
-            {
-              "title": "No dropdown shows raw snake_case values",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 60000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [],
-                  "status": "skipped"
-                }
-              ],
-              "id": "fac3893554c5a675e376-700fdf6fba8048a35a99",
-              "file": "02-frontend-pages.spec.ts",
-              "line": 348,
+              "id": "163c2668ed475027d9b2-09b96502a65d15dc981d",
+              "file": "03-additional-pages.spec.ts",
+              "line": 217,
               "column": 7
             }
           ]
@@ -927,11 +992,11 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-07-17T07:32:41.574Z",
-    "duration": 252403.427,
-    "expected": 1,
-    "skipped": 23,
-    "unexpected": 1,
-    "flaky": 1
+    "startTime": "2026-07-17T09:42:22.823Z",
+    "duration": 371999.973,
+    "expected": 11,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 5
   }
 }
