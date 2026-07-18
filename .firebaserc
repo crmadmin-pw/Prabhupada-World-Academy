@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "prabhupada-world-academy"
-  }
+    "default": "prabhupada-world-academy",
+    "bvpw": "bvpw108"
+  },
+  "targets": {},
+  "etags": {}
 }
