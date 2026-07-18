@@ -8,9 +8,11 @@ runConfig:
   concurrency: 80
 
 env:
-  # ── Public Firebase Client SDK (safe as plain values) ──
+  # ── Public Firebase Client SDK ──
+  # These are public client-side values embedded in the browser bundle.
+  # They are NOT secrets — they are safe to commit as plain values.
   - variable: NEXT_PUBLIC_FIREBASE_API_KEY
-    secret: NEXT_PUBLIC_FIREBASE_API_KEY
+    value: AIzaSyDxT99fYHhqdvRl11lxJ9WarcKrv0y41Jc
 
   - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
     value: bvpw108.firebaseapp.com
@@ -31,18 +33,16 @@ env:
   - variable: ZITE_APP_URL
     value: https://bvpw108.web.app
 
-  # ── Secrets (created in Cloud Secret Manager below) ──
-  - variable: FIREBASE_SERVICE_ACCOUNT
-    secret: FIREBASE_SERVICE_ACCOUNT
-
+  # ── Server-side secrets (placeholder values for initial deployment) ──
+  # These are used by notification/cron systems. Replace with real values later.
   - variable: ZITE_REMINDER_SECRET
-    secret: ZITE_REMINDER_SECRET
+    value: placeholder_reminder_secret_change_me
 
   - variable: ZITE_CRON_SECRET
-    secret: ZITE_CRON_SECRET
+    value: placeholder_cron_secret_change_me
 
   - variable: ZITE_VAPID_PUBLIC_KEY
-    secret: ZITE_VAPID_PUBLIC_KEY
+    value: placeholder_vapid_public_change_me
 
   - variable: ZITE_VAPID_PRIVATE_KEY
-    secret: ZITE_VAPID_PRIVATE_KEY
+    value: placeholder_vapid_private_change_me

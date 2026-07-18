@@ -67,3 +67,4 @@ playwright-report/
 # Agents custom settings / workspace locks (Antigravity IDE local data)
 .agents/
 skills-lock.json
+service-account.json.bak
