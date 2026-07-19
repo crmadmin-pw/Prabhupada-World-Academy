@@ -50,7 +50,23 @@ async function verifyToken(token: string): Promise<{ email: string | null; uid: 
     return { email, uid: email };
   }
 
-  // If Firebase Admin is initialized, verify the ID Token
+  // When using the Firebase Auth emulator locally, tokens are NOT signed with
+  // Google's real private keys (no 'kid' claim), so verifyIdToken() fails.
+  // Instead, decode the JWT payload directly — this is safe since we trust the
+  // local emulator environment.
+  if (process.env.FIREBASE_AUTH_EMULATOR_HOST) {
+    const parts = token.split('.');
+    if (parts.length === 3) {
+      try {
+        const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+        const email = payload.email || payload.firebase?.identities?.email?.[0] || null;
+        const uid = payload.sub || payload.user_id || payload.uid;
+        if (uid) return { email, uid };
+      } catch {}
+    }
+  }
+
+  // If Firebase Admin is initialized, verify the ID Token (production path)
   const activeApps = getApps();
   if (activeApps.length > 0) {
     const decoded = await getAuth().verifyIdToken(token);

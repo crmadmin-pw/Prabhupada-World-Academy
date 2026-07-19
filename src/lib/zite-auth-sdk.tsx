@@ -8,6 +8,7 @@ import {
   signInWithPopup,
   GoogleAuthProvider,
   signOut,
+  connectAuthEmulator,
   User as FirebaseUser
 } from 'firebase/auth';
 
@@ -39,9 +40,19 @@ const isFirebaseEnabled = !!firebaseConfig.apiKey;
 
 let app;
 let auth: any;
+let _authEmulatorConnected = false;
 if (isFirebaseEnabled) {
   app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
   auth = getAuth(app);
+  // Connect to local Auth emulator when running locally
+  // Set NEXT_PUBLIC_USE_AUTH_EMULATOR=true in .env.local to enable
+  if (
+    process.env.NEXT_PUBLIC_USE_AUTH_EMULATOR === 'true' &&
+    !_authEmulatorConnected
+  ) {
+    connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: false });
+    _authEmulatorConnected = true;
+  }
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {

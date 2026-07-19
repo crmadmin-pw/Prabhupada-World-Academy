@@ -39,7 +39,7 @@ export default function DashboardLayout({
   const tabItems = [];
 
   if (profile) {
-    // My Sadhana (available to all non-guides)
+    // 1. My Sadhana (available to all non-guides)
     if (profile.role !== 'GUIDE' && profile.role !== 'SUPER_GUIDE') {
       const isMySadhanaActive = ['/user/dashboard', '/sadhana', '/history', '/bhaktivriksha'].includes(currentPath);
       tabItems.push({
@@ -50,18 +50,7 @@ export default function DashboardLayout({
       });
     }
 
-    // BVSL Dashboard
-    if (profile.isBvsl) {
-      const isBvslActive = currentPath.startsWith('/bvsl');
-      tabItems.push({
-        label: 'BVSL',
-        path: '/bvsl/dashboard',
-        active: isBvslActive,
-        icon: <Users className="w-4 h-4 mr-1 md:mr-1.5" />,
-      });
-    }
-
-    // Sadhana Mentor
+    // 2. Sadhana Mentor
     if (profile.isSadhanaMentor) {
       const isSadhanaMentorActive = currentPath.startsWith('/mentor');
       tabItems.push({
@@ -72,7 +61,18 @@ export default function DashboardLayout({
       });
     }
 
-    // BV Mentor
+    // 3. BVSL Dashboard
+    if (profile.isBvsl) {
+      const isBvslActive = currentPath.startsWith('/bvsl');
+      tabItems.push({
+        label: 'BVSL',
+        path: '/bvsl/dashboard',
+        active: isBvslActive,
+        icon: <Users className="w-4 h-4 mr-1 md:mr-1.5" />,
+      });
+    }
+
+    // 4. BV Mentor
     if (profile.isBvMentor) {
       const isBvMentorActive = currentPath.startsWith('/bv-mentor');
       tabItems.push({
@@ -83,7 +83,7 @@ export default function DashboardLayout({
       });
     }
 
-    // Guide Dashboard
+    // 5. Guide Dashboard
     if (profile.role === 'GUIDE' || profile.role === 'SUPER_GUIDE') {
       const isGuideActive = currentPath.startsWith('/guide');
       tabItems.push({
@@ -94,7 +94,7 @@ export default function DashboardLayout({
       });
     }
 
-    // Super Guide Dashboard
+    // 6. Super Guide Dashboard
     if (profile.role === 'SUPER_GUIDE') {
       const isSuperGuideActive = currentPath.startsWith('/super');
       tabItems.push({
@@ -105,6 +105,7 @@ export default function DashboardLayout({
       });
     }
   }
+
 
   return (
     <div className="min-h-screen bg-background">

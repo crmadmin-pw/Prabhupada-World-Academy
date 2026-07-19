@@ -83,6 +83,9 @@ export default createEndpoint({
       { userId: 'user_1773820335840_5nayjcw', fullName: 'Gopal Rastogi', email: 'gopalrastogi.mmmec@gmail.com', phone: '919619266666', role: 'User', status: 'Pending Approval', ashrayLevel: 'Shraddhavan', residencyClaimed: true, residencyApproved: false, residencyJoinDate: '2026-02-05', bvServiceAllocated: false, lastLoginAt: '2026-03-18T07:52:15.840Z' },
       { userId: 'user_1773820477464_cwn4c34', fullName: 'Folk Powai', email: 'folk.powai@gmail.com', phone: '919967800542', role: 'User', status: 'Active', ashrayLevel: 'Caranashraya', residencyClaimed: true, residencyApproved: true, residencyJoinDate: '2024-03-18', bvServiceAllocated: false, lastLoginAt: '2026-03-18T07:54:37.464Z' },
       { userId: 'user_1773838171122_xqdqk83', fullName: 'Ayush Vijayvargia', email: 'imaayush29@gmail.com', phone: '918769814149', role: 'User', status: 'Pending Approval', ashrayLevel: 'Shraddhavan', residencyClaimed: false, residencyApproved: false, bvServiceAllocated: false, lastLoginAt: '2026-03-18T12:49:31.122Z' },
+      // ── Local test accounts (used by E2E tests via mock auth) ──────────────
+      { userId: 'user-test-nilesh', fullName: 'Nilesh Kund', email: 'nileshkund8@gmail.com', phone: '9876543211', role: 'User', status: 'Active', ashrayLevel: 'Sevak', residencyClaimed: true, residencyApproved: true, residencyJoinDate: '2025-01-01', bvServiceAllocated: false },
+      { userId: 'user-test-roshan', fullName: 'Roshan Keshari', email: 'roshankeshari220@gmail.com', phone: '9876543212', role: 'User', status: 'Active', ashrayLevel: 'Sadhaka', residencyClaimed: false, residencyApproved: false, bvServiceAllocated: false },
     ];
 
     // Clear and Seed FolkResidencies and Guides tables
