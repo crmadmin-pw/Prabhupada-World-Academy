@@ -15,7 +15,6 @@ import { GuestOnlyRoute, StatusRoute, AuthCallbackGuard } from './layouts/RouteG
 
 // ── Auth pages ──
 import LandingPage from './spa-pages/LandingPage';
-import LoginPage from './spa-pages/LoginPage';
 import ZiteAuthPage from './spa-pages/ZiteAuthPage';
 import GuideLoginPage from './spa-pages/GuideLoginPage';
 import RegistrationPage from './spa-pages/RegistrationPage';
@@ -50,7 +49,6 @@ import SadhanaMentorDashboard from './spa-pages/SadhanaMentorDashboard';
 
 // ── BV Mentor pages ──
 import BvMentorDashboard from './spa-pages/BvMentorDashboard';
-import ApiDocsPage from './spa-pages/ApiDocsPage';
 import ServiceManagementPage from './spa-pages/ServiceManagementPage';
 
 // ── Attendance pages ──
@@ -157,8 +155,6 @@ export default function App() {
           <Routes>
             {/* Auth — guarded to prevent active users from re-visiting */}
             <Route path="/" element={<LandingPage />} />
-            <Route path="/login" element={<LoginPage mode="signin" />} />
-            <Route path="/signup" element={<LoginPage mode="signup" />} />
             <Route path="/zite-auth" element={<AuthCallbackGuard><ZiteAuthPage /></AuthCallbackGuard>} />
             <Route path="/guide-login" element={<GuideLoginPage />} />
             <Route path="/register" element={<GuestOnlyRoute><RegistrationPage /></GuestOnlyRoute>} />
@@ -211,8 +207,7 @@ export default function App() {
             <Route path="/attendance/manage" element={<ProtectedRoute allowedRoles={['GUIDE', 'SUPER_GUIDE', 'BVSL']}><AttendanceManagePage /></ProtectedRoute>} />
             <Route path="/attendance/dashboard" element={<ProtectedRoute><AttendanceDashboardPage /></ProtectedRoute>} />
 
-            {/* API Docs — Swagger UI */}
-            <Route path="/api-docs" element={<ApiDocsPage />} />
+            {/* API docs page removed from production */}
           </Routes>
         </UserProfileProvider>
       </Router>

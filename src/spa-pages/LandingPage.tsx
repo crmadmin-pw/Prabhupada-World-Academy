@@ -6,14 +6,9 @@ import { Button } from '@/components/ui/button';
 
 const PWA_LOGO = 'https://images.fillout.com/orgid-615562/flowpublicid-u91plgmzcu/widgetid-default/q1fJEkENG5kbvfjYaFbDeT/pasted-image-1773145742081.png';
 
-const REGISTER_URL =
-  'https://build.fillout.com/auth?flowPublicIdentifier=u91plgmzcu&redirectUrl=https%3A%2F%2Fpwac.zite.so%2Fzite-auth&mode=signup';
-
 export default function LandingPage() {
   const navigate = useNavigate();
   const { user, isLoading, loginWithRedirect } = useAuth();
-
-  const isFirebaseEnabled = !!process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
 
   useEffect(() => {
     if (user) navigate('/zite-auth', { replace: true });
@@ -48,29 +43,29 @@ export default function LandingPage() {
 
         {/* Buttons */}
         <div className="space-y-3">
+          {/* Sign In — existing users */}
           <Button
             className="w-full shadow-md"
             size="lg"
             onClick={() => loginWithRedirect({ redirectUrl: `${window.location.origin}/zite-auth` })}
           >
             <LogIn className="w-4 h-4 mr-2" />
-            Sign In
+            Sign In with Google
           </Button>
 
+          {/* Register — new users: authenticate first, then fill the registration form */}
           <Button
             className="w-full shadow-md"
             size="lg"
             variant="outline"
-            onClick={() => {
-              navigate('/signup');
-            }}
+            onClick={() => loginWithRedirect({ redirectUrl: `${window.location.origin}/zite-auth` })}
           >
             <UserPlus className="w-4 h-4 mr-2" />
             Register
           </Button>
 
           <p className="text-xs text-muted-foreground">
-            Sign in with your existing account, or register to create a new one.
+            Sign in with your Google account. New users will be guided through registration after signing in.
           </p>
         </div>
 

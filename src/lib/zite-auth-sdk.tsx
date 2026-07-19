@@ -5,7 +5,9 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
   getAuth,
   onAuthStateChanged,
+  signInWithRedirect,
   signInWithPopup,
+  getRedirectResult,
   GoogleAuthProvider,
   signOut,
   connectAuthEmulator,
@@ -13,8 +15,10 @@ import {
 } from 'firebase/auth';
 
 // ══════════════════════════════════════════════════════════════════════════════
-// zite-auth-sdk.tsx — Compatibility layer for Zite auth SDK.
-// Integrates with Firebase Auth on client side, with local Mock fallback.
+// zite-auth-sdk.tsx — Firebase Auth integration with Google sign-in.
+// Uses signInWithRedirect for production (works on all browsers + mobile).
+// Falls back to signInWithPopup only in local emulator mode.
+// Mock auth via localStorage for local dev/testing.
 // ══════════════════════════════════════════════════════════════════════════════
 
 interface AuthContextType {
@@ -37,19 +41,17 @@ const firebaseConfig = {
 };
 
 const isFirebaseEnabled = !!firebaseConfig.apiKey;
+// True when using the local Firebase Auth emulator (set in .env.local only — never in production)
+const isEmulatorMode = process.env.NEXT_PUBLIC_USE_AUTH_EMULATOR === 'true';
 
-let app;
+let app: any;
 let auth: any;
 let _authEmulatorConnected = false;
 if (isFirebaseEnabled) {
   app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
   auth = getAuth(app);
-  // Connect to local Auth emulator when running locally
-  // Set NEXT_PUBLIC_USE_AUTH_EMULATOR=true in .env.local to enable
-  if (
-    process.env.NEXT_PUBLIC_USE_AUTH_EMULATOR === 'true' &&
-    !_authEmulatorConnected
-  ) {
+  // Connect to local Auth emulator when NEXT_PUBLIC_USE_AUTH_EMULATOR=true (local dev only)
+  if (isEmulatorMode && !_authEmulatorConnected) {
     connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: false });
     _authEmulatorConnected = true;
   }
@@ -66,11 +68,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
 
     if (isFirebaseEnabled && auth && !isMockMode) {
+      // Handle the redirect result on page load (fires after signInWithRedirect returns the user)
+      getRedirectResult(auth)
+        .then((result) => {
+          if (result?.user) {
+            // Redirect result processed — onAuthStateChanged will fire and set state
+            // Navigate to the intended URL if stored
+            if (typeof window !== 'undefined') {
+              const redirectUrl = sessionStorage.getItem('auth_redirect_url');
+              if (redirectUrl) {
+                sessionStorage.removeItem('auth_redirect_url');
+                window.location.href = redirectUrl;
+              }
+            }
+          }
+        })
+        .catch((err) => {
+          console.error('[Auth] getRedirectResult error:', err?.code, err?.message);
+        });
+
       return onAuthStateChanged(auth, async (fbUser: FirebaseUser | null) => {
         setIsLoading(true);
         if (fbUser) {
           const token = await fbUser.getIdToken();
-          // Store token globally for endpoints to read
+          // Store token globally for API endpoints to read
           if (typeof window !== 'undefined') {
             (window as any).__firebase_id_token = token;
             localStorage.setItem('auth_email', fbUser.email || '');
@@ -86,7 +107,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(false);
       });
     } else {
-      // Mock Auth Fallback
+      // Mock Auth Fallback (local dev / testing)
       if (typeof window !== 'undefined') {
         const storedEmail = localStorage.getItem('auth_email');
         if (storedEmail) {
@@ -103,12 +124,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const loginWithRedirect = async (options?: { redirectUrl?: string }) => {
     if (isFirebaseEnabled && auth) {
       const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
-      if (options?.redirectUrl) {
-        window.location.href = options.redirectUrl;
+      // Store the intended redirect URL so we can navigate there after the auth redirect returns
+      if (options?.redirectUrl && typeof window !== 'undefined') {
+        sessionStorage.setItem('auth_redirect_url', options.redirectUrl);
+      }
+      if (isEmulatorMode) {
+        // Local emulator: use popup (emulator handles it without real Google OAuth)
+        await signInWithPopup(auth, provider);
+        if (options?.redirectUrl) window.location.href = options.redirectUrl;
+      } else {
+        // Production: use redirect — works on all browsers including mobile,
+        // no popup-blocking issues. Google handles auth then redirects back here.
+        await signInWithRedirect(auth, provider);
       }
     } else {
-      // Redirect to custom local login page
+      // Mock mode: go to local login page
       const redirectUrl = options?.redirectUrl || `${window.location.origin}/zite-auth`;
       window.location.href = `/login?redirectUrl=${encodeURIComponent(redirectUrl)}`;
     }
@@ -121,6 +151,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('auth_email');
       localStorage.removeItem('auth_mock_mode');
+      sessionStorage.removeItem('auth_redirect_url');
       delete (window as any).__firebase_id_token;
     }
     setUser(null);
