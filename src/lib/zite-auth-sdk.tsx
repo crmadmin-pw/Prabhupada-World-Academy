@@ -49,7 +49,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (isFirebaseEnabled && auth) {
+    const isMockMode = typeof window !== 'undefined' && (
+      localStorage.getItem('auth_mock_mode') === 'true' ||
+      (window as any).__firebase_id_token?.startsWith('mock_token_for_')
+    );
+
+    if (isFirebaseEnabled && auth && !isMockMode) {
       return onAuthStateChanged(auth, async (fbUser: FirebaseUser | null) => {
         setIsLoading(true);
         if (fbUser) {
@@ -104,6 +109,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     if (typeof window !== 'undefined') {
       localStorage.removeItem('auth_email');
+      localStorage.removeItem('auth_mock_mode');
       delete (window as any).__firebase_id_token;
     }
     setUser(null);

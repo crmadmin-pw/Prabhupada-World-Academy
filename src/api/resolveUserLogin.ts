@@ -179,6 +179,7 @@ export default createEndpoint({
               guideName: null,
               isBvsl: real.isBvsl || false,
               isSadhanaMentor: real.isSadhanaMentor || false,
+              isBvMentor: real.isBvMentor || false,
             },
           };
         }
@@ -242,6 +243,7 @@ export default createEndpoint({
         guideName: null,
         isBvsl: userRecord.isBvsl || false,
         isSadhanaMentor: userRecord.isSadhanaMentor || false,
+        isBvMentor: userRecord.isBvMentor || false,
       },
     };
   },

@@ -31,7 +31,12 @@ if (apps.length === 0) {
     }
   } else {
     try {
-      initializeApp();
+      const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || process.env.GCLOUD_PROJECT;
+      if (projectId) {
+        initializeApp({ projectId });
+      } else {
+        initializeApp();
+      }
     } catch (e) {
       console.error('[Firebase Admin Route] Failed default initializeApp:', e);
     }
@@ -109,6 +114,7 @@ export async function POST(
         if (decodedUser.email) {
           // Look up user record in DB by email
           dbUser = await Users.findOne({ filters: { email: decodedUser.email } });
+          console.log(`[API Router Auth] Token Email: ${decodedUser.email} | dbUser:`, dbUser ? JSON.stringify(dbUser) : "null");
         }
 
         if (dbUser) {

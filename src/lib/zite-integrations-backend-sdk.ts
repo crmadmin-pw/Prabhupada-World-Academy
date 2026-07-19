@@ -37,7 +37,12 @@ export function getFirestoreDb() {
         }
       } else {
         console.warn('[Firebase Admin SDK] FIREBASE_SERVICE_ACCOUNT is empty and service-account.json not found. Initializing default credentials.');
-        initializeApp();
+        const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || process.env.GCLOUD_PROJECT;
+        if (projectId) {
+          initializeApp({ projectId });
+        } else {
+          initializeApp();
+        }
       }
     }
     firestoreDb = getFirestore();
