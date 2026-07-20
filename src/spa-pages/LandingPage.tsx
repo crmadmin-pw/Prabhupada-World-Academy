@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from 'zite-auth-sdk';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Loader2, LogIn, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -9,15 +9,44 @@ const PWA_LOGO = 'https://images.fillout.com/orgid-615562/flowpublicid-u91plgmzc
 export default function LandingPage() {
   const navigate = useNavigate();
   const { user, isLoading, loginWithRedirect } = useAuth();
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authenticating, setAuthenticating] = useState(false);
 
   useEffect(() => {
     if (user) navigate('/zite-auth', { replace: true });
   }, [user, navigate]);
 
-  if (isLoading) {
+  const handleSignIn = async () => {
+    setAuthError(null);
+    setAuthenticating(true);
+    try {
+      await loginWithRedirect({ redirectUrl: `${window.location.origin}/zite-auth` });
+    } catch (err: any) {
+      console.error('[LandingPage] Sign in failed:', err);
+      setAuthError(err?.message || 'Authentication failed. Please check your browser popup settings.');
+    } finally {
+      setAuthenticating(false);
+    }
+  };
+
+  const handleRegister = async () => {
+    setAuthError(null);
+    setAuthenticating(true);
+    try {
+      await loginWithRedirect({ redirectUrl: `${window.location.origin}/zite-auth` });
+    } catch (err: any) {
+      console.error('[LandingPage] Registration failed:', err);
+      setAuthError(err?.message || 'Registration failed. Please check your browser popup settings.');
+    } finally {
+      setAuthenticating(false);
+    }
+  };
+
+  if (isLoading || authenticating) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-2">
         <Loader2 className="w-8 h-8 text-muted-foreground animate-spin" />
+        <span className="text-sm text-muted-foreground">Connecting to Google Auth...</span>
       </div>
     );
   }
@@ -41,31 +70,37 @@ export default function LandingPage() {
           </div>
         </div>
 
+        {authError && (
+          <div className="p-3 bg-destructive/10 text-destructive text-sm rounded-lg border border-destructive/20 text-left">
+            <strong>Authentication Error:</strong> {authError}
+          </div>
+        )}
+
         {/* Buttons */}
         <div className="space-y-3">
           {/* Sign In — existing users */}
           <Button
-            className="w-full shadow-md"
+            className="w-full shadow-md font-semibold"
             size="lg"
-            onClick={() => loginWithRedirect({ redirectUrl: `${window.location.origin}/zite-auth` })}
+            onClick={handleSignIn}
           >
             <LogIn className="w-4 h-4 mr-2" />
-            Sign In with Google
+            Sign In
           </Button>
 
-          {/* Register — new users: authenticate first, then fill the registration form */}
+          {/* Register — new users */}
           <Button
-            className="w-full shadow-md"
+            className="w-full shadow-md font-semibold"
             size="lg"
             variant="outline"
-            onClick={() => loginWithRedirect({ redirectUrl: `${window.location.origin}/zite-auth` })}
+            onClick={handleRegister}
           >
             <UserPlus className="w-4 h-4 mr-2" />
             Register
           </Button>
 
           <p className="text-xs text-muted-foreground">
-            Sign in with your Google account. New users will be guided through registration after signing in.
+            New users will be guided through registration after signing in.
           </p>
         </div>
 
