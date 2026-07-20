@@ -5,9 +5,7 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
   getAuth,
   onAuthStateChanged,
-  signInWithRedirect,
   signInWithPopup,
-  getRedirectResult,
   GoogleAuthProvider,
   signOut,
   connectAuthEmulator,
@@ -16,8 +14,9 @@ import {
 
 // ══════════════════════════════════════════════════════════════════════════════
 // zite-auth-sdk.tsx — Firebase Auth integration with Google sign-in.
-// Uses signInWithRedirect for production (works on all browsers + mobile).
-// Falls back to signInWithPopup only in local emulator mode.
+// Uses signInWithPopup in both emulator and production.
+// This works reliably across different hosting domains without falling prey
+// to browser third-party cookie restrictions during redirect.
 // Mock auth via localStorage for local dev/testing.
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -68,25 +67,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
 
     if (isFirebaseEnabled && auth && !isMockMode) {
-      // Handle the redirect result on page load (fires after signInWithRedirect returns the user)
-      getRedirectResult(auth)
-        .then((result) => {
-          if (result?.user) {
-            // Redirect result processed — onAuthStateChanged will fire and set state
-            // Navigate to the intended URL if stored
-            if (typeof window !== 'undefined') {
-              const redirectUrl = sessionStorage.getItem('auth_redirect_url');
-              if (redirectUrl) {
-                sessionStorage.removeItem('auth_redirect_url');
-                window.location.href = redirectUrl;
-              }
-            }
-          }
-        })
-        .catch((err) => {
-          console.error('[Auth] getRedirectResult error:', err?.code, err?.message);
-        });
-
       return onAuthStateChanged(auth, async (fbUser: FirebaseUser | null) => {
         setIsLoading(true);
         if (fbUser) {
@@ -124,18 +104,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const loginWithRedirect = async (options?: { redirectUrl?: string }) => {
     if (isFirebaseEnabled && auth) {
       const provider = new GoogleAuthProvider();
-      // Store the intended redirect URL so we can navigate there after the auth redirect returns
-      if (options?.redirectUrl && typeof window !== 'undefined') {
-        sessionStorage.setItem('auth_redirect_url', options.redirectUrl);
-      }
-      if (isEmulatorMode) {
-        // Local emulator: use popup (emulator handles it without real Google OAuth)
-        await signInWithPopup(auth, provider);
-        if (options?.redirectUrl) window.location.href = options.redirectUrl;
-      } else {
-        // Production: use redirect — works on all browsers including mobile,
-        // no popup-blocking issues. Google handles auth then redirects back here.
-        await signInWithRedirect(auth, provider);
+      // Use signInWithPopup in both Emulator and Production.
+      // This works reliably across different hosting domains.
+      await signInWithPopup(auth, provider);
+      if (options?.redirectUrl) {
+        window.location.href = options.redirectUrl;
       }
     } else {
       // Mock mode: go to local login page
@@ -151,7 +124,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('auth_email');
       localStorage.removeItem('auth_mock_mode');
-      sessionStorage.removeItem('auth_redirect_url');
       delete (window as any).__firebase_id_token;
     }
     setUser(null);
