@@ -14,11 +14,13 @@ export default createEndpoint({
   })),
   execute: async () => {
     return serverCacheGetOrFetch(CACHE_KEY, async () => {
-      const { records } = await FolkResidencies.findAll({ filters: { isActive: true }, limit: 200 });
-      return records.map(r => ({
-        residencyId: r.id,
-        residencyName: r.residencyName || '',
-      }));
+      const { records } = await FolkResidencies.findAll({ limit: 200 });
+      return records
+        .filter(r => r.isActive !== false && r.isActive !== 'false')
+        .map(r => ({
+          residencyId: r.id,
+          residencyName: r.residencyName || '',
+        }));
     }, TTL);
   },
 });

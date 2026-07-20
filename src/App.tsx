@@ -15,6 +15,7 @@ import { GuestOnlyRoute, StatusRoute, AuthCallbackGuard } from './layouts/RouteG
 
 // ── Auth pages ──
 import LandingPage from './spa-pages/LandingPage';
+import LoginPage from './spa-pages/LoginPage';
 import ZiteAuthPage from './spa-pages/ZiteAuthPage';
 import GuideLoginPage from './spa-pages/GuideLoginPage';
 import RegistrationPage from './spa-pages/RegistrationPage';
@@ -155,6 +156,8 @@ export default function App() {
           <Routes>
             {/* Auth — guarded to prevent active users from re-visiting */}
             <Route path="/" element={<LandingPage />} />
+            <Route path="/login" element={<LoginPage mode="signin" />} />
+            <Route path="/signup" element={<LoginPage mode="signup" />} />
             <Route path="/zite-auth" element={<AuthCallbackGuard><ZiteAuthPage /></AuthCallbackGuard>} />
             <Route path="/guide-login" element={<GuideLoginPage />} />
             <Route path="/register" element={<GuestOnlyRoute><RegistrationPage /></GuestOnlyRoute>} />

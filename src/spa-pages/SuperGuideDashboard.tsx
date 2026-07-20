@@ -21,6 +21,7 @@ import SuperAttendanceTab from '@/components/super/SuperAttendanceTab';
 import JigyasaTrackerTab from '@/components/jigyasa/JigyasaTrackerTab';
 import TabTransition from '@/components/TabTransition';
 import { motion } from 'framer-motion';
+import ApprovalsTab from '@/components/guide/ApprovalsTab';
 import { getCurrentGuide, getPushSubscriptionStats, GetPushSubscriptionStatsOutputType } from 'zite-endpoints-sdk';
 
 export default function SuperGuideDashboard() {
@@ -103,6 +104,7 @@ export default function SuperGuideDashboard() {
             <SelectItem value="hostels">FOLK Hostels</SelectItem>
             <SelectItem value="guides">Guides</SelectItem>
             <SelectItem value="users">Users</SelectItem>
+            <SelectItem value="approvals">Approvals</SelectItem>
             <SelectItem value="stats">Stats</SelectItem>
             <SelectItem value="missing-sadhana">Missing Sadhana</SelectItem>
             <SelectItem value="attendance">Attendance</SelectItem>
@@ -123,6 +125,7 @@ export default function SuperGuideDashboard() {
             <SidebarButton value="hostels" label="FOLK Hostels" icon={Home} />
             <SidebarButton value="guides" label="Guides" icon={BarChart2} />
             <SidebarButton value="users" label="Users" icon={Users} />
+            <SidebarButton value="approvals" label="Approvals" icon={ClipboardCheck} />
             <SidebarButton value="stats" label="Stats" icon={LayoutGrid} />
             <SidebarButton value="missing-sadhana" label="Missing Sadhana" icon={AlertCircle} />
             <SidebarButton value="attendance" label="Attendance" icon={ClipboardCheck} />
@@ -134,6 +137,15 @@ export default function SuperGuideDashboard() {
         {/* Content Pane */}
         <div className="flex-1 min-w-0 bg-card border rounded-xl p-6 shadow-sm min-h-[500px]">
           <TabTransition activeTab={activeTab}>
+            {activeTab === 'approvals' && (
+              <div>
+                <div className="space-y-1 mb-4">
+                  <h2 className="text-lg font-bold">Approvals</h2>
+                  <p className="text-sm text-muted-foreground">Approve Guide transfers, FOLK Hostel transfers, and pending registrations across all centers</p>
+                </div>
+                <ApprovalsTab guideId="ALL" isSuperGuide={true} />
+              </div>
+            )}
             {activeTab === 'sadhana' && (
               <div>
                 <div className="space-y-1 mb-4">

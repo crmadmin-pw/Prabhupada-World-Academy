@@ -16,30 +16,12 @@ export default function LandingPage() {
     if (user) navigate('/zite-auth', { replace: true });
   }, [user, navigate]);
 
-  const handleSignIn = async () => {
-    setAuthError(null);
-    setAuthenticating(true);
-    try {
-      await loginWithRedirect({ redirectUrl: `${window.location.origin}/zite-auth` });
-    } catch (err: any) {
-      console.error('[LandingPage] Sign in failed:', err);
-      setAuthError(err?.message || 'Authentication failed. Please check your browser popup settings.');
-    } finally {
-      setAuthenticating(false);
-    }
+  const handleSignIn = () => {
+    navigate('/login');
   };
 
-  const handleRegister = async () => {
-    setAuthError(null);
-    setAuthenticating(true);
-    try {
-      await loginWithRedirect({ redirectUrl: `${window.location.origin}/zite-auth` });
-    } catch (err: any) {
-      console.error('[LandingPage] Registration failed:', err);
-      setAuthError(err?.message || 'Registration failed. Please check your browser popup settings.');
-    } finally {
-      setAuthenticating(false);
-    }
+  const handleRegister = () => {
+    navigate('/signup');
   };
 
   if (isLoading || authenticating) {

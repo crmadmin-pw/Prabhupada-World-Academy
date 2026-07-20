@@ -5,40 +5,48 @@ import { getAuth } from 'firebase-admin/auth';
 import fs from 'fs';
 import path from 'path';
 
-// Initialize Firebase Admin if Service Account exists in local file or environment variables
+// Initialize Firebase Admin safely
 const apps = getApps();
 if (apps.length === 0) {
+  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || process.env.GCLOUD_PROJECT || 'bvpw108';
   const serviceAccountPath = path.resolve(process.cwd(), 'service-account.json');
+  let initialized = false;
+
   if (fs.existsSync(serviceAccountPath)) {
     try {
       const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
-      initializeApp({
-        credential: cert(serviceAccount),
-        projectId: serviceAccount.project_id
-      });
-    } catch (e) {
-      console.error('[Firebase Admin Route] Failed to initialize using local file:', e);
-    }
-  } else if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    try {
-      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-      initializeApp({
-        credential: cert(serviceAccount),
-        projectId: serviceAccount.project_id
-      });
-    } catch (e) {
-      console.error('[Firebase Admin Route] Failed to initialize using environment variable:', e);
-    }
-  } else {
-    try {
-      const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || process.env.GCLOUD_PROJECT;
-      if (projectId) {
-        initializeApp({ projectId });
-      } else {
-        initializeApp();
+      if (serviceAccount.private_key && serviceAccount.private_key.includes('BEGIN') && !serviceAccount.private_key.includes('dummy')) {
+        initializeApp({
+          credential: cert(serviceAccount),
+          projectId: serviceAccount.project_id || projectId
+        });
+        initialized = true;
       }
     } catch (e) {
-      console.error('[Firebase Admin Route] Failed default initializeApp:', e);
+      console.warn('[Firebase Admin Route] Failed to initialize using local file, using project ID fallback.');
+    }
+  }
+  
+  if (!initialized && process.env.FIREBASE_SERVICE_ACCOUNT) {
+    try {
+      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+      if (serviceAccount.private_key && serviceAccount.private_key.includes('BEGIN') && !serviceAccount.private_key.includes('dummy')) {
+        initializeApp({
+          credential: cert(serviceAccount),
+          projectId: serviceAccount.project_id || projectId
+        });
+        initialized = true;
+      }
+    } catch (e) {
+      console.warn('[Firebase Admin Route] Failed to initialize using env var, using project ID fallback.');
+    }
+  }
+
+  if (!initialized && getApps().length === 0) {
+    try {
+      initializeApp({ projectId });
+    } catch (e) {
+      console.error('[Firebase Admin Route] Fallback initializeApp failed:', e);
     }
   }
 }

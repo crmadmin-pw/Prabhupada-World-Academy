@@ -33,10 +33,11 @@ type ResidencyTransfer = GetResidencyTransferRequestsOutputType[0];
 interface ApprovalsTabProps {
   guideId: string;
   reviewerGuideId?: string;
+  isSuperGuide?: boolean;
   onCountLoaded?: (count: number) => void;
 }
 
-export default function ApprovalsTab({ guideId, reviewerGuideId, onCountLoaded }: ApprovalsTabProps) {
+export default function ApprovalsTab({ guideId, reviewerGuideId, isSuperGuide = false, onCountLoaded }: ApprovalsTabProps) {
   const navigate = useNavigate();
   const actionGuideId = reviewerGuideId || guideId;
   const [pendingUsers, setPendingUsers] = useState<PendingUser[]>([]);
@@ -177,36 +178,52 @@ export default function ApprovalsTab({ guideId, reviewerGuideId, onCountLoaded }
   const getResidencyName = (id: string) =>
     residencies.find((r: any) => r.residencyId === id)?.residencyName || 'Unknown';
 
+  const defaultSubTab = isSuperGuide 
+    ? (guideTransfers.length > 0 ? 'transfers' : (residencyTransfers.length > 0 ? 'folk_transfer' : 'registrations'))
+    : (pendingUsers.length > 0 ? 'registrations' : (ashrayUpgrades.length > 0 ? 'ashray' : 'registrations'));
+
   if (loading) return <div className="py-8 text-center text-muted-foreground">Loading...</div>;
 
   return (
     <>
-      <Tabs defaultValue="registrations">
+      <Tabs defaultValue={defaultSubTab}>
         <TabsList className="mb-4 w-full sm:w-auto">
-          <TabsTrigger value="registrations" className="gap-1 text-xs sm:text-sm">
-            <UserCheck className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Registrations</span>
-            <span className="sm:hidden">Reg.</span>
-            {pendingUsers.length > 0 && <Badge className="ml-1 text-xs px-1.5">{pendingUsers.length}</Badge>}
-          </TabsTrigger>
-          <TabsTrigger value="transfers" className="gap-1 text-xs sm:text-sm">
-            <ArrowRightLeft className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Guide Transfers</span>
-            <span className="sm:hidden">Transfers</span>
-            {guideTransfers.length > 0 && <Badge className="ml-1 text-xs px-1.5">{guideTransfers.length}</Badge>}
-          </TabsTrigger>
-          <TabsTrigger value="folk_transfer" className="gap-1 text-xs sm:text-sm">
-            <Home className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">FOLK Transfer</span>
-            <span className="sm:hidden">FOLK</span>
-            {residencyTransfers.length > 0 && <Badge className="ml-1 text-xs px-1.5">{residencyTransfers.length}</Badge>}
-          </TabsTrigger>
-          <TabsTrigger value="ashray" className="gap-1 text-xs sm:text-sm">
-            <Star className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Ashraya Requests</span>
-            <span className="sm:hidden">Ashraya</span>
-            {ashrayUpgrades.length > 0 && <Badge className="ml-1 text-xs px-1.5">{ashrayUpgrades.length}</Badge>}
-          </TabsTrigger>
+          {(!isSuperGuide || pendingUsers.length > 0) && (
+            <TabsTrigger value="registrations" className="gap-1 text-xs sm:text-sm">
+              <UserCheck className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Registrations</span>
+              <span className="sm:hidden">Reg.</span>
+              {pendingUsers.length > 0 && <Badge className="ml-1 text-xs px-1.5">{pendingUsers.length}</Badge>}
+            </TabsTrigger>
+          )}
+
+          {(isSuperGuide || guideTransfers.length > 0) && (
+            <TabsTrigger value="transfers" className="gap-1 text-xs sm:text-sm">
+              <ArrowRightLeft className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Guide Transfers</span>
+              <span className="sm:hidden">Transfers</span>
+              {guideTransfers.length > 0 && <Badge className="ml-1 text-xs px-1.5">{guideTransfers.length}</Badge>}
+            </TabsTrigger>
+          )}
+
+          {(isSuperGuide || residencyTransfers.length > 0) && (
+            <TabsTrigger value="folk_transfer" className="gap-1 text-xs sm:text-sm">
+              <Home className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">FOLK Transfer</span>
+              <span className="sm:hidden">FOLK</span>
+              {residencyTransfers.length > 0 && <Badge className="ml-1 text-xs px-1.5">{residencyTransfers.length}</Badge>}
+            </TabsTrigger>
+          )}
+
+          {(!isSuperGuide || ashrayUpgrades.length > 0) && (
+            <TabsTrigger value="ashray" className="gap-1 text-xs sm:text-sm">
+              <Star className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Ashraya Requests</span>
+              <span className="sm:hidden">Ashraya</span>
+              {ashrayUpgrades.length > 0 && <Badge className="ml-1 text-xs px-1.5">{ashrayUpgrades.length}</Badge>}
+            </TabsTrigger>
+          )}
+
           {cleanlinessReviews.length > 0 && (
             <TabsTrigger value="cleanliness" className="gap-1 text-xs sm:text-sm">
               <Sparkles className="w-3.5 h-3.5" />
