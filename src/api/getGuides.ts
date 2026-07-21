@@ -22,9 +22,9 @@ export default createEndpoint({
       return records
         .filter(g => g.guideId !== 'GUIDE-000')
         .map(g => ({
-          guideId: g.id,
-          name: g.fullName || '',
-          abbr: g.abbreviation || (g.fullName || '').slice(0, 3).toUpperCase(),
+          guideId: g.id || g.guideId || g.email || g.abbreviation || '',
+          name: g.fullName || g.name || '',
+          abbr: g.abbreviation || g.abbr || (g.fullName || '').slice(0, 3).toUpperCase(),
           email: g.email || '',
         }));
     }, TTL);
