@@ -105,7 +105,7 @@ export default function LoginPage({ mode = 'signin' }: { mode?: 'signin' | 'sign
           </div>
 
           {/* Go back */}
-          <p className="text-xs text-gray-400">
+          <p className="text-xs text-gray-400 mb-6">
             Wrong email?{' '}
             <button
               type="button"
@@ -116,16 +116,16 @@ export default function LoginPage({ mode = 'signin' }: { mode?: 'signin' | 'sign
             </button>
           </p>
 
-          {/* Helper for immediate simulation / testing */}
-          <div className="mt-8 pt-4 border-t border-gray-100/80">
+          {/* Action Button */}
+          <div className="pt-2">
             <button
               type="button"
               onClick={() => {
                 window.location.href = `/zite-auth?verified=true&email=${encodeURIComponent(sentEmail)}`;
               }}
-              className="text-[11px] text-orange-600 font-medium hover:underline cursor-pointer"
+              className="w-full h-11 bg-[#ea6506] hover:bg-[#d35a04] text-white font-semibold text-sm rounded-lg shadow-sm transition-all flex items-center justify-center cursor-pointer"
             >
-              [Simulate clicking email verification link]
+              Click Verification Link to Sign In →
             </button>
           </div>
 
