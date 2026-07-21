@@ -9,15 +9,16 @@ import {
   GoogleAuthProvider,
   signOut,
   connectAuthEmulator,
+  sendSignInLinkToEmail,
+  isSignInWithEmailLink,
+  signInWithEmailLink,
   User as FirebaseUser
 } from 'firebase/auth';
 
 // ══════════════════════════════════════════════════════════════════════════════
-// zite-auth-sdk.tsx — Firebase Auth integration with Google sign-in.
-// Uses signInWithPopup in both emulator and production.
-// This works reliably across different hosting domains without falling prey
-// to browser third-party cookie restrictions during redirect.
-// Mock auth via localStorage for local dev/testing.
+// zite-auth-sdk.tsx — Firebase Auth integration with Google sign-in & Email Links.
+// Uses signInWithPopup and sendSignInLinkToEmail in production.
+// Mock auth via localStorage for local dev/testing fallback.
 // ══════════════════════════════════════════════════════════════════════════════
 
 interface AuthContextType {
@@ -62,8 +63,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check URL parameters for email verification link callback
+    // Check URL parameters & Firebase Auth email link verification callback
     if (typeof window !== 'undefined') {
+      if (isFirebaseEnabled && auth && isSignInWithEmailLink(auth, window.location.href)) {
+        let email = window.localStorage.getItem('emailForSignIn');
+        if (!email) {
+          const searchParams = new URLSearchParams(window.location.search);
+          email = searchParams.get('email');
+        }
+        if (email) {
+          setIsLoading(true);
+          signInWithEmailLink(auth, email, window.location.href)
+            .then(async (result) => {
+              window.localStorage.removeItem('emailForSignIn');
+              const token = await result.user.getIdToken();
+              (window as any).__firebase_id_token = token;
+              localStorage.setItem('auth_email', email!);
+              setUser({ email: result.user.email || email, id: result.user.uid });
+              setIsLoading(false);
+            })
+            .catch((err) => {
+              console.error('[Firebase Auth] Email link sign in error:', err);
+              setIsLoading(false);
+            });
+          return;
+        }
+      }
+
       const searchParams = new URLSearchParams(window.location.search);
       const urlEmail = searchParams.get('email');
       const isVerified = searchParams.get('verified') === 'true';
@@ -118,6 +144,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const sendVerificationEmail = async (emailToVerify: string, customRedirect?: string) => {
+    const targetUrl = customRedirect || `${window.location.origin}/zite-auth`;
+
+    if (isFirebaseEnabled && auth) {
+      try {
+        const actionCodeSettings = {
+          url: `${targetUrl}?verified=true&email=${encodeURIComponent(emailToVerify)}`,
+          handleCodeInApp: true,
+        };
+        await sendSignInLinkToEmail(auth, emailToVerify, actionCodeSettings);
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem('emailForSignIn', emailToVerify);
+        }
+      } catch (err) {
+        console.warn('[Firebase Auth] sendSignInLinkToEmail warning:', err);
+      }
+    }
+
     if (typeof window !== 'undefined') {
       localStorage.setItem('pending_verification_email', emailToVerify);
     }
