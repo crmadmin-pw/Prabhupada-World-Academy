@@ -195,6 +195,13 @@ export const checkAndMarkOverdue = (input: checkAndMarkOverdue_Input): Promise<c
 export type CheckAndMarkOverdueOutputType = checkAndMarkOverdue_Output;
 export type CheckAndMarkOverdueInputType = checkAndMarkOverdue_Input;
 
+import type checkEmailStatus_Type from '../api/checkEmailStatus';
+type checkEmailStatus_Input = any;
+type checkEmailStatus_Output = any;
+export const checkEmailStatus = (input: { email: string }): Promise<{ exists: boolean; role?: string }> => invokeEndpoint('checkEmailStatus', input);
+export type CheckEmailStatusOutputType = checkEmailStatus_Output;
+export type CheckEmailStatusInputType = checkEmailStatus_Input;
+
 import type checkGuideEmail_Type from '../api/checkGuideEmail';
 type checkGuideEmail_Input = Parameters<typeof checkGuideEmail_Type.execute>[0]['input'];
 type checkGuideEmail_Output = ReturnType<typeof checkGuideEmail_Type.execute> extends Promise<infer R> ? R : ReturnType<typeof checkGuideEmail_Type.execute>;
