@@ -1839,3 +1839,28 @@ type updateUserStatus_Output = ReturnType<typeof updateUserStatus_Type.execute> 
 export const updateUserStatus = (input: updateUserStatus_Input): Promise<updateUserStatus_Output> => invokeEndpoint('updateUserStatus', input);
 export type UpdateUserStatusOutputType = updateUserStatus_Output;
 export type UpdateUserStatusInputType = updateUserStatus_Input;
+
+import type rejectBvRegistration_Type from '../api/rejectBvRegistration';
+type rejectBvRegistration_Input = Parameters<typeof rejectBvRegistration_Type.execute>[0]['input'];
+type rejectBvRegistration_Output = ReturnType<typeof rejectBvRegistration_Type.execute> extends Promise<infer R> ? R : ReturnType<typeof rejectBvRegistration_Type.execute>;
+export const rejectBvRegistration = (input: rejectBvRegistration_Input): Promise<rejectBvRegistration_Output> => invokeEndpoint('rejectBvRegistration', input);
+export type RejectBvRegistrationOutputType = rejectBvRegistration_Output;
+export type RejectBvRegistrationInputType = rejectBvRegistration_Input;
+
+import type acknowledgeBvRejectionNotice_Type from '../api/acknowledgeBvRejectionNotice';
+type acknowledgeBvRejectionNotice_Input = Parameters<typeof acknowledgeBvRejectionNotice_Type.execute>[0]['input'];
+type acknowledgeBvRejectionNotice_Output = ReturnType<typeof acknowledgeBvRejectionNotice_Type.execute> extends Promise<infer R> ? R : ReturnType<typeof acknowledgeBvRejectionNotice_Type.execute>;
+export const acknowledgeBvRejectionNotice = (input: acknowledgeBvRejectionNotice_Input): Promise<acknowledgeBvRejectionNotice_Output> => invokeEndpoint('acknowledgeBvRejectionNotice', input);
+export type AcknowledgeBvRejectionNoticeOutputType = acknowledgeBvRejectionNotice_Output;
+export type AcknowledgeBvRejectionNoticeInputType = acknowledgeBvRejectionNotice_Input;
+
+export const getPendingBvRegistrations = (input: any): Promise<any> => invokeEndpoint('getPendingBvRegistrations', input);
+export const approveAndAssignBvMember = (input: any): Promise<any> => invokeEndpoint('approveAndAssignBvMember', input);
+export const assignBvRole = (input: any): Promise<any> => invokeEndpoint('assignBvRole', input);
+export const getBvSupervisorOverview = (input: any): Promise<any> => invokeEndpoint('getBvSupervisorOverview', input);
+export const registerBvMember = (input: any): Promise<any> => invokeEndpoint('registerBvMember', input);
+export const tagUserAsBvAdmin = (input: any): Promise<any> => invokeEndpoint('tagUserAsBvAdmin', input);
+export const tagUserAsBvFacilitator = (input: any): Promise<any> => invokeEndpoint('tagUserAsBvFacilitator', input);
+export const tagUserAsBvSubFacilitator = (input: any): Promise<any> => invokeEndpoint('tagUserAsBvSubFacilitator', input);
+export const tagUserAsBvSupervisor = (input: any): Promise<any> => invokeEndpoint('tagUserAsBvSupervisor', input);
+export const acknowledgeBvRoleNotice = (input: any): Promise<any> => invokeEndpoint('acknowledgeBvRoleNotice', input);

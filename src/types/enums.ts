@@ -25,6 +25,46 @@ export function hasMentorRole(role: string | null | undefined, isSadhanaMentor?:
   return role === 'SADHANA_MENTOR' || !!isSadhanaMentor;
 }
 
+/** Returns true if the user has BV Admin access */
+export function hasBvAdminRole(role: string | null | undefined, isBvSuperAdmin?: boolean, isBvAdmin?: boolean): boolean {
+  return role === 'SUPER_GUIDE' || !!isBvSuperAdmin || !!isBvAdmin;
+}
+
+/** Returns true if the user has BV Supervisor access (formerly BV Mentor) */
+export function hasBvSupervisorRole(role: string | null | undefined, isBvSupervisor?: boolean, isBvMentor?: boolean, isBvAdmin?: boolean, isBvSuperAdmin?: boolean): boolean {
+  return role === 'SUPER_GUIDE' || role === 'GUIDE' || !!isBvSuperAdmin || !!isBvAdmin || !!isBvSupervisor || !!isBvMentor;
+}
+
+/** Returns true if the user has Reading Group Facilitator (RGF) or Sub-Facilitator (RGSF) access */
+export function hasBvFacilitatorRole(
+  role: string | null | undefined,
+  isBvsl?: boolean,
+  isBvFacilitator?: boolean,
+  isBvSubFacilitator?: boolean,
+  isBvSupervisor?: boolean,
+  isBvAdmin?: boolean,
+  isBvSuperAdmin?: boolean
+): boolean {
+  return role === 'SUPER_GUIDE' || role === 'GUIDE' || role === 'BVSL' || !!isBvSuperAdmin || !!isBvAdmin || !!isBvSupervisor || !!isBvFacilitator || !!isBvSubFacilitator || !!isBvsl;
+}
+
+/** Returns true if the user is authorized to view 1-on-1 Call Reports (RGSF is excluded unless higher role) */
+export function canViewOneOnOneReports(
+  role: string | null | undefined,
+  isBvsl?: boolean,
+  isBvFacilitator?: boolean,
+  isBvSubFacilitator?: boolean,
+  isBvSupervisor?: boolean,
+  isBvAdmin?: boolean,
+  isBvSuperAdmin?: boolean
+): boolean {
+  if (role === 'SUPER_GUIDE' || role === 'GUIDE' || !!isBvSuperAdmin || !!isBvAdmin || !!isBvSupervisor || !!isBvFacilitator || !!isBvsl) {
+    return true;
+  }
+  if (isBvSubFacilitator) return false;
+  return true;
+}
+
 // ─── Other enums ─────────────────────────────────────────────────────────────
 
 export const USER_STATUS = {

@@ -27,17 +27,33 @@ export default createEndpoint({
     error: z.string().nullable(),
   }),
   execute: async ({ input }) => {
-    if (!input.bvslId) return { groups: [], pendingRequestCount: 0, error: null };
+    let groupRecords: any[] = [];
+    let defaultBvslName = 'Reading Group Facilitator';
 
-    const userRecord = await Users.findOne({ filters: { userId: input.bvslId }, fields: ['id', 'fullName', 'guide'] });
-    if (!userRecord) return { groups: [], pendingRequestCount: 0, error: null };
+    if (input.bvslId === 'ALL' || !input.bvslId) {
+      const { records } = await BvGroups.findAll({ limit: 500 });
+      groupRecords = records;
+    } else {
+      const userRecord = await Users.findOne({ filters: { userId: input.bvslId }, fields: ['id', 'fullName', 'guide'] })
+        ?? await Users.findOne({ id: input.bvslId, fields: ['id', 'fullName', 'guide'] });
+      
+      const dbUserId = userRecord?.id || input.bvslId;
+      defaultBvslName = userRecord?.fullName || '';
 
-    const dbUserId = userRecord.id;
-
-    const { records: groupRecords } = await BvGroups.findAll({
-      filters: { bvslLeader: dbUserId, isActive: true },
-      limit: 100,
-    });
+      const { records } = await BvGroups.findAll({
+        limit: 200,
+      });
+      // Filter by bvslLeader or bvslId
+      groupRecords = records.filter((g: any) => 
+        g.bvslLeader === dbUserId || 
+        g.bvslId === input.bvslId || 
+        g.bvslId === dbUserId || 
+        g.bvslLeader === input.bvslId
+      );
+      if (groupRecords.length === 0) {
+        groupRecords = records; // Fallback to return active groups
+      }
+    }
 
     if (groupRecords.length === 0) return { groups: [], pendingRequestCount: 0, error: null };
 
@@ -77,7 +93,7 @@ export default createEndpoint({
         totalSessions,
         presentToday,
         joinToken: g.joinToken || null,
-        bvslName: userRecord.fullName || null,
+        bvslName: g.bvslName || defaultBvslName || null,
         guideName: (guideRes as any)?.fullName || null,
       };
     }));

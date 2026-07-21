@@ -8,28 +8,30 @@ import {
 
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Flame, CheckCircle2, XCircle, Leaf, LogOut, Loader2 } from 'lucide-react';
+import { Flame, CheckCircle2, XCircle, Leaf, LogOut, Loader2, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { getUserBvStatus, getBvAttendance, leaveBvGroup } from 'zite-endpoints-sdk';
 import { format } from 'date-fns';
 import type { GetUserBvStatusOutputType, GetBvAttendanceOutputType } from 'zite-endpoints-sdk';
+import { useUserProfile } from '@/contexts/UserProfileContext';
 import BvCalendarView from '@/components/bv/BvCalendarView';
 import BvLeaderboard from '@/components/dashboard/BvLeaderboard';
 import BvQuizSection from '@/components/bv/BvQuizSection';
+import BvRegistrationModal from '@/components/bv/BvRegistrationModal';
 
 interface Props { userId: string; }
 
 type BvStatus = GetUserBvStatusOutputType;
 type BvAttendance = GetBvAttendanceOutputType;
 
-
-
 export default function BvTab({ userId }: Props) {
+  const { profile } = useUserProfile();
   const [status, setStatus] = useState<BvStatus | null>(null);
   const [attendance, setAttendance] = useState<BvAttendance | null>(null);
   const [loading, setLoading] = useState(true);
   const [leavingGroup, setLeavingGroup] = useState(false);
   const [quizDates, setQuizDates] = useState<{ date: string; percentage: number }[]>([]);
+  const [regModalOpen, setRegModalOpen] = useState(false);
 
   useEffect(() => { if (userId) load(); }, [userId]);
 
@@ -43,76 +45,76 @@ export default function BvTab({ userId }: Props) {
       ]);
       setStatus(statusRes);
       setAttendance(attendanceRes);
-    } catch { toast.error('Failed to load BV status'); }
-    finally { setLoading(false); }
+    } catch {
+      toast.error('Failed to load Bhakti Vriksha details');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleLeaveGroup = async () => {
+  const handleLeave = async () => {
     if (!status?.myGroup) return;
     setLeavingGroup(true);
     try {
       await leaveBvGroup({ userId, groupId: status.myGroup.groupId });
-      toast.success('You have left the group');
+      toast.success('Left group successfully');
       load();
-    } catch { toast.error('Failed to leave group'); }
-    finally { setLeavingGroup(false); }
+    } catch {
+      toast.error('Failed to leave group');
+    } finally {
+      setLeavingGroup(false);
+    }
   };
 
-
-  if (loading) return (
-    <div className="space-y-3">
-      <Skeleton className="h-20" />
-      <div className="grid grid-cols-3 gap-3">
-        <Skeleton className="h-20" /><Skeleton className="h-20" /><Skeleton className="h-20" />
+  if (loading) {
+    return (
+      <div className="space-y-4 py-4">
+        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-48 w-full" />
       </div>
-      <Skeleton className="h-64" />
-    </div>
-  );
+    );
+  }
 
-  if (!status) return null;
+  const isPending = (profile as any)?.bvRegistrationStatus === 'Pending Approval' || status?.pendingRequest;
 
-  const attendanceRate = status.totalSessions > 0
+  const attendanceRate = status?.totalSessions && status.totalSessions > 0
     ? Math.round((status.presentCount / status.totalSessions) * 100)
     : 0;
 
   return (
     <div className="space-y-4">
-      {/* BV Quizzes — at top when in group */}
-      {status.myGroup && (
-        <BvQuizSection userId={userId} onQuizDatesChange={setQuizDates} />
-      )}
-
-      {/* Group Status */}
-      {status.myGroup ? (
+      {/* Group Status Card */}
+      {status?.myGroup ? (
         <Card className="border-l-4 border-l-primary">
           <CardContent className="pt-4 pb-4">
-            <div className="flex items-center gap-2 mb-1">
-              <Leaf className="w-4 h-4 text-primary" />
-              <span className="font-semibold">{status.myGroup.groupName}</span>
-              <Badge className="bg-green-500 text-xs">Member</Badge>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Led by {status.myGroup.bvslName} · {status.myGroup.memberCount} members
-            </p>
-            <div className="mt-2">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-base">{status.myGroup.groupName}</span>
+                  <Badge className="bg-green-500 text-xs">Active Member</Badge>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Servant Leader: <span className="font-medium">{status.myGroup.bvslName}</span> · {status.myGroup.memberCount} members
+                </p>
+              </div>
+
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button variant="ghost" size="sm" className="text-xs text-destructive h-7 px-2">
-                    <LogOut className="w-3 h-3 mr-1" />Leave Group
+                  <Button variant="outline" size="sm" className="text-xs text-destructive border-destructive/40 shrink-0">
+                    <LogOut className="w-3.5 h-3.5 mr-1" /> Leave Group
                   </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>Leave BV Group?</AlertDialogTitle>
+                    <AlertDialogTitle>Leave Group?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      Once you leave <strong>{status.myGroup.groupName}</strong>, you cannot rejoin this group. You may join a different group after leaving.
+                      You will be removed from <strong>{status.myGroup.groupName}</strong>.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleLeaveGroup} disabled={leavingGroup}
-                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                      {leavingGroup && <Loader2 className="w-4 h-4 animate-spin mr-1" />}Leave Group
+                    <AlertDialogAction onClick={handleLeave} disabled={leavingGroup} className="bg-destructive text-destructive-foreground">
+                      {leavingGroup && <Loader2 className="w-4 h-4 animate-spin mr-1" />} Confirm Leave
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
@@ -120,10 +122,46 @@ export default function BvTab({ userId }: Props) {
             </div>
           </CardContent>
         </Card>
-      ) : null}
+      ) : isPending ? (
+        <Card className="border-l-4 border-l-orange-400 bg-orange-50/40 dark:bg-orange-950/20">
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-start gap-3">
+              <Clock className="w-8 h-8 text-orange-500 shrink-0 mt-0.5" />
+              <div>
+                <div className="flex items-center gap-2">
+                  <p className="font-semibold text-base">Bhakti Vriksha Registration Pending</p>
+                  <Badge variant="outline" className="border-orange-400 text-orange-600 bg-orange-100 dark:bg-orange-900/40">
+                    Awaiting Admin Approval
+                  </Badge>
+                </div>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Your registration has been received! A Bhakti Vriksha Admin will approve your request and assign you to an active Reading Group shortly.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="border-2 border-dashed border-primary/30 bg-primary/5">
+          <CardContent className="py-8 text-center space-y-3">
+            <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto text-primary">
+              <Leaf className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="font-bold text-lg text-primary">Not a Member of Any Bhakti Vriksha Group</p>
+              <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
+                You are not a member of any Bhakti Vriksha group yet. Click <strong>Join Now</strong> to fill out your details and start your spiritual journey!
+              </p>
+            </div>
+            <Button size="lg" className="mt-2 font-semibold shadow-md gap-2" onClick={() => setRegModalOpen(true)}>
+              <Leaf className="w-4 h-4" /> Join Now
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
-      {/* Attendance Stats */}
-      {status.myGroup && (
+      {/* Attendance Stats (only if in a group) */}
+      {status?.myGroup && (
         <div className="grid grid-cols-3 gap-3">
           <Card>
             <CardContent className="pt-4 pb-3 text-center">
@@ -162,31 +200,21 @@ export default function BvTab({ userId }: Props) {
       )}
 
       {/* Calendar (only if in a group) */}
-      {status.myGroup && attendance && (
+      {status?.myGroup && attendance && (
         <BvCalendarView history={attendance.userHistory} quizDates={quizDates} />
       )}
 
       {/* Leaderboard (only if in a group) */}
-      {status.myGroup && attendance && attendance.leaderboard.length > 0 && (
+      {status?.myGroup && attendance && attendance.leaderboard.length > 0 && (
         <BvLeaderboard leaderboard={attendance.leaderboard} currentUserId={userId} />
       )}
 
-      {/* NI-07: Replace join request UI with static message */}
-      {!status.myGroup && (
-        <Card className="border-l-4 border-l-primary/40">
-          <CardContent className="pt-4 pb-4">
-            <div className="flex items-center gap-3">
-              <Leaf className="w-5 h-5 text-primary shrink-0" />
-              <div>
-                <p className="font-medium text-sm">Not in a BV group yet</p>
-                <p className="text-sm text-muted-foreground mt-0.5">
-                  Ask your Bhakti Vriksha Servant Leader or Guide to add you in the group.
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {/* Registration Modal */}
+      <BvRegistrationModal
+        open={regModalOpen}
+        onOpenChange={setRegModalOpen}
+        onSuccess={load}
+      />
     </div>
   );
 }

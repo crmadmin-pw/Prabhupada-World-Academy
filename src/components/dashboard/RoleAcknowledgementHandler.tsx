@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useUserProfile } from '@/contexts/UserProfileContext';
-import { acknowledgeRoleChange } from 'zite-endpoints-sdk';
+import { acknowledgeRoleChange, acknowledgeBvRoleNotice, acknowledgeBvRejectionNotice } from 'zite-endpoints-sdk';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Crown, MapPin, ShieldAlert } from 'lucide-react';
+import { Crown, MapPin, ShieldAlert, Sparkles, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function RoleAcknowledgementHandler() {
@@ -12,10 +12,14 @@ export default function RoleAcknowledgementHandler() {
   const [busy, setBusy] = useState(false);
 
   // Determine what type of popup to show
-  let popupType: 'folk_lead_assigned' | 'folk_lead_removed' | 'trip_coordinator_assigned' | 'trip_coordinator_removed' | 'sadhana_mentor_assigned' | 'sadhana_mentor_removed' | null = null;
+  let popupType: 'bv_role_notice' | 'bv_rejection_notice' | 'folk_lead_assigned' | 'folk_lead_removed' | 'trip_coordinator_assigned' | 'trip_coordinator_removed' | 'sadhana_mentor_assigned' | 'sadhana_mentor_removed' | null = null;
 
   if (profile) {
-    if (profile.isFolkLead && !profile.acknowledgedFolkLead) {
+    if ((profile as any).pendingBvRejectionNotice) {
+      popupType = 'bv_rejection_notice';
+    } else if ((profile as any).pendingRoleNotice && !(profile as any).roleNoticeAcknowledged) {
+      popupType = 'bv_role_notice';
+    } else if (profile.isFolkLead && !profile.acknowledgedFolkLead) {
       popupType = 'folk_lead_assigned';
     } else if (!profile.isFolkLead && profile.acknowledgedFolkLead) {
       popupType = 'folk_lead_removed';
@@ -44,7 +48,11 @@ export default function RoleAcknowledgementHandler() {
   const handleAcknowledge = async () => {
     setBusy(true);
     try {
-      if (popupType === 'folk_lead_assigned') {
+      if (popupType === 'bv_rejection_notice') {
+        await acknowledgeBvRejectionNotice({});
+      } else if (popupType === 'bv_role_notice') {
+        await acknowledgeBvRoleNotice({});
+      } else if (popupType === 'folk_lead_assigned') {
         await acknowledgeRoleChange({ roleType: 'folk_lead', acknowledged: true });
       } else if (popupType === 'folk_lead_removed') {
         await acknowledgeRoleChange({ roleType: 'folk_lead', acknowledged: false });
@@ -73,6 +81,16 @@ export default function RoleAcknowledgementHandler() {
   let icon = null;
 
   switch (popupType) {
+    case 'bv_rejection_notice':
+      title = 'Bhakti Vriksha Registration Rejected';
+      description = 'Hare Krishna, Prabhu! Unfortunately, your recent registration for a Bhakti Vriksha reading group was not approved at this time. Please contact your guide for more information.';
+      icon = <XCircle className="w-12 h-12 text-destructive mx-auto" />;
+      break;
+    case 'bv_role_notice':
+      title = 'Bhakti Vriksha Role Update';
+      description = `Hare Krishna, Prabhu! Your Bhakti Vriksha role has been updated to: ${(profile as any).pendingRoleNotice || 'Member'}. You now have updated access permissions on the platform.`;
+      icon = <Sparkles className="w-12 h-12 text-primary mx-auto animate-bounce" />;
+      break;
     case 'folk_lead_assigned':
       title = 'Assigned as FOLK Lead';
       description = 'Hare Krishna, Prabhu! You have been assigned the role of FOLK Lead. You now have access to manage hostel rent payments and approve rent corrections for devotees.';

@@ -10,7 +10,9 @@ const USER_FIELDS = ['id', 'userId', 'fullName', 'phone', 'email', 'role', 'stat
   'guide', 'residency', 'residencyClaimed', 'residencyApproved', 'createdAt',
   'lastLoginAt', 'ashrayLevel', 'residencyJoinDate', 'isBvsl', 'isSadhanaMentor', 'isServiceAllocator',
   'isBvMentor', 'bvMentorGuideId', 'isCleanlinessManager', 'isFolkLead', 'isTripCoordinator',
-  'acknowledgedFolkLead', 'acknowledgedTripCoordinator', 'acknowledgedSadhanaMentor'];
+  'acknowledgedFolkLead', 'acknowledgedTripCoordinator', 'acknowledgedSadhanaMentor',
+  'isBvSuperAdmin', 'isBvAdmin', 'isBvSupervisor', 'isBvFacilitator', 'isBvSubFacilitator',
+  'pendingRoleNotice', 'roleNoticeAcknowledged', 'bvRegistrationStatus', 'bvGroupId', 'bvGroupName', 'isPrabhupadaWorldUser', 'pendingBvRejectionNotice'];
 const GUIDE_FIELDS = ['id', 'fullName', 'abbr'];
 const RESIDENCY_FIELDS = ['id', 'residencyName', 'residencyId'];
 
@@ -196,6 +198,11 @@ function buildProfileResult({
       isSadhanaMentor,
       isServiceAllocator,
       isBvMentor,
+      isBvSuperAdmin: !!(userRecord.isBvSuperAdmin || (userEmail || '').toLowerCase() === 'srilaprabhupadaworld@gmail.com' || primaryRole === 'SUPER_GUIDE' || (userEmail || '').toLowerCase().includes('superadmin')),
+      isBvAdmin: !!(userRecord.isBvAdmin || userRecord.isBvSuperAdmin || (userEmail || '').toLowerCase() === 'srilaprabhupadaworld@gmail.com' || primaryRole === 'SUPER_GUIDE'),
+      isBvSupervisor: !!(userRecord.isBvSupervisor || userRecord.isBvMentor),
+      isBvFacilitator: !!(userRecord.isBvFacilitator || userRecord.isBvsl),
+      isBvSubFacilitator: !!(userRecord.isBvSubFacilitator),
       isCleanlinessManager: !!(userRecord.isCleanlinessManager),
       isFolkLead: !!(userRecord.isFolkLead),
       isTripCoordinator: !!(userRecord.isTripCoordinator),
@@ -214,6 +221,13 @@ function buildProfileResult({
       acknowledgedFolkLead: !!(userRecord.acknowledgedFolkLead),
       acknowledgedTripCoordinator: !!(userRecord.acknowledgedTripCoordinator),
       acknowledgedSadhanaMentor: !!(userRecord.acknowledgedSadhanaMentor),
+      pendingRoleNotice: userRecord.pendingRoleNotice || null,
+      roleNoticeAcknowledged: !!(userRecord.roleNoticeAcknowledged),
+      bvRegistrationStatus: userRecord.bvRegistrationStatus || null,
+      bvGroupId: userRecord.bvGroupId || null,
+      bvGroupName: userRecord.bvGroupName || null,
+      isPrabhupadaWorldUser: !!(userRecord.isPrabhupadaWorldUser),
+      pendingBvRejectionNotice: !!(userRecord.pendingBvRejectionNotice),
     },
   };
 }

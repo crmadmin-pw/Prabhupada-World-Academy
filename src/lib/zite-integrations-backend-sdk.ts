@@ -222,6 +222,12 @@ function getMockTable(tableName: string): Map<string, any> {
   if (!mockStore[tableName]) {
     mockStore[tableName] = new Map<string, any>();
 
+    // Safeguard: Prevent mock data from leaking in production
+    if (process.env.NODE_ENV === 'production') {
+      console.warn(`[Zite SDK] Warning: Firebase credentials not found in production. Mock data for table '${tableName}' is disabled for security.`);
+      return mockStore[tableName];
+    }
+
     const csvRecords = loadCsvTableData(tableName);
     csvRecords.forEach(rec => {
       const docId = rec.email || rec.id || rec.userId || rec.guideId || String(mockStore[tableName].size + 1);
@@ -231,6 +237,7 @@ function getMockTable(tableName: string): Map<string, any> {
     if (tableName === 'Users') {
       const now = new Date().toISOString();
       const defaultUsers = [
+        { id: 'srilaprabhupadaworld@gmail.com', userId: 'GUIDE-SUPER-PWA', fullName: 'Super Admin', email: 'srilaprabhupadaworld@gmail.com', role: 'Super Guide', isBvSuperAdmin: true, isBvAdmin: true, isBvSupervisor: true, status: 'Active', createdAt: now },
         { id: 'superguide@gmail.com', userId: 'GUIDE-SUPER-001', fullName: 'Super Guide Admin', email: 'superguide@gmail.com', role: 'Super Guide', status: 'Active', createdAt: now },
         { id: 'superguide@prabhupadaworld.org', userId: 'GUIDE-SUPER-002', fullName: 'Super Guide Admin', email: 'superguide@prabhupadaworld.org', role: 'Super Guide', status: 'Active', createdAt: now },
         { id: 'admin@prabhupadaworld.org', userId: 'GUIDE-ADMIN-001', fullName: 'System Administrator', email: 'admin@prabhupadaworld.org', role: 'Super Guide', status: 'Active', createdAt: now },
@@ -249,10 +256,23 @@ function getMockTable(tableName: string): Map<string, any> {
 
     if (tableName === 'Guides') {
       const defaultGuides = [
+        { id: 'GUIDE-SUPER-PWA-GUIDE', fullName: 'Super Admin', email: 'srilaprabhupadaworld@gmail.com', abbr: 'SA', isActive: true },
         { id: 'GUIDE-001', fullName: 'Spiritual Guide', email: 'guide@gmail.com', abbr: 'SG', isActive: true },
         { id: 'GUIDE-ADMIN-001', fullName: 'System Administrator', email: 'admin@prabhupadaworld.org', abbr: 'SA', isActive: true },
       ];
       defaultGuides.forEach(g => {
+        if (!mockStore[tableName].has(g.id)) {
+          mockStore[tableName].set(g.id, g);
+        }
+      });
+    }
+
+    if (tableName === 'BvGroups') {
+      const defaultBvGroups = [
+        { id: 'BV-GROUP-001', groupName: 'Sri Chaitanya Reading Group', bvslId: 'srilaprabhupadaworld@gmail.com', bvslName: 'Super Admin', meetingTime: '7:45 PM – 8:15 PM', isActive: true },
+        { id: 'BV-GROUP-002', groupName: 'Gauranga Evening Reading Group', bvslId: 'guide@gmail.com', bvslName: 'Spiritual Guide', meetingTime: '8:30 PM – 9:00 PM', isActive: true },
+      ];
+      defaultBvGroups.forEach(g => {
         if (!mockStore[tableName].has(g.id)) {
           mockStore[tableName].set(g.id, g);
         }
@@ -263,7 +283,9 @@ function getMockTable(tableName: string): Map<string, any> {
 }
 
 function hasWorkingFirestore(): boolean {
-  return _hasValidCredentials;
+  if (typeof process !== 'undefined' && process.env?.FIRESTORE_EMULATOR_HOST) return true;
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.FIREBASE_CONFIG) return _hasValidCredentials;
+  return false;
 }
 
 export class Table {
@@ -302,18 +324,20 @@ export class Table {
   }
 
   async findOne(query: any): Promise<any> {
-    const db = getFirestoreDb();
-    if (db && hasWorkingFirestore()) {
+    if (hasWorkingFirestore()) {
       try {
-        if (query.id) {
-          const doc = await db.collection(this.tableName).doc(query.id).get();
-          if (doc.exists) return doc.data();
-        } else if (query.filters) {
-          let q = db.collection(this.tableName);
-          q = applyFilters(q, query.filters);
-          const snapshot = await q.limit(1).get();
-          if (!snapshot.empty) {
-            return snapshot.docs[0].data();
+        const db = getFirestoreDb();
+        if (db) {
+          if (query.id) {
+            const doc = await db.collection(this.tableName).doc(query.id).get();
+            if (doc.exists) return doc.data();
+          } else if (query.filters) {
+            let q = db.collection(this.tableName);
+            q = applyFilters(q, query.filters);
+            const snapshot = await q.limit(1).get();
+            if (!snapshot.empty) {
+              return snapshot.docs[0].data();
+            }
           }
         }
       } catch (e: any) {
@@ -334,47 +358,49 @@ export class Table {
   }
 
   async findAll(query: any = {}): Promise<{ records: any[]; hasMore: boolean }> {
-    const db = getFirestoreDb();
-    if (db && hasWorkingFirestore()) {
+    if (hasWorkingFirestore()) {
       try {
-        let q = db.collection(this.tableName);
+        const db = getFirestoreDb();
+        if (db) {
+          let q = db.collection(this.tableName);
 
-        if (query.id) {
-          q = q.where('id', '==', query.id);
-        } else if (query.filters) {
-          q = applyFilters(q, query.filters);
+          if (query.id) {
+            q = q.where('id', '==', query.id);
+          } else if (query.filters) {
+            q = applyFilters(q, query.filters);
+          }
+
+          if (query.sorts && Array.isArray(query.sorts) && query.sorts.length > 0) {
+            query.sorts.forEach((s: any) => {
+              q = q.orderBy(s.field, s.dir.toLowerCase() as 'asc' | 'desc');
+            });
+          }
+
+          const limit = query.limit ? Number(query.limit) : null;
+          const offset = query.offset ? Number(query.offset) : null;
+
+          if (limit !== null) {
+            q = q.limit(limit + 1);
+          }
+
+          if (offset !== null) {
+            q = q.offset(offset);
+          }
+
+          const snapshot = await q.get();
+          const records = snapshot.docs.map((doc: any) => doc.data());
+
+          let hasMore = false;
+          if (limit !== null && records.length > limit) {
+            hasMore = true;
+            records.pop();
+          }
+
+          return {
+            records,
+            hasMore,
+          };
         }
-
-        if (query.sorts && Array.isArray(query.sorts) && query.sorts.length > 0) {
-          query.sorts.forEach((s: any) => {
-            q = q.orderBy(s.field, s.dir.toLowerCase() as 'asc' | 'desc');
-          });
-        }
-
-        const limit = query.limit ? Number(query.limit) : null;
-        const offset = query.offset ? Number(query.offset) : null;
-
-        if (limit !== null) {
-          q = q.limit(limit + 1);
-        }
-
-        if (offset !== null) {
-          q = q.offset(offset);
-        }
-
-        const snapshot = await q.get();
-        const records = snapshot.docs.map((doc: any) => doc.data());
-
-        let hasMore = false;
-        if (limit !== null && records.length > limit) {
-          hasMore = true;
-          records.pop();
-        }
-
-        return {
-          records,
-          hasMore,
-        };
       } catch (e: any) {
         console.warn(`[Table ${this.tableName}] Firestore findAll error (${e?.message || e}), using local memory store.`);
       }
@@ -489,6 +515,7 @@ export const BvAttendance = new Table('BvAttendance');
 export const BvGroupMembers = new Table('BvGroupMembers');
 export const BvGroupRequests = new Table('BvGroupRequests');
 export const BvGroups = new Table('BvGroups');
+export const BvMemberRegistrations = new Table('BvMemberRegistrations');
 export const BvQuizSubmissions = new Table('BvQuizSubmissions');
 export const BvQuizzes = new Table('BvQuizzes');
 export const BvSessions = new Table('BvSessions');

@@ -99,6 +99,8 @@ export default function ProfilePage() {
         .length
     : 0;
 
+  const isPwMember = profile.selectedGuideId === 'MENTOR-PW-HIRANYAVARNA' || (profile.guideName || '').includes('Hiranyavarna') || (guideName || '').includes('Hiranyavarna');
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card">
@@ -121,18 +123,20 @@ export default function ProfilePage() {
           <PersonalInfoCard email={user?.email || ''} fullName={profile.fullName}
             phone={String(profile.phone || '')} ashrayLevel={profile.ashrayLevel}
             onUpdated={() => handleProfileChanged()} />
-          <GuideResidencyCard email={user?.email || ''} fullName={profile.fullName}
-            phone={String(profile.phone || '')} guideName={guideName}
-            currentGuideId={profile.selectedGuideId} guides={guides}
-            isResident={!!(profile.residencyGuideVerified && profile.selectedFolkResidency)} residencyName={residencyName}
-            residencyGuideVerified={profile.residencyGuideVerified ?? undefined}
-            selectedFolkResidency={profile.selectedFolkResidency}
-            allResidencies={allResidencies} ashrayLevel={profile.ashrayLevel}
-            residencyJoinDate={profile.residencyJoinDate}
-            hasPendingGuideTransfer={(profile as any).hasPendingGuideTransfer}
-            hasPendingResidencyTransfer={(profile as any).hasPendingResidencyTransfer}
-            isPendingResidencyLeave={(profile as any).isPendingResidencyLeave}
-            onProfileChanged={handleProfileChanged} />
+          {!isPwMember && (
+            <GuideResidencyCard email={user?.email || ''} fullName={profile.fullName}
+              phone={String(profile.phone || '')} guideName={guideName}
+              currentGuideId={profile.selectedGuideId} guides={guides}
+              isResident={!!(profile.residencyGuideVerified && profile.selectedFolkResidency)} residencyName={residencyName}
+              residencyGuideVerified={profile.residencyGuideVerified ?? undefined}
+              selectedFolkResidency={profile.selectedFolkResidency}
+              allResidencies={allResidencies} ashrayLevel={profile.ashrayLevel}
+              residencyJoinDate={profile.residencyJoinDate}
+              hasPendingGuideTransfer={(profile as any).hasPendingGuideTransfer}
+              hasPendingResidencyTransfer={(profile as any).hasPendingResidencyTransfer}
+              isPendingResidencyLeave={(profile as any).isPendingResidencyLeave}
+              onProfileChanged={handleProfileChanged} />
+          )}
           <AccountCard createdAt={profile.createdAt ?? undefined} lastLoginAt={profile.lastLoginAt ?? undefined} />
           <NotificationCard />
         </div>

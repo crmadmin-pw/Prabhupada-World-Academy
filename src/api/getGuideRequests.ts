@@ -81,8 +81,8 @@ export default createEndpoint({
       const ashrayUserIds = [...new Set(rawAshray.map((r: any) => r.userId).filter(Boolean))];
       const [usersById, usersByUserId] = ashrayUserIds.length > 0
         ? await Promise.all([
-            Users.findAll({ filters: { id: { in: ashrayUserIds } }, fields: ['id', 'userId', 'fullName', 'email', 'guide'], limit: 200 }),
-            Users.findAll({ filters: { userId: { in: ashrayUserIds } }, fields: ['id', 'userId', 'fullName', 'email', 'guide'], limit: 200 })
+            Users.findAll({ filters: { id: { in: ashrayUserIds } }, fields: ['id', 'userId', 'fullName', 'email', 'guide', 'selectedGuideId', 'guideName', 'residency', 'isPrabhupadaWorldUser'], limit: 200 }),
+            Users.findAll({ filters: { userId: { in: ashrayUserIds } }, fields: ['id', 'userId', 'fullName', 'email', 'guide', 'selectedGuideId', 'guideName', 'residency', 'isPrabhupadaWorldUser'], limit: 200 })
           ])
         : [{ records: [] }, { records: [] }];
 
@@ -96,9 +96,19 @@ export default createEndpoint({
         if (u.userId) ashrayUserMap.set(u.userId, u);
       });
 
+      const userEmail = (context.user.email || '').toLowerCase();
+      const isHiranyavarnaOrPwAdmin = userEmail === 'srilaprabhupadaworld@gmail.com' || context.user.isPwAdmin;
+
       const filteredAshray = rawAshray.filter((r: any) => {
         const u = ashrayUserMap.get(r.userId);
         if (!u) return false;
+        const uGuideStr = (String(u.guide || '') + ' ' + String(u.selectedGuideId || '') + ' ' + String(u.guideName || '')).toLowerCase();
+        const isPwMember = !!(u.isPrabhupadaWorldUser) || uGuideStr.includes('hiranyavarna');
+
+        if (isHiranyavarnaOrPwAdmin) {
+          return isPwMember;
+        }
+        if (isPwMember) return false; // Super FOLK Guide does not see PW member Ashray requests
         if (isSuperGuide) return true;
         const userGuideId = Array.isArray(u.guide) ? u.guide[0] : u.guide;
         return userGuideId && userGuideId === guideDbId;

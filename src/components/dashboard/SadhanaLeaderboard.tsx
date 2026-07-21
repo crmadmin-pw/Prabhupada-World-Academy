@@ -45,6 +45,7 @@ function getDefaultFilter(isResident: boolean): FilterKey {
 export default function SadhanaLeaderboard({
   leaderboard,
   currentUserId,
+  currentUserGuideId,
   currentUserAshrayLevel,
   currentUserResidency,
   currentUserIsResident,
@@ -109,8 +110,13 @@ export default function SadhanaLeaderboard({
     },
   ];
 
+  const isPrabhupadaWorld = !currentUserIsResident ||
+    String(currentUserGuideId || '').toUpperCase().includes('HIRANYAVARNA') ||
+    String(currentUserGuideId || '').toUpperCase().includes('PW') ||
+    String(currentUserGuideId || '') === 'MENTOR-PW-HIRANYAVARNA';
+
   const nrChips: { key: FilterKey; label: string; disabled?: boolean; title?: string }[] = [
-    { key: 'all_nr', label: 'All Non-Residents' },
+    { key: 'all_nr', label: isPrabhupadaWorld ? 'All Members' : 'All Non-Residents' },
     {
       key: 'nr_my_ashray',
       label: 'My Ashraya',

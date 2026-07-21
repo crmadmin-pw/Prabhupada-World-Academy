@@ -44,7 +44,8 @@ interface Props {
 }
 
 export default function GuideLeaderboardDisplay({ leaderboard, dateLabel }: Props) {
-  const [activeFilter, setActiveFilter] = useState<FilterKey>('residents');
+  const isAllNonResidents = leaderboard.length > 0 && leaderboard.every(e => !e.isResident);
+  const [activeFilter, setActiveFilter] = useState<FilterKey>(isAllNonResidents ? 'nr' : 'residents');
   const [ashrayFilter, setAshrayFilter] = useState<string>('all');
   const [page, setPage] = useState(0);
 
@@ -75,15 +76,17 @@ export default function GuideLeaderboardDisplay({ leaderboard, dateLabel }: Prop
 
         {/* Filter chips + Ashray dropdown */}
         <div className="flex flex-wrap items-center gap-2 mt-2">
-          <Button size="sm" variant={activeFilter === 'residents' ? 'default' : 'outline'}
-            className="text-xs h-7 whitespace-nowrap" onClick={() => setFilter('residents')}>
-            All FOLK Residents
-          </Button>
+          {!isAllNonResidents && (
+            <Button size="sm" variant={activeFilter === 'residents' ? 'default' : 'outline'}
+              className="text-xs h-7 whitespace-nowrap" onClick={() => setFilter('residents')}>
+              All FOLK Residents
+            </Button>
+          )}
           <Button size="sm" variant={activeFilter === 'nr' ? 'default' : 'outline'}
             className="text-xs h-7 whitespace-nowrap" onClick={() => setFilter('nr')}>
-            All Non-Residents
+            {isAllNonResidents ? 'All Members' : 'All Non-Residents'}
           </Button>
-          <Select value={ashrayFilter} onValueChange={setAshray}>
+          <Select value={ashrayFilter} onValueChange={(v) => setAshray(v || 'all')}>
             <SelectTrigger className="h-7 w-[160px] text-xs">
               <SelectValue placeholder="Ashray Level" />
             </SelectTrigger>

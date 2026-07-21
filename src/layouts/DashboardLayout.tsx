@@ -83,8 +83,10 @@ export default function DashboardLayout({
       });
     }
 
-    // 5. Guide Dashboard
-    if (profile.role === 'GUIDE' || profile.role === 'SUPER_GUIDE') {
+    const isPwAdmin = currentPath.startsWith('/pw-admin') || (profile as any)?.email === 'srilaprabhupadaworld@gmail.com';
+
+    // 5. Guide Dashboard (only for non-PW Admin)
+    if (!isPwAdmin && (profile.role === 'GUIDE' || profile.role === 'SUPER_GUIDE')) {
       const isGuideActive = currentPath.startsWith('/guide');
       tabItems.push({
         label: 'Guide',
@@ -94,8 +96,8 @@ export default function DashboardLayout({
       });
     }
 
-    // 6. Super Guide Dashboard
-    if (profile.role === 'SUPER_GUIDE') {
+    // 6. Super Guide Dashboard (only for non-PW Admin)
+    if (!isPwAdmin && profile.role === 'SUPER_GUIDE') {
       const isSuperGuideActive = currentPath.startsWith('/super');
       tabItems.push({
         label: 'Super Guide',

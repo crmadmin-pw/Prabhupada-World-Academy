@@ -3,7 +3,7 @@ import { createEndpoint, Users, FolkResidencies, Guides } from 'zite-integration
 import { getGuideScope } from '../lib/guideScope';
 
 const USER_FIELDS = ['id', 'fullName', 'phone', 'email', 'ashrayLevel', 'residency',
-  'residencyClaimed', 'residencyJoinDate', 'createdAt', 'status', 'guide'];
+  'residencyClaimed', 'residencyJoinDate', 'createdAt', 'status', 'guide', 'selectedGuideId', 'guideName', 'isPrabhupadaWorldUser'];
 const RESIDENCY_FIELDS = ['id', 'residencyName'];
 
 export default createEndpoint({
@@ -13,36 +13,46 @@ export default createEndpoint({
   outputSchema: z.any(),
   execute: async ({ context }: any) => {
     if (!context.user) throw new Error('Unauthorized');
-    const isSuperGuide = context.user.role === 'Super Guide';
+    const userRole = (context.user.role || '').toUpperCase();
+    const userEmail = (context.user.email || '').toLowerCase();
+    const isSuperGuide = userRole === 'SUPER_GUIDE' || userRole === 'SUPER GUIDE' || userEmail.includes('superguide') || userEmail.includes('admin');
     const pendingFilter = { status: 'Pending Approval' };
 
     let allUsers: any[] = [];
 
-    if (isSuperGuide) {
-      // Super Guide sees all pending users across all centers
-      const { records } = await Users.findAll({ filters: pendingFilter, fields: USER_FIELDS, limit: 500 });
-      allUsers = records;
+    // Fetch all pending users from the database
+    const { records: pendingRecords } = await Users.findAll({ filters: pendingFilter, fields: USER_FIELDS, limit: 1000 });
+
+    const isHiranyavarnaOrPwAdmin = userEmail === 'srilaprabhupadaworld@gmail.com' || context.user.isPwAdmin;
+
+    const checkIsPwUser = (u: any) => {
+      const rawG = Array.isArray(u.guide) ? u.guide[0] : u.guide;
+      const guideStr = (String(rawG || '') + ' ' + String(u.selectedGuideId || '') + ' ' + String(u.guideName || '')).toLowerCase();
+      return !!(u.isPrabhupadaWorldUser) ||
+        guideStr.includes('mentor-pw-hiranyavarna') ||
+        guideStr.includes('hiranyavarna');
+    };
+
+    if (isHiranyavarnaOrPwAdmin) {
+      // Hiranyavarna Prabhu / PW Admin sees ONLY Prabhupada World registrations
+      allUsers = pendingRecords.filter(u => checkIsPwUser(u));
     } else {
-      // Regular guide: see pending users directly assigned + all pending in their centers
-      const scope = await getGuideScope(context.user.email);
-      if (!scope) return [];
+      const scope = isSuperGuide ? null : await getGuideScope(context.user.email);
+      const sId = (scope?.guideId || '').toLowerCase();
+      const sName = (scope?.guideName || '').toLowerCase();
 
-      const fetchPromises = [
-        // Directly assigned to this guide
-        Users.findAll({ filters: { ...pendingFilter, guide: scope.guideId }, fields: USER_FIELDS, limit: 500 }),
-        // All pending users in each center residency
-        ...scope.residencyIds.map(rid =>
-          Users.findAll({ filters: { ...pendingFilter, residency: rid }, fields: USER_FIELDS, limit: 200 })
-        ),
-      ];
-      const results = await Promise.all(fetchPromises);
-
-      // Deduplicate by DB record ID
-      const userMap = new Map<string, any>();
-      for (const res of results) {
-        for (const u of res.records) userMap.set(u.id, u);
-      }
-      allUsers = Array.from(userMap.values());
+      allUsers = pendingRecords.filter(u => {
+        // Hide Prabhupada World (Hiranyavarna Das) registrations from Super FOLK Guide / FOLK guides
+        if (checkIsPwUser(u)) {
+          return false;
+        }
+        if (isSuperGuide) return true; // Super FOLK Guide sees all FOLK registrations
+        const rawG = Array.isArray(u.guide) ? u.guide[0] : u.guide;
+        const uGuide = String(rawG || '').toLowerCase();
+        if (!rawG) return true;
+        if (uGuide === sId || uGuide === sName || uGuide === userEmail) return true;
+        return scope ? (scope.residencyIds?.includes(u.residency) || scope.guideId === u.guide) : true;
+      });
     }
 
     const [residenciesRes, guidesRes] = await Promise.all([

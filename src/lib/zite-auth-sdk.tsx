@@ -6,28 +6,24 @@ import {
   getAuth,
   onAuthStateChanged,
   signInWithPopup,
-  signInWithEmailAndPassword,
   GoogleAuthProvider,
   signOut,
   connectAuthEmulator,
-  sendSignInLinkToEmail,
-  isSignInWithEmailLink,
-  signInWithEmailLink,
   User as FirebaseUser
 } from 'firebase/auth';
 
 // ══════════════════════════════════════════════════════════════════════════════
-// zite-auth-sdk.tsx — Firebase Auth integration with Google sign-in & Email Links.
-// Uses signInWithPopup and sendSignInLinkToEmail in production.
-// Mock auth via localStorage for local dev/testing fallback.
+// zite-auth-sdk.tsx — Firebase Auth integration with Google sign-in.
+// Uses signInWithPopup in both emulator and production.
+// This works reliably across different hosting domains without falling prey
+// to browser third-party cookie restrictions during redirect.
+// Mock auth via localStorage for local dev/testing.
 // ══════════════════════════════════════════════════════════════════════════════
 
 interface AuthContextType {
   user: { email: string | null; id: string | null } | null;
   isLoading: boolean;
   loginWithRedirect: (options?: { redirectUrl?: string }) => Promise<void>;
-  sendVerificationEmail: (email: string, redirectUrl?: string) => Promise<boolean>;
-  signInWithPassword: (email: string, password: string, redirectUrl?: string) => Promise<boolean>;
   logout: (options?: { returnTo?: string }) => Promise<void>;
 }
 
@@ -65,47 +61,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check URL parameters & Firebase Auth email link verification callback
-    if (typeof window !== 'undefined') {
-      if (isFirebaseEnabled && auth && isSignInWithEmailLink(auth, window.location.href)) {
-        let email = window.localStorage.getItem('emailForSignIn');
-        if (!email) {
-          const searchParams = new URLSearchParams(window.location.search);
-          email = searchParams.get('email');
-        }
-        if (email) {
-          setIsLoading(true);
-          signInWithEmailLink(auth, email, window.location.href)
-            .then(async (result) => {
-              window.localStorage.removeItem('emailForSignIn');
-              const token = await result.user.getIdToken();
-              (window as any).__firebase_id_token = token;
-              localStorage.setItem('auth_email', email!);
-              setUser({ email: result.user.email || email, id: result.user.uid });
-              setIsLoading(false);
-            })
-            .catch((err) => {
-              console.error('[Firebase Auth] Email link sign in error:', err);
-              setIsLoading(false);
-            });
-          return;
-        }
-      }
-
-      const searchParams = new URLSearchParams(window.location.search);
-      const urlEmail = searchParams.get('email');
-      const isVerified = searchParams.get('verified') === 'true';
-
-      if (urlEmail && isVerified) {
-        localStorage.setItem('auth_email', urlEmail);
-        localStorage.setItem('auth_mock_mode', 'true');
-        (window as any).__firebase_id_token = `mock_token_for_${urlEmail}`;
-        setUser({ email: urlEmail, id: urlEmail });
-        setIsLoading(false);
-        return;
-      }
-    }
-
     const isMockMode = typeof window !== 'undefined' && (
       localStorage.getItem('auth_mock_mode') === 'true' ||
       (window as any).__firebase_id_token?.startsWith('mock_token_for_')
@@ -116,6 +71,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(true);
         if (fbUser) {
           const token = await fbUser.getIdToken();
+          // Store token globally for API endpoints to read
           if (typeof window !== 'undefined') {
             (window as any).__firebase_id_token = token;
             localStorage.setItem('auth_email', fbUser.email || '');
@@ -131,7 +87,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(false);
       });
     } else {
-      // Mock Auth Fallback
+      // Mock Auth Fallback (local dev / testing)
       if (typeof window !== 'undefined') {
         const storedEmail = localStorage.getItem('auth_email');
         if (storedEmail) {
@@ -145,68 +101,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const sendVerificationEmail = async (emailToVerify: string, customRedirect?: string) => {
-    const targetUrl = customRedirect || `${window.location.origin}/zite-auth`;
-
-    if (isFirebaseEnabled && auth) {
-      try {
-        const actionCodeSettings = {
-          url: `${targetUrl}?verified=true&email=${encodeURIComponent(emailToVerify)}`,
-          handleCodeInApp: true,
-        };
-        await sendSignInLinkToEmail(auth, emailToVerify, actionCodeSettings);
-        if (typeof window !== 'undefined') {
-          window.localStorage.setItem('emailForSignIn', emailToVerify);
-        }
-      } catch (err) {
-        console.warn('[Firebase Auth] sendSignInLinkToEmail warning:', err);
-      }
-    }
-
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('pending_verification_email', emailToVerify);
-    }
-    return true;
-  };
-
   const loginWithRedirect = async (options?: { redirectUrl?: string }) => {
     if (isFirebaseEnabled && auth) {
       const provider = new GoogleAuthProvider();
+      // Use signInWithPopup in both Emulator and Production.
+      // This works reliably across different hosting domains.
       await signInWithPopup(auth, provider);
       if (options?.redirectUrl) {
         window.location.href = options.redirectUrl;
       }
     } else {
+      // Mock mode: go to local login page
       const redirectUrl = options?.redirectUrl || `${window.location.origin}/zite-auth`;
       window.location.href = `/login?redirectUrl=${encodeURIComponent(redirectUrl)}`;
     }
-  };
-
-  const signInWithPassword = async (emailToUse: string, passwordToUse: string, redirectUrl?: string) => {
-    const emailLower = emailToUse.trim().toLowerCase();
-    
-    if (isFirebaseEnabled && auth) {
-      try {
-        const result = await signInWithEmailAndPassword(auth, emailLower, passwordToUse);
-        const token = await result.user.getIdToken();
-        if (typeof window !== 'undefined') {
-          (window as any).__firebase_id_token = token;
-          localStorage.setItem('auth_email', emailLower);
-        }
-        setUser({ email: result.user.email || emailLower, id: result.user.uid });
-        return true;
-      } catch (err: any) {
-        console.warn('[Firebase Auth] signInWithEmailAndPassword fallback to session token:', err);
-      }
-    }
-
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('auth_email', emailLower);
-      localStorage.setItem('auth_mock_mode', 'true');
-      (window as any).__firebase_id_token = `mock_token_for_${emailLower}`;
-    }
-    setUser({ email: emailLower, id: emailLower });
-    return true;
   };
 
   const logout = async (options?: { returnTo?: string }) => {
@@ -216,7 +124,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('auth_email');
       localStorage.removeItem('auth_mock_mode');
-      localStorage.removeItem('pending_verification_email');
       delete (window as any).__firebase_id_token;
     }
     setUser(null);
@@ -228,7 +135,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, loginWithRedirect, sendVerificationEmail, signInWithPassword, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, loginWithRedirect, logout }}>
       {children}
     </AuthContext.Provider>
   );

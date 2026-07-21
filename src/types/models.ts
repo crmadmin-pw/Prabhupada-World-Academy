@@ -27,6 +27,11 @@ export interface UserProfile {
   guideName: string | null;
   isBvsl?: boolean;
   isSadhanaMentor?: boolean;
+  isBvSuperAdmin?: boolean;
+  isBvAdmin?: boolean;
+  isBvSupervisor?: boolean;
+  isBvFacilitator?: boolean;
+  isBvSubFacilitator?: boolean;
   isResident?: boolean;
   createdAt?: string;
   lastLoginAt?: string;
@@ -46,6 +51,16 @@ export interface ProfileSummary {
   isServiceAllocator?: boolean;
   /** BV Mentor: manages BhaktiVriksha system for a specific guide's center */
   isBvMentor?: boolean;
+  /** BV Super Admin: top authority over Bhakti Vriksha module */
+  isBvSuperAdmin?: boolean;
+  /** BV Admin: manages Bhakti Vriksha module and assigns Supervisors */
+  isBvAdmin?: boolean;
+  /** BV Supervisor: manages Bhakti Vriksha groups & BVSLs (replaces BV Mentor) */
+  isBvSupervisor?: boolean;
+  /** Reading Group Facilitator (RGF) */
+  isBvFacilitator?: boolean;
+  /** Reading Group Sub-Facilitator (RGSF) */
+  isBvSubFacilitator?: boolean;
   /** Cleanliness Manager: can submit daily room inspections */
   isCleanlinessManager?: boolean;
   /** Custom text residency ID (e.g. "RES-001") — used by service endpoints that filter by residencyId field */

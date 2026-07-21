@@ -116,15 +116,17 @@ export default function RegistrationPage() {
       toast.error('Please enter a valid phone number (at least 7 digits)');
       return;
     }
-    if (!formData.selectedGuideId) { toast.error('Please select your FOLK Guide'); return; }
+    if (!formData.selectedGuideId) { toast.error('Please select your Mentor'); return; }
 
-    // FOLK center is always required
-    if (!formData.selectedFolkResidency) {
+    const isPwMentorSelected = formData.selectedGuideId === 'MENTOR-PW-HIRANYAVARNA';
+
+    // FOLK center only required when NOT a Prabhupada World user
+    if (!isPwMentorSelected && !formData.selectedFolkResidency) {
       toast.error('Please select your FOLK Center'); return;
     }
 
-    // Physical residency claim extras
-    if (formData.residencyUserClaim && !formData.residencyJoinDate) {
+    // Physical residency claim extras — only relevant for FOLK users
+    if (!isPwMentorSelected && formData.residencyUserClaim && !formData.residencyJoinDate) {
       toast.error('Please enter your residency join date'); return;
     }
     if (hasTakenExam && !selectedExamLevel) {
@@ -141,6 +143,7 @@ export default function RegistrationPage() {
         if (emailCheck.isGuide) { setGuideEmailBlocked(true); setLoading(false); return; }
       }
 
+      const isPwMentorSelected = formData.selectedGuideId === 'MENTOR-PW-HIRANYAVARNA';
       const result = await registerUser({
         fullName: nameToUse,
         phoneCountryCode: formData.phoneCountryCode,
@@ -148,10 +151,11 @@ export default function RegistrationPage() {
         phoneE164,
         email,
         guideId: formData.selectedGuideId,
-        residencyUserClaim: formData.residencyUserClaim,
-        selectedFolkResidency: formData.selectedFolkResidency,
-        residencyJoinDate: formData.residencyJoinDate,
+        residencyUserClaim: isPwMentorSelected ? false : formData.residencyUserClaim,
+        selectedFolkResidency: isPwMentorSelected ? '' : formData.selectedFolkResidency,
+        residencyJoinDate: isPwMentorSelected ? '' : formData.residencyJoinDate,
         ashrayLevel: ashrayLevel || undefined,
+        isPrabhupadaWorldUser: isPwMentorSelected,
       });
 
       if (result.success) {
@@ -312,106 +316,117 @@ export default function RegistrationPage() {
             </div>
           </div>
 
-          {/* FOLK Guide */}
+          {/* Mentor (replaces FOLK Guide) */}
           <div className="space-y-1.5">
             <label htmlFor="guide" className="text-sm font-medium text-gray-700 block mb-1">
-              FOLK Guide <span className="text-red-500 font-bold">*</span>
+              Mentor <span className="text-red-500 font-bold">*</span>
             </label>
             {loadingGuides ? (
               <div className="flex items-center justify-center h-8 border border-gray-200 rounded-md bg-gray-50">
                 <Loader2 className="w-4 h-4 animate-spin mr-2 text-gray-400" />
-                <span className="text-xs text-gray-500">Loading guides...</span>
+                <span className="text-xs text-gray-500">Loading mentors...</span>
               </div>
             ) : guides.length === 0 ? (
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
-                <AlertDescription>No guides available. Please contact the administrator.</AlertDescription>
+                <AlertDescription>No mentors available. Please contact the administrator.</AlertDescription>
               </Alert>
             ) : (
-              <Select
-                value={formData.selectedGuideId}
-                onValueChange={(value) => { if (value) setFormData({ ...formData, selectedGuideId: value }); }}
-              >
-                <SelectTrigger className="w-full !h-8 border border-gray-200 rounded-md text-sm text-gray-900 bg-white focus:border-[#ea6506] focus:ring-1 focus:ring-[#ea6506] focus-visible:border-[#ea6506] focus-visible:ring-1 focus-visible:ring-[#ea6506] outline-none shadow-sm">
-                  <SelectValue placeholder="Select your guide">
-                    {(val) => {
-                      const matched = guides.find((g: any) => g.guideId === val);
-                      return matched ? (matched.name || matched.abbr) : val;
-                    }}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {guides.map((guide: any) => (
-                    <SelectItem key={guide.guideId} value={guide.guideId}>
-                      {guide.name || guide.abbr}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <>
+                <Select
+                  value={formData.selectedGuideId}
+                  onValueChange={(value) => { if (value) setFormData({ ...formData, selectedGuideId: value, residencyUserClaim: false, selectedFolkResidency: '' }); }}
+                >
+                  <SelectTrigger className="w-full !h-8 border border-gray-200 rounded-md text-sm text-gray-900 bg-white focus:border-[#ea6506] focus:ring-1 focus:ring-[#ea6506] focus-visible:border-[#ea6506] focus-visible:ring-1 focus-visible:ring-[#ea6506] outline-none shadow-sm">
+                    <SelectValue placeholder="Select your mentor">
+                      {(val) => {
+                        const matched = guides.find((g: any) => g.guideId === val);
+                        return matched ? (matched.name || matched.abbr) : val;
+                      }}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent className="min-w-[340px] max-w-none max-h-60 overflow-y-auto">
+                    {guides.map((guide: any) => (
+                      <SelectItem key={guide.guideId} value={guide.guideId}>
+                        {guide.isPrabhupadaWorldMentor ? (
+                          <span className="flex items-center gap-2">
+                            {guide.name}
+                            <span className="text-[10px] bg-orange-100 text-orange-700 font-semibold px-1.5 py-0.5 rounded-full">Prabhupada World</span>
+                          </span>
+                        ) : guide.name || guide.abbr}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
             )}
           </div>
 
-          {/* FOLK Center */}
-          <div className="space-y-1.5">
-            <label htmlFor="folkCenter" className="text-sm font-medium text-gray-700 block mb-1">
-              FOLK Center <span className="text-red-500 font-bold">*</span>
-            </label>
-            <p className="text-xs text-gray-400 mb-2">Select the FOLK center you are associated with</p>
-            {loadingResidencies ? (
-              <div className="flex items-center justify-center h-8 border border-gray-200 rounded-md bg-gray-50">
-                <Loader2 className="w-4 h-4 animate-spin mr-2 text-gray-400" />
-                <span className="text-xs text-gray-500">Loading centers...</span>
-              </div>
-            ) : (
-              <Select
-                value={formData.selectedFolkResidency}
-                onValueChange={(value) => { if (value) setFormData({ ...formData, selectedFolkResidency: value }); }}
-              >
-                <SelectTrigger id="folkCenter" className="w-full !h-8 border border-gray-200 rounded-md text-sm text-gray-900 bg-white focus:border-[#ea6506] focus:ring-1 focus:ring-[#ea6506] focus-visible:border-[#ea6506] focus-visible:ring-1 focus-visible:ring-[#ea6506] outline-none shadow-sm">
-                  <SelectValue placeholder="Select your FOLK center">
-                    {(val) => {
-                      const matched = residencies.find((r: any) => r.residencyId === val);
-                      return matched ? matched.residencyName : val;
-                    }}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {residencies.map((r: any) => (
-                    <SelectItem key={r.residencyId} value={r.residencyId}>
-                      {r.residencyName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          </div>
-
-          {/* Residency Toggle */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between px-4 py-3 bg-white border border-gray-200 rounded-md shadow-sm">
-              <label htmlFor="residency" className="cursor-pointer text-sm font-medium text-gray-700">Staying in FOLK Residency?</label>
-              <Switch
-                id="residency"
-                checked={formData.residencyUserClaim}
-                onCheckedChange={(checked) => setFormData(prev => ({ ...prev, residencyUserClaim: checked }))}
-              />
+          {/* FOLK Center — hidden for Prabhupada World users */}
+          {formData.selectedGuideId !== 'MENTOR-PW-HIRANYAVARNA' && (
+            <div className="space-y-1.5">
+              <label htmlFor="folkCenter" className="text-sm font-medium text-gray-700 block mb-1">
+                FOLK Center <span className="text-red-500 font-bold">*</span>
+              </label>
+              <p className="text-xs text-gray-400 mb-2">Select the FOLK center you are associated with</p>
+              {loadingResidencies ? (
+                <div className="flex items-center justify-center h-8 border border-gray-200 rounded-md bg-gray-50">
+                  <Loader2 className="w-4 h-4 animate-spin mr-2 text-gray-400" />
+                  <span className="text-xs text-gray-500">Loading centers...</span>
+                </div>
+              ) : (
+                <Select
+                  value={formData.selectedFolkResidency}
+                  onValueChange={(value) => { if (value) setFormData({ ...formData, selectedFolkResidency: value }); }}
+                >
+                  <SelectTrigger id="folkCenter" className="w-full !h-8 border border-gray-200 rounded-md text-sm text-gray-900 bg-white focus:border-[#ea6506] focus:ring-1 focus:ring-[#ea6506] focus-visible:border-[#ea6506] focus-visible:ring-1 focus-visible:ring-[#ea6506] outline-none shadow-sm">
+                    <SelectValue placeholder="Select your FOLK center">
+                      {(val) => {
+                        const matched = residencies.find((r: any) => r.residencyId === val);
+                        return matched ? matched.residencyName : val;
+                      }}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {residencies.map((r: any) => (
+                      <SelectItem key={r.residencyId} value={r.residencyId}>
+                        {r.residencyName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
+          )}
 
-            {formData.residencyUserClaim && (
-              <div className="space-y-1.5 animate-in fade-in duration-200">
-                <label htmlFor="residencyJoinDate" className="text-sm font-medium text-gray-700 block mb-1">Residency Join Date <span className="text-red-500 font-bold">*</span></label>
-                <input
-                  id="residencyJoinDate"
-                  type="date"
-                  value={formData.residencyJoinDate}
-                  onChange={(e) => setFormData({ ...formData, residencyJoinDate: e.target.value })}
-                  max={new Date().toISOString().split('T')[0]}
-                  required
-                  className="w-full h-8 px-4 border border-gray-200 rounded-md text-sm text-gray-900 bg-white focus:outline-none focus:border-[#ea6506] focus:ring-1 focus:ring-[#ea6506] transition-all shadow-sm"
+          {/* Residency Toggle — hidden for Prabhupada World users */}
+          {formData.selectedGuideId !== 'MENTOR-PW-HIRANYAVARNA' && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between px-4 py-3 bg-white border border-gray-200 rounded-md shadow-sm">
+                <label htmlFor="residency" className="cursor-pointer text-sm font-medium text-gray-700">Staying in FOLK Residency?</label>
+                <Switch
+                  id="residency"
+                  checked={formData.residencyUserClaim}
+                  onCheckedChange={(checked) => setFormData(prev => ({ ...prev, residencyUserClaim: checked }))}
                 />
               </div>
-            )}
-          </div>
+
+              {formData.residencyUserClaim && (
+                <div className="space-y-1.5 animate-in fade-in duration-200">
+                  <label htmlFor="residencyJoinDate" className="text-sm font-medium text-gray-700 block mb-1">Residency Join Date <span className="text-red-500 font-bold">*</span></label>
+                  <input
+                    id="residencyJoinDate"
+                    type="date"
+                    value={formData.residencyJoinDate}
+                    onChange={(e) => setFormData({ ...formData, residencyJoinDate: e.target.value })}
+                    max={new Date().toISOString().split('T')[0]}
+                    required
+                    className="w-full h-8 px-4 border border-gray-200 rounded-md text-sm text-gray-900 bg-white focus:outline-none focus:border-[#ea6506] focus:ring-1 focus:ring-[#ea6506] transition-all shadow-sm"
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Ashray Exam Toggle */}
           <div className="space-y-3">

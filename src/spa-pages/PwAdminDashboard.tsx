@@ -1,21 +1,16 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Home, Users, BarChart2, CalendarCheck, BookOpen, LayoutGrid, AlertCircle, TrendingUp, GitBranch, Zap, ClipboardCheck, Database, Leaf } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Users, CalendarCheck, BookOpen, LayoutGrid, AlertCircle, Zap, ClipboardCheck, Database, Leaf } from 'lucide-react';
 import { useAuth } from 'zite-auth-sdk';
 import { DashboardLayout } from '@/layouts';
 import SuperBvReportTab from '@/components/super/SuperBvReportTab';
-import SuperHostelsPanel from '@/components/super/SuperHostelsPanel';
 import SuperUsersPanel from '@/components/super/SuperUsersPanel';
-import SuperGuidesPanel from '@/components/super/SuperGuidesPanel';
 import SuperStatsPanel from '@/components/super/SuperStatsPanel';
 import SendRemindersPanel from '@/components/super/SendRemindersPanel';
 import ArchiveDataPanel from '@/components/super/ArchiveDataPanel';
 import ReportsTab from '@/components/guide/ReportsTab';
-import PreachingDataReportTab from '@/components/super/PreachingDataReportTab';
 import MissingSadhanaTab from '@/components/guide/MissingSadhanaTab';
-import PipelineReportTab from '@/components/guide/PipelineReportTab';
 import TagMangoConfigTab from '@/components/super/TagMangoConfigTab';
 import SuperAttendanceTab from '@/components/super/SuperAttendanceTab';
 import JigyasaTrackerTab from '@/components/jigyasa/JigyasaTrackerTab';
@@ -30,10 +25,10 @@ import {
   getPendingBvRegistrations,
 } from 'zite-endpoints-sdk';
 
-export default function SuperGuideDashboard() {
+export default function PwAdminDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [guideName, setGuideName] = useState('');
+  const [adminName, setAdminName] = useState('Hiranyavarna Das');
   const [pushStats, setPushStats] = useState<GetPushSubscriptionStatsOutputType | null>(null);
 
   const initialTab = typeof window !== 'undefined' ? window.location.hash.slice(1) || 'sadhana' : 'sadhana';
@@ -61,7 +56,7 @@ export default function SuperGuideDashboard() {
   useEffect(() => {
     if (user?.email) {
       getCurrentGuide({ email: user.email }).then(r => {
-        if (r.guide) setGuideName(r.guide.fullName || '');
+        if (r.guide?.fullName) setAdminName(r.guide.fullName);
       }).catch(() => {});
       getPushSubscriptionStats({}).then(setPushStats).catch(() => {});
     }
@@ -92,7 +87,7 @@ export default function SuperGuideDashboard() {
       >
         {isActive && (
           <motion.div
-            layoutId="superActiveHighlight"
+            layoutId="pwActiveHighlight"
             className="absolute inset-0 bg-primary/10 rounded-lg border border-primary/20"
             transition={{ type: 'spring', stiffness: 380, damping: 30 }}
           />
@@ -112,8 +107,8 @@ export default function SuperGuideDashboard() {
 
   return (
     <DashboardLayout
-      title="Super FOLK Guide Dashboard"
-      subtitle={guideName ? `Hare Krishna ${guideName} Prabhu!` : undefined}
+      title="Prabhupada World Super Admin Dashboard"
+      subtitle={`Hare Krishna ${adminName} Prabhu!`}
       role="SUPER_GUIDE"
       maxWidth="max-w-none"
       showProfile={false}
@@ -130,11 +125,7 @@ export default function SuperGuideDashboard() {
           <SelectContent>
             <SelectItem value="sadhana">Sadhana Report</SelectItem>
             <SelectItem value="bv">Bhakti Vriksha Report</SelectItem>
-            <SelectItem value="preaching">Preaching Data</SelectItem>
-            <SelectItem value="pipeline">Pipeline</SelectItem>
-            <SelectItem value="hostels">FOLK Hostels</SelectItem>
-            <SelectItem value="guides">Guides</SelectItem>
-            <SelectItem value="users">Users</SelectItem>
+            <SelectItem value="users">Members / Users</SelectItem>
             <SelectItem value="approvals">
               Approvals {approvalCount > 0 ? `(${approvalCount})` : ''}
             </SelectItem>
@@ -156,11 +147,7 @@ export default function SuperGuideDashboard() {
           <div className="bg-card border rounded-xl p-3 space-y-0.5 shadow-sm">
             <SidebarButton value="sadhana" label="Sadhana Report" icon={Database} />
             <SidebarButton value="bv" label="Bhakti Vriksha Report" icon={CalendarCheck} />
-            <SidebarButton value="preaching" label="Preaching Data" icon={TrendingUp} />
-            <SidebarButton value="pipeline" label="Pipeline" icon={GitBranch} />
-            <SidebarButton value="hostels" label="FOLK Hostels" icon={Home} />
-            <SidebarButton value="guides" label="Guides" icon={BarChart2} />
-            <SidebarButton value="users" label="Users" icon={Users} />
+            <SidebarButton value="users" label="Members / Users" icon={Users} />
             <SidebarButton value="approvals" label="Approvals" icon={ClipboardCheck} badge={approvalCount} />
             <SidebarButton value="bv-registrations" label="BV Registrations" icon={Leaf} badge={bvRegCount} />
             <SidebarButton value="stats" label="Stats" icon={LayoutGrid} />
@@ -174,27 +161,11 @@ export default function SuperGuideDashboard() {
         {/* Content Pane */}
         <div className="flex-1 min-w-0 bg-card border rounded-xl p-6 shadow-sm min-h-[500px]">
           <TabTransition activeTab={activeTab}>
-            {activeTab === 'approvals' && (
-              <div>
-                <div className="space-y-1 mb-4">
-                  <h2 className="text-lg font-bold">Approvals</h2>
-                  <p className="text-sm text-muted-foreground">Approve Guide transfers, FOLK Hostel transfers, and pending registrations across all centers</p>
-                </div>
-                <ApprovalsTab guideId="ALL" isSuperGuide={true} />
-              </div>
-            )}
-            {activeTab === 'bv-registrations' && (
-              <div className="space-y-6">
-                <BvAdminManagementTab />
-                <hr className="my-6 border-t" />
-                <SuperBvRegistrationsTab />
-              </div>
-            )}
             {activeTab === 'sadhana' && (
               <div>
                 <div className="space-y-1 mb-4">
-                  <h2 className="text-lg font-bold">Sadhana Report</h2>
-                  <p className="text-sm text-muted-foreground">Cross-guide sadhana data for all members</p>
+                  <h2 className="text-lg font-bold">Prabhupada World Sadhana Report</h2>
+                  <p className="text-sm text-muted-foreground">Sadhana metrics for all Prabhupada World members</p>
                 </div>
                 <ReportsTab guideId="ALL" />
               </div>
@@ -203,68 +174,46 @@ export default function SuperGuideDashboard() {
             {activeTab === 'bv' && (
               <div>
                 <div className="space-y-1 mb-4">
-                  <h2 className="text-lg font-bold">Bhakti Vriksha Report</h2>
-                  <p className="text-sm text-muted-foreground">BV attendance and group stats across all guides</p>
+                  <h2 className="text-lg font-bold">Bhakti Vriksha Reading Groups Report</h2>
+                  <p className="text-sm text-muted-foreground">Reading group attendance & metrics</p>
                 </div>
                 <SuperBvReportTab />
-              </div>
-            )}
-
-            {activeTab === 'preaching' && (
-              <div>
-                <div className="space-y-1 mb-4">
-                  <h2 className="text-lg font-bold">Preaching Data Report</h2>
-                  <p className="text-sm text-muted-foreground">Weekly preaching metrics across all FOLK centers</p>
-                </div>
-                <PreachingDataReportTab />
-              </div>
-            )}
-
-            {activeTab === 'pipeline' && (
-              <div>
-                <div className="space-y-1 mb-4">
-                  <h2 className="text-lg font-bold">Pipeline Report</h2>
-                  <p className="text-sm text-muted-foreground">Monthly sadhana & preaching metrics for all members across all guides</p>
-                </div>
-                <PipelineReportTab />
-              </div>
-            )}
-
-            {activeTab === 'hostels' && (
-              <div>
-                <div className="space-y-1 mb-4">
-                  <h2 className="text-lg font-bold">FOLK Hostels</h2>
-                  <p className="text-sm text-muted-foreground">All active FOLK residencies with quarterly sadhana averages</p>
-                </div>
-                <SuperHostelsPanel />
-              </div>
-            )}
-
-            {activeTab === 'guides' && (
-              <div>
-                <div className="space-y-1 mb-4">
-                  <h2 className="text-lg font-bold">Guides</h2>
-                  <p className="text-sm text-muted-foreground">All active FOLK guides and their member counts</p>
-                </div>
-                <SuperGuidesPanel />
               </div>
             )}
 
             {activeTab === 'users' && (
               <div>
                 <div className="space-y-1 mb-4">
-                  <h2 className="text-lg font-bold">All Users</h2>
-                  <p className="text-sm text-muted-foreground">All members across all guides — sortable, filterable, with guide and BVSL assignment</p>
+                  <h2 className="text-lg font-bold">Prabhupada World Members</h2>
+                  <p className="text-sm text-muted-foreground">All registered members — sortable, filterable, with role management</p>
                 </div>
-                <SuperUsersPanel />
+                <SuperUsersPanel isPwAdmin={true} />
+              </div>
+            )}
+
+            {activeTab === 'approvals' && (
+              <div>
+                <div className="space-y-1 mb-4">
+                  <h2 className="text-lg font-bold">Pending Registrations & Approvals</h2>
+                  <p className="text-sm text-muted-foreground">Review and approve new Prabhupada World member registrations</p>
+                </div>
+                <ApprovalsTab guideId="ALL" isSuperGuide={true} />
+              </div>
+            )}
+
+            {activeTab === 'bv-registrations' && (
+              <div className="space-y-6">
+                <BvAdminManagementTab />
+                <hr className="my-6 border-t" />
+                <SuperBvRegistrationsTab />
               </div>
             )}
 
             {activeTab === 'stats' && (
               <div>
                 <div className="space-y-1 mb-4">
-                  <h2 className="text-lg font-bold">Stats</h2>
-                  <p className="text-sm text-muted-foreground">Aggregate metrics across all guides and hostels</p>
+                  <h2 className="text-lg font-bold">System Stats & Administration</h2>
+                  <p className="text-sm text-muted-foreground">Aggregate metrics, push notifications, and data management</p>
                 </div>
                 <div className="space-y-6">
                   <SendRemindersPanel />
@@ -298,7 +247,7 @@ export default function SuperGuideDashboard() {
               <div>
                 <div className="space-y-1 mb-4">
                   <h2 className="text-lg font-bold">Missing Sadhana Report</h2>
-                  <p className="text-sm text-muted-foreground">Track which users haven't filled their sadhana across all groups</p>
+                  <p className="text-sm text-muted-foreground">Track which members haven't submitted their daily sadhana</p>
                 </div>
                 <MissingSadhanaTab guideId="ALL" />
               </div>
@@ -308,7 +257,7 @@ export default function SuperGuideDashboard() {
               <div>
                 <div className="space-y-1 mb-4">
                   <h2 className="text-lg font-bold">Attendance Report</h2>
-                  <p className="text-sm text-muted-foreground">Course attendance records across all guides and centers</p>
+                  <p className="text-sm text-muted-foreground">Course and session attendance records</p>
                 </div>
                 <SuperAttendanceTab />
               </div>

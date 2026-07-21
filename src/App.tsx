@@ -37,8 +37,11 @@ import GuideFieldSetupPage from './spa-pages/GuideFieldSetupPage';
 import GuideUserDetailPage from './spa-pages/GuideUserDetailPage';
 import BvGroupDetailPage from './spa-pages/BvGroupDetailPage';
 
-// ── Super Guide pages ──
+import { useAuth } from 'zite-auth-sdk';
+
+// ── Super Guide & Admin pages ──
 import SuperGuideDashboard from './spa-pages/SuperGuideDashboard';
+import PwAdminDashboard from './spa-pages/PwAdminDashboard';
 
 // ── BVSL pages ──
 import BvslDashboard from './spa-pages/BvslDashboard';
@@ -50,6 +53,7 @@ import SadhanaMentorDashboard from './spa-pages/SadhanaMentorDashboard';
 
 // ── BV Mentor pages ──
 import BvMentorDashboard from './spa-pages/BvMentorDashboard';
+import BvSupervisorDashboard from './spa-pages/BvSupervisorDashboard';
 import ServiceManagementPage from './spa-pages/ServiceManagementPage';
 
 // ── Attendance pages ──
@@ -186,14 +190,20 @@ export default function App() {
             <Route path="/bvsl/groups/:groupId" element={<ProtectedRoute allowedRoles={['BVSL', 'SADHANA_MENTOR']}><BvGroupDetailPage /></ProtectedRoute>} />
             <Route path="/guide/stats" element={<Navigate to="/guide/dashboard" replace />} />
 
-            {/* Super Guide */}
+            {/* Super Guide & Super Admin */}
             <Route path="/super/dashboard" element={<ProtectedRoute allowedRoles={['SUPER_GUIDE']}><SuperGuideDashboard /></ProtectedRoute>} />
+            <Route path="/pw-admin/dashboard" element={<ProtectedRoute allowedRoles={['SUPER_GUIDE', 'USER']}><PwAdminDashboard /></ProtectedRoute>} />
+            <Route path="/super-admin/dashboard" element={<ProtectedRoute allowedRoles={['SUPER_GUIDE', 'USER']}><PwAdminDashboard /></ProtectedRoute>} />
 
-            {/* BV Mentor dashboard */}
-            <Route path="/bv-mentor/dashboard" element={<ProtectedRoute allowedRoles={['BV_MENTOR']}><BvMentorDashboard /></ProtectedRoute>} />
+            {/* Supervisor dashboard (formerly BV Mentor) */}
+            <Route path="/bv-supervisor/dashboard" element={<ProtectedRoute allowedRoles={['BV_MENTOR', 'GUIDE', 'SUPER_GUIDE', 'USER']}><BvSupervisorDashboard /></ProtectedRoute>} />
+            <Route path="/supervisor/dashboard" element={<ProtectedRoute allowedRoles={['BV_MENTOR', 'GUIDE', 'SUPER_GUIDE', 'USER']}><BvSupervisorDashboard /></ProtectedRoute>} />
+            <Route path="/bv-mentor/dashboard" element={<ProtectedRoute allowedRoles={['BV_MENTOR', 'GUIDE', 'SUPER_GUIDE', 'USER']}><BvSupervisorDashboard /></ProtectedRoute>} />
 
-            {/* BVSL dashboard */}
-            <Route path="/bvsl/dashboard" element={<ProtectedRoute allowedRoles={['BVSL', 'SADHANA_MENTOR']}><BvslDashboard /></ProtectedRoute>} />
+            {/* Reading Group Facilitator (RGF) & Sub-Facilitator (RGSF) dashboards */}
+            <Route path="/rgf/dashboard" element={<ProtectedRoute allowedRoles={['BVSL', 'SADHANA_MENTOR', 'GUIDE', 'SUPER_GUIDE']}><BvslDashboard /></ProtectedRoute>} />
+            <Route path="/rgsf/dashboard" element={<ProtectedRoute allowedRoles={['BVSL', 'SADHANA_MENTOR', 'GUIDE', 'SUPER_GUIDE']}><BvslDashboard /></ProtectedRoute>} />
+            <Route path="/bvsl/dashboard" element={<ProtectedRoute allowedRoles={['BVSL', 'SADHANA_MENTOR', 'GUIDE', 'SUPER_GUIDE']}><BvslDashboard /></ProtectedRoute>} />
 
             {/* Sadhana Mentor dashboard */}
             <Route path="/mentor/dashboard" element={<ProtectedRoute allowedRoles={['SADHANA_MENTOR', 'BVSL']}><SadhanaMentorDashboard /></ProtectedRoute>} />
@@ -272,6 +282,7 @@ function SafeToaster() {
 
 function DashboardRouter() {
   const { profile, isLoading } = useUserProfile();
+  const { user } = useAuth();
   if (isLoading) return (
     <div className="min-h-screen flex items-center justify-center bg-background">
       <Skeleton className="h-32 w-64" />
@@ -281,6 +292,10 @@ function DashboardRouter() {
   if (profile.status === 'PENDING_APPROVAL') return <Navigate to="/pending" replace />;
   if (profile.status === 'REJECTED') return <Navigate to="/rejected" replace />;
   if ((profile.status as string) === 'INACTIVE') return <Navigate to="/inactive" replace />;
+
+  const isPwAdmin = user?.email?.toLowerCase() === 'srilaprabhupadaworld@gmail.com' || (profile as any)?.isPwAdmin;
+  if (isPwAdmin) return <Navigate to="/pw-admin/dashboard" replace />;
+
   if (profile.role === 'SUPER_GUIDE') return <Navigate to="/super/dashboard" replace />;
   if (profile.role === 'GUIDE') return <Navigate to="/guide/dashboard" replace />;
   // BV Mentor: lands on their dedicated BV management dashboard

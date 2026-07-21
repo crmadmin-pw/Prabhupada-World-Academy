@@ -16,6 +16,7 @@ import type { GetUserBvStatusOutputType, GetBvAttendanceOutputType } from 'zite-
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import BvCalendarView from '@/components/bv/BvCalendarView';
 import BvLeaderboard from '@/components/dashboard/BvLeaderboard';
+import BvRegistrationModal from '@/components/bv/BvRegistrationModal';
 
 export default function BhaktiVrikshaPage() {
   const { profile } = useUserProfile();
@@ -26,6 +27,7 @@ export default function BhaktiVrikshaPage() {
   const [requesting, setRequesting] = useState<string | null>(null);
   const [requestedIds, setRequestedIds] = useState<Set<string>>(new Set());
   const [leavingGroup, setLeavingGroup] = useState(false);
+  const [regModalOpen, setRegModalOpen] = useState(false);
 
   useEffect(() => { if (profile?.userId) load(); }, [profile?.userId]);
 
@@ -161,27 +163,40 @@ export default function BhaktiVrikshaPage() {
               </div>
             </CardContent>
           </Card>
-        ) : bvStatus?.pendingRequest ? (
-          <Card className="border-l-4 border-l-orange-400">
+        ) : (profile?.bvRegistrationStatus === 'Pending Approval' || bvStatus?.pendingRequest) ? (
+          <Card className="border-l-4 border-l-orange-400 bg-orange-50/40 dark:bg-orange-950/20">
             <CardContent className="pt-4 pb-4">
-              <div className="flex items-center gap-3">
-                <Clock className="w-9 h-9 text-orange-500 shrink-0" />
+              <div className="flex items-start gap-3">
+                <Clock className="w-8 h-8 text-orange-500 shrink-0 mt-0.5" />
                 <div>
-                  <p className="font-semibold">Join Request Pending</p>
-                  <p className="text-sm text-muted-foreground">
-                    <span className="font-medium">{bvStatus.pendingRequest.groupName}</span>
-                    {' '}— awaiting Servant Leader approval
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold text-base">Bhakti Vriksha Registration Pending</p>
+                    <Badge variant="outline" className="border-orange-400 text-orange-600 bg-orange-100 dark:bg-orange-900/40">
+                      Awaiting Admin Approval
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Your registration has been received! A Bhakti Vriksha Admin will approve your request and assign you to an active Reading Group shortly.
                   </p>
                 </div>
               </div>
             </CardContent>
           </Card>
         ) : (
-          <Card>
-            <CardContent className="py-6 text-center">
-              <Users className="w-10 h-10 mx-auto mb-2 text-muted-foreground opacity-50" />
-              <p className="font-medium text-muted-foreground">Not in any BV group</p>
-              <p className="text-xs text-muted-foreground mt-1">Request to join a group below</p>
+          <Card className="border-2 border-dashed border-primary/30 bg-primary/5">
+            <CardContent className="py-8 text-center space-y-3">
+              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto text-primary">
+                <Leaf className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="font-bold text-lg text-primary">Not a Member of Any Bhakti Vriksha Group</p>
+                <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
+                  You are not a member of any Bhakti Vriksha group yet. Click <strong>Join Now</strong> to fill out your details and get assigned to a Reading Group!
+                </p>
+              </div>
+              <Button size="lg" className="mt-2 font-semibold shadow-md gap-2" onClick={() => setRegModalOpen(true)}>
+                <Leaf className="w-4 h-4" /> Join Now
+              </Button>
             </CardContent>
           </Card>
         )}
@@ -295,6 +310,12 @@ export default function BhaktiVrikshaPage() {
             )}
           </div>
         )}
+
+        <BvRegistrationModal
+          open={regModalOpen}
+          onOpenChange={setRegModalOpen}
+          onSuccess={load}
+        />
       </main>
     </div>
   );
