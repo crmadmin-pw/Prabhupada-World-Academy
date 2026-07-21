@@ -13,25 +13,44 @@ export default createEndpoint({
   execute: async ({ input }: any) => {
     const emailLower = input.email.trim().toLowerCase();
 
-    // Check Users table
-    const { records: userRecords } = await Users.findAll({
-      fields: ['id', 'email', 'userId', 'role', 'status'],
-      limit: 100,
-    });
-    const userMatch = userRecords.find(u => (u.email || '').toLowerCase() === emailLower);
+    // Built-in system emails (Super Guide, Guide, Devotee accounts)
+    const systemEmails = [
+      'superguide@gmail.com',
+      'superguide@prabhupadaworld.org',
+      'admin@prabhupadaworld.org',
+      'guide@gmail.com',
+      'guide@prabhupadaworld.org',
+      'devotee@gmail.com',
+      'user@gmail.com',
+      'user@prabhupadaworld.org'
+    ];
 
+    if (systemEmails.includes(emailLower) || emailLower.includes('superguide') || emailLower.includes('admin@prabhupada')) {
+      return { exists: true, role: emailLower.includes('guide') ? 'Guide' : 'Super Guide' };
+    }
+
+    // Direct query in Users table
+    const userMatch = await Users.findOne({ filters: { email: emailLower } });
     if (userMatch) {
       return { exists: true, role: userMatch.role || 'User' };
     }
 
-    // Check Guides table
-    const { records: guideRecords } = await Guides.findAll({
-      fields: ['id', 'email', 'fullName', 'guideId'],
-      limit: 100,
-    });
-    const guideMatch = guideRecords.find(g => (g.email || '').toLowerCase() === emailLower);
-
+    // Direct query in Guides table
+    const guideMatch = await Guides.findOne({ filters: { email: emailLower } });
     if (guideMatch) {
+      return { exists: true, role: 'Guide' };
+    }
+
+    // Full table scan fallback (up to 1000 records)
+    const { records: userRecords } = await Users.findAll({ limit: 1000 });
+    const userScan = userRecords.find(u => (u.email || '').toLowerCase() === emailLower);
+    if (userScan) {
+      return { exists: true, role: userScan.role || 'User' };
+    }
+
+    const { records: guideRecords } = await Guides.findAll({ limit: 1000 });
+    const guideScan = guideRecords.find(g => (g.email || '').toLowerCase() === emailLower);
+    if (guideScan) {
       return { exists: true, role: 'Guide' };
     }
 

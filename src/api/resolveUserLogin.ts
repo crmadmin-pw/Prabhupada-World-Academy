@@ -108,33 +108,61 @@ export default createEndpoint({
     const now = new Date().toISOString();
     const userEmail = (context.user.email || '').toLowerCase();
 
-    // Auto-bootstrap/seed the first user as Super Guide if the Users table in Firestore is empty
-    const { records: existingUsers } = await Users.findAll({ limit: 1 });
-    if (existingUsers.length === 0) {
-      const generatedUserId = 'GUIDE-ADMIN';
-      await Users.create({
-        record: {
-          id: context.user.id,
-          userId: generatedUserId,
-          fullName: 'Initial Administrator',
-          email: context.user.email,
-          role: 'Super Guide',
-          status: 'Active',
+    // Auto-bootstrap/seed system emails (superguide, guide, admin)
+    if (userEmail === 'superguide@gmail.com' || userEmail === 'superguide@prabhupadaworld.org' || userEmail === 'admin@prabhupadaworld.org' || userEmail.includes('superguide')) {
+      const superRecord = {
+        id: context.user.id,
+        userId: 'GUIDE-SUPER-001',
+        fullName: 'Super Guide Admin',
+        email: userEmail,
+        role: 'Super Guide',
+        status: 'Active',
+        createdAt: now,
+        lastLoginAt: now,
+      };
+      await Users.create({ record: superRecord }).catch(() => Users.update({ id: context.user.id, record: superRecord }));
+      return {
+        action: 'route',
+        route: '/super/dashboard',
+        user: {
+          userId: 'GUIDE-SUPER-001',
+          fullName: 'Super Guide Admin',
+          role: 'SUPER_GUIDE',
+          status: 'ACTIVE',
+          phone: '',
+          email: userEmail,
           createdAt: now,
-          lastLoginAt: now
-        }
-      });
-      
-      await Guides.create({
-        record: {
-          id: 'GUIDE-ADMIN-GUIDE',
-          abbreviation: 'ADM',
-          email: context.user.email,
-          fullName: 'Initial Administrator',
-          guideId: generatedUserId,
-          isActive: true
-        }
-      });
+          lastLoginAt: now,
+        },
+      };
+    }
+
+    if (userEmail === 'guide@gmail.com' || userEmail === 'guide@prabhupadaworld.org') {
+      const guideRecord = {
+        id: context.user.id,
+        userId: 'GUIDE-001',
+        fullName: 'Spiritual Guide',
+        email: userEmail,
+        role: 'Guide',
+        status: 'Active',
+        createdAt: now,
+        lastLoginAt: now,
+      };
+      await Users.create({ record: guideRecord }).catch(() => Users.update({ id: context.user.id, record: guideRecord }));
+      return {
+        action: 'route',
+        route: '/guide/dashboard',
+        user: {
+          userId: 'GUIDE-001',
+          fullName: 'Spiritual Guide',
+          role: 'GUIDE',
+          status: 'ACTIVE',
+          phone: '',
+          email: userEmail,
+          createdAt: now,
+          lastLoginAt: now,
+        },
+      };
     }
 
     // Direct lookup — no full table scan needed with Zite DB user sync
