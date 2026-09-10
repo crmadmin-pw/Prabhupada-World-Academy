@@ -303,6 +303,7 @@ export default createEndpoint({
     failed: z.number(),
     skipped: z.number(),
     inAppRecipients: z.number(),
+    usersNotified: z.number(),
   }),
   execute: async ({ input, context }: any) => {
     // Validate a server-only cron secret or an active user with notification authority.
@@ -341,7 +342,7 @@ export default createEndpoint({
       ? await getPwNotificationConfig.execute({ input: { segment: targetSegment }, context: {} } as never)
       : null;
     if (scheduleConfig && !isSadhanaReminderDue(scheduleConfig)) {
-      return { sent: 0, failed: 0, skipped: 0, inAppRecipients: 0 };
+      return { sent: 0, failed: 0, skipped: 0, inAppRecipients: 0, usersNotified: 0 };
     }
 
     // Determine the date to check
@@ -445,6 +446,7 @@ export default createEndpoint({
       process.env.VAPID_PUBLIC_KEY ||
       process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
 
+    const notifiedUserIds = new Set<string>();
     const seenEndpoints = new Set<string>();
     const toSend = subs.filter((sub: any) => {
       const endpoint = String(sub.endpoint || '').trim();
@@ -459,11 +461,15 @@ export default createEndpoint({
       if (!eligibleRecipientIds.has(String(user.id))) { skipped++; return false; }
       return true;
     });
+    for (const sub of toSend) {
+      const user = resolveSubscriptionUser(sub);
+      if (user?.id) notifiedUserIds.add(String(user.id));
+    }
 
     // Scope the long-poll broadcast to every missing member, whether or not
     // they have opted into browser push. This is the in-app notification path.
     if (input.scheduled && !await claimSadhanaReminderSlot(targetSegment, scheduleSlot)) {
-      return { sent: 0, failed: 0, skipped: toSend.length, inAppRecipients: 0 };
+      return { sent: 0, failed: 0, skipped: toSend.length, inAppRecipients: 0, usersNotified: 0 };
     }
     let inAppRecipients = 0;
     if (eligibleRecipients.length > 0) {
@@ -477,7 +483,7 @@ export default createEndpoint({
       }
 
       try {
-        inAppRecipients = await storeBroadcast(
+        const inAppDelivery = await storeBroadcast(
           title,
           body,
           input.reminderSlot || 'night-1',
@@ -488,6 +494,8 @@ export default createEndpoint({
           [...eligibleEmails],
           targetSegment,
         );
+        inAppRecipients = inAppDelivery.count;
+        inAppDelivery.userIds.forEach(id => notifiedUserIds.add(id));
       } catch (e) {
         console.warn('[Push] Store broadcast failed:', e);
         throw new AppError({ code: 'INTERNAL_ERROR', message: 'The in-app reminder could not be published' });
@@ -499,9 +507,9 @@ export default createEndpoint({
     if (!vapidPrivate || !vapidPublic) {
       if (toSend.length > 0) {
         console.error('[Push] Web Push credentials are not configured');
-        return { sent: 0, failed: toSend.length, skipped, inAppRecipients };
+        return { sent: 0, failed: toSend.length, skipped, inAppRecipients, usersNotified: notifiedUserIds.size };
       }
-      return { sent: 0, failed: 0, skipped, inAppRecipients };
+      return { sent: 0, failed: 0, skipped, inAppRecipients, usersNotified: notifiedUserIds.size };
     }
 
     const batchSize = 10;
@@ -524,6 +532,6 @@ export default createEndpoint({
       }
     }
 
-    return { sent, failed, skipped, inAppRecipients };
+    return { sent, failed, skipped, inAppRecipients, usersNotified: notifiedUserIds.size };
   },
 });

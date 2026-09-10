@@ -4,13 +4,20 @@ import { getNotificationDepartment } from './notificationDepartment';
 const DELIVERY_WINDOW_MS = 5 * 60_000;
 const REALTIME_RETENTION_MS = 24 * 60 * 60_000;
 
+export interface NotificationDeliveryResult {
+  count: number;
+  userIds: string[];
+}
+
 /**
  * Route a server-authorized notification directly to each matching signed-in
  * browser inbox. The Firestore trigger also calls this function when deployed;
  * using deterministic document IDs makes both paths safely idempotent.
  */
-export async function publishNotification(db: any, broadcast: Record<string, any>) {
-  if (!broadcast.id || !broadcast.title || Number(broadcast.sentAt) < Date.now() - DELIVERY_WINDOW_MS) return 0;
+export async function publishNotification(db: any, broadcast: Record<string, any>): Promise<NotificationDeliveryResult> {
+  if (!broadcast.id || !broadcast.title || Number(broadcast.sentAt) < Date.now() - DELIVERY_WINDOW_MS) {
+    return { count: 0, userIds: [] };
+  }
 
   const targeted = Array.isArray(broadcast.inviteeIds) || Array.isArray(broadcast.inviteeEmails);
   const recipients = [...new Set<string>([
@@ -46,7 +53,7 @@ export async function publishNotification(db: any, broadcast: Record<string, any
   const senderEmail = String(broadcast.senderEmail || '').trim().toLowerCase();
   const segment = String(broadcast.segment || '').trim().toUpperCase();
   const list = [...identities.values()];
-  let delivered = 0;
+  const deliveredUserIds = new Set<string>();
 
   for (let offset = 0; offset < list.length; offset += 20) {
     const results = await Promise.all(list.slice(offset, offset + 20).map(async identity => {
@@ -61,9 +68,9 @@ export async function publishNotification(db: any, broadcast: Record<string, any
       if (segment && getNotificationDepartment(profileData) !== segment) return false;
       await db.collection('RealtimeClients').doc(identity.id)
         .collection('notifications').doc(broadcast.id).set(message);
-      return true;
+      return userDocumentId;
     }));
-    delivered += results.filter(Boolean).length;
+    for (const result of results) if (result) deliveredUserIds.add(result as string);
   }
-  return delivered;
+  return { count: deliveredUserIds.size, userIds: [...deliveredUserIds] };
 }

@@ -207,23 +207,17 @@ export default function SendRemindersPanel({ segment: segmentProp }: SendReminde
         segment: activeSegment,
       });
 
-      const nativeSent = Number(res.sent || 0);
-      const inAppRecipients = Number(res.inAppRecipients || 0);
-      if (nativeSent > 0 || inAppRecipients > 0) {
+      const usersNotified = Number(res.usersNotified || 0);
+      if (usersNotified > 0) {
         toast.success(
           <div className="flex flex-col gap-1.5 text-sm leading-5">
-            <span className="font-semibold">Sadhana reminder sent</span>
-            <span className="text-xs text-muted-foreground">
-              Native <strong className="text-foreground">{nativeSent}</strong> device{nativeSent === 1 ? '' : 's'} accepted
-              <span className="mx-1.5">•</span>
-              In-app <strong className="text-foreground">{inAppRecipients}</strong> user{inAppRecipients === 1 ? '' : 's'} reached
-            </span>
+            <span className="font-semibold">Sadhana reminder sent to {usersNotified} user{usersNotified === 1 ? '' : 's'}</span>
           </div>,
           { duration: 10000 }
         );
       } else if (stats.totalSubscriptions > 0) {
         toast.warning(
-          'Sadhana reminder: Native 0 devices accepted • In-app 0 users reached',
+          'Sadhana reminder was not received by any eligible user',
           { duration: 10000 }
         );
       } else {

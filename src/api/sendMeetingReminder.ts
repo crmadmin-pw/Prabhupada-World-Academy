@@ -191,7 +191,7 @@ export async function executeMeetingReminder(
   input: any,
   context: any,
   db = getFirestoreDb(),
-  publish: (...args: any[]) => Promise<number | void> = storeBroadcast,
+  publish: (...args: any[]) => Promise<any> = storeBroadcast,
 ) {
     const validCronSecrets = [process.env.APP_CRON_SECRET, process.env.ZITE_CRON_SECRET].filter(Boolean);
     const isCron = !!input.cronSecret && validCronSecrets.includes(input.cronSecret);
