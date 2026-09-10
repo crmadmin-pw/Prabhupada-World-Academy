@@ -446,7 +446,6 @@ export default createEndpoint({
       process.env.VAPID_PUBLIC_KEY ||
       process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
 
-    const notifiedUserIds = new Set<string>();
     const seenEndpoints = new Set<string>();
     const toSend = subs.filter((sub: any) => {
       const endpoint = String(sub.endpoint || '').trim();
@@ -461,10 +460,12 @@ export default createEndpoint({
       if (!eligibleRecipientIds.has(String(user.id))) { skipped++; return false; }
       return true;
     });
-    for (const sub of toSend) {
-      const user = resolveSubscriptionUser(sub);
-      if (user?.id) notifiedUserIds.add(String(user.id));
-    }
+    // One user may have several devices and may receive through either
+    // native push or the in-app inbox. Count the unique missing users selected
+    // for this dispatch, never device/channel deliveries.
+    const usersNotified = new Set(
+      eligibleRecipients.map(user => String(user.id || user.userId || user.email)).filter(Boolean)
+    ).size;
 
     // Scope the long-poll broadcast to every missing member, whether or not
     // they have opted into browser push. This is the in-app notification path.
@@ -495,7 +496,6 @@ export default createEndpoint({
           targetSegment,
         );
         inAppRecipients = inAppDelivery.count;
-        inAppDelivery.userIds.forEach(id => notifiedUserIds.add(id));
       } catch (e) {
         console.warn('[Push] Store broadcast failed:', e);
         throw new AppError({ code: 'INTERNAL_ERROR', message: 'The in-app reminder could not be published' });
@@ -507,9 +507,9 @@ export default createEndpoint({
     if (!vapidPrivate || !vapidPublic) {
       if (toSend.length > 0) {
         console.error('[Push] Web Push credentials are not configured');
-        return { sent: 0, failed: toSend.length, skipped, inAppRecipients, usersNotified: notifiedUserIds.size };
+        return { sent: 0, failed: toSend.length, skipped, inAppRecipients, usersNotified };
       }
-      return { sent: 0, failed: 0, skipped, inAppRecipients, usersNotified: notifiedUserIds.size };
+      return { sent: 0, failed: 0, skipped, inAppRecipients, usersNotified };
     }
 
     const batchSize = 10;
@@ -532,6 +532,6 @@ export default createEndpoint({
       }
     }
 
-    return { sent, failed, skipped, inAppRecipients, usersNotified: notifiedUserIds.size };
+    return { sent, failed, skipped, inAppRecipients, usersNotified };
   },
 });
