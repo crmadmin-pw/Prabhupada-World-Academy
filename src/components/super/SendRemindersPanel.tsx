@@ -214,16 +214,16 @@ export default function SendRemindersPanel({ segment: segmentProp }: SendReminde
           <div className="flex flex-col gap-1.5 text-sm leading-5">
             <span className="font-semibold">Sadhana reminder sent</span>
             <span className="text-xs text-muted-foreground">
-              Native <strong className="text-foreground">{nativeSent}/{stats.totalSubscriptions}</strong> devices
+              Native <strong className="text-foreground">{nativeSent}</strong> device{nativeSent === 1 ? '' : 's'} accepted
               <span className="mx-1.5">•</span>
-              In-app <strong className="text-foreground">{inAppRecipients}</strong> members
+              In-app <strong className="text-foreground">{inAppRecipients}</strong> user{inAppRecipients === 1 ? '' : 's'} reached
             </span>
           </div>,
           { duration: 10000 }
         );
       } else if (stats.totalSubscriptions > 0) {
         toast.warning(
-          `Sadhana reminder: Native 0/${stats.totalSubscriptions} devices • In-app 0 members`,
+          'Sadhana reminder: Native 0 devices accepted • In-app 0 users reached',
           { duration: 10000 }
         );
       } else {
@@ -473,8 +473,8 @@ export default function SendRemindersPanel({ segment: segmentProp }: SendReminde
           </div>
           <CardDescription className="text-xs">
             {loadingPushStats
-              ? 'Checking active registered push notification devices...'
-              : `${pushStats?.subscribers?.length || 0} unique registered devices / subscribers active for push notifications`}
+              ? 'Checking eligible push notification devices...'
+              : `${pushStats?.subscribers?.length || 0} eligible subscribed device${(pushStats?.subscribers?.length || 0) === 1 ? '' : 's'} can receive Sadhana reminders`}
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-0 space-y-2">
@@ -486,7 +486,7 @@ export default function SendRemindersPanel({ segment: segmentProp }: SendReminde
           ) : pushStats?.subscribers && pushStats.subscribers.length > 0 ? (
             <details className="text-xs border border-border rounded-lg p-3 bg-background shadow-xs" open>
               <summary className="cursor-pointer text-xs font-semibold text-foreground hover:text-primary transition-colors py-0.5">
-                View subscribed devices ({pushStats.subscribers.length})
+                View eligible devices ({pushStats.subscribers.length})
               </summary>
               <div className="mt-2.5 space-y-1.5 max-h-56 overflow-y-auto pt-2 border-t border-border">
                 {pushStats.subscribers.map((s: any, i: number) => (

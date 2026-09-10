@@ -31,7 +31,7 @@ test('role flags remain supported when a multi-role record also has a base role'
 
 test('PW users with a User base role remain visible when assigned as an RGF', () => {
   const user = {
-    fullName: 'BITS VEDANG',
+    fullName: 'Test RGF',
     role: 'User',
     segment: 'PW',
     isPrabhupadaWorldUser: true,

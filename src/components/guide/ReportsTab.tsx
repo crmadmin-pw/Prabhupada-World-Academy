@@ -910,7 +910,7 @@ export default function ReportsTab({ guideId = '', senderName, bvslMode, mentorM
 
               {/* Second Row: All 3 Checkboxes */}
               <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-1 border-t border-border/30 w-full mt-1">
-                {/* Show Missing toggle */}
+                {/* Show Pending toggle */}
                 <div className="flex items-center gap-1.5">
                   <Checkbox
                     id="show-missing"
@@ -919,7 +919,7 @@ export default function ReportsTab({ guideId = '', senderName, bvslMode, mentorM
                     className="w-4 h-4"
                   />
                   <Label htmlFor="show-missing" className="text-sm font-medium whitespace-nowrap cursor-pointer">
-                    Show Missing
+                    Show Pending
                   </Label>
                 </div>
 
@@ -954,7 +954,7 @@ export default function ReportsTab({ guideId = '', senderName, bvslMode, mentorM
                       className="text-sm font-medium whitespace-nowrap cursor-pointer"
                       title="Show actual submitted values instead of scored points."
                     >
-                      Show Real Values
+                      Show Filled Entries
                     </Label>
                   </div>
                 )}

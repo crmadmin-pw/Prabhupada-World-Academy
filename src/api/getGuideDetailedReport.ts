@@ -376,7 +376,7 @@ function aggregateEntries(entries: any[], isResident: boolean, ashrayLevel?: str
       ? sbPtsToMins(getResidentVal(entries[0], 'sbPoints', 'sb') ?? 0)
       : sbPtsToMins(Math.round(getResidentNormalAvg('sbPoints', 'sb') ?? 0));
 
-    // Raw values: actual user inputs vs scored points (used by "Show Real Values" toggle)
+    // Raw values: actual user inputs vs scored points (used by "Show Filled Entries" toggle)
     fieldRawValues = {
       // Rounds: actual count entered vs scored points (0-4)
       rounds: entries.length === 1
@@ -479,7 +479,7 @@ function aggregateEntries(entries: any[], isResident: boolean, ashrayLevel?: str
     const isLeaderboard_BV   = ['Sevak', 'Sadhaka', 'Upasaka'].includes(level);
     const isScored_BV        = ['Caranashraya', 'Harinam Diksha'].includes(level);
 
-    // ── NR: fieldRawValues = actual user inputs (shown via "Show Real Values" toggle) ──
+  // ── NR: fieldRawValues = actual user inputs (shown via "Show Filled Entries" toggle) ──
     fieldRawValues = {
       wakeUptime: entries.length === 1
         ? (allFv[0].wakeUptime || null)

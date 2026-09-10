@@ -3,7 +3,7 @@ import getBvslOneToOneData from '../src/api/getBvslOneToOneData';
 async function testAllCapitalizedAndAllAdmins() {
   console.log('=== STARTING CAPITALIZATION & ALL ADMINS VERIFICATION ===\n');
 
-  const superAdminContext = { user: { id: 'SUPERADMIN-001', email: 'hrvd@hkmmumbai.org', role: 'Super Admin', isBvSuperAdmin: true } };
+  const superAdminContext = { user: { id: 'SUPERADMIN-001', email: 'super-admin@example.test', role: 'Super Admin', isBvSuperAdmin: true } };
   const res = await (getBvslOneToOneData as any).execute({ input: {}, context: superAdminContext });
 
   console.log('1. Verifying allAdmins list from backend response:');

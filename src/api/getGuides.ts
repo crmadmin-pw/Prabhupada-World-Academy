@@ -8,7 +8,7 @@ function formatGuideName(fullName: string | null | undefined, email: string | nu
 
   // Handle any GUIDE-* or MENTOR-* system ID stored as fullName
   if (/^(GUIDE|MENTOR)[-_]/i.test(name)) {
-    // Try to make it human-readable: GUIDE-VEDANARAYANA-GUIDE -> Vedanarayana Guide
+    // Try to make system IDs human-readable: GUIDE-EXAMPLE-GUIDE -> Example Guide
     const parts = name.split(/[-_]/).filter(p => p && !['GUIDE', 'MENTOR', 'PW', 'FOLK'].includes(p.toUpperCase()));
     if (parts.length > 0) {
       const readable = parts.map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' ');

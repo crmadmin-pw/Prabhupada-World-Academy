@@ -50,7 +50,9 @@ test('in-app dispatch reaches missing members with zero native subscriptions, ex
     input: { reminderSlot: 'night-1', segment: 'PW', checkDate: '2026-09-06' },
     context: { user: apiUser({ id: 'admin', isActive: true, capabilities: ['notifications.send'] }) },
   });
-  assert.equal(result.inAppRecipients, 1);
+  // The local fallback has no signed-in realtime inbox to write to. Production
+  // reports actual inbox writes rather than the broader eligible member list.
+  assert.equal(result.inAppRecipients, 0);
   assert.deepEqual(broadcast.inviteeIds, ['missing']);
   assert.deepEqual(broadcast.inviteeEmails, ['missing@example.invalid']);
   assert.equal(result.sent, 0);
@@ -75,14 +77,14 @@ test('Sadhana reminders exclude PW admins and FOLK guides from every delivery ch
     input: { reminderSlot: 'night-1', segment: 'PW', checkDate: '2026-09-06' },
     context: { user: apiUser({ id: 'sender', isActive: true, capabilities: ['notifications.send'] }) },
   });
-  assert.equal(pw.inAppRecipients, 1);
+  assert.equal(pw.inAppRecipients, 0);
   assert.deepEqual(broadcast.inviteeIds, ['pw-member']);
 
   const folk = await sendPushNotifications.execute({
     input: { reminderSlot: 'night-1', segment: 'FOLK', checkDate: '2026-09-06' },
     context: { user: apiUser({ id: 'sender', segment: 'FOLK', isActive: true, capabilities: ['notifications.send'] }) },
   });
-  assert.equal(folk.inAppRecipients, 1);
+  assert.equal(folk.inAppRecipients, 0);
   assert.deepEqual(broadcast.inviteeIds, ['folk-member']);
 });
 
@@ -106,7 +108,7 @@ test('instant FOLK dispatch reaches only missing FOLK members', async t => {
     },
   });
 
-  assert.equal(result.inAppRecipients, 1);
+  assert.equal(result.inAppRecipients, 0);
   assert.deepEqual(broadcast.inviteeIds, ['folk-missing']);
   assert.deepEqual(broadcast.inviteeEmails, ['folk@example.invalid']);
   assert.equal(broadcast.segment, 'FOLK');

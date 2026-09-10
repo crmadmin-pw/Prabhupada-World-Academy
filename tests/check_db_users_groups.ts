@@ -6,12 +6,8 @@ async function checkDb() {
   const { records: users } = await Users.findAll({ limit: 500 });
   console.log('Total Users:', users.length);
 
-  const targets = users.filter((u: any) => 
-    (u.fullName || '').toLowerCase().includes('hiranya') ||
-    (u.fullName || '').toLowerCase().includes('vedan') ||
-    (u.email || '').toLowerCase().includes('srilaprabhupada') ||
-    (u.email || '').toLowerCase().includes('vdnd') ||
-    (u.email || '').toLowerCase().includes('iamthevedang')
+  const targets = users.filter((u: any) =>
+    u.isBvSuperAdmin || u.isBvAdmin || u.isBvSupervisor || u.isBvFacilitator || u.isBvSubFacilitator
   );
 
   console.log('\nTarget Users found:', targets.map((u: any) => ({

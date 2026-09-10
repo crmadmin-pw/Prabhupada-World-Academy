@@ -4,7 +4,7 @@ async function testHierarchyMetadata() {
   console.log('=== STARTING 1:1 CALL REPORTS HIERARCHY METADATA VERIFICATION ===\n');
 
   // Super Admin context (fetches all users)
-  const superAdminContext = { user: { id: 'SUPERADMIN-001', email: 'hrvd@hkmmumbai.org', role: 'Super Admin', isBvSuperAdmin: true } };
+  const superAdminContext = { user: { id: 'SUPERADMIN-001', email: 'super-admin@example.test', role: 'Super Admin', isBvSuperAdmin: true } };
   const data = await (getBvslOneToOneData as any).execute({ input: {}, context: superAdminContext });
 
   console.log(`Fetched ${data.users.length} members for 1:1 Call Reports.`);

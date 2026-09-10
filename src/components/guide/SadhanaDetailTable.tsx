@@ -137,7 +137,7 @@ export function canonicalSort(a: UserRow, b: UserRow): number {
   return at - bt;
 }
 
-// Raw unit labels shown in column header when "Show Real Values" is on
+// Raw unit labels shown in column header when "Show Filled Entries" is on
 const RAW_UNITS: Record<string, string> = {
   rounds: 'count', sp_reading: 'HH:MM',
   ma_na_gv: 'raw', quotes_tulasi: 'raw', japa_visible: 'raw',

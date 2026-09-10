@@ -34,8 +34,7 @@ export default function BvslMembersTable({ bvslId, detailBasePath = '/guide/user
     (profile?.role as string) === 'ADMIN' ||
     (profile as any)?.isPwAdmin ||
     profile?.isBvAdmin ||
-    profile?.isBvSuperAdmin ||
-    ((profile as any)?.email || '').toLowerCase() === 'srilaprabhupadaworld@gmail.com'
+    profile?.isBvSuperAdmin
   );
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);

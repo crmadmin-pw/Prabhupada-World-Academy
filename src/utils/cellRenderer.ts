@@ -118,7 +118,7 @@ function formatValue(fieldKey: string, val: unknown, showRealValues: boolean): s
     return minutesToHHMM(mins);
   }
 
-  // In "Show Real Values" mode, sp_reading / reading / hearing are raw minutes → HH:MM
+  // In "Show Filled Entries" mode, sp_reading / reading / hearing are raw minutes → HH:MM
   if (showRealValues && (fieldKey === 'sp_reading' || fieldKey === 'reading' || fieldKey === 'hearing') && typeof val === 'number') {
     return minutesToHHMM(val);
   }
@@ -155,7 +155,7 @@ function formatValue(fieldKey: string, val: unknown, showRealValues: boolean): s
  *
  * @param user        The user row data
  * @param field       The field definition
- * @param showRealValues  When true, display raw input values (but still color by scored points)
+ * @param showRealValues  When true, display filled input values (but still color by scored points)
  */
 export function computeCell(
   user: CellUserRow,

@@ -76,8 +76,7 @@ const BV_REPORT_LOAD_TOAST_ID = 'bv-session-matrix-load';
 export default function BvSessionMatrixTab({ guideId, bvslMode, residencyIds, segment }: Props) {
   const { profile } = useUserProfile();
   const navigate = useNavigate();
-  const userEmail = (profile?.userId || '').toLowerCase();
-  const isPw = profile?.segment === 'PW' || userEmail.includes('prabhupadaworld') || userEmail.includes('hrvd') || userEmail.includes('srilaprabhupadaworld');
+  const isPw = profile?.segment === 'PW' || profile?.isPrabhupadaWorldUser === true;
   const showFolkAssessmentData = !isPw;
 
   const [reportType, setReportType] = useState<ReportType>('weekly');

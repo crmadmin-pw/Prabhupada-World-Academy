@@ -134,8 +134,7 @@ export default function BvslGroupsPanel({
     (profile?.role as string) === 'ADMIN' ||
     (profile as any)?.isPwAdmin ||
     profile?.isBvAdmin ||
-    profile?.isBvSuperAdmin ||
-    ((profile as any)?.email || '').toLowerCase() === 'srilaprabhupadaworld@gmail.com'
+    profile?.isBvSuperAdmin
   );
 
   const handleCreate = async () => {

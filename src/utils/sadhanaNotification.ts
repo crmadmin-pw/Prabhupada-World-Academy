@@ -114,6 +114,15 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
 // ── Service Worker registration ──
 let _swRegistration: ServiceWorkerRegistration | null = null;
 
+function syncPushDisabledState(registration?: ServiceWorkerRegistration | null): void {
+  if (typeof window === 'undefined') return;
+  const target = registration?.active || navigator.serviceWorker.controller;
+  target?.postMessage({
+    type: 'SYNC_SETTINGS',
+    userDisabled: localStorage.getItem('push_notifications_disabled') === 'true',
+  });
+}
+
 function canRegisterSw(): boolean {
   if (typeof window === 'undefined') return false;
   if (!('serviceWorker' in navigator)) return false;
@@ -405,10 +414,7 @@ export async function subscribeToPush(): Promise<boolean> {
     try {
       const email = localStorage.getItem('auth_email') || '';
       const userId = localStorage.getItem('auth_user_id') || '';
-      navigator.serviceWorker.controller?.postMessage({
-        type: 'SYNC_SETTINGS',
-        userDisabled: false,
-      });
+      syncPushDisabledState();
       navigator.serviceWorker.controller?.postMessage({ type: 'SYNC_USER', email, userId });
     } catch {}
   }
@@ -425,6 +431,11 @@ async function _doSubscribe(): Promise<boolean> {
   try {
     const reg = await ensureSwRegistered();
     if (!reg) return false;
+
+    // A just-activated worker may not have been the page controller when the
+    // user clicked Enable. Send the enabled state again after registration so
+    // a prior Disable cannot leave this device permanently muted.
+    syncPushDisabledState(reg);
 
     let publicKey = '';
     try {
@@ -495,14 +506,13 @@ export async function unsubscribeFromPush(): Promise<boolean> {
       localStorage.setItem('push_notifications_disabled', 'true');
       localStorage.removeItem('notifications_simulated_granted');
       try {
-        navigator.serviceWorker.controller?.postMessage({
-          type: 'SYNC_SETTINGS',
-          userDisabled: true,
-        });
+        syncPushDisabledState();
       } catch {}
     }
     const reg = await ensureSwRegistered();
     if (!reg) return true;
+
+    syncPushDisabledState(reg);
 
     const subscription = await reg.pushManager.getSubscription();
     if (subscription) {

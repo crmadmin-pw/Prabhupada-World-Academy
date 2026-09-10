@@ -140,7 +140,8 @@ async function sendPush(
   const url = new URL(sub.endpoint);
   const audience = `${url.protocol}//${url.host}`;
 
-  const { token, publicKeyBytes } = await generateVapidJwt(audience, 'mailto:admin@prabhupadaworld.org', vapidPrivate, vapidPublic);
+  const subject = process.env.VAPID_SUBJECT || 'mailto:notifications@example.invalid';
+  const { token, publicKeyBytes } = await generateVapidJwt(audience, subject, vapidPrivate, vapidPublic);
   const { body } = await encryptPayload(sub.p256dh, sub.auth, payloadStr);
 
   const vapidPubB64 = base64UrlEncode(publicKeyBytes.buffer as ArrayBuffer);
@@ -186,7 +187,12 @@ export default createEndpoint({
 });
 
 /** Dependency arguments allow isolated delivery tests without contacting Firebase or participants. */
-export async function executeMeetingReminder(input: any, context: any, db = getFirestoreDb(), publish = storeBroadcast) {
+export async function executeMeetingReminder(
+  input: any,
+  context: any,
+  db = getFirestoreDb(),
+  publish: (...args: any[]) => Promise<number | void> = storeBroadcast,
+) {
     const validCronSecrets = [process.env.APP_CRON_SECRET, process.env.ZITE_CRON_SECRET].filter(Boolean);
     const isCron = !!input.cronSecret && validCronSecrets.includes(input.cronSecret);
     const canManageMeetings = !!(

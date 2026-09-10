@@ -620,11 +620,10 @@ export default function MeetingsAndMomTab({ allowSchedule = false, department: r
         ...u,
         fullName: meetingInviteeLabel(u),
       })).filter((u: any) => {
-        const emailLower = (u.email || '').toLowerCase();
         const roleUpper = (u.role || '').toUpperCase();
         const isFolk = u.segment === 'FOLK';
         const hasInviteRole = INVITE_ROLE_TYPES.some(role => hasMeetingRole(u, role));
-        const isPw = u.segment === 'PW' || hasInviteRole || u.isBvSupervisor || u.isBvFacilitator || u.isBvsl || roleUpper.includes('SUPERVISOR') || emailLower.includes('prabhupadaworld') || emailLower.includes('hrvd') || emailLower.includes('srilaprabhupadaworld') || emailLower.includes('bvsupervisor');
+        const isPw = u.segment === 'PW' || hasInviteRole || u.isBvSupervisor || u.isBvFacilitator || u.isBvsl || roleUpper.includes('SUPERVISOR');
         return hasMeetingInviteeIdentity(u) && hasInviteRole && (department === 'FOLK' ? isFolk : (isPw && !isFolk));
       });
     return departmentUsers;

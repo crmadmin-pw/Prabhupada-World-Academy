@@ -13,17 +13,17 @@ async function testAll12Requests() {
     user: {
       id: 'USER-SUPERADMIN-PW',
       userId: 'USER-SUPERADMIN-PW',
-      email: 'srilaprabhupadaworld@gmail.com',
+      email: 'super-admin@example.test',
       role: 'Super Admin',
       isBvSuperAdmin: true,
       segment: 'PW',
     },
   };
 
-  // 1. RGF Member list for Hiranyavarna Das
-  console.log('1. Testing RGF member lookup for Hiranya Vardhan / Hiranyavarna Das...');
+  // 1. RGF member list
+  console.log('1. Testing RGF member lookup...');
   const memberRes = await (getBvslMembers as any).execute({
-    input: { bvslId: 'srilaprabhupadaworld@gmail.com' },
+    input: { bvslId: 'test-rgf@example.test' },
     context: superAdminContext,
   });
   console.log(`   Members found: ${memberRes.members?.length || 0}`);

@@ -4,7 +4,7 @@ import getUserProfile from '../src/api/getUserProfile';
 async function testMultiRoleSupport() {
   console.log('=== STARTING MULTI-ROLE ASSIGNMENT & DASHBOARD VISIBILITY TEST ===\n');
 
-  const superAdminContext = { user: { id: 'SUPERADMIN-001', email: 'hrvd@hkmmumbai.org', role: 'Super Admin', isBvSuperAdmin: true } };
+  const superAdminContext = { user: { id: 'SUPERADMIN-001', email: 'super-admin@example.test', role: 'Super Admin', isBvSuperAdmin: true } };
   const targetUserId = 'USER-RGF-TEST-001';
 
   // Step 1: Assign Facilitator (RGF) role

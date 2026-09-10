@@ -72,7 +72,7 @@ test.describe('Additional Pages & Flows', () => {
 
   // 2. Daily Sadhana Submission Form
   test('Daily Sadhana form loads successfully', async ({ page }) => {
-    await gotoAs(page, 'nileshkund8@gmail.com', '/sadhana');
+    await gotoAs(page, USERS.regular.email, '/sadhana');
     await page.waitForFunction(
       () => (document.body.innerText || '').includes('Daily Sadhana'),
       { timeout: 45000 }
@@ -95,7 +95,7 @@ test.describe('Additional Pages & Flows', () => {
 
   // 4. Devotee Details Page
   test('Devotee Details page displays statistics & trend charts', async ({ page }) => {
-    // Sandeep More is a user under Sreesh Govind Das (srgd@hkmmumbai.org)
+    // Use a member fixture from the test dataset.
     await gotoAs(page, USERS.guide.email, '/guide/users/05d6bf53-5e4e-4e0b-85c1-fe25a1c10c6d');
     await page.waitForFunction(
       () => (document.body.innerText || '').includes('Ashray') || (document.body.innerText || '').includes('Sandeep'),
@@ -118,7 +118,7 @@ test.describe('Additional Pages & Flows', () => {
 
   // 6. BV Mentor Dashboard
   test('BV Mentor dashboard page loads overview panels', async ({ page }) => {
-    await gotoAs(page, 'theshyambohra@gmail.com', '/bv-mentor/dashboard');
+    await gotoAs(page, USERS.mentor.email, '/bv-mentor/dashboard');
     await page.waitForFunction(
       () => (document.body.innerText || '').includes('Bv Mentor') || (document.body.innerText || '').includes('Dashboard') || (document.body.innerText || '').includes('Groups'),
       { timeout: 45000 }
@@ -196,7 +196,7 @@ test.describe('Additional Pages & Flows', () => {
   });
 
   test('Join Group invite landing page renders form', async ({ page }) => {
-    await gotoAs(page, 'nileshkund8@gmail.com', '/join-group?token=d579eY79YPxPsHve');
+    await gotoAs(page, USERS.regular.email, '/join-group?token=d579eY79YPxPsHve');
     await page.waitForFunction(
       () => (document.body.innerText || '').includes('Join') || (document.body.innerText || '').includes('Bhakti') || (document.body.innerText || '').includes('joining') || (document.body.innerText || '').includes('Joining'),
       { timeout: 45000 }
@@ -205,7 +205,7 @@ test.describe('Additional Pages & Flows', () => {
   });
 
   test('BV Join page loads invite template', async ({ page }) => {
-    await gotoAs(page, 'nileshkund8@gmail.com', '/bv/join?token=d579eY79YPxPsHve');
+    await gotoAs(page, USERS.regular.email, '/bv/join?token=d579eY79YPxPsHve');
     await page.waitForFunction(
       () => (document.body.innerText || '').includes('Join') || (document.body.innerText || '').includes('Bhakti') || (document.body.innerText || '').includes('joining') || (document.body.innerText || '').includes('Joining'),
       { timeout: 45000 }

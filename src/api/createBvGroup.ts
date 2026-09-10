@@ -17,10 +17,8 @@ export default createEndpoint({
   }),
   execute: async ({ input, context }: any) => {
     if (!context.user) throw new Error('Unauthorized');
-    const userEmail = (context.user.email || '').toLowerCase();
     const isAuthorized = context.user.role === 'SUPER_GUIDE' ||
       context.user.role === 'GUIDE' ||
-      userEmail === 'srilaprabhupadaworld@gmail.com' ||
       context.user.isBvAdmin ||
       context.user.isBvSuperAdmin;
 

@@ -222,10 +222,8 @@ export default createEndpoint({
     for (const u of userRecs) {
       const uId = String(u.id || u.userId || '').toLowerCase();
       const uEmail = String(u.email || '').toLowerCase();
-
       const isAdmin =
         (isFolkReport && !isFolkMemberReportUser(u)) ||
-        uEmail === 'admin@prabhupadaworld.org' ||
         (callerId && uId === callerId) ||
         (callerEmail && uEmail === callerEmail);
 

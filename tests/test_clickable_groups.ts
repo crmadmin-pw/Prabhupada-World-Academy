@@ -4,7 +4,7 @@ import getBvslGroups from '../src/api/getBvslGroups';
 async function testClickableGroups() {
   console.log('=== STARTING CLICKABLE GROUPS & DETAILS PAGE VERIFICATION ===\n');
 
-  const superAdminContext = { user: { id: 'SUPERADMIN-001', email: 'hrvd@hkmmumbai.org', role: 'Super Admin', isBvSuperAdmin: true } };
+  const superAdminContext = { user: { id: 'SUPERADMIN-001', email: 'super-admin@example.test', role: 'Super Admin', isBvSuperAdmin: true } };
   const grpRes = await (getBvslGroups as any).execute({ input: { bvslId: 'ALL' }, context: superAdminContext });
 
   console.log(`Fetched ${grpRes.groups.length} active Bhakti Vriksha reading groups.`);

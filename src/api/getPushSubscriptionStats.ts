@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { createEndpoint, PushSubscriptions, Users, AppError } from '@/lib/backend-sdk';
-import { getNotificationDepartment } from '@/lib/notificationDepartment';
+import { getNotificationDepartment, isSadhanaReminderEligibleUser } from '@/lib/notificationDepartment';
 import { getScopedHierarchyUserIds, isUserInHierarchy } from '../lib/hierarchyUtils';
 
 export default createEndpoint({
@@ -27,7 +27,11 @@ export default createEndpoint({
       throw new AppError({ code: 'FORBIDDEN', message: 'Super Guide or Admin only' });
     }
 
-    const callerId = context?.user?.id;
+    const callerIds = new Set([
+      context?.user?.id,
+      context?.user?.userId,
+      context?.user?.uid,
+    ].filter(Boolean).map(String));
     const callerEmail = (context?.user?.email || '').toLowerCase();
 
     // Determine target segment: explicit input > caller context.
@@ -83,9 +87,12 @@ export default createEndpoint({
       if (!isUserInHierarchy(u, scope)) return false;
       if (u.status !== 'Active') return false;
 
-      const isCaller = (callerId && u.id === callerId) || 
+      const isCaller = callerIds.has(String(u.id || '')) ||
+                       callerIds.has(String(u.userId || '')) ||
                        (callerEmail && (u.email || '').toLowerCase() === callerEmail);
       if (isCaller) return false;
+
+      if (!isSadhanaReminderEligibleUser(u)) return false;
 
       return getNotificationDepartment(u) === targetSegment;
     });

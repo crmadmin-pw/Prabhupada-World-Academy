@@ -3,7 +3,7 @@ import getBvslOneToOneData from '../src/api/getBvslOneToOneData';
 async function test1on1CallReportsFilters() {
   console.log('=== STARTING 1:1 CALL REPORTS FILTERING VERIFICATION ===\n');
 
-  const superAdminContext = { user: { id: 'SUPERADMIN-001', email: 'hrvd@hkmmumbai.org', role: 'Super Admin', isBvSuperAdmin: true } };
+  const superAdminContext = { user: { id: 'SUPERADMIN-001', email: 'super-admin@example.test', role: 'Super Admin', isBvSuperAdmin: true } };
   const data = await (getBvslOneToOneData as any).execute({ input: {}, context: superAdminContext });
 
   const members: any[] = data.users || [];

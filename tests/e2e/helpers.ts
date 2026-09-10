@@ -7,14 +7,14 @@ export const BASE = 'http://localhost:3000';
 
 // Test accounts (all use mock_token_for_* auth)
 export const USERS = {
-  regular:  { email: 'nileshkund8@gmail.com',      name: 'Nilesh Kund',        role: 'User' },
-  regular2: { email: 'roshankeshari220@gmail.com',  name: 'Roshan Keshari',     role: 'User' },
-  guide:    { email: 'srgd@hkmmumbai.org',          name: 'Sreesh Govind Das',  role: 'Guide' },
-  guide2:   { email: 'ajkd@hkmmumbai.org',          name: 'Anjana Kumar Das',   role: 'Guide' },
-  super:    { email: 'gmnd@hkmmumbai.org',          name: 'Gaurmandal Das',     role: 'Super Guide' },
-  super2:   { email: 'aggd.hkm@gmail.com',          name: 'Anagha Gopal Das',   role: 'Super Guide' },
-  mentor:   { email: 'elevatemind321@gmail.com',    name: 'Gaurav Nagpal',      role: 'Sadhana Mentor' },
-  bvsl:     { email: 'ayushdodiya153@gmail.com',    name: 'Ayush Dodiya',       role: 'BVSL' },
+  regular:  { email: 'regular@example.test',         name: 'Regular User',       role: 'User' },
+  regular2: { email: 'regular-two@example.test',     name: 'Second User',        role: 'User' },
+  guide:    { email: 'guide@example.test',           name: 'Test Guide',         role: 'Guide' },
+  guide2:   { email: 'guide-two@example.test',       name: 'Second Guide',       role: 'Guide' },
+  super:    { email: 'super@example.test',           name: 'Test Super Guide',   role: 'Super Guide' },
+  super2:   { email: 'super-two@example.test',       name: 'Second Super Guide', role: 'Super Guide' },
+  mentor:   { email: 'mentor@example.test',          name: 'Test Mentor',        role: 'Sadhana Mentor' },
+  bvsl:     { email: 'rgf@example.test',             name: 'Test RGF',           role: 'BVSL' },
 };
 
 /** Inject mock auth into browser localStorage and window, then navigate */

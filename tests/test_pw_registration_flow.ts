@@ -10,7 +10,7 @@ async function runPwTest() {
   const context = {
     user: {
       id: 'mock_pw_devotee_unique_id_999',
-      email: 'testing_pw_devotee@gmail.com',
+      email: 'pw-devotee@example.test',
       role: 'User',
     }
   };
@@ -32,7 +32,7 @@ async function runPwTest() {
         phoneCountryCode: '+91',
         phone: '9876543210',
         phoneE164: '+919876543210',
-        email: 'testing_pw_devotee@gmail.com',
+        email: 'pw-devotee@example.test',
         guideId: 'MENTOR-PW-ADMIN',
         residencyUserClaim: false,
         selectedFolkResidency: '',

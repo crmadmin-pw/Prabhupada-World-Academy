@@ -244,7 +244,8 @@ async function sendPush(
   const url = new URL(sub.endpoint);
   const audience = `${url.protocol}//${url.host}`;
 
-  const { token, publicKeyBytes } = await generateVapidJwt(audience, 'mailto:admin@folkresidency.com', vapidPrivate, vapidPublic);
+  const subject = process.env.VAPID_SUBJECT || 'mailto:notifications@example.invalid';
+  const { token, publicKeyBytes } = await generateVapidJwt(audience, subject, vapidPrivate, vapidPublic);
   const { body } = await encryptPayload(sub.p256dh, sub.auth, payloadStr);
 
   const vapidPubB64 = base64UrlEncode(publicKeyBytes.buffer as ArrayBuffer);
@@ -260,6 +261,9 @@ async function sendPush(
       Authorization: `vapid t=${token}, k=${vapidPubB64}`,
     },
     body: body.buffer as ArrayBuffer,
+    // A stale browser subscription must not leave the admin's instant-send
+    // button waiting forever after the in-app broadcast was already saved.
+    signal: AbortSignal.timeout(8000),
   });
 
   const responseText = await resp.text().catch(() => '');
@@ -473,7 +477,7 @@ export default createEndpoint({
       }
 
       try {
-        await storeBroadcast(
+        inAppRecipients = await storeBroadcast(
           title,
           body,
           input.reminderSlot || 'night-1',
@@ -484,7 +488,6 @@ export default createEndpoint({
           [...eligibleEmails],
           targetSegment,
         );
-        inAppRecipients = eligibleRecipients.length;
       } catch (e) {
         console.warn('[Push] Store broadcast failed:', e);
         throw new AppError({ code: 'INTERNAL_ERROR', message: 'The in-app reminder could not be published' });

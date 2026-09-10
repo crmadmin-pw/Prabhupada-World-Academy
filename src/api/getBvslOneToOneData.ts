@@ -276,8 +276,7 @@ export default createEndpoint({
     }
 
     // Collect department-scoped unique Admins for dropdown filtering
-    const callerEmail = (context.user?.email || '').toLowerCase();
-    const isCallerPw = context.user?.segment === 'PW' || context.user?.isPwAdmin || callerEmail.includes('srilaprabhupadaworld') || callerEmail.includes('hrvd');
+    const isCallerPw = context.user?.segment === 'PW' || context.user?.isPwAdmin || context.user?.isPrabhupadaWorldUser === true;
 
     const allAdminsSet = new Set<string>();
     allUsers.forEach((u: any) => {

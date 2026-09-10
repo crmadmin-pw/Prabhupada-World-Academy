@@ -46,7 +46,7 @@ function database(meeting: any) {
 const manager = {user:apiUser({isActive:true,capabilities:['meetings.manage'],segment:'PW'})};
 function setup(t: any, overrides: any = {}) {
   const meeting={id:'reminder-test',title:'PW Meeting',segment:'PW',status:'SCHEDULED',
-    scheduledAt:new Date(Date.now()+9*60_000).toISOString(),locationOrLink:'https://meet.google.com/test',
+    scheduledAt:new Date(Date.now()+10*60_000).toISOString(),locationOrLink:'https://meet.google.com/test',
     inviteeUserIds:['old-1','auth-2','db-3'],invitees:[],...overrides};
   const db=database(meeting), published:any[]=[];
   const users=[{id:'db-1',userId:'old-1',authUid:'auth-1',email:'one@example.invalid'},
@@ -120,7 +120,7 @@ test('cancelled meetings never dispatch either reminder and unauthenticated call
  await assert.rejects(()=>executeMeetingReminder({meetingId:s.meeting.id,reminderType:'ONE_MINUTE'},{},s.db),/Unauthorized/);
 });
 
-test('scheduler uses 10-minute and 1-minute windows, catches late ticks, paginates, and excludes FOLK and started meetings',async t=>{
+test('scheduler uses only the 10-minute and 1-minute windows, paginates, and excludes FOLK, started, and stale reminders',async t=>{
  const previous=process.env.APP_CRON_SECRET;process.env.APP_CRON_SECRET='meeting-reminder-test-secret';
  t.after(()=>{if(previous===undefined)delete process.env.APP_CRON_SECRET;else process.env.APP_CRON_SECRET=previous;});
  const make=(id:string,minutes:number,extra:any={})=>({id,scheduledAt:new Date(Date.now()+minutes*60_000).toISOString(),status:'SCHEDULED',...extra});
@@ -129,8 +129,8 @@ test('scheduler uses 10-minute and 1-minute windows, catches late ticks, paginat
  t.mock.method(Meetings,'findAll',async({offset}:any)=>({records:pages[offset?1:0],hasMore:!offset}));
  const calls:string[]=[];t.mock.method(sendMeetingReminder,'execute',async({input}:any)=>{calls.push(input.meetingId+':'+input.reminderType);return {success:true} as any;});
  const result=await sendDueMeetingReminders.execute({input:{cronSecret:process.env.APP_CRON_SECRET},context:{}} as never);
- assert.deepEqual(calls.sort(),['late-minute:ONE_MINUTE','late-ten:TEN_MINUTES','minute:ONE_MINUTE','ten:TEN_MINUTES']);
- assert.equal(result.tenMinuteReminders,2);assert.equal(result.oneMinuteReminders,2);
+ assert.deepEqual(calls.sort(),['late-minute:ONE_MINUTE','minute:ONE_MINUTE','ten:TEN_MINUTES']);
+ assert.equal(result.tenMinuteReminders,1);assert.equal(result.oneMinuteReminders,2);
 });
 
 test('the ten-minute reminder and the one-minute reminder have independent checkpoints', async t => {
@@ -142,7 +142,7 @@ test('the ten-minute reminder and the one-minute reminder have independent check
   assert.equal(ten.sent, 3);
   assert.equal(s.db.documents.get('Meetings/' + s.meeting.id).notification10mSent, true);
   assert.notEqual(s.db.documents.get('Meetings/' + s.meeting.id).notification1mSent, true);
-  t.mock.method(Date, 'now', () => now + 8.5 * 60_000);
+  t.mock.method(Date, 'now', () => now + 9.5 * 60_000);
   const minute = await executeMeetingReminder({ meetingId: s.meeting.id, reminderType: 'ONE_MINUTE' }, manager, s.db, publish);
   assert.equal(minute.sent, 3);
   assert.equal(s.db.documents.get('Meetings/' + s.meeting.id).notification1mSent, true);

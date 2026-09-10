@@ -59,7 +59,7 @@ export async function storeBroadcast(
   url?: string,
   inviteeEmails?: string[],
   segment?: string,
-): Promise<void> {
+): Promise<number> {
   const broadcast: BroadcastData = {
     id: id || (String(Date.now()) + '_' + String(++_idCounter)),
     title,
@@ -76,6 +76,7 @@ export async function storeBroadcast(
   // Await shared persistence before the request ends. App Hosting can stop
   // background work once a response is sent.
   const db = getDb();
+  let inAppRecipients = 0;
   if (db) {
     const batch = db.batch();
     // Remove optional undefined properties for Firestore configurations that
@@ -88,7 +89,7 @@ export async function storeBroadcast(
     // meeting reminders working even when the optional Firestore-trigger
     // worker has not been provisioned. The deterministic notification ID
     // makes a later trigger delivery idempotent.
-    await publishNotification(db, record);
+    inAppRecipients = await publishNotification(db, record);
   }
   _memCache = [..._memCache.filter(item => item.id !== broadcast.id && item.sentAt > Date.now() - DELIVERY_WINDOW_MS), broadcast];
   _memCacheTime = 0; // reread other instances' concurrent dispatches
@@ -99,6 +100,7 @@ export async function storeBroadcast(
   } catch {
     // Non-critical — Firestore is the primary store
   }
+  return inAppRecipients;
 }
 
 export async function getRecentBroadcasts(): Promise<BroadcastData[]> {

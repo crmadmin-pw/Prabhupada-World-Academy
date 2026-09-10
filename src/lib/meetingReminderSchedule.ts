@@ -1,6 +1,10 @@
-/** The PW reminder windows also allow the next scheduler tick to catch up. */
+/**
+ * PW meetings have exactly two reminder moments. Each scheduler window is one
+ * minute wide so a missed 10-minute tick cannot become an unexpected
+ * two-minute (or otherwise late) notification.
+ */
 export const MEETING_REMINDERS = [
-  { type: 'TEN_MINUTES', minutes: 10, sentField: 'notification10mSent', untilMinutes: 1 },
+  { type: 'TEN_MINUTES', minutes: 10, sentField: 'notification10mSent', untilMinutes: 9 },
   { type: 'ONE_MINUTE', minutes: 1, sentField: 'notification1mSent', untilMinutes: 0 },
 ] as const;
 export type MeetingReminderType = typeof MEETING_REMINDERS[number]['type'];

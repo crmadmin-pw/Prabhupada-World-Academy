@@ -25,8 +25,7 @@ import { useEndpointQuery } from '@/hooks/useEndpointQuery';
 
 export default function SuperGuideBvSection() {
   const { profile } = useUserProfile();
-  const userEmail = (profile?.userId || '').toLowerCase();
-  const isPw = profile?.segment === 'PW' || userEmail.includes('prabhupadaworld') || userEmail.includes('hrvd') || userEmail.includes('srilaprabhupadaworld');
+  const isPw = profile?.segment === 'PW' || profile?.isPrabhupadaWorldUser === true;
 
   // Bug 11 fix: compute week options inside component so they're fresh on each render
   const weekOptions = useMemo(() => Array.from({ length: 12 }, (_, i) => {
