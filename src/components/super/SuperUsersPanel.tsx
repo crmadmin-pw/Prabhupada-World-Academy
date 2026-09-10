@@ -725,15 +725,15 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                 <div className="flex flex-wrap items-end gap-3">
               {isSuperAdmin && (
                 <div className="flex flex-col gap-1 min-w-[160px]">
-                  <label className="text-xs font-medium text-muted-foreground">Mentors</label>
+                  <label className="text-xs font-medium text-muted-foreground">Admins</label>
                   <Select value={guideFilter} onValueChange={(v) => setGuideFilter(v || 'all')}>
                     <SelectTrigger className="h-9 w-44 shrink-0">
-                      <SelectValue>{guideFilter === 'all' ? "All Mentors" : guideFilter === '__unassigned__' ? 'Unassigned' : guides.find(g => g.guideId === guideFilter)?.name || 'Select mentor'}</SelectValue>
+                      <SelectValue>{guideFilter === 'all' ? "All Admins" : guideFilter === '__unassigned__' ? 'Unassigned' : guides.find(g => g.guideId === guideFilter)?.name || 'Select admin'}</SelectValue>
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Mentors</SelectItem>
-                      <SelectItem value="__unassigned__">Unassigned</SelectItem>
+                      <SelectItem value="all">All Admins</SelectItem>
                       {guides.map(g => <SelectItem key={g.guideId} value={g.guideId}>{g.name}</SelectItem>)}
+                      <SelectItem value="__unassigned__">Unassigned</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

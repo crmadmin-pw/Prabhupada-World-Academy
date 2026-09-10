@@ -87,7 +87,10 @@ export default function RealtimeSyncProvider() {
           snapshot => {
             if (!snapshot.metadata.fromCache) { notificationsHealthy = true; checkHealthy(); }
             for (const change of snapshot.docChanges()) {
-              if (change.type === 'removed') continue;
+              // Notification inbox documents are immutable messages. Only an
+              // added document is a delivery event; a modified snapshot must
+              // never replay a toast.
+              if (change.type !== 'added') continue;
               const message = change.doc.data();
               if (Number(message.sentAt) < Date.now() - 5 * 60_000) continue;
               triggerInAppOrNativeNotification({ ...message, id: change.doc.id,

@@ -23,6 +23,7 @@ interface Props {
   /** Route for member details when this section is embedded in a scoped dashboard. */
   improvementDetailBasePath?: string;
   segment?: 'PW' | 'FOLK';
+  showManagementTab?: boolean;
 }
 
 type SubTab = 'report' | 'stats' | 'improvement' | 'groups' | 'bvmatrix' | 'sadhana' | 'management';
@@ -38,7 +39,7 @@ function readStoredSubTab(): SubTab {
   return 'bvmatrix';
 }
 
-export default function BvSection({ guideId, bvslMode, residencyIds, groupOptions, summaryOnlyGroups, improvementDetailBasePath, segment }: Props) {
+export default function BvSection({ guideId, bvslMode, residencyIds, groupOptions, summaryOnlyGroups, improvementDetailBasePath, segment, showManagementTab = !bvslMode }: Props) {
   const { profile } = useUserProfile();
   const [subTab, setSubTab] = useState<SubTab>(readStoredSubTab);
 
@@ -63,7 +64,9 @@ export default function BvSection({ guideId, bvslMode, residencyIds, groupOption
     try { sessionStorage.setItem(STORAGE_KEY, subTab); } catch {}
   }, [subTab]);
 
-  const activeSubTab = (!isSupervisorOrAbove && subTab === 'report') ? 'bvmatrix' : subTab;
+  const activeSubTab = !showManagementTab && subTab === 'management'
+    ? 'groups'
+    : ((!isSupervisorOrAbove && subTab === 'report') ? 'bvmatrix' : subTab);
 
   const tabs = [
     { value: 'bvmatrix'    as SubTab, label: 'BV Report',    icon: Grid3X3    },
@@ -72,7 +75,7 @@ export default function BvSection({ guideId, bvslMode, residencyIds, groupOption
     { value: 'stats'       as SubTab, label: 'Stats',        icon: TrendingUp },
     { value: 'improvement' as SubTab, label: 'Improvement',  icon: Lightbulb  },
     { value: 'groups'      as SubTab, label: 'Groups',       icon: Users      },
-    ...(!bvslMode ? [{ value: 'management' as SubTab, label: 'Manage Groups', icon: Settings2 }] : []),
+    ...(showManagementTab ? [{ value: 'management' as SubTab, label: 'Manage Groups', icon: Settings2 }] : []),
   ];
 
   return (

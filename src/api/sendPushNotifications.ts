@@ -3,7 +3,7 @@ import { createEndpoint, PushSubscriptions, Users, SadhanaEntries, AppError } fr
 import { storeBroadcast } from '@/lib/notificationBroadcast';
 import getPwNotificationConfig from './getPwNotificationConfig';
 import { isSadhanaReminderDue } from '@/lib/sadhanaReminderSchedule';
-import { getNotificationDepartment } from '@/lib/notificationDepartment';
+import { getNotificationDepartment, isSadhanaReminderEligibleUser } from '@/lib/notificationDepartment';
 import { claimSadhanaReminderSlot } from '@/lib/sadhanaReminderDispatch';
 
 /** Extract a plain string ID from a Firestore DocumentReference, array, or string. */
@@ -81,6 +81,7 @@ async function fetchActiveUsers(): Promise<any[]> {
         'id', 'userId', 'email', 'phone', 'uid', 'authUid', 'firebaseUid',
         'firebaseUserId', 'firebaseAuthUid', 'status', 'segment', 'fullName',
         'isPrabhupadaWorldUser', 'isFolkUser', 'isFolkLead', 'residencyId',
+        'role', 'isBvAdmin', 'isBvSuperAdmin',
       ],
       limit: 500,
       offset,
@@ -397,6 +398,7 @@ export default createEndpoint({
 
     const isTargetUser = (u: any): boolean => {
       if (!u || u.status !== 'Active') return false;
+      if (!isSadhanaReminderEligibleUser(u)) return false;
       const isSender = (senderId && u.id === senderId) ||
                        (senderEmail && (u.email || '').toLowerCase() === senderEmail);
       if (isSender) return false;

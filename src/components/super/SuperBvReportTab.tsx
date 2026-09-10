@@ -90,7 +90,7 @@ export default function SuperBvReportTab({ isPwAdmin = false, segment, guideId, 
           )}
           {selectedGuide === 'all' && !isPwAdmin
             ? <SuperGuideBvSection />
-            : <BvSection guideId={selectedGuide === 'all' ? 'ALL' : selectedGuide} segment={effectiveSegment} />
+            : <BvSection guideId={selectedGuide === 'all' ? 'ALL' : selectedGuide} segment={effectiveSegment} showManagementTab={false} />
           }
         </div>
       )}</DashboardPanel>

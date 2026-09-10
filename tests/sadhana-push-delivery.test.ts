@@ -56,6 +56,36 @@ test('in-app dispatch reaches missing members with zero native subscriptions, ex
   assert.equal(result.sent, 0);
 });
 
+test('Sadhana reminders exclude PW admins and FOLK guides from every delivery channel', async t => {
+  const users = [
+    { id: 'pw-member', status: 'Active', segment: 'PW', email: 'member@example.invalid' },
+    { id: 'pw-admin', status: 'Active', segment: 'PW', role: 'Admin', email: 'admin@example.invalid' },
+    { id: 'pw-super-admin', status: 'Active', segment: 'PW', isBvSuperAdmin: true, email: 'super@example.invalid' },
+    { id: 'folk-guide', status: 'Active', segment: 'FOLK', role: 'Guide', email: 'guide@example.invalid' },
+    { id: 'folk-super-guide', status: 'Active', segment: 'FOLK', role: 'Super Guide', email: 'super-guide@example.invalid' },
+    { id: 'folk-member', status: 'Active', segment: 'FOLK', email: 'folk-member@example.invalid' },
+  ];
+  t.mock.method(Users, 'findAll', async () => ({ records: users, hasMore: false }));
+  t.mock.method(PushSubscriptions, 'findAll', async () => ({ records: [], hasMore: false }));
+  t.mock.method(SadhanaEntries, 'findAll', async () => ({ records: [], hasMore: false }));
+  let broadcast: any;
+  t.mock.method(fs, 'writeFileSync', (_file: any, body: any) => { broadcast = JSON.parse(String(body)); });
+
+  const pw = await sendPushNotifications.execute({
+    input: { reminderSlot: 'night-1', segment: 'PW', checkDate: '2026-09-06' },
+    context: { user: apiUser({ id: 'sender', isActive: true, capabilities: ['notifications.send'] }) },
+  });
+  assert.equal(pw.inAppRecipients, 1);
+  assert.deepEqual(broadcast.inviteeIds, ['pw-member']);
+
+  const folk = await sendPushNotifications.execute({
+    input: { reminderSlot: 'night-1', segment: 'FOLK', checkDate: '2026-09-06' },
+    context: { user: apiUser({ id: 'sender', segment: 'FOLK', isActive: true, capabilities: ['notifications.send'] }) },
+  });
+  assert.equal(folk.inAppRecipients, 1);
+  assert.deepEqual(broadcast.inviteeIds, ['folk-member']);
+});
+
 test('instant FOLK dispatch reaches only missing FOLK members', async t => {
   const users = [
     { id: 'folk-missing', status: 'Active', segment: 'FOLK', email: 'folk@example.invalid' },

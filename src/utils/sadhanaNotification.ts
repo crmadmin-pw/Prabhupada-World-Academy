@@ -144,6 +144,35 @@ export async function ensureSwRegistered(): Promise<ServiceWorkerRegistration | 
 
 // ── Deduplication set for toasts / in-app notifications ──
 const _seenBroadcastIds = new Set<string>();
+const SEEN_BROADCASTS_SESSION_KEY = 'sadhana_seen_broadcast_ids';
+const MAX_SEEN_BROADCASTS = 200;
+
+/**
+ * A realtime inbox intentionally replays recent messages when a listener is
+ * recreated after refresh. Preserve the IDs for the current browser session
+ * so that replay cannot create another toast. The in-memory Set still handles
+ * simultaneous delivery through Web Push and the realtime inbox.
+ */
+function wasBroadcastSeenInSession(id: string): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const stored = JSON.parse(sessionStorage.getItem(SEEN_BROADCASTS_SESSION_KEY) || '[]');
+    return Array.isArray(stored) && stored.includes(id);
+  } catch {
+    return false;
+  }
+}
+
+function rememberBroadcastForSession(id: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const stored = JSON.parse(sessionStorage.getItem(SEEN_BROADCASTS_SESSION_KEY) || '[]');
+    const previous = Array.isArray(stored) ? stored.filter(item => typeof item === 'string' && item !== id) : [];
+    sessionStorage.setItem(SEEN_BROADCASTS_SESSION_KEY, JSON.stringify([...previous, id].slice(-MAX_SEEN_BROADCASTS)));
+  } catch {
+    // Session storage is optional (for example, privacy-restricted browsers).
+  }
+}
 
 /**
  * Unified trigger for in-app toast (foreground) OR native system notification (background).
@@ -170,11 +199,13 @@ export function triggerInAppOrNativeNotification(data: {
   }
 
   // Deduplication
+  const hasStableId = !!data.id;
   const msgId = data.id || `${data.title}_${data.body}_${Date.now()}`;
-  if (_seenBroadcastIds.has(msgId)) {
+  if (_seenBroadcastIds.has(msgId) || (hasStableId && wasBroadcastSeenInSession(msgId))) {
     return;
   }
   _seenBroadcastIds.add(msgId);
+  if (hasStableId) rememberBroadcastForSession(msgId);
   if (_seenBroadcastIds.size > 100) {
     const first = _seenBroadcastIds.values().next().value;
     if (first !== undefined) _seenBroadcastIds.delete(first);
@@ -245,7 +276,7 @@ export function triggerInAppOrNativeNotification(data: {
         )
       ),
       {
-        id: `sadhana-toast-${Date.now()}`,
+        id: `sadhana-toast-${msgId}`,
         duration: 10000,
       }
     );
