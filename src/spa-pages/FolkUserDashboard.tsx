@@ -6,6 +6,7 @@ import { FEATURES } from '@/config/features';
 import { getUserDashboardData, getSadhanaLeaderboard } from '@/lib/endpoints-sdk';
 import { format } from 'date-fns';
 import { useUserProfile } from '@/contexts/UserProfileContext';
+import { isManagementProfile } from '@/lib/userDashboardRoutes';
 import { DashboardLayout } from '@/layouts';
 import { LoadingPage } from '@/shared';
 import TabTransition from '@/components/TabTransition';
@@ -141,7 +142,7 @@ export default function FolkUserDashboard() {
   }));
 
   const subtitle = [
-    `Ashraya: ${profile?.ashrayLevel || 'Jigyasa'}`,
+    !isManagementProfile(profile) ? `Ashraya: ${profile?.ashrayLevel || 'Jigyasa'}` : null,
     profile?.guideName ? `FOLK Guide: ${profile.guideName}` : null,
     profile?.residencyName && isResident ? `Residency: ${profile.residencyName}` : null,
   ].filter(Boolean).join(' · ');

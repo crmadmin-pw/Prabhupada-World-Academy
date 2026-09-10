@@ -5,13 +5,40 @@ type DepartmentProfile = {
   segment?: string | null;
   isPrabhupadaWorldUser?: boolean;
   isFolkUser?: boolean;
+  role?: unknown;
+  isBvAdmin?: unknown;
+  isBvSuperAdmin?: unknown;
 };
+
+export function normalizeProfileRole(role: unknown): string {
+  return String(role || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+}
+
+/** Management accounts never use the member dashboard, even when a legacy
+ * record still carries the base USER role. */
+export function isManagementProfile(profile?: DepartmentProfile | null): boolean {
+  const role = normalizeProfileRole(profile?.role);
+  const department = getUserDepartment(profile);
+  if (department === 'FOLK') {
+    return ['GUIDE', 'SUPER_GUIDE'].includes(role) ||
+      Boolean(profile?.isBvAdmin || profile?.isBvSuperAdmin);
+  }
+  return ['ADMIN', 'PW_ADMIN', 'SUPER_ADMIN'].includes(role) ||
+    Boolean(profile?.isBvAdmin || profile?.isBvSuperAdmin);
+}
+
+export function getManagementDashboardPath(profile?: DepartmentProfile | null): string {
+  return getUserDepartment(profile) === 'FOLK' ? '/folk-guide/dashboard' : '/pw-admin/dashboard';
+}
 
 /** Explicit department wins over legacy flags; unclassified accounts default to PW. */
 export function getUserDepartment(profile?: DepartmentProfile | null): UserDepartment {
   const segment = profile?.segment?.trim().toUpperCase().replace(/[\s_-]+/g, '');
   if (segment === 'FOLK' || segment === 'PW') return segment;
   if (segment === 'PRABHUPADAWORLD') return 'PW';
+  // Guide roles belong to FOLK. This also keeps legacy Guide records from
+  // falling through to the PW member dashboard when segment is absent.
+  if (['GUIDE', 'SUPER_GUIDE'].includes(normalizeProfileRole(profile?.role))) return 'FOLK';
   if (profile?.isPrabhupadaWorldUser) return 'PW';
   return profile?.isFolkUser ? 'FOLK' : 'PW';
 }
@@ -53,5 +80,9 @@ export function getUserDashboardRedirect(
   location: { pathname: string; search: string; hash: string },
 ): string | null {
   const pathname = getUserDashboardPath(profile);
+  if (isManagementProfile(profile)) {
+    const managementPath = getManagementDashboardPath(profile);
+    return location.pathname === managementPath ? null : `${managementPath}${location.search}${location.hash}`;
+  }
   return location.pathname === pathname ? null : `${pathname}${location.search}${location.hash}`;
 }

@@ -62,10 +62,8 @@ export default createEndpoint({
       : (existingIsBvsl ? 'BVSL' : 'User');
 
     const updates: any = { role: newRole, isSadhanaMentor: shouldTag };
-    if (shouldTag) {
-      updates.pendingRoleNotice = 'Sadhana Mentor';
-      updates.roleNoticeAcknowledged = false;
-    }
+    updates.pendingRoleNotice = shouldTag ? 'Assigned role: Sadhana Mentor' : 'Removed role: Sadhana Mentor';
+    updates.roleNoticeAcknowledged = false;
 
     await Users.update({
       id: userRecord.id,

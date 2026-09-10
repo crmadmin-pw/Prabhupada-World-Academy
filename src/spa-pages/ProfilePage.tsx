@@ -22,7 +22,7 @@ import AshrayJourneyCard from '@/components/crm/AshrayJourneyCard';
 import TripsDuesCard from '@/components/crm/TripsDuesCard';
 import RentHistoryCard from '@/components/crm/RentHistoryCard';
 import { useUserProfile } from '@/contexts/UserProfileContext';
-import { getUserDashboardPath } from '@/lib/userDashboardRoutes';
+import { getManagementDashboardPath, getUserDashboardPath, isManagementProfile } from '@/lib/userDashboardRoutes';
 import PersonalInfoCard from '@/components/profile/PersonalInfoCard';
 import GuideResidencyCard from '@/components/profile/GuideResidencyCard';
 import AccountCard from '@/components/profile/AccountCard';
@@ -103,18 +103,8 @@ export default function ProfilePage() {
         .length
     : 0;
 
-  const isGuideOrAdminOrSuper =
-    profile.role === 'GUIDE' ||
-    profile.role === 'SUPER_GUIDE' ||
-    profile.role === 'ADMIN' ||
-    profile.role === 'SUPER_ADMIN' ||
-    profile.role === 'PW_ADMIN' ||
-    !!(profile as any).isBvAdmin ||
-    !!(profile as any).isBvSuperAdmin;
-
   const isSuperAdmin =
-    profile.role === 'SUPER_ADMIN' ||
-    profile.role === 'SUPER_GUIDE' ||
+    ['SUPER_ADMIN', 'SUPER_GUIDE'].includes(String(profile.role || '').toUpperCase().replace(/[\s-]+/g, '_')) ||
     !!(profile as any).isBvSuperAdmin;
 
   const isBvAdminUser =
@@ -126,17 +116,12 @@ export default function ProfilePage() {
   // Admin profiles are operational accounts rather than member-progress
   // profiles. Keep the spiritual-progress cards and member CRM sections out
   // of both Admin and Super Admin views (without also hiding them for Guides).
-  const isAdminOrSuperAdmin =
-    profile.role === 'ADMIN' ||
-    profile.role === 'SUPER_ADMIN' ||
-    profile.role === 'PW_ADMIN' ||
-    !!(profile as any).isBvAdmin ||
-    !!(profile as any).isBvSuperAdmin;
+  const isManagement = isManagementProfile(profile as any);
 
   const isPwUser = !!(profile as any).isPrabhupadaWorldUser || profile.segment === 'PW';
   const showGuideResidencyCard = !isPwUser && !isBvAdminUser;
   const isFolk = profile.segment === 'FOLK';
-  const adminDashboardPath = isFolk ? '/folk-guide/dashboard' : '/pw-admin/dashboard';
+  const adminDashboardPath = getManagementDashboardPath(profile as any);
   // A profile may have both guide and super-guide access. In that case the
   // residency card still represents only the residencies assigned to them as
   // a guide; it must not expand to every FOLK residency.
@@ -157,15 +142,15 @@ export default function ProfilePage() {
       <main className="container mx-auto px-4 py-6 max-w-7xl space-y-6">
         {/* SAD-C02 FIX: isResident requires guide-verified approval + valid residency ID */}
         <ProfileHero fullName={profile.fullName} email={user?.email || ''} segment={profile.segment}
-          isResident={!!(profile.residencyGuideVerified && profile.selectedFolkResidency)} ashrayLevel={isSuperAdmin ? null : profile.ashrayLevel}
+          isResident={!!(profile.residencyGuideVerified && profile.selectedFolkResidency)} ashrayLevel={isManagement ? null : profile.ashrayLevel}
           role={profile.role} isBvsl={profile.isBvsl} isSadhanaMentor={profile.isSadhanaMentor}
           isFolkLead={profile.isFolkLead} isTripCoordinator={profile.isTripCoordinator} isBvMentor={profile.isBvMentor}
-          isSuperAdmin={isSuperAdmin} />
+          isSuperAdmin={isSuperAdmin} isBvAdmin={!!(profile as any).isBvAdmin} isBvSuperAdmin={!!(profile as any).isBvSuperAdmin} />
 
         <div className="grid md:grid-cols-3 gap-6">
           <PersonalInfoCard email={user?.email || ''} fullName={profile.fullName}
-            phone={String(profile.phone || '')} ashrayLevel={isSuperAdmin ? null : profile.ashrayLevel}
-            isSuperAdmin={isSuperAdmin}
+            phone={String(profile.phone || '')} ashrayLevel={isManagement ? null : profile.ashrayLevel}
+            isSuperAdmin={isSuperAdmin} isManagementProfile={isManagement}
             onUpdated={() => handleProfileChanged()} />
           {showGuideResidencyAssignmentCard && (
             <GuideResidencyAssignmentCard isSuperGuide={isSuperAdmin} />
@@ -193,7 +178,7 @@ export default function ProfilePage() {
         </div>
 
         {/* Sadhana Graph & Stat cards — member profiles only */}
-        {!isAdminOrSuperAdmin && metrics && (
+        {!isManagement && metrics && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <StatMini icon={Flame} iconColor="text-orange-500"
               value={metrics.currentStreak} label="Sadhana Streak" />
@@ -215,22 +200,7 @@ export default function ProfilePage() {
           const canEditRent = ['GUIDE', 'SUPER_GUIDE'].includes(role) || !!profile.isFolkLead;
           const isResident = !!(profile.residencyGuideVerified && profile.selectedFolkResidency);
 
-          if (isAdminOrSuperAdmin) {
-            // Admins only see Rent History when it applies to their own residency.
-            if (!isResident || !crmData.rentPayments || crmData.rentPayments.length === 0) return null;
-            return (
-              <div className="space-y-4">
-                <RentHistoryCard
-                  userId={profile.userId || ''}
-                  rentPayments={crmData.rentPayments}
-                  canEdit={canEditRent}
-                  isOwnProfile={true}
-                  isResident={isResident}
-                  onRefresh={loadAll}
-                />
-              </div>
-            );
-          }
+          if (isManagement) return null;
 
           const canEditTrips = ['GUIDE', 'SUPER_GUIDE'].includes(role) || !!profile.isTripCoordinator;
           return (
@@ -256,7 +226,7 @@ export default function ProfilePage() {
         })()}
 
         {/* Ashraya Checklist — member profiles only */}
-        {!isAdminOrSuperAdmin && ashrayData && ashrayData.practiceGroups.length > 0 && (
+        {!isManagement && ashrayData && ashrayData.practiceGroups.length > 0 && (
           <AshrayCriteriaGrid currentLevel={profile.ashrayLevel || 'Jigyasa'}
             userId={profile.userId} practiceGroups={ashrayData.practiceGroups} />
         )}

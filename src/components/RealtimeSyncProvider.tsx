@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect } from 'react';
 import { dashboardScope } from '@/lib/dashboardScope';
 import { useAuth } from '@/lib/auth-sdk';
 import { useUserProfile } from '@/contexts/UserProfileContext';
-import { receiveEndpointRevision, setEndpointPermissionScope, subscribeEndpointCache, getEndpointRealtimeTokens, forgetEndpointRevisionToken } from '@/lib/app-endpoints-sdk';
+import { receiveEndpointRevision, setEndpointPermissionScope, subscribeEndpointCache, getEndpointRealtimeTokens, getRealtimeEndpointNames, forgetEndpointRevisionToken } from '@/lib/app-endpoints-sdk';
 import { getRealtimeFirestore } from '@/lib/realtimeFirestore';
 import { realtimeListenerBatches } from '@/lib/realtimeListenerBatches';
 import { invalidateCache } from '@/utils/cache';
@@ -59,10 +59,17 @@ export default function RealtimeSyncProvider() {
               firestore.query(firestore.collection(db, 'RealtimeClients', uid, 'queries'), firestore.where(firestore.documentId(), 'in', part)),
               { includeMetadataChanges: true }, snapshot => {
                 if (!snapshot.metadata.fromCache) { healthyStreams.add(key); checkHealthy(); }
+                let profileChanged = false;
                 for (const change of snapshot.docChanges()) {
                   if (change.type === 'removed') forgetEndpointRevisionToken(change.doc.id);
-                  else receiveEndpointRevision(change.doc.id, String(change.doc.data().version || ''));
+                  else {
+                    if (getRealtimeEndpointNames([change.doc.id]).includes('getUserProfile')) {
+                      profileChanged = true;
+                    }
+                    receiveEndpointRevision(change.doc.id, String(change.doc.data().version || ''));
+                  }
                 }
+                if (profileChanged) window.dispatchEvent(new Event('pwa_profile_refresh_needed'));
                 // TTL may have removed an abandoned query while offline.
                 // A server snapshot, not a cache-only snapshot, proves absence.
                 if (!snapshot.metadata.fromCache) for (const token of part) {

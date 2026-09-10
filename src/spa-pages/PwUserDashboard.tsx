@@ -5,6 +5,7 @@ import { BookOpen, Leaf, Trophy } from 'lucide-react';
 import { getUserDashboardData, getSadhanaLeaderboard } from '@/lib/endpoints-sdk';
 import { format } from 'date-fns';
 import { useUserProfile } from '@/contexts/UserProfileContext';
+import { isManagementProfile } from '@/lib/userDashboardRoutes';
 import { DashboardLayout } from '@/layouts';
 import { LoadingPage } from '@/shared';
 import TabTransition from '@/components/TabTransition';
@@ -144,7 +145,9 @@ export default function PwUserDashboard() {
     flagOs: e.flagOs ?? false,
   }));
 
-  const subtitle = `Ashraya: ${profile?.ashrayLevel || 'Jigyasa'}`;
+  const subtitle = isManagementProfile(profile)
+    ? ''
+    : `Ashraya: ${profile?.ashrayLevel || 'Jigyasa'}`;
 
   return (
     <DashboardLayout

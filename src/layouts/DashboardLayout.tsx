@@ -7,7 +7,7 @@ import { Menu, LogOut, User, BookOpen, Users, Award, Network, ShieldAlert } from
 import { useUserProfile } from '../contexts/UserProfileContext';
 import TransferNoticeModal from '@/components/TransferNoticeModal';
 import { useMeetingReminderScheduler } from '@/hooks/useMeetingReminderScheduler';
-import { getDepartmentLandingUrl, getUserDashboardPath } from '@/lib/userDashboardRoutes';
+import { getDepartmentLandingUrl, getUserDashboardPath, isManagementProfile } from '@/lib/userDashboardRoutes';
 
 const FOLK_LOGO = 'https://images.fillout.com/orgid-615562/flowpublicid-u91plgmzcu/widgetid-default/q1fJEkENG5kbvfjYaFbDeT/pasted-image-1773145742081.png';
 
@@ -83,7 +83,7 @@ export default function DashboardLayout({
   const showRoleBadge = !!(effectiveRole && ROLE_BADGE_LABELS[effectiveRole]);
 
   if (profile) {
-    const isBvAdmin = !!(
+    const isBvAdmin = isManagementProfile(profile) || !!(
       profile?.isBvSuperAdmin ||
       profile?.isBvAdmin ||
       (profile?.role as string) === 'ADMIN' ||
@@ -171,7 +171,7 @@ export default function DashboardLayout({
     }
 
     // 5. My Sadhana (Placed just before Profile & Logout) — Only for regular members/users who fill sadhana
-    if (!isBvAdmin && !isSuperAdminUser) {
+    if (!isManagementProfile(profile) && !isSuperAdminUser) {
       const personalDashboardPath = getUserDashboardPath(profile);
       const isMySadhanaActive = [personalDashboardPath, '/sadhana', '/history', '/bhaktivriksha'].includes(currentPath);
       tabItems.push({

@@ -152,6 +152,17 @@ export function getEndpointRealtimeTokens(): string[] {
   return [...new Set([...queryTokens.values()].map(query => query.token))].sort();
 }
 
+/** Return the endpoint names represented by realtime signal documents. */
+export function getRealtimeEndpointNames(tokens: string[]): string[] {
+  const tokenSet = new Set(tokens);
+  return [...new Set(
+    [...queryTokens.entries()]
+      .filter(([, query]) => tokenSet.has(query.token))
+      .map(([key]) => queryMetadata.get(key)?.name)
+      .filter((name): name is string => !!name)
+  )];
+}
+
 export function forgetEndpointRevisionToken(token: string): void {
   const keys = [...queryTokens].filter(([, query]) => query.token === token).map(([key]) => key);
   for (const key of keys) queryTokens.delete(key);

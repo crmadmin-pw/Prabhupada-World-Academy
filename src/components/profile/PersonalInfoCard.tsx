@@ -16,10 +16,11 @@ interface Props {
   phone: string;
   ashrayLevel?: string | null;
   isSuperAdmin?: boolean;
+  isManagementProfile?: boolean;
   onUpdated: () => void;
 }
 
-export default function PersonalInfoCard({ email, fullName, phone, ashrayLevel, isSuperAdmin, onUpdated }: Props) {
+export default function PersonalInfoCard({ email, fullName, phone, ashrayLevel, isSuperAdmin, isManagementProfile, onUpdated }: Props) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ fullName, phone, ashrayLevel: ashrayLevel || '' });
@@ -92,7 +93,7 @@ export default function PersonalInfoCard({ email, fullName, phone, ashrayLevel, 
           <Label className="text-xs text-muted-foreground">Email (read-only)</Label>
           <p className="font-medium text-muted-foreground mt-0.5">{email}</p>
         </div>
-        {!isSuperAdmin && (
+        {!isSuperAdmin && !isManagementProfile && (
           <div>
             <Label className="text-xs text-muted-foreground">Ashraya Level</Label>
             {editing ? (

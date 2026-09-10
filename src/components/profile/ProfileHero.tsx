@@ -18,11 +18,16 @@ interface Props {
   isTripCoordinator?: boolean;
   isBvMentor?: boolean;
   isSuperAdmin?: boolean;
+  isBvAdmin?: boolean;
+  isBvSuperAdmin?: boolean;
   segment?: 'PW' | 'FOLK' | null;
 }
 
-export default function ProfileHero({ fullName, email, isResident, ashrayLevel, role, isBvsl, isSadhanaMentor, isFolkLead, isTripCoordinator, isBvMentor, isSuperAdmin, segment }: Props) {
+export default function ProfileHero({ fullName, email, isResident, ashrayLevel, role, isBvsl, isSadhanaMentor, isFolkLead, isTripCoordinator, isBvMentor, isSuperAdmin, isBvAdmin, isBvSuperAdmin, segment }: Props) {
   const [exporting, setExporting] = useState(false);
+  const normalizedRole = String(role || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+  const isManagement = Boolean(isSuperAdmin || isBvAdmin || isBvSuperAdmin ||
+    ['GUIDE', 'SUPER_GUIDE', 'ADMIN', 'SUPER_ADMIN', 'PW_ADMIN'].includes(normalizedRole));
 
   const handleExport = async () => {
     setExporting(true);
@@ -82,13 +87,12 @@ export default function ProfileHero({ fullName, email, isResident, ashrayLevel, 
         <div className="flex flex-wrap gap-2 mt-2">
           {(() => {
             const isFolk = segment === 'FOLK';
+            const normalizedRole = String(role || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
             let roleBadgeText = '';
-            if (isSuperAdmin) {
+            if (isSuperAdmin || isBvSuperAdmin || normalizedRole === 'SUPER_ADMIN' || normalizedRole === 'SUPER_GUIDE') {
               roleBadgeText = isFolk ? '👑 Super Guide' : '👑 Super Admin';
-            } else if (role === 'Guide' || role === 'GUIDE' || role === 'Admin' || role === 'ADMIN') {
+            } else if (normalizedRole === 'GUIDE' || normalizedRole === 'ADMIN' || normalizedRole === 'PW_ADMIN' || isBvAdmin) {
               roleBadgeText = isFolk ? 'Guide' : 'Admin';
-            } else if (role === 'Super Guide' || role === 'SUPER_GUIDE') {
-              roleBadgeText = '👑 Super Guide';
             }
             if (!roleBadgeText) return null;
             return (
@@ -103,10 +107,10 @@ export default function ProfileHero({ fullName, email, isResident, ashrayLevel, 
           {isFolkLead && <Badge className="bg-blue-100 text-blue-800 border border-blue-300">👑 FOLK Lead</Badge>}
           {isTripCoordinator && <Badge className="bg-indigo-100 text-indigo-800 border border-indigo-300">🗺️ Trip Coordinator</Badge>}
           {isResident && <Badge variant="secondary">🏠 Resident</Badge>}
-          {!isSuperAdmin && ashrayLevel && <Badge variant="secondary">✨ {ashrayLevel}</Badge>}
+          {!isSuperAdmin && !isBvAdmin && !isBvSuperAdmin && !['GUIDE', 'SUPER_GUIDE', 'ADMIN', 'SUPER_ADMIN', 'PW_ADMIN'].includes(String(role || '').trim().toUpperCase().replace(/[\s-]+/g, '_')) && ashrayLevel && <Badge variant="secondary">✨ {ashrayLevel}</Badge>}
         </div>
       </div>
-      {!isSuperAdmin && (
+      {!isManagement && (
         <Button variant="outline" size="sm" onClick={handleExport} disabled={exporting} className="shrink-0">
           {exporting ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Download className="w-4 h-4 mr-1" />}
           Export
