@@ -255,6 +255,7 @@ async function sendPush(
       'Content-Encoding': 'aes128gcm',
       'Content-Length': String(body.length),
       TTL: '86400',
+      Urgency: 'high',
       Authorization: `vapid t=${token}, k=${vapidPubB64}`,
     },
     body: body.buffer as ArrayBuffer,

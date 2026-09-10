@@ -92,3 +92,16 @@ test('visible app receives the in-app message without a duplicate native notific
   assert.equal(messages.length, 1);
   assert.equal(worker.notifications.length, 0);
 });
+
+test('an unfocused client receives native delivery even if Chrome reports it as visible', async () => {
+  const worker = loadServiceWorker();
+  worker.setClients([{
+    focused: false,
+    visibilityState: 'visible',
+    postMessage: () => {},
+  }]);
+
+  await worker.push({ id: 'suspended-pwa-reminder', title: 'Meeting soon', body: 'Join now' });
+
+  assert.equal(worker.notifications.length, 1);
+});

@@ -69,10 +69,13 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true })
       .then((windowClients) => {
-        let hasVisibleClient = false;
+        let hasFocusedClient = false;
         for (const client of windowClients) {
-          if (client.focused || client.visibilityState === 'visible') {
-            hasVisibleClient = true;
+          // A minimized/suspended Chrome or installed-PWA window can remain
+          // `visible` even though it is not in the foreground. Only a focused
+          // window may replace the native notification with an in-app toast.
+          if (client.focused === true) {
+            hasFocusedClient = true;
           }
           try {
             client.postMessage({
@@ -90,9 +93,9 @@ self.addEventListener('push', (event) => {
           }
         }
 
-        // Visible pages render the in-app reminder. Backgrounded or closed
+        // Focused pages render the in-app reminder. Backgrounded or closed
         // pages receive the browser's native notification.
-        if (!hasVisibleClient) {
+        if (!hasFocusedClient) {
           return self.registration.showNotification(titleToUse, {
             body: bodyToUse,
             icon: ICON_URL,
@@ -101,6 +104,8 @@ self.addEventListener('push', (event) => {
             data: { url: urlToUse, slot, inviteeIds: data.inviteeIds || [] },
             renotify: false,
             requireInteraction: true,
+            silent: false,
+            timestamp: Date.now(),
           });
         }
       })
@@ -113,6 +118,8 @@ self.addEventListener('push', (event) => {
           tag: notificationTag(slot, data.id),
           data: { url: urlToUse, slot },
           renotify: false,
+          silent: false,
+          timestamp: Date.now(),
         });
       })
   );

@@ -72,7 +72,7 @@ export default function BvSection({ guideId, bvslMode, residencyIds, groupOption
     { value: 'stats'       as SubTab, label: 'Stats',        icon: TrendingUp },
     { value: 'improvement' as SubTab, label: 'Improvement',  icon: Lightbulb  },
     { value: 'groups'      as SubTab, label: 'Groups',       icon: Users      },
-    ...(!bvslMode ? [{ value: 'management' as SubTab, label: 'Management', icon: Settings2 }] : []),
+    ...(!bvslMode ? [{ value: 'management' as SubTab, label: 'Manage Groups', icon: Settings2 }] : []),
   ];
 
   return (

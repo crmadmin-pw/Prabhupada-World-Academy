@@ -196,11 +196,11 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
       <Card>
         <CardHeader className="pb-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 space-y-0">
           <div>
-            <CardTitle className="text-lg font-bold flex items-center gap-2">
-              <ShieldCheck className="w-5 h-5 text-primary" /> Bhakti Vriksha Groups & Role Management
+              <CardTitle className="text-lg font-bold flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-primary" /> Reading Group Administration
             </CardTitle>
             <CardDescription className="text-xs">
-              Monitor reading groups, view group details, create new groups, and assign roles within the Bhakti Vriksha hierarchy.
+              Create groups, assign RGFs, activate or deactivate groups, and open group details. Use the Groups tab for reporting and monitoring.
             </CardDescription>
           </div>
           <div className="flex gap-2">

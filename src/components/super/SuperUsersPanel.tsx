@@ -40,6 +40,42 @@ type ResidentLikeUser = Partial<User> & {
   residency?: string | string[] | null;
 };
 
+/**
+ * Guide assignments have existed in a few shapes over time (canonical userId,
+ * Firebase/document id, email, and occasionally a display name). Keep the
+ * filter tolerant of those legacy values while using the stable guideId for
+ * new selections.
+ */
+function identityRefs(...values: unknown[]): Set<string> {
+  const refs = new Set<string>();
+  const visit = (value: unknown) => {
+    if (value == null) return;
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (typeof value === 'object') {
+      const record = value as Record<string, unknown>;
+      visit(record.id);
+      visit(record.userId);
+      visit(record.guideId);
+      visit(record.email);
+      visit(record.name);
+      visit(record.fullName);
+      return;
+    }
+    const normalized = String(value).trim().toLowerCase();
+    if (normalized) refs.add(normalized);
+  };
+  values.forEach(visit);
+  return refs;
+}
+
+function hasSharedIdentity(left: Set<string>, right: Set<string>): boolean {
+  for (const value of left) if (right.has(value)) return true;
+  return false;
+}
+
 function SortIcon({ col, sortKey, sortDir }: { col: SortKey; sortKey: SortKey; sortDir: SortDir }) {
   if (sortKey !== col) return <ArrowUpDown className="w-3 h-3 ml-1 opacity-40 inline" />;
   return sortDir === 'asc' ? <ArrowUp className="w-3 h-3 ml-1 inline" /> : <ArrowDown className="w-3 h-3 ml-1 inline" />;
@@ -575,8 +611,43 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
 
     // Never apply a stale/hidden guide filter to an Admin's department-wide
     // directory. Group and guide assignment are optional for approved users.
-    const effectiveGuideFilter = isDepartmentAdmin ? 'all' : guideFilter;
-    if (effectiveGuideFilter !== 'all') r = r.filter(u => u._guideId === effectiveGuideFilter);
+    // Super Admins can inspect the complete directory by mentor. A regular
+    // department admin is already scoped to their own hierarchy and does not
+    // need a second cross-mentor filter.
+    const effectiveGuideFilter = isSuperAdmin ? guideFilter : (isDepartmentAdmin ? 'all' : guideFilter);
+    if (effectiveGuideFilter !== 'all') {
+      const guideAssignmentValues = (u: User) => [
+        u._guideId,
+        (u as any).selectedGuideId,
+        (u as any).guideId,
+        (u as any).guide,
+        (u as any).mentorId,
+        (u as any).selectedGuideName,
+        (u as any).guideName,
+        (u as any).mentorName,
+        (u as any).selectedMentorName,
+        u._guideName,
+      ];
+      if (effectiveGuideFilter === '__unassigned__') {
+        r = r.filter(u => {
+          const refs = identityRefs(...guideAssignmentValues(u));
+          return refs.size === 0 || [...refs].every(ref => ['unassigned', 'none', 'na', 'n/a', 'null'].includes(ref));
+        });
+      } else {
+        const selectedGuide = guides.find(g => g.guideId === effectiveGuideFilter);
+        const selectedRefs = identityRefs(
+          effectiveGuideFilter,
+          selectedGuide?.guideId,
+          (selectedGuide as any)?.id,
+          selectedGuide?.email,
+          selectedGuide?.name,
+        );
+        r = r.filter(u => hasSharedIdentity(
+          selectedRefs,
+          identityRefs(...guideAssignmentValues(u)),
+        ));
+      }
+    }
     if (ashrayFilter !== 'all') r = r.filter(u => u.ashrayLevel === ashrayFilter);
     if (!isPwAdmin) {
       if (residentFilter === 'residents') r = r.filter(isFolkResidentUser);
@@ -604,7 +675,7 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
       if (typeof av === 'string') return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
       return sortDir === 'asc' ? av - bv : bv - av;
     });
-  }, [users, guideFilter, ashrayFilter, residentFilter, search, sortKey, sortDir, isPwAdmin, isDepartmentAdmin, myGuideId, profile, userEmail]);
+  }, [users, guides, guideFilter, ashrayFilter, residentFilter, search, sortKey, sortDir, isPwAdmin, isDepartmentAdmin, isSuperAdmin, myGuideId, profile, userEmail]);
 
   useEffect(() => { setPage(1); }, [search, guideFilter, ashrayFilter, residentFilter, sortKey, sortDir]);
   const pageSize = mobile ? 10 : 50;
@@ -657,10 +728,11 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                   <label className="text-xs font-medium text-muted-foreground">Mentors</label>
                   <Select value={guideFilter} onValueChange={(v) => setGuideFilter(v || 'all')}>
                     <SelectTrigger className="h-9 w-44 shrink-0">
-                      <SelectValue>{guideFilter === 'all' ? "All Mentors" : guides.find(g => g.guideId === guideFilter)?.name}</SelectValue>
+                      <SelectValue>{guideFilter === 'all' ? "All Mentors" : guideFilter === '__unassigned__' ? 'Unassigned' : guides.find(g => g.guideId === guideFilter)?.name || 'Select mentor'}</SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Mentors</SelectItem>
+                      <SelectItem value="__unassigned__">Unassigned</SelectItem>
                       {guides.map(g => <SelectItem key={g.guideId} value={g.guideId}>{g.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
@@ -698,7 +770,7 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                 </div>
               </FilterPanel>
             </div>
-            {(search !== '' || ashrayFilter !== 'all' || residentFilter !== 'all') && (
+            {(search !== '' || guideFilter !== 'all' || ashrayFilter !== 'all' || residentFilter !== 'all') && (
               <p className="text-xs text-muted-foreground">
                 {filtered.length} of {baseUsers.length} members shown
               </p>

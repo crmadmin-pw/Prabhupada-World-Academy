@@ -152,6 +152,9 @@ async function sendPush(
       'Content-Encoding': 'aes128gcm',
       'Content-Length': String(body.length),
       TTL: '600',
+      // Meeting reminders are time-critical. High urgency allows Google/Chrome
+      // to wake a backgrounded or installed PWA promptly under battery saving.
+      Urgency: 'high',
       Authorization: `vapid t=${token}, k=${vapidPubB64}`,
     },
     body: body.buffer as ArrayBuffer,

@@ -24,15 +24,22 @@ function worker(windows = []) {
   return {send, native, messages, listeners};
 }
 
-test('visible app receives the in-app message, while hidden and closed app receive native notifications', async () => {
-  for (const state of ['visible', 'hidden', 'closed']) {
-    const app = worker(state === 'closed' ? [] : [{visibilityState: state, focused: false}]);
+test('only a focused app suppresses native delivery; unfocused, hidden, and closed apps receive it', async () => {
+  const cases = [
+    { state: 'focused', windows: [{visibilityState: 'visible', focused: true}], native: 0 },
+    // Chrome can retain a stale `visible` state for a minimized/suspended PWA.
+    { state: 'unfocused', windows: [{visibilityState: 'visible', focused: false}], native: 1 },
+    { state: 'hidden', windows: [{visibilityState: 'hidden', focused: false}], native: 1 },
+    { state: 'closed', windows: [], native: 1 },
+  ];
+  for (const item of cases) {
+    const app = worker(item.windows);
     await app.send({id: 'folk-reminder', title: 'FOLK reminder', body: 'Submit Sadhana', url: '/sadhana'});
-    assert.equal(app.native.length, state === 'visible' ? 0 : 1);
-    assert.equal(app.messages.length, state === 'closed' ? 0 : 1);
+    assert.equal(app.native.length, item.native, item.state);
+    assert.equal(app.messages.length, item.state === 'closed' ? 0 : 1);
     if (app.native.length) assert.equal(app.native[0].data.url, '/sadhana');
     await app.send({id: 'folk-reminder', title: 'FOLK reminder'});
-    assert.equal(app.native.length, state === 'visible' ? 0 : 1, 'the same push is not shown twice');
+    assert.equal(app.native.length, item.native, 'the same push is not shown twice');
   }
 });
 
