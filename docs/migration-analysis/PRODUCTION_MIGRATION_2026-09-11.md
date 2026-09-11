@@ -1,6 +1,11 @@
 # Zite to Firestore production migration
 
-Status: **complete and verified**
+Status: **storage migration complete; functional repair pending production approval**
+
+The original write/read-back verification below proves storage-level delivery,
+not application-level relationship integrity. A later read-only functional
+audit found canonical-ID and access-continuity gaps. The repair has passed an
+isolated rehearsal, but no repair writes have been made to production.
 
 - Production run: `mig_634969d4291d52ed01beb0b8`
 - Zite active-row watermark: `2026-09-11T00:54:54Z`

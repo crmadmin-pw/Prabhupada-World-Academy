@@ -44,6 +44,28 @@ node --import tsx scripts/zite-firestore-migration/applyMigration.ts <run-dir> <
 node --import tsx scripts/zite-firestore-migration/verifyAppliedMigration.ts <run-dir> <database-id> <run-id>
 ```
 
+## Functional repair workflow
+
+The post-migration functional audit found relationship fields that were copied
+as legacy display values instead of canonical destination document IDs. Repair
+planning and rehearsal use a separate, production-disabled workflow:
+
+```bash
+node --import tsx scripts/zite-firestore-migration/snapshotFirebaseAuth.ts <repair-run-dir>
+node --import tsx scripts/zite-firestore-migration/planFunctionalRepair.ts <base-run-dir> <repair-run-dir>
+node --import tsx scripts/zite-firestore-migration/verifyFunctionalRepair.ts <repair-run-dir>
+node --import tsx scripts/zite-firestore-migration/exportFirestore.ts <repair-run-dir> <gs://backup-prefix>
+node --import tsx scripts/zite-firestore-migration/restoreFirestoreExport.ts <rehearsal-db> <gs://backup-prefix> [evidence-file]
+node --import tsx scripts/zite-firestore-migration/rebaseFunctionalRepairForRehearsal.ts <repair-run-dir> <rehearsal-db> <repair-run-id> <source-plan-hash>
+node --import tsx scripts/zite-firestore-migration/applyFunctionalRepair.ts <repair-run-dir> <rehearsal-db> <repair-run-id> <source-plan-hash> --execute --rehearsal
+node --import tsx scripts/zite-firestore-migration/verifyAppliedFunctionalRepair.ts <repair-run-dir> <rehearsal-db> <repair-run-id> <source-plan-hash>
+```
+
+`applyFunctionalRepair.ts` has no production mode and rejects `(default)`.
+Managed Firestore import changes document update times, so the source plan is
+never weakened or edited: `rebaseFunctionalRepairForRehearsal.ts` first verifies
+every captured before-value and then creates a database-bound rehearsal plan.
+
 `snapshotWriter.mjs` and `mergeSnapshotDelta.mjs` are transport helpers used by the read-only Zite extraction. The source snapshot must use a fixed `T0`, followed by a bounded delta merge through that watermark.
 
 ## Apply prerequisites

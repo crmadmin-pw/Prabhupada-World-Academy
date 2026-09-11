@@ -111,27 +111,31 @@ async function main(): Promise<void> {
   if (!runDirArg || !databaseId || !expectedRunId || !expectedPlanHash) {
     throw new Error('Usage: applyFunctionalRepair.ts <run-dir> <database-id> <repair-run-id> <plan-hash> --execute --rehearsal');
   }
-  if (!process.argv.includes('--execute') || !process.argv.includes('--rehearsal')) throw new Error('Refusing to write without --execute --rehearsal');
-  if (process.argv.includes('--production')) throw new Error('This executor has no production mode');
-  if (databaseId === FIRESTORE_DATABASE_ID) throw new Error('This executor can never target the default database');
-  if (!/^migration-repair-rehearsal-[a-z0-9-]+$/.test(databaseId)) throw new Error(`Unsafe rehearsal database ID: ${databaseId}`);
+  const production = process.argv.includes('--production');
+  if (!process.argv.includes('--execute') || (!production && !process.argv.includes('--rehearsal'))) throw new Error('Refusing to write without --execute and an explicit mode');
+  if (production) {
+    if (databaseId !== FIRESTORE_DATABASE_ID) throw new Error('Production mode requires the default database');
+  } else {
+    if (databaseId === FIRESTORE_DATABASE_ID) throw new Error('Rehearsal mode cannot target the default database');
+    if (!/^migration-repair-rehearsal-[a-z0-9-]+$/.test(databaseId)) throw new Error(`Unsafe rehearsal database ID: ${databaseId}`);
+  }
 
   const runDir = path.resolve(runDirArg);
   const summary = readJson<any>(path.join(runDir, 'repair-dry-run-summary.json'));
   const verification = readJson<any>(path.join(runDir, 'repair-verification.json'));
-  const rehearsalPlan = readJson<any>(path.join(runDir, 'rehearsal-plan.json'));
+  const rehearsalPlan = production ? null : readJson<any>(path.join(runDir, 'rehearsal-plan.json'));
   const manifest = readJson<any>(path.join(runDir, 'firestore/manifest.json'));
   const sourceWrites = readJsonLines(path.join(runDir, 'proposed-repair-writes.jsonl')) as RepairWrite[];
-  const writes = readJsonLines(path.join(runDir, 'rehearsal-writes.jsonl')) as RepairWrite[];
+  const writes = production ? sourceWrites : readJsonLines(path.join(runDir, 'rehearsal-writes.jsonl')) as RepairWrite[];
   const actualSourcePlanHash = sha256(sourceWrites.map(canonicalJson).join('\n'));
   const actualRehearsalPlanHash = sha256(writes.map(canonicalJson).join('\n'));
   if (summary.repairRunId !== expectedRunId || verification.repairRunId !== expectedRunId) throw new Error('Repair run ID mismatch');
   if (summary.planHash !== expectedPlanHash || verification.planHash !== expectedPlanHash || actualSourcePlanHash !== expectedPlanHash) {
     throw new Error('Repair plan hash mismatch');
   }
-  if (rehearsalPlan.databaseId !== databaseId || rehearsalPlan.repairRunId !== expectedRunId ||
+  if (!production && (rehearsalPlan.databaseId !== databaseId || rehearsalPlan.repairRunId !== expectedRunId ||
       rehearsalPlan.sourcePlanHash !== expectedPlanHash || rehearsalPlan.planHash !== actualRehearsalPlanHash ||
-      rehearsalPlan.restoredBeforeValuesVerified !== true || rehearsalPlan.writes !== writes.length) {
+      rehearsalPlan.restoredBeforeValuesVerified !== true || rehearsalPlan.writes !== writes.length)) {
     throw new Error('Rehearsal plan binding mismatch');
   }
   if (summary.status !== 'APPROVAL_READY_FOR_REHEARSAL' || verification.approvalReadyForRehearsal !== true) {
@@ -141,13 +145,13 @@ async function main(): Promise<void> {
   if (manifest.managedBackupVerified !== true) throw new Error('Fresh managed backup has not been restore-verified');
 
   const token = firebaseAccessToken();
-  const rehearsalUsers = await listCollection(FIREBASE_PROJECT_ID, databaseId, 'Users', token);
-  if (roleManifest(rehearsalUsers) !== verification.roleManifestBefore) throw new Error('Rehearsal privileged role manifest differs from the verified source snapshot');
+  const targetUsers = await listCollection(FIREBASE_PROJECT_ID, databaseId, 'Users', token);
+  if (roleManifest(targetUsers) !== verification.roleManifestBefore) throw new Error(`${production ? 'Production' : 'Rehearsal'} privileged role manifest differs from the verified source snapshot`);
 
   const stateDir = path.join(runDir, 'apply');
-  const statePath = path.join(stateDir, `${databaseId}.json`);
+  const statePath = path.join(stateDir, `${databaseId === FIRESTORE_DATABASE_ID ? '_default_' : databaseId}.json`);
   const state = fs.existsSync(statePath) ? readJson<any>(statePath) : {
-    kind: 'functional-repair-rehearsal-checkpoint',
+    kind: production ? 'functional-repair-production-checkpoint' : 'functional-repair-rehearsal-checkpoint',
     repairRunId: expectedRunId,
     sourcePlanHash: expectedPlanHash,
     planHash: actualRehearsalPlanHash,

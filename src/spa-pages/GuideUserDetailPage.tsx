@@ -146,6 +146,7 @@ export default function GuideUserDetailPage() {
     entryDate: typeof e.entryDate === 'string' ? e.entryDate.slice(0, 10) : format(new Date(e.entryDate), 'yyyy-MM-dd'),
     scorePercent: e.scorePercent ?? null,
     totalScore: e.totalScore ?? 0,
+    submittedAt: e.submittedAt || '',
     flagSick: e.flagSick ?? false,
     flagOs: e.flagOs ?? false,
   }));

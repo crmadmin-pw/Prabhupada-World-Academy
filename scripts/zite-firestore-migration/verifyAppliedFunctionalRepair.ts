@@ -34,20 +34,19 @@ async function main(): Promise<void> {
   if (!runDirArg || !databaseId || !expectedRunId || !expectedPlanHash) {
     mainError('Usage: verifyAppliedFunctionalRepair.ts <run-dir> <database-id> <repair-run-id> <plan-hash>');
   }
-  if (databaseId === FIRESTORE_DATABASE_ID || !/^migration-repair-rehearsal-[a-z0-9-]+$/.test(databaseId)) {
-    mainError(`Refusing to verify unsafe rehearsal database: ${databaseId}`);
-  }
+  const production = databaseId === FIRESTORE_DATABASE_ID;
+  if (!production && !/^migration-repair-rehearsal-[a-z0-9-]+$/.test(databaseId)) mainError(`Refusing to verify unsafe rehearsal database: ${databaseId}`);
   const runDir = path.resolve(runDirArg);
   const summary = readJson<any>(path.join(runDir, 'repair-dry-run-summary.json'));
   const planVerification = readJson<any>(path.join(runDir, 'repair-verification.json'));
-  const rehearsalPlan = readJson<any>(path.join(runDir, 'rehearsal-plan.json'));
+  const rehearsalPlan = production ? null : readJson<any>(path.join(runDir, 'rehearsal-plan.json'));
   const sourceWrites = readJsonLines(path.join(runDir, 'proposed-repair-writes.jsonl')) as RepairWrite[];
-  const writes = readJsonLines(path.join(runDir, 'rehearsal-writes.jsonl')) as RepairWrite[];
+  const writes = production ? sourceWrites : readJsonLines(path.join(runDir, 'rehearsal-writes.jsonl')) as RepairWrite[];
   const sourcePlanHash = sha256(sourceWrites.map(canonicalJson).join('\n'));
   const rehearsalPlanHash = sha256(writes.map(canonicalJson).join('\n'));
   if (summary.repairRunId !== expectedRunId || planVerification.repairRunId !== expectedRunId) mainError('Repair run ID mismatch');
   if (sourcePlanHash !== expectedPlanHash || summary.planHash !== expectedPlanHash || planVerification.planHash !== expectedPlanHash) mainError('Repair plan hash mismatch');
-  if (rehearsalPlan.sourcePlanHash !== expectedPlanHash || rehearsalPlan.planHash !== rehearsalPlanHash || rehearsalPlan.databaseId !== databaseId) {
+  if (!production && (rehearsalPlan.sourcePlanHash !== expectedPlanHash || rehearsalPlan.planHash !== rehearsalPlanHash || rehearsalPlan.databaseId !== databaseId)) {
     mainError('Rehearsal plan binding mismatch');
   }
 
@@ -79,12 +78,12 @@ async function main(): Promise<void> {
   if (roleManifest(users) !== planVerification.roleManifestAfter) {
     failures.push({ collection: 'Users', documentId: '*', reason: 'privileged-role-manifest-mismatch' });
   }
-  const checkpoint = readJson<any>(path.join(runDir, 'apply', `${databaseId}.json`));
+  const checkpoint = readJson<any>(path.join(runDir, 'apply', `${production ? '_default_' : databaseId}.json`));
   if (checkpoint.status !== 'complete' || checkpoint.committedWrites !== writes.length) {
     failures.push({ collection: '_checkpoint', documentId: databaseId, reason: 'incomplete-apply-checkpoint' });
   }
   const result = {
-    kind: 'functional-repair-rehearsal-verification',
+    kind: production ? 'functional-repair-production-verification' : 'functional-repair-rehearsal-verification',
     verifiedAt: new Date().toISOString(),
     databaseId,
     repairRunId: expectedRunId,

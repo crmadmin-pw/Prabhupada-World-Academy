@@ -8,6 +8,7 @@ interface HistoryEntry {
   entryDate: string;
   scorePercent: number | null;
   totalScore: number;
+  submittedAt?: string;
   flagSick?: boolean;
   flagOs?: boolean;
 }
@@ -23,7 +24,7 @@ function getDayColor(entry: HistoryEntry | undefined, isResident = false): strin
   if (!entry) return 'bg-muted/40 text-muted-foreground/50';
   // OS/Sick — shown as purple/indigo (excused)
   if (entry.flagOs || entry.flagSick) return 'bg-indigo-400 text-white';
-  const p = entry.scorePercent;
+  const p = entry.scorePercent == null ? null : Number(entry.scorePercent);
   if (p == null) return 'bg-primary/70 text-primary-foreground';
   const greenThreshold = isResident ? 95 : 75;
   const yellowThreshold = isResident ? 85 : 50;
@@ -45,7 +46,19 @@ function MiniCalendar({ entries, onDayClick, isResident = false, mode = 'sadhana
   const today = format(new Date(), 'yyyy-MM-dd');
 
   // Normalize entryDate to date-only (strip time component if ISO string)
-  const entryMap = useMemo(() => new Map(entries.map(e => [e.entryDate.slice(0, 10), e])), [entries]);
+  const entryMap = useMemo(() => {
+    const map = new Map<string, HistoryEntry>();
+    for (const entry of entries) {
+      const date = String(entry.entryDate || '').slice(0, 10);
+      if (!date) continue;
+      const existing = map.get(date);
+      // If a legacy/migrated user has more than one entry on a day, render the
+      // latest submitted record deterministically instead of letting array
+      // order randomly decide the calendar color.
+      if (!existing || String(entry.submittedAt || '') >= String(existing.submittedAt || '')) map.set(date, entry);
+    }
+    return map;
+  }, [entries]);
   const days = eachDayOfInterval({ start: startOfMonth(month), end: endOfMonth(month) });
   const firstDow = (days[0].getDay() + 6) % 7;
   const canGoNext = startOfMonth(month) < startOfMonth(new Date());

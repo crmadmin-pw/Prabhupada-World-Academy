@@ -58,6 +58,7 @@ interface RepairDecisions {
     noRoleOrPermissionElevation: boolean;
     preserveCurrentNonemptyNamesAndStatuses: boolean;
     evidenceFreeMissingUsers: 'archive-only';
+    sadhanaBusinessKeyCollisions: 'preserve-current-archive-source';
   };
   missingUserMappings: Record<string, {
     destinationUserId: string;
@@ -209,7 +210,8 @@ function main(): void {
       !decisions.policy.noFirebaseAuthChanges ||
       !decisions.policy.noRoleOrPermissionElevation ||
       !decisions.policy.preserveCurrentNonemptyNamesAndStatuses ||
-      decisions.policy.evidenceFreeMissingUsers !== 'archive-only') {
+      decisions.policy.evidenceFreeMissingUsers !== 'archive-only' ||
+      decisions.policy.sadhanaBusinessKeyCollisions !== 'preserve-current-archive-source') {
     throw new Error('Repair decisions do not preserve the approved identity, authorization, and archive policy');
   }
   sourceTables.set('Users', overlayRows(sourceTables.get('Users') ?? [], userDelta.rows ?? []));
@@ -322,6 +324,10 @@ function main(): void {
 
   const deltaSourceRefs = new Set<string>();
   for (const row of userDelta.rows ?? []) if (!baseUsers.has(row.id)) deltaSourceRefs.add(`Users|${row.id}`);
+  for (const sourceUserId of Object.keys(decisions.postWatermarkUsers)) {
+    const target = mapping.get(`Users|${sourceUserId}`);
+    if (target && !rowsByCollectionAndId.has(`Users|${target.documentId}`)) deltaSourceRefs.add(`Users|${sourceUserId}`);
+  }
   const baseSadhanaIds = new Set((loadZiteTables(baseRunDir).get('Sadhana Entries') ?? []).map(row => row.id));
   for (const row of sadhanaDelta.rows ?? []) {
     if (baseSadhanaIds.has(row.id)) continue;
@@ -543,10 +549,23 @@ function main(): void {
       values(row.data.user).includes(owner.expected[0]) && String(row.data.entryDate ?? '').slice(0, 10) === date,
     );
     if (collisions.length > 0) {
-      identityReviews.push({
+      if (decisions.policy.sadhanaBusinessKeyCollisions !== 'preserve-current-archive-source') {
+        identityReviews.push({
+          kind: 'approved-owner-sadhana-business-key-collision', sourceTable: 'Sadhana Entries',
+          sourceRecordId: sourceRow.id, email: '', name: '', evidence: `${owner.expected[0]}|${date}`,
+          candidateCurrentUserIds: collisions.map(row => row.id),
+        });
+        continue;
+      }
+      acceptedLimitations.push({
         kind: 'approved-owner-sadhana-business-key-collision', sourceTable: 'Sadhana Entries',
         sourceRecordId: sourceRow.id, email: '', name: '', evidence: `${owner.expected[0]}|${date}`,
         candidateCurrentUserIds: collisions.map(row => row.id),
+        disposition: 'preserve-current-archive-source',
+      });
+      mapping.set(sourceRef, {
+        collection: 'SadhanaEntries', documentId: collisions[0].id,
+        rule: 'preserve-current-business-key-collision-archive-source',
       });
       continue;
     }
@@ -871,7 +890,9 @@ function main(): void {
   for (const [missingSourceUserId, decision] of Object.entries(decisions.missingUserMappings)) {
     for (const sourceRow of sourceTables.get('Sadhana Entries') ?? []) {
       if (!values(sourceRow.User).includes(missingSourceUserId)) continue;
-      const repaired = simulated.get(`SadhanaEntries|${sourceRow.id}`);
+      const sourceMapping = mapping.get(`Sadhana Entries|${sourceRow.id}`);
+      const repaired = simulated.get(`SadhanaEntries|${sourceRow.id}`) ??
+        (sourceMapping ? simulated.get(`SadhanaEntries|${sourceMapping.documentId}`) : undefined);
       if (!repaired) validationErrors.push(`Approved-owner Sadhana missing from simulation: ${sourceRow.id}`);
       else if (!setEquals(repaired.user, decision.destinationUserId)) {
         validationErrors.push(`Approved-owner Sadhana owner mismatch: ${sourceRow.id}`);

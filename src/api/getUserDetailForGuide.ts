@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { getScopedHierarchyUserIds, isUserInHierarchy } from '../lib/hierarchyUtils';
-import { createEndpoint, Users, SadhanaEntries, BvGroupMembers, BvGroups, FolkResidencies, AppError } from '@/lib/backend-sdk';
-import { computeStreak, getTodayIST, daysAgo } from '../lib/streakUtils';
+import { createEndpoint, Users, Guides, SadhanaEntries, BvGroupMembers, BvGroups, FolkResidencies, AppError } from '@/lib/backend-sdk';
+import { computeStreak, getTodayIST } from '../lib/streakUtils';
 import { requireGuideRole } from '../lib/userUtils';
 import { getGuideScope, isUserInGuideScope } from '../lib/guideScope';
 import { isBvGroupProfileAdministrator } from '../lib/bvGroupMemberProfileNavigation';
@@ -191,9 +191,10 @@ export default createEndpoint({
     const residencyId = Array.isArray(userRecord.residency) ? userRecord.residency[0] : userRecord.residency;
     const effectiveResidencyId = residencyId || (Array.isArray(userRecord.selectedFolkResidency) ? userRecord.selectedFolkResidency[0] : userRecord.selectedFolkResidency);
 
-    // Fetch last 100 days of entries + BV membership + residency in parallel
+    // Fetch the complete Sadhana history for the profile. Guide profiles and
+    // the calendar are historical views; limiting this to the recent 100 days
+    // silently hid older migrated records and made old-month colors disappear.
     const todayStr = getTodayIST();
-    const streakStart = daysAgo(todayStr, 100);
 
     const entryOwnerIds = [...new Set([
       userRecord.id,
@@ -211,11 +212,27 @@ export default createEndpoint({
       userRecord.firebase_id,
     ].filter(Boolean).map((value: any) => String(value).trim()))];
      const [allEntriesRes, membershipResults, residencyRecord] = await Promise.all([
-       SadhanaEntries.findAll({
-         filters: { entryDate: { gte: streakStart, lte: todayStr } } as any,
-         fields: ENTRY_FIELDS,
-         limit: 2000,
-       }).catch(() => ({ records: [] })),
+       (async () => {
+         const records: any[] = [];
+         // Query by every known owner alias so a migrated profile gets its
+         // complete history without scanning every user's entries.
+         for (let start = 0; start < entryOwnerIds.length; start += 30) {
+           const ownerChunk = entryOwnerIds.slice(start, start + 30);
+           let offset = 0;
+           while (true) {
+             const page = await SadhanaEntries.findAll({
+               filters: { user: { in: ownerChunk }, entryDate: { gte: '1900-01-01', lte: todayStr } } as any,
+               fields: ENTRY_FIELDS,
+               limit: 2000,
+               offset,
+             }).catch(() => ({ records: [], hasMore: false }));
+             records.push(...(page.records || []));
+             if (!page.hasMore || (page.records || []).length === 0 || records.length >= 100000) break;
+             offset += (page.records || []).length;
+           }
+         }
+         return { records };
+       })(),
        Promise.all(entryOwnerIds.map(ownerId => BvGroupMembers.findAll({
          filters: { user: ownerId }, fields: ['id', 'group'], limit: 3,
        }))),
@@ -265,6 +282,10 @@ export default createEndpoint({
         limit: 1,
       });
       guideName = guides[0]?.fullName as string || null;
+      if (!guideName) {
+        const guideRecord = await Guides.findOne({ id: guideId as string, fields: ['id', 'fullName'] }).catch(() => undefined);
+        guideName = guideRecord?.fullName as string || null;
+      }
     }
 
     return {
@@ -292,13 +313,15 @@ export default createEndpoint({
         avgScorePercent,
         weeklyAvgScore: 0,
       },
-      recentEntries: sortedEntries.slice(0, 45).map((e: any) => ({
+      recentEntries: sortedEntries.map((e: any) => ({
         entryId: (e.entryId as string) || e.id,
         rowId: e.id,
         entryDate: (e.entryDate as string) || '',
         totalScore: (e.totalScore as number) ?? 0,
         maxScore: (e.maxScore as number) ?? 0,
-        scorePercent: (e.scorePercent as number) ?? null,
+        scorePercent: e.scorePercent == null
+          ? (Number(e.maxScore) > 0 ? Math.min(100, Math.round((Number(e.totalScore) / Number(e.maxScore)) * 100)) : null)
+          : Number(e.scorePercent),
         flagSick: !!(e.flagSick),
         flagOs: !!(e.flagOs),
         submittedAt: (e.submittedAt as string) || '',
