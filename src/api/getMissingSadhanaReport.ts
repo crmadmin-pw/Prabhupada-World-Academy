@@ -72,7 +72,12 @@ export default createEndpoint({
 
     // 2. Build user query filters
     const filters: any = { status: 'Active' };
-    if (input.segment) {
+    // A regular FOLK Guide is already constrained by guide/residency hierarchy.
+    // Many legacy FOLK member rows have no segment field, so applying
+    // `segment = FOLK` here would discard valid members before that scope runs.
+    // Department-wide admins and Super Guides still need the explicit segment
+    // filter because their scope can include more than one department.
+    if (input.segment && isSuperGuide) {
       filters.segment = input.segment;
     }
     if (!isSuperGuide && guideRecord) {

@@ -215,6 +215,22 @@ test('FOLK administrators cannot read another guide users or residency statistic
   assert.deepEqual(sorted(all.users.map((u: any) => u.id)), ['resident-a', 'resident-b']);
 });
 
+test('regular FOLK Guide missing-Sadhana report includes legacy members without segment', async t => {
+  const folkGuide = member('folk-guide-legacy', { role: 'GUIDE', segment: 'FOLK', folkResidencies: ['res-a'] });
+  const folkMember = member('folk-member-legacy', { segment: undefined, guide: folkGuide.id });
+  const previousUsers = fixture.Users;
+  const previousGuides = fixture.Guides;
+  fixture.Users = [folkGuide, folkMember];
+  fixture.Guides = [{ id: folkGuide.id, email: folkGuide.email, fullName: folkGuide.fullName, folkResidencies: ['res-a'] }];
+  t.after(() => { fixture.Users = previousUsers; fixture.Guides = previousGuides; });
+  mockDatabase(t);
+  const result = await call(getMissingSadhanaReport, {
+    guideId: 'ALL', segment: 'FOLK', startDate: date, endDate: date,
+  }, folkGuide);
+  assert.deepEqual(result.users.map((u: any) => u.id), ['folk-member-legacy']);
+  assert.equal(result.stats.totalUsers, 1);
+});
+
 test('hierarchy lookup failures never grant full access', async t => {
   mockDatabase(t);
   t.mock.method(sdk.Users, 'findAll', async () => { throw new Error('database unavailable'); });
