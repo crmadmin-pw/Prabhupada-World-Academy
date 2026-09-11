@@ -22,6 +22,7 @@ import { useUserProfile } from '@/contexts/UserProfileContext';
 import { ASHRAY_LEVELS } from '@/types/enums';
 import { fmt } from '@/lib/fmt';
 import { scoreColor } from '@/lib/scoring';
+import { isActiveDirectoryMember } from '@/lib/memberDirectoryStatus';
 import { EmptyState, ConfirmDialog } from '@/shared';
 
 import MultiRoleAssignModal from './MultiRoleAssignModal';
@@ -581,7 +582,7 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
     let r = users;
 
     // Filter strictly by the current department segment (PW vs FOLK) and only show active (approved) members
-    r = r.filter(u => isUserInCurrentDepartment(u, isPwMode) && u.status === 'ACTIVE');
+    r = r.filter(u => isUserInCurrentDepartment(u, isPwMode) && isActiveDirectoryMember(u.status));
 
     // Operational roles below Admin (Supervisors, Mentors) filter to members under their direct supervision scope
     if (!isDepartmentAdmin) {
