@@ -53,6 +53,7 @@ service-account.json:Zone.Identifier
 /docs/firestore-backups/
 /docs/zite-backups/
 /docs/migration-conflicts.json
+/docs/migration-analysis/runs/
 firestore-debug.log
 
 # SQLite local databases
