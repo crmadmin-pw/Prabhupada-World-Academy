@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- Google long-running operation payloads are heterogeneous */
 import { FIREBASE_PROJECT_ID, FIRESTORE_DATABASE_ID } from './config';
+import { writeJson } from './common';
 import { firebaseAccessToken } from './firestoreRest';
 
 async function api(url: string, token: string, init?: RequestInit): Promise<any> {
@@ -13,8 +14,8 @@ async function api(url: string, token: string, init?: RequestInit): Promise<any>
 }
 
 async function main(): Promise<void> {
-  const [databaseId, inputUriPrefix] = process.argv.slice(2);
-  if (!databaseId || !inputUriPrefix) throw new Error('Usage: restoreFirestoreExport.ts <database-id> <gs://input-prefix>');
+  const [databaseId, inputUriPrefix, evidenceFile] = process.argv.slice(2);
+  if (!databaseId || !inputUriPrefix) throw new Error('Usage: restoreFirestoreExport.ts <database-id> <gs://input-prefix> [evidence-file]');
   if (databaseId === FIRESTORE_DATABASE_ID) throw new Error('Refusing to import into the default database');
   if (!/^migration-[a-z0-9-]+$/.test(databaseId)) throw new Error(`Unsafe rehearsal database ID: ${databaseId}`);
   if (!inputUriPrefix.startsWith(`gs://${FIREBASE_PROJECT_ID}-firestore-migration-backups-`)) {
@@ -31,6 +32,16 @@ async function main(): Promise<void> {
     process.stdout.write(`${JSON.stringify({ operation: operation.name, completed: progress?.completedWork ?? null, estimated: progress?.estimatedWork ?? null, done: operation.done === true })}\n`);
   }
   if (operation.error) throw new Error(`Firestore import failed: ${JSON.stringify(operation.error)}`);
+  if (evidenceFile) {
+    writeJson(evidenceFile, {
+      kind: 'firestore-managed-import-operation',
+      databaseId,
+      inputUriPrefix,
+      operation: operation.name,
+      completedAt: new Date().toISOString(),
+      response: operation.response ?? null,
+    });
+  }
   process.stdout.write(`${JSON.stringify({ operation: operation.name, status: 'complete' }, null, 2)}\n`);
 }
 
