@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { createEndpoint, Users, Guides, FolkResidencies, SadhanaEntries, BvGroups, BvGroupMembers } from '@/lib/backend-sdk';
 import { getTodayIST, daysAgo } from '../lib/streakUtils';
 import { normalizeRole, normalizeStatus } from './resolveUserLogin';
-import { getDashboardHierarchyScope } from '../lib/hierarchyUtils';
+import { getDashboardHierarchyScope, HIERARCHY_IDENTITY_FIELDS, hierarchyRefs } from '../lib/hierarchyUtils';
 import { getGuideScope } from '../lib/guideScope';
 import { getReportReferenceData } from '../lib/reportReferenceData';
 
@@ -16,7 +16,9 @@ const USER_FIELDS = ['id', 'userId', 'fullName', 'phone', 'email', 'role', 'role
   'isFolkLead', 'isTripCoordinator', 'isOtherCenter', 'isCleanlinessManager', 'createdAt',
   'temporaryResidencyEnabled', 'temporaryResidency', 'isBvSupervisor', 'isBvFacilitator', 'isBvSubFacilitator', 'isBvAdmin',
   'bvRegistrationStatus', 'bvReportingAdminId', 'bvReportingAdminName', 'bvReportingSupervisorId', 'bvReportingSupervisorName',
-  'bvReportingFacilitatorId', 'bvReportingFacilitatorName', 'supervisorName', 'bvGroupId', 'bvGroupName', 'sadhanaMentor'];
+  'bvReportingFacilitatorId', 'bvReportingFacilitatorName', 'supervisorName', 'bvGroupId', 'bvGroupName', 'sadhanaMentor',
+  ...HIERARCHY_IDENTITY_FIELDS];
+const USER_IDENTITY_FIELDS = [...new Set([...HIERARCHY_IDENTITY_FIELDS, 'userId', 'id', 'email'])];
 // Minimal fields for today's entries
 const ENTRY_TODAY_FIELDS = ['id', 'user', 'entryDate'];
 // Minimal fields for residency
@@ -286,9 +288,9 @@ export default createEndpoint({
       return fallback && !fallback.includes('@') ? fallback : null;
     };
 
-    const callerId = String(context.user.id || '').toLowerCase();
-    const callerUserId = String(context.user.userId || '').toLowerCase();
-    const callerEmail = String(context.user.email || '').toLowerCase();
+    const callerIdentityRefs = new Set(
+      USER_IDENTITY_FIELDS.flatMap(field => hierarchyRefs(context.user?.[field])),
+    );
 
     // Filter out records based on strict hierarchy and self-exclusion rules
     const registeredUsers = forMeetingInvitees ? users : users.filter(u => {
@@ -297,18 +299,12 @@ export default createEndpoint({
         return false;
       }
 
-      const uId = String(u.id || '').toLowerCase();
-      const uUserId = String(u.userId || '').toLowerCase();
-      const uEmail = String(u.email || '').toLowerCase();
+      const memberIdentityRefs = new Set(
+        USER_IDENTITY_FIELDS.flatMap(field => hierarchyRefs(u?.[field])),
+      );
 
       // 1. Exclude the caller themselves (No self-visibility)
-      if (
-        uId === callerId ||
-        uUserId === callerUserId ||
-        (callerUserId && uId === callerUserId) ||
-        (callerId && uUserId === callerId) ||
-        (callerEmail && uEmail === callerEmail)
-      ) {
+      if ([...memberIdentityRefs].some(ref => callerIdentityRefs.has(ref))) {
         return false;
       }
 

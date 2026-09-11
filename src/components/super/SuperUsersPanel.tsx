@@ -583,29 +583,10 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
 
     // Filter strictly by the current department segment (PW vs FOLK) and only show active (approved) members
     r = r.filter(u => isUserInCurrentDepartment(u, isPwMode) && isActiveDirectoryMember(u.status));
-
-    // Operational roles below Admin (Supervisors, Mentors) filter to members under their direct supervision scope
-    if (!isDepartmentAdmin) {
-      const myEmail = ((profile as any)?.email || profile?.userId || userEmail || '').toLowerCase();
-      const myName = (profile?.fullName || '').toLowerCase();
-      const targetGuideId = (myGuideId || '').toLowerCase();
-
-      r = r.filter(u => {
-        const uGuideId = (u._guideId || u.selectedGuideId || '').toLowerCase();
-        const uGuideName = (u._guideName || '').toLowerCase();
-        const uEmail = (u.email || u.userId || '').toLowerCase();
-
-        return (
-          (targetGuideId && uGuideId === targetGuideId) ||
-          (myEmail && uGuideId === myEmail) ||
-          (myName && myName.length > 3 && uGuideName.includes(myName)) ||
-          (myEmail && uEmail === myEmail)
-        );
-      });
-    }
-
+    // getGuideUsers has already applied the signed-in user's hierarchy scope.
+    // Re-applying it here with a legacy Guide ID can hide a valid direct member.
     return r;
-  }, [users, profile, userEmail, isDepartmentAdmin, isPwMode, isUserInCurrentDepartment, myGuideId]);
+  }, [users, isPwMode, isUserInCurrentDepartment]);
 
   const filtered = useMemo(() => {
     let r = baseUsers;
@@ -615,7 +596,10 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
     // Super Admins can inspect the complete directory by mentor. A regular
     // department admin is already scoped to their own hierarchy and does not
     // need a second cross-mentor filter.
-    const effectiveGuideFilter = isSuperAdmin ? guideFilter : (isDepartmentAdmin ? 'all' : guideFilter);
+    // A normal Guide has no visible Guide selector and is already server-scoped.
+    // Applying its hidden selector a second time can compare incompatible legacy
+    // identifiers and incorrectly turn a valid member list into zero rows.
+    const effectiveGuideFilter = isSuperAdmin ? guideFilter : 'all';
     if (effectiveGuideFilter !== 'all') {
       const guideAssignmentValues = (u: User) => [
         u._guideId,
