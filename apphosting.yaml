@@ -23,6 +23,13 @@ env:
   - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
     value: bvpw108.firebasestorage.app
 
+  # Used by the authenticated server upload route. File bytes are stored in
+  # Firebase Storage rather than the disposable App Hosting filesystem.
+  - variable: FIREBASE_STORAGE_BUCKET
+    value: bvpw108.firebasestorage.app
+    availability:
+      - RUNTIME
+
   - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
     value: "10237671112"
 

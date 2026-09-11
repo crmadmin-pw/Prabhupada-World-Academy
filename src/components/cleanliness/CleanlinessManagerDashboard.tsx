@@ -98,7 +98,11 @@ export default function CleanlinessManagerDashboard({ residencyId, residencyName
   const handlePhotoUpload = async (roomId: string, file: File) => {
     setUploadingRoom(roomId);
     try {
-      const { fileUrl } = await uploadFile({ data: file, filename: file.name });
+      const { fileUrl } = await uploadFile({
+        data: file,
+        filename: file.name,
+        purpose: 'cleanliness-inspection',
+      });
       setPendingPhotos(prev => new Map(prev).set(roomId, fileUrl));
       toast.success('Photo uploaded');
     } catch {

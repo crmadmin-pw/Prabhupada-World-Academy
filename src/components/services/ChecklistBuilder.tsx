@@ -26,7 +26,11 @@ export default function ChecklistBuilder({ items, onChange }: Props) {
   const handleUpload = async (i: number, file: File) => {
     setUploading(u => ({ ...u, [i]: true }));
     try {
-      const { fileUrl } = await uploadFile({ data: file, filename: file.name });
+      const { fileUrl } = await uploadFile({
+        data: file,
+        filename: file.name,
+        purpose: 'service-checklist',
+      });
       onChange(items.map((item, idx) => (idx === i ? { ...item, imageUrl: fileUrl } : item)));
     } catch {
       toast.error('Failed to upload image');

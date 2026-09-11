@@ -1,0 +1,11 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Application uploads are authorized and written by the server through
+    // Firebase Admin. Browser SDK access remains denied by default.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
