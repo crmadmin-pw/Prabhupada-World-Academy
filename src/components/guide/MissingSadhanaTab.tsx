@@ -544,7 +544,9 @@ export default function MissingSadhanaTab({ guideId, segment }: Props) {
   const [period, setPeriod] = useState<Period>('last-week');
   const [customStart, setCustomStart] = useState(() => format(subWeeks(new Date(), 2), 'yyyy-MM-dd'));
   const [customEnd, setCustomEnd]     = useState(() => format(subWeeks(new Date(), 1), 'yyyy-MM-dd'));
-  const [residencyId, setResidencyId] = useState(() => (isSuperAdmin ? 'all' : (profile as any)?.folkResidencyCustomId || 'all'));
+  // The residency selector is available only to super admins. A regular
+  // Guide's own residency must not silently narrow their assigned members.
+  const [residencyId, setResidencyId] = useState('all');
   const [view, setView] = useState<ViewMode>('matrix');
   const [hideZeroMissed, setHideZeroMissed] = useState(false);
   const [guideFilter, setGuideFilter] = useState('all');

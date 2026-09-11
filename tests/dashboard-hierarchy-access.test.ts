@@ -231,6 +231,38 @@ test('regular FOLK Guide missing-Sadhana report includes legacy members without 
   assert.equal(result.stats.totalUsers, 1);
 });
 
+test('regular FOLK Guide missing-Sadhana report ignores a hidden profile residency filter', async t => {
+  const folkGuide = member('folk-guide-cross-residency', {
+    role: 'GUIDE', segment: 'FOLK', residency: 'guide-residency', folkResidencies: ['guide-residency'],
+  });
+  const directlyAssignedMember = member('folk-member-cross-residency', {
+    segment: 'FOLK', residency: 'member-residency', guide: folkGuide.id,
+  });
+  const previousUsers = fixture.Users;
+  const previousGuides = fixture.Guides;
+  const previousResidencies = fixture.FolkResidencies;
+  fixture.Users = [folkGuide, directlyAssignedMember];
+  fixture.Guides = [{
+    id: folkGuide.id, email: folkGuide.email, fullName: folkGuide.fullName,
+    folkResidencies: ['guide-residency'],
+  }];
+  fixture.FolkResidencies = [
+    { id: 'guide-residency', residencyName: 'Guide Residence', guideIds: [folkGuide.id], isActive: true },
+    { id: 'member-residency', residencyName: 'Member Residence', isActive: true },
+  ];
+  t.after(() => {
+    fixture.Users = previousUsers;
+    fixture.Guides = previousGuides;
+    fixture.FolkResidencies = previousResidencies;
+  });
+  mockDatabase(t);
+  const result = await call(getMissingSadhanaReport, {
+    guideId: 'ALL', segment: 'FOLK', residencyId: 'guide-residency', startDate: date, endDate: date,
+  }, folkGuide);
+  assert.deepEqual(result.users.map((u: any) => u.id), ['folk-member-cross-residency']);
+  assert.equal(result.stats.totalUsers, 1);
+});
+
 test('hierarchy lookup failures never grant full access', async t => {
   mockDatabase(t);
   t.mock.method(sdk.Users, 'findAll', async () => { throw new Error('database unavailable'); });

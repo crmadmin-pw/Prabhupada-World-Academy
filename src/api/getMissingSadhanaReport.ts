@@ -83,14 +83,19 @@ export default createEndpoint({
     if (!isSuperGuide && guideRecord) {
       filters.guide = guideRecord.id;
     }
-    if (input.residencyId) {
-      filters.residency = input.residencyId;
+    // Only users who can see the residency selector may narrow this report by
+    // residency. A regular Guide's profile carries their own residency for
+    // display purposes; treating that hidden value as a member filter drops
+    // directly assigned non-resident members.
+    const effectiveResidencyId = isSuperGuide ? input.residencyId : undefined;
+    if (effectiveResidencyId) {
+      filters.residency = effectiveResidencyId;
     }
 
     // Direct assignments and residency membership are independent queries.
     const [{ records: baseUsers }, ...resFetches] = await Promise.all([
       Users.findAll({ filters, fields: USER_FIELDS, limit: 2000 }),
-      ...(!isSuperGuide && guideRecord && !input.residencyId ? guideRids : []).map(rid =>
+      ...(!isSuperGuide && guideRecord && !effectiveResidencyId ? guideRids : []).map(rid =>
         Users.findAll({ filters: { residency: rid, status: 'Active' }, fields: USER_FIELDS, limit: 500 })
       ),
     ]);
