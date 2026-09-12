@@ -27,10 +27,11 @@ export default createEndpoint({
       .toUpperCase();
     const isSuperGuide = normalizedRole === 'SUPER_GUIDE';
 
-    const userRecord = await Users.findOne({
-      id: input.userId,
-      fields: ['id', 'residency', 'guide', 'segment', 'isPrabhupadaWorldUser'],
-    });
+    const userFields = ['id', 'userId', 'email', 'residency', 'guide', 'segment', 'isPrabhupadaWorldUser'];
+    const userRecord = await Users.findOne({ id: input.userId, fields: userFields }) ||
+      await Users.findOne({ filters: { userId: input.userId }, fields: userFields }) ||
+      await Users.findOne({ filters: { email: input.userId }, fields: userFields }) ||
+      await Users.findOne({ filters: { email: String(input.userId).toLowerCase() }, fields: userFields });
     if (!userRecord) throw new AppError({ code: 'NOT_FOUND', message: 'User not found' });
 
     const isPwUser = userRecord.segment === 'PW' || !!userRecord.isPrabhupadaWorldUser;
@@ -56,8 +57,8 @@ export default createEndpoint({
       }
     }
 
-    await Users.update({ id: input.userId, record: { status: 'Rejected' } });
-    serverCacheInvalidate(profileCacheKey(input.userId));
+    await Users.update({ id: userRecord.id, record: { status: 'Rejected' } });
+    serverCacheInvalidate(profileCacheKey(userRecord.id));
     return { success: true };
   },
 });

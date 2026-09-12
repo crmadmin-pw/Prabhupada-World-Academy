@@ -21,7 +21,7 @@ export default createEndpoint({
 
     const request = await GuideTransferRequests.findOne({ id });
     if (!request) throw new AppError({ code: 'NOT_FOUND', message: 'Transfer request not found' });
-    if ((request.status as string) !== 'Pending') throw new AppError({ code: 'CONFLICT', message: 'Request already reviewed' });
+    if (String(request.status || '').trim().toUpperCase() !== 'PENDING') throw new AppError({ code: 'CONFLICT', message: 'Request already reviewed' });
 
     // Authorization: only Super Guides or Admins are allowed to approve guide transfers
     const userRole = String(context.user.role || '').trim().toUpperCase().replace(/[\s-]+/g, '_');

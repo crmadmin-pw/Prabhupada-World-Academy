@@ -28,10 +28,13 @@ export default createEndpoint({
     if (!context.user) throw new Error('Unauthorized');
 
     // Fetch user record (needed for both auth check and email notification)
-    const userRecord = await Users.findOne({
-      id: input.userId,
-      fields: ['id', 'email', 'fullName', 'residency', 'guide', 'phone', 'ashrayLevel', 'tagMangoEnrollmentAttempts', 'segment', 'isPrabhupadaWorldUser'],
-    });
+    const userFields = ['id', 'userId', 'email', 'fullName', 'residency', 'guide', 'phone', 'ashrayLevel', 'tagMangoEnrollmentAttempts', 'segment', 'isPrabhupadaWorldUser'];
+    // Approval lists expose the stable public userId, while migrated records
+    // may be referenced by the Firestore document ID or email.
+    const userRecord = await Users.findOne({ id: input.userId, fields: userFields }) ||
+      await Users.findOne({ filters: { userId: input.userId }, fields: userFields }) ||
+      await Users.findOne({ filters: { email: input.userId }, fields: userFields }) ||
+      await Users.findOne({ filters: { email: String(input.userId).toLowerCase() }, fields: userFields });
     if (!userRecord) throw new AppError({ code: 'NOT_FOUND', message: 'User not found' });
 
     const normalizedRole = String(context.user.normalizedRole || context.user.role || '')
@@ -79,8 +82,8 @@ export default createEndpoint({
     }
 
     // CRITICAL: Approval MUST succeed first, before any enrollment attempt
-    await Users.update({ id: input.userId, record: updates });
-    serverCacheInvalidate(profileCacheKey(input.userId));
+    await Users.update({ id: userRecord.id, record: updates });
+    serverCacheInvalidate(profileCacheKey(userRecord.id));
 
     // Email: approval confirmation to the devotee
     try {
@@ -119,7 +122,7 @@ export default createEndpoint({
       try {
         const effectiveAshray = input.ashrayLevel || (userRecord.ashrayLevel as string | undefined);
         const result = await enrollUserOnTagMango({
-          userId: input.userId,
+          userId: userRecord.id,
           name: userRecord.fullName || '',
           email: userRecord.email || '',
           phone: userRecord.phone || '',

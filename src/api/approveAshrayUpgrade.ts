@@ -60,6 +60,12 @@ export default createEndpoint({
           fields: ['id', 'ashrayLevel', 'fullName', 'email', 'phone', 'tagMangoEnrollmentStatus', 'tagMangoEnrollmentAttempts'],
         });
       }
+      if (!resolvedUserRecord) {
+        resolvedUserRecord = await Users.findOne({
+          filters: { email: targetUserId },
+          fields: ['id', 'ashrayLevel', 'fullName', 'email', 'phone', 'tagMangoEnrollmentStatus', 'tagMangoEnrollmentAttempts'],
+        });
+      }
     }
 
     if (shouldUpgradeUser && resolvedUserRecord) {

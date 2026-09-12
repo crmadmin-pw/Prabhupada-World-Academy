@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { createEndpoint, CleanlinessReviewRequests, CleanlinessInspections, SadhanaEntries, AppError } from '@/lib/backend-sdk';
+import { createEndpoint, CleanlinessReviewRequests, CleanlinessInspections, SadhanaEntries, Users, AppError } from '@/lib/backend-sdk';
 
 export default createEndpoint({
   description: 'Approve or dismiss a cleanliness review request',
@@ -12,7 +12,7 @@ export default createEndpoint({
   execute: async ({ input, context }) => {
     const review = await CleanlinessReviewRequests.findOne({ id: input.reviewId });
     if (!review) throw new AppError({ code: 'NOT_FOUND', message: 'Review not found' });
-    if (review.status !== 'Pending') throw new AppError({ code: 'CONFLICT', message: 'Review already resolved' });
+    if (String(review.status || '').trim().toUpperCase() !== 'PENDING') throw new AppError({ code: 'CONFLICT', message: 'Review already resolved' });
 
     if (input.action === 'approve') {
       // Update inspection score to 1
@@ -25,13 +25,16 @@ export default createEndpoint({
       }
 
       // Find and update the sadhana entry for this date + user
-      const userId = Array.isArray(review.user) ? review.user[0] : review.user;
+      const rawUserId = Array.isArray(review.user) ? review.user[0] : review.user;
+      const userRecord = rawUserId
+        ? await Users.findOne({ id: rawUserId, fields: ['id', 'userId', 'email'] }).catch(() => null) ||
+          await Users.findOne({ filters: { userId: rawUserId }, fields: ['id', 'userId', 'email'] }).catch(() => null) ||
+          await Users.findOne({ filters: { email: rawUserId }, fields: ['id', 'userId', 'email'] }).catch(() => null)
+        : null;
+      const userIds = [...new Set([rawUserId, (userRecord as any)?.id, (userRecord as any)?.userId, (userRecord as any)?.email].filter(Boolean))];
       const date = review.date;
-      if (userId && date) {
-        const { records: entries } = await SadhanaEntries.findAll({
-          filters: { user: userId, entryDate: date } as any,
-          limit: 1,
-        });
+      if (userIds.length > 0 && date) {
+        const { records: entries } = await SadhanaEntries.findAll({ filters: { user: { in: userIds }, entryDate: date } as any, limit: 1 });
         if (entries.length > 0) {
           const entry = entries[0];
           const oldCleanliness = Number((entry as any).cleanlinessPoints ?? 0);

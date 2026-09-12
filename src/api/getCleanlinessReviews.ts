@@ -11,10 +11,10 @@ export default createEndpoint({
   outputSchema: z.any(),
   execute: async ({ input, context }: any) => {
     // Get all pending reviews
-    const { records: reviews } = await CleanlinessReviewRequests.findAll({
-      filters: { status: 'Pending' },
-      limit: 100,
-    });
+    const { records: rawReviews } = await CleanlinessReviewRequests.findAll({ limit: 500 });
+    const reviews = rawReviews.filter((review: any) =>
+      String(review.status || '').trim().toUpperCase() === 'PENDING'
+    );
 
     if (reviews.length === 0) return [];
 
@@ -27,8 +27,13 @@ export default createEndpoint({
       : null;
 
     const enriched = await Promise.all(reviews.map(async (r) => {
+      const rawUserRef = Array.isArray(r.user) ? r.user[0] : r.user;
       const [user, room, inspection] = await Promise.all([
-        r.user ? Users.findOne({ id: Array.isArray(r.user) ? r.user[0] : r.user }) : null,
+        rawUserRef
+          ? await Users.findOne({ id: rawUserRef }).catch(() => null) ||
+            await Users.findOne({ filters: { userId: rawUserRef } }).catch(() => null) ||
+            await Users.findOne({ filters: { email: rawUserRef } }).catch(() => null)
+          : null,
         r.room ? CleanlinessRooms.findOne({ id: Array.isArray(r.room) ? r.room[0] : r.room }) : null,
         r.inspection ? CleanlinessInspections.findOne({ id: Array.isArray(r.inspection) ? r.inspection[0] : r.inspection }) : null,
       ]);

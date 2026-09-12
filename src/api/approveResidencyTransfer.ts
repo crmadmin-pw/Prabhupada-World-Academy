@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createEndpoint, ResidencyTransferRequests, Users, Guides, AppError } from '@/lib/backend-sdk';
 import { serverCacheInvalidate } from '../lib/serverCache';
+import { getGuideScope } from '../lib/guideScope';
 
 function firstRef(value: unknown): string {
   if (Array.isArray(value)) return String(value[0] || '');
@@ -35,7 +36,7 @@ export default createEndpoint({
 
     const request = await ResidencyTransferRequests.findOne({ id });
     if (!request) throw new AppError({ code: 'NOT_FOUND', message: 'Transfer request not found' });
-    if ((request.status as string) !== 'Pending') throw new AppError({ code: 'CONFLICT', message: 'Request already reviewed' });
+    if (String(request.status || '').trim().toUpperCase() !== 'PENDING') throw new AppError({ code: 'CONFLICT', message: 'Request already reviewed' });
 
     // Authorization: Super Admins, Admins, Super Guides, or guides of receiving residency can approve/reject
     const userRoleStr = String(context.user.role || '').toUpperCase().replace(/\s+/g, '_');
@@ -56,9 +57,12 @@ export default createEndpoint({
           ? guideRecord.folkResidencies
           : [guideRecord.folkResidencies]
       );
+      const scope = await getGuideScope(context.user.email).catch(() => null);
+      guideResidencies.push(...(scope?.residencyIds || []), ...(scope?.residencyNames || []));
       const requestResidencyIds = normalizeIds([request.fromResidency, request.toResidency]);
 
-      if (!requestResidencyIds.some(id => guideResidencies.includes(id))) {
+      const allowed = new Set(guideResidencies.map(id => id.toLowerCase()));
+      if (!requestResidencyIds.some(id => allowed.has(id.toLowerCase()))) {
         throw new AppError({ code: 'FORBIDDEN', message: 'Only guides of the relevant residency can approve this request' });
       }
     }
@@ -72,7 +76,14 @@ export default createEndpoint({
       },
     });
 
-    const userId = Array.isArray(request.user) ? request.user[0] : request.user as string;
+    const rawUserId = Array.isArray(request.user) ? request.user[0] : request.user as string;
+    const targetUser = rawUserId
+      ? await Users.findOne({ id: rawUserId }).catch(() => null) ||
+        await Users.findOne({ filters: { userId: rawUserId } }).catch(() => null) ||
+        await Users.findOne({ filters: { email: rawUserId } }).catch(() => null) ||
+        await Users.findOne({ filters: { email: String(rawUserId).toLowerCase() } }).catch(() => null)
+      : null;
+    const userId = targetUser?.id || rawUserId;
     if (input.action === 'approve') {
       const newResidencyId = Array.isArray(request.toResidency) ? request.toResidency[0] : request.toResidency as string | null;
       if (userId) {

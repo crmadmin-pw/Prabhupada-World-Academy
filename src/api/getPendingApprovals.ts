@@ -22,8 +22,6 @@ export default createEndpoint({
     const isSuperGuide = !scopedGuideId || scopedGuideId === 'ALL'
       ? (userRole === 'SUPER_GUIDE' || userRole === 'SUPER GUIDE' || userRole === 'SUPER_ADMIN' || !!context.user.isBvSuperAdmin)
       : false;
-    const pendingFilter = { status: 'Pending Approval' };
-
     // Fetch residencies and guides early
     const [residenciesRes, guidesRes] = await Promise.all([
       FolkResidencies.findAll({ fields: RESIDENCY_FIELDS, limit: 500 }),
@@ -54,7 +52,10 @@ export default createEndpoint({
     if (mentorGuide?.id) mentorCanonicalIds.add(mentorGuide.id.toLowerCase());
 
     // Fetch all pending users from the database
-    const { records: pendingCandidates } = await Users.findAll({ filters: pendingFilter, fields: [...USER_FIELDS, 'userId'], limit: 1000 });
+    const { records: pendingCandidatesRaw } = await Users.findAll({ fields: [...USER_FIELDS, 'userId'], limit: 2000 });
+    const pendingCandidates = pendingCandidatesRaw.filter((user: any) =>
+      String(user.status || '').trim().toUpperCase().replace(/[\s_-]+/g, '_') === 'PENDING_APPROVAL'
+    );
     const hierarchy = await getScopedHierarchyUserIds(context.user);
     const pendingRecords = pendingCandidates.filter(user => isUserInHierarchy(user, hierarchy));
 
