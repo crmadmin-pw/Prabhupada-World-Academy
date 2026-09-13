@@ -26,7 +26,7 @@ export default createEndpoint({
       throw new AppError({ code: 'FORBIDDEN', message: 'Not authorized to create events' });
     }
     const now = new Date().toISOString();
-    const event = await AttendanceEvents.create({
+    const event = await AttendanceEvents.create({ record: {
       title: input.title,
       description: input.description ?? '',
       startDate: input.startDate ?? now,
@@ -34,6 +34,7 @@ export default createEndpoint({
       location: input.location ?? '',
       customFields: input.customFields ?? '[]',
       createdAt: now,
+    },
     });
     return { event };
   },
