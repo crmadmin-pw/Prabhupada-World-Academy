@@ -30,9 +30,12 @@ export default createEndpoint({
     })),
   }),
   execute: async ({ context }) => {
-    const role = context.user.role || '';
-    const isBvsl = context.user.isBvsl;
-    if (!ADMIN_ROLES.includes(role) && !isBvsl) {
+    const userRole = (context.user?.role || '').toUpperCase();
+    const user = context.user as any;
+    const isAuthorized = [
+      'GUIDE', 'SUPER_GUIDE', 'SUPER GUIDE', 'ADMIN', 'SUPER_ADMIN', 'BVSL', 'PW_ADMIN',
+    ].includes(userRole) || !!user?.isBvsl || !!user?.isBvAdmin || !!user?.isBvSuperAdmin || !!user?.isPwAdmin;
+    if (!isAuthorized) {
       throw new AppError({ code: 'FORBIDDEN', message: 'Not authorized' });
     }
 

@@ -4,7 +4,7 @@ import { createEndpoint, AttendanceSessions, AttendanceEvents } from '@/lib/back
 export default createEndpoint({
   description: 'Look up an attendance session by its share token (public)',
   public: true,
-  inputSchema: z.object({ token: z.string().min(16).max(200) }),
+  inputSchema: z.object({ token: z.string().min(8).max(200) }),
   outputSchema: z.object({
     found: z.boolean(),
     session: z.object({

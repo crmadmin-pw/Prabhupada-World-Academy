@@ -230,7 +230,7 @@ export default function App() {
             <Route path="/attend/:token" element={<PublicAttendPage />} />
 
             {/* Attendance — admin pages */}
-            <Route path="/attendance/manage" element={<ProtectedRoute allowedRoles={['GUIDE', 'SUPER_GUIDE', 'BVSL']}><AttendanceManagePage /></ProtectedRoute>} />
+            <Route path="/attendance/manage" element={<ProtectedRoute allowedRoles={['GUIDE', 'SUPER_GUIDE']}><AttendanceManagePage /></ProtectedRoute>} />
             <Route path="/attendance/dashboard" element={<ProtectedRoute><AttendanceDashboardPage /></ProtectedRoute>} />
 
             {/* API docs page removed from production */}

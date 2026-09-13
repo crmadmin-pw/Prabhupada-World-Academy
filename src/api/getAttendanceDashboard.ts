@@ -34,8 +34,11 @@ export default createEndpoint({
     hasMore: z.boolean(),
   }),
   execute: async ({ input, context }) => {
-    const role = context.user.role || '';
-    const isAdmin = ADMIN_ROLES.includes(role) || context.user.isBvsl;
+    const userRole = (context.user?.role || '').toUpperCase();
+    const user = context.user as any;
+    const isAdmin = [
+      'GUIDE', 'SUPER_GUIDE', 'SUPER GUIDE', 'ADMIN', 'SUPER_ADMIN', 'BVSL', 'PW_ADMIN',
+    ].includes(userRole) || !!user?.isBvsl || !!user?.isBvAdmin || !!user?.isBvSuperAdmin || !!user?.isPwAdmin;
 
     // Get volunteer sessions if not admin
     let allowedSessionIds: string[] | null = null;

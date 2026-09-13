@@ -26,7 +26,7 @@ export default createEndpoint({
   execute: async ({ input, context }: { input: any; context: any }) => {
     const userRole = (context.user?.role || '').toUpperCase();
     const userEmail = (context.user?.email || '').toLowerCase();
-    const isAllowed = userRole === 'SUPER_GUIDE' || userRole === 'SUPER GUIDE' || userRole === 'SUPER_ADMIN' || userRole === 'ADMIN' || userRole === 'PW_ADMIN' || !!context.user?.isBvAdmin || !!context.user?.isBvSuperAdmin || !!context.user?.isPwAdmin;
+    const isAllowed = userRole === 'GUIDE' || userRole === 'SUPER_GUIDE' || userRole === 'SUPER GUIDE' || userRole === 'SUPER_ADMIN' || userRole === 'ADMIN' || userRole === 'PW_ADMIN' || userRole === 'BVSL' || !!(context.user as any)?.isBvAdmin || !!(context.user as any)?.isBvSuperAdmin || !!(context.user as any)?.isPwAdmin || !!(context.user as any)?.isBvsl;
     if (!isAllowed) {
       throw new AppError({ code: 'FORBIDDEN', message: 'Super Guides and Admins only' });
     }
@@ -55,7 +55,7 @@ export default createEndpoint({
     // Fetch lookup data in parallel
     const [eventsRes, sessionsRes, guidesListRes, centersRes] = await Promise.all([
       AttendanceEvents.findAll({ filters: {}, limit: 200, fields: ['id', 'title'] }),
-      AttendanceSessions.findAll({ filters: {}, limit: 500, fields: ['id', 'name', 'event'] }),
+      AttendanceSessions.findAll({ filters: {}, limit: 500, fields: ['id', 'name', 'event', 'shareToken'] }),
       getGuides.execute({ input: { segment: input.segment }, context }),
       FolkResidencies.findAll({ filters: { isActive: true } as any, limit: 100, fields: ['id', 'residencyName'] }),
     ]);
@@ -261,8 +261,8 @@ export default createEndpoint({
           isPrabhupadaWorldMentor: !!g.isPrabhupadaWorldMentor,
         })),
         centers: centersRes.records.filter(c => hierarchy === null || [...userDetails.values()].some(u => isUserInHierarchy(u, hierarchy) && [u.residency].flat().includes(c.id))).map(c => ({ id: c.id, name: c.residencyName || '' })),
-        events: eventsRes.records.filter(e => hierarchy === null || sessionsRes.records.some(s => (Array.isArray(s.event) ? s.event[0] : s.event) === e.id && validRecords.some(r => r.session === s.id))).map(e => ({ id: e.id, title: e.title || '' })),
-        sessions: sessionsRes.records.filter(s => hierarchy === null || validRecords.some(r => r.session === s.id)).map(s => ({ id: s.id, name: s.name || '', eventId: (Array.isArray(s.event) ? s.event[0] : s.event) || '' })),
+        events: eventsRes.records.map(e => ({ id: e.id, title: e.title || '' })),
+        sessions: sessionsRes.records.map(s => ({ id: s.id, name: s.name || '', eventId: (Array.isArray(s.event) ? s.event[0] : s.event) || '', shareToken: s.shareToken || '' })),
       },
       pagination: { hasMore: offset + limit < totalCount, totalCount },
     };

@@ -10,7 +10,7 @@ export default createEndpoint({
   public: true,
   inputSchema: z.object({
     sessionId: z.string().min(1).max(128),
-    token: z.string().min(16).max(200),
+    token: z.string().min(8).max(200),
     name: z.string().trim().min(2).max(100),
     phone: z.string().min(7).max(20),
     email: z.string().email().max(320).optional(),

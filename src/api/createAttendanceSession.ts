@@ -4,7 +4,7 @@ import { createEndpoint, AppError, AttendanceSessions } from '@/lib/backend-sdk'
 function generateToken(): string {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
   let token = '';
-  for (let i = 0; i < 8; i++) token += chars[Math.floor(Math.random() * chars.length)];
+  for (let i = 0; i < 24; i++) token += chars[Math.floor(Math.random() * chars.length)];
   return token;
 }
 
@@ -22,8 +22,12 @@ export default createEndpoint({
   }),
   outputSchema: z.object({ id: z.string(), shareToken: z.string() }),
   execute: async ({ input, context }) => {
-    const role = context.user.role || '';
-    if (!['Guide', 'Super Guide', 'BVSL'].includes(role) && !context.user.isBvsl) {
+    const userRole = (context.user?.role || '').toUpperCase();
+    const user = context.user as any;
+    const isAuthorized = [
+      'GUIDE', 'SUPER_GUIDE', 'SUPER GUIDE', 'ADMIN', 'SUPER_ADMIN', 'BVSL', 'PW_ADMIN',
+    ].includes(userRole) || !!user?.isBvsl || !!user?.isBvAdmin || !!user?.isBvSuperAdmin || !!user?.isPwAdmin;
+    if (!isAuthorized) {
       throw new AppError({ code: 'FORBIDDEN', message: 'Not authorized' });
     }
     const shareToken = generateToken();

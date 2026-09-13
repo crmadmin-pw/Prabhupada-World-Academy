@@ -10,7 +10,7 @@ export default createEndpoint({
   public: true,
   inputSchema: z.object({
     sessionId: z.string().min(1).max(128),
-    token: z.string().min(16).max(200),
+    token: z.string().min(8).max(200),
     phone: z.string().min(7).max(20).optional(),
     userId: z.string().min(1).max(128).optional(),
   }),
@@ -31,20 +31,31 @@ export default createEndpoint({
       throw new AppError({ code: 'NOT_FOUND', message: 'Session not found' });
     }
 
+    const userRole = (context.user?.role || '').toUpperCase();
+    const currentUser = context.user as any;
+    const isStaff = [
+      'GUIDE', 'SUPER_GUIDE', 'SUPER GUIDE', 'ADMIN', 'SUPER_ADMIN', 'BVSL', 'PW_ADMIN',
+    ].includes(userRole) || !!currentUser?.isBvsl || !!currentUser?.isBvAdmin || !!currentUser?.isBvSuperAdmin || !!currentUser?.isPwAdmin;
+
     let userId: string | undefined;
     let participantId: string | undefined;
     let participantName = '';
     let source: 'Registered User' | 'New Participant' = 'Registered User';
 
     if (input.userId) {
-      const authenticatedUserId = context.user?.id;
-      if (!authenticatedUserId || (input.userId !== authenticatedUserId && input.userId !== context.user?.userId)) {
-        throw new AppError({ code: 'FORBIDDEN', message: 'You may only mark attendance for your own signed-in account.' });
+      let targetUser: any;
+      if (isStaff) {
+        targetUser = await Users.findOne({ id: input.userId }) || await Users.findOne({ filters: { userId: input.userId } });
+      } else {
+        const authenticatedUserId = context.user?.id;
+        if (!authenticatedUserId || (input.userId !== authenticatedUserId && input.userId !== context.user?.userId)) {
+          throw new AppError({ code: 'FORBIDDEN', message: 'You may only mark attendance for your own signed-in account.' });
+        }
+        targetUser = await Users.findOne({ id: authenticatedUserId });
       }
-      const user = await Users.findOne({ id: authenticatedUserId });
-      if (!user) throw new AppError({ code: 'NOT_FOUND', message: 'User not found' });
-      userId = user.id;
-      participantName = user.fullName || user.email || '';
+      if (!targetUser) throw new AppError({ code: 'NOT_FOUND', message: 'User not found' });
+      userId = targetUser.id;
+      participantName = targetUser.fullName || targetUser.email || '';
       source = 'Registered User';
     } else if (input.phone) {
       const norm = normalizePhone(input.phone);
