@@ -43,16 +43,18 @@ function App() {
   const [active, setActive] = useState(true);
   const [editing, setEditing] = useState(false);
   const [compatVisible, setCompatVisible] = useState(true);
+  const [legacyVisible, setLegacyVisible] = useState(true);
   return <>
     <input aria-label="Preserved draft" defaultValue="draft" />
     <button onClick={() => setGroup(group === 'A' ? 'B' : 'A')}>Change group</button>
     <button onClick={() => setActive(!active)}>Toggle panel</button>
     <button onClick={() => setEditing(!editing)}>Toggle editing</button>
     <button onClick={() => setCompatVisible(!compatVisible)}>Toggle compatibility view</button>
+    <button onClick={() => setLegacyVisible(!legacyVisible)}>Toggle loader view</button>
     <span data-testid="group">{group}</span>
     <DashboardPanel active={active}>
       <Query group={group} id="query" /><Query group={group} id="duplicate" />
-      <Legacy group={group} editing={editing} /><Effect group={group} />
+      {legacyVisible && <Legacy group={group} editing={editing} />}<Effect group={group} />
       {compatVisible && <CompatibilityQuery group={group} />}
     </DashboardPanel>
     <Query group="unrelated" id="unrelated" />

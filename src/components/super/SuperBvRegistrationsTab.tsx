@@ -84,8 +84,19 @@ export default function SuperBvRegistrationsTab({
   const loadData = useReactiveLoader(async (read, silent = false) => {
     if (!silent) !read.background && setLoading(true);
     try {
-      const [regs, grpRes] = await Promise.all([
-        read(() => getPendingBvRegistrations({ segment })),
+      const [, grpRes] = await Promise.all([
+        read(() => getPendingBvRegistrations({ segment })).then(regs => {
+          const fetchedRegistrations = Array.isArray(regs) ? regs : [];
+          const fetchedIds = new Set(fetchedRegistrations.map(reg => String(reg.id)));
+          for (const resolvedId of resolvedRegistrationIdsRef.current) {
+            if (!fetchedIds.has(resolvedId)) resolvedRegistrationIdsRef.current.delete(resolvedId);
+          }
+          setRegistrations(fetchedRegistrations.filter(
+            reg => !resolvedRegistrationIdsRef.current.has(String(reg.id)),
+          ));
+          setLoading(false);
+          return regs;
+        }),
         !isSuperGuide && guideId
           ? read(() => getAllBvGroupsAdmin({ guideId })).then((result: any) => ({
               groups: (result.groups || []).map((g: any) => ({
@@ -99,24 +110,14 @@ export default function SuperBvRegistrationsTab({
           : (isSuperGuide ? read(() => getBvslGroups({ bvslId: 'ALL' })) : Promise.resolve({ groups: [] }))
               .catch(() => ({ groups: [] })),
       ]);
-      const fetchedRegistrations = Array.isArray(regs) ? regs : [];
-      const fetchedIds = new Set(fetchedRegistrations.map(reg => String(reg.id)));
-      for (const resolvedId of resolvedRegistrationIdsRef.current) {
-        if (!fetchedIds.has(resolvedId)) {
-          resolvedRegistrationIdsRef.current.delete(resolvedId);
-        }
-      }
-      setRegistrations(fetchedRegistrations.filter(
-        reg => !resolvedRegistrationIdsRef.current.has(String(reg.id)),
-      ));
       setAllGroupsState(grpRes.groups || []);
     } catch (err: any) {
       if (read.cancelled) return;
       toast.error(err?.message || 'Failed to load pending Bhakti Vriksha registrations');
     } finally {
-      if (!silent) setLoading(false);
+      if (!silent && !read.cancelled) setLoading(false);
     }
-  }, []);
+  }, [segment, guideId, isSuperGuide]);
 
 
   const handleReject = async (reg: any) => {

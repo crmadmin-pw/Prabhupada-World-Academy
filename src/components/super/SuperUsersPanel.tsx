@@ -208,7 +208,16 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
           : read(() => getAllBvGroupsAdmin({ guideId: profile?.userId || userEmail }))
         ).catch(() => ({ groups: [] })),
         isPwAdmin ? read(() => getActiveSadhanaMentors({ segment: 'PW' })).catch(() => []) : Promise.resolve([]),
-        read(() => getGuideUsers({ guideId: 'ALL', statusFilter: 'all' })),
+        read(() => getGuideUsers({ guideId: 'ALL', statusFilter: 'all' })).then(result => {
+          // Show the directory before the role/group dropdown lookups finish.
+          setUsers((result.users || []).map((u: any) => ({
+            ...u,
+            _guideId: u.selectedGuideId || u.guideId || u.guide || u.mentorId || '',
+            _guideName: u.selectedGuideName || u.guideName || u.mentorName || u.selectedMentorName || '',
+          })));
+          setLoading(false);
+          return result;
+        }),
       ]);
       setGuides(guideList);
       setBvGroups((groupsResult.groups || []).map((group: any) => ({
@@ -260,7 +269,7 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
       if (read.cancelled) return;
       toast.error('Failed to load users');
     } finally {
-      if (!silent) setLoading(false);
+      if (!silent && !read.cancelled) setLoading(false);
     }
   }, [effectiveSegment, isPwAdmin, isSuperAdmin, profile?.userId, userEmail]);
 

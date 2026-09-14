@@ -106,7 +106,7 @@ export default createEndpoint({
     }
 
     // Create record
-    const record: any = { session: input.sessionId, date: today, source };
+    const record: any = { session: input.sessionId, date: today, source, status: 'present' };
     if (userId) record.user = userId;
     if (participantId) record.participant = participantId;
     await AttendanceRecords.create({ record });

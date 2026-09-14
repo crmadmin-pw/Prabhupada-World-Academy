@@ -68,6 +68,12 @@ async function main() {
     await expect(page.getByTestId('effect')).toHaveText('2');
     await expect(page.getByLabel('Preserved draft')).toHaveValue('keep my input');
 
+    const beforeLoaderRevisit = requests.length;
+    await page.getByRole('button', {name:'Toggle loader view'}).click();
+    await page.getByRole('button', {name:'Toggle loader view'}).click();
+    await expect(page.getByTestId('legacy')).toHaveText('2');
+    assert.equal(requests.length, beforeLoaderRevisit, 'stateful loader reuses a fresh cached response on remount');
+
     const beforeRevisit = requests.length;
     await page.getByRole('button', {name:'Toggle compatibility view'}).click();
     await page.getByRole('button', {name:'Toggle compatibility view'}).click();

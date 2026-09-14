@@ -69,7 +69,11 @@ export default function ApprovalsTab({ guideId = '', reviewerGuideId, isSuperGui
     try {
       const residencyFetchId = guideId === 'ALL' ? (reviewerGuideId || guideId) : guideId;
       const [pendingRes, residencyRes, requestsRes, residencyTransferRes, guidesRes, cleanReviews, sadhanaMentorsRes] = await Promise.all([
-        read(() => getPendingApprovals({ guideId } as any)),
+        read(() => getPendingApprovals({ guideId } as any)).then(result => {
+          setPendingUsers(result);
+          setLoading(false);
+          return result;
+        }),
         read(() => getResidenciesForGuide({ guideId: residencyFetchId } as any)),
         read(() => getGuideRequests({ guideId } as any)),
         read(() => getResidencyTransferRequests({ guideId } as any)),
@@ -90,9 +94,9 @@ export default function ApprovalsTab({ guideId = '', reviewerGuideId, isSuperGui
       if (read.cancelled) return;
       if (!background) toast.error('Failed to load approvals');
     } finally {
-      if (!background) setLoading(false);
+      if (!background && !read.cancelled) setLoading(false);
     }
-  }, []);
+  }, [guideId, reviewerGuideId, isPwAdmin]);
 
   useEffect(() => {
     void loadAll();

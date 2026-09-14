@@ -34,15 +34,19 @@ export default function BvGroupManagerPanel({ guideId }: Props) {
     !read.background && setLoading(true);
     try {
       const [adminRes, membersRes] = await Promise.all([
-        read(() => getAllBvGroupsAdmin({ guideId })),
+        read(() => getAllBvGroupsAdmin({ guideId })).then(result => {
+          setGroups(result.groups);
+          setLoading(false);
+          return result;
+        }),
         read(() => getEligibleMembersForBvGroup({ guideId })),
       ]);
       setGroups(adminRes.groups);
       setEligibleMembers(membersRes.members);
     } catch {
       if (read.cancelled) return; toast.error('Failed to load groups'); }
-    finally { setLoading(false); }
-  }, []);
+    finally { if (!read.cancelled) setLoading(false); }
+  }, [guideId]);
 
   const handleMemberAdded = (groupId: string) => {
     setMemberRefreshKeys(prev => ({ ...prev, [groupId]: (prev[groupId] || 0) + 1 }));

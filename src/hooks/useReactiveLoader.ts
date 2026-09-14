@@ -27,6 +27,9 @@ export function useReactiveLoader<Args extends unknown[], Result>(
     timer: undefined as ReturnType<typeof setTimeout> | undefined });
   const execute = useCallback(async (background: boolean, args: Args) => {
     const current = state.current;
+    // First visits and new filter combinations may already have been prefetched.
+    // Subsequent explicit reloads still force a read (including after mutations).
+    const firstLoad = current.args === undefined;
     const generation = ++current.generation;
     current.running = true;
     current.dirty = false;
@@ -51,7 +54,7 @@ export function useReactiveLoader<Args extends unknown[], Result>(
         keys.add(key);
         current.keys.add(key);
         if (!current.pins.has(key)) current.pins.set(key, retainEndpointQuery(key));
-      }, !background && !options.current.useCachedReads?.(...args)); }
+      }, !background && !(options.current.useCachedReads?.(...args) ?? firstLoad)); }
       catch (error) {
         if (!cancelled() && ![401, 403].includes((error as { status?: number })?.status || 0)) {
           failed = true;
