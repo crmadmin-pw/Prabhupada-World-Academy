@@ -37,7 +37,7 @@ const EXAM_TAKEN_LEVELS = [
 export default function RegistrationPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { forceSetProfile } = useUserProfile();
+  const { forceSetProfile, refreshProfile } = useUserProfile();
   const [loading, setLoading] = useState(false);
   const [loadingGuides, setLoadingGuides] = useState(true);
   const [loadingResidencies, setLoadingResidencies] = useState(true);
@@ -164,6 +164,14 @@ export default function RegistrationPage() {
       });
 
       if (result.success) {
+        const normalizedStatus = String(result.status || '').toUpperCase().replace(/[\s_-]+/g, '_');
+        if (normalizedStatus === 'ACTIVE') {
+          try { localStorage.removeItem('pwa_pending_registration'); } catch {}
+          await refreshProfile();
+          toast.info('This account is already registered and active.');
+          navigate('/dashboard', { replace: true });
+          return;
+        }
         // Persist a flag so that the route guard keeps the user on /pending
         // even if getUserProfile returns null on the next page load / refresh.
         try { localStorage.setItem('pwa_pending_registration', email); } catch {}
@@ -188,7 +196,7 @@ export default function RegistrationPage() {
       }
     } catch (err: any) {
       const msg = err?.message || '';
-      if (msg.includes('already exists')) {
+      if (msg.includes('already exists') || msg.includes('already registered')) {
         toast.error('An account with this phone number already exists. Please sign in instead.');
       } else if (msg.includes('guide not found')) {
         toast.error('Selected guide not found. Please refresh and try again.');

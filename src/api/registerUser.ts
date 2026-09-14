@@ -53,13 +53,65 @@ export default createEndpoint({
       residencyRecordId = residencyRecord.id;
     }
 
-    // Check if this phone is already registered (by another user)
+    const userEmail = (input.email || context.user.email || '').toLowerCase();
+
+    // A signed-in user may already own a migrated profile whose document ID is
+    // different from their Firebase Auth UID. Never turn that into a second,
+    // browser-only "pending" registration.
+    const authAliases = [context.user.id, context.user.uid, context.user.userId]
+      .filter(Boolean).map((value: unknown) => String(value));
+    const { records: emailMatches } = userEmail
+      ? await Users.findAll({ filters: { email: userEmail }, limit: 10 })
+      : { records: [] as any[] };
+    const existingProfile = emailMatches.find((record: any) =>
+      record.email?.toLowerCase() === userEmail ||
+      ['id', 'uid', 'authUid', 'firebaseUid', 'firebaseAuthUid'].some(field =>
+        record[field] && authAliases.includes(String(record[field]))
+      )
+    );
+    const existingStatus = String(existingProfile?.status || '').trim().toUpperCase().replace(/[\s_-]+/g, '_');
+    if (existingProfile?.userId && existingStatus === 'ACTIVE') {
+      const existingGuideRef = Array.isArray(existingProfile.guide) ? existingProfile.guide[0] : existingProfile.guide;
+      if (guideRecord?.id && String(existingGuideRef || '') !== guideRecord.id) {
+        // Re-registration under a new FOLK Guide is reviewed as an ordinary
+        // pending registration. Keep this same Users document so every old
+        // Sadhana entry and profile detail remains attached after approval.
+        await Users.update({ id: existingProfile.id, record: {
+          guide: guideRecord.id,
+          selectedGuideId: guideRecord.id,
+          guideName: guideRecord.fullName || null,
+          status: 'Pending Approval',
+          firebaseUid: context.user.id,
+          statusChangedAt: new Date().toISOString(),
+        } });
+        serverCacheInvalidate(profileCacheKey(existingProfile.id));
+        return { success: true, userId: String(existingProfile.userId), status: 'PENDING_APPROVAL' };
+      }
+      return { success: true, userId: String(existingProfile.userId), status: 'ACTIVE' };
+    }
+    if (existingProfile?.userId && existingStatus === 'PENDING_APPROVAL') {
+      return { success: true, userId: String(existingProfile.userId), status: existingStatus };
+    }
+
+    // Check if this phone is already registered (by another user). Stored
+    // records may contain either E.164 formatting or digits only.
     const phone = input.phoneE164.replace(/[^0-9]/g, '');
-    const { records: existing } = await Users.findAll({ filters: { phone }, limit: 5 });
-    const dupUser = existing.find(u => u.id !== context.user.id && u.userId);
+    const phoneResults = await Promise.all([
+      Users.findAll({ filters: { phone }, limit: 5 }),
+      input.phoneE164 !== phone
+        ? Users.findAll({ filters: { phone: input.phoneE164 }, limit: 5 })
+        : Promise.resolve({ records: [] as any[] }),
+    ]);
+    const existing = [...phoneResults[0].records, ...phoneResults[1].records];
+    const dupUser = existing.find((u: any) =>
+      u.userId && u.id !== context.user.id &&
+      String(u.email || '').toLowerCase() !== userEmail
+    );
     if (dupUser) {
-      // Return generic success to prevent enumeration
-      return { success: true, userId: '', status: 'PENDING_APPROVAL' };
+      throw new AppError({
+        code: 'CONFLICT',
+        message: 'This phone number is already registered. Please sign in with the existing account or use a different phone number.',
+      });
     }
 
     // ── Guard against bare user-sync records re-registering over a real profile ──
@@ -96,13 +148,14 @@ export default createEndpoint({
 
     // Always normalize email to lowercase — prevents case-mismatch duplicates on future logins
     // (Google/OAuth providers return lowercase, so stored email must match)
-    const userEmail = (input.email || context.user.email || '').toLowerCase();
     const appUrl = process.env.APP_APP_URL ?? '';
     const ashrayLevel = input.ashrayLevel || 'Jigyasa';
 
     // Upsert the record in Firestore — single source of truth for all environments
+    const targetRecordId = existingProfile?.id || context.user.id;
     const firestoreRecord = {
-      id: context.user.id,
+      id: targetRecordId,
+      firebaseUid: context.user.id,
       userId,
       fullName: input.fullName,
       phone,
@@ -120,11 +173,11 @@ export default createEndpoint({
       segment: isPw ? 'PW' : 'FOLK',
       createdAt: new Date().toISOString()
     };
-    const existingFirestoreUser = await Users.findOne({ id: context.user.id });
+    const existingFirestoreUser = await Users.findOne({ id: targetRecordId });
     if (!existingFirestoreUser) {
       await Users.create({ record: firestoreRecord });
     } else {
-      await Users.update({ id: context.user.id, record: firestoreRecord });
+      await Users.update({ id: targetRecordId, record: firestoreRecord });
     }
 
 
