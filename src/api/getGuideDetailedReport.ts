@@ -817,15 +817,34 @@ export default createEndpoint({
       ];
       const [guideUsersRes, ...residencyUsersArr] = await Promise.all(userFetchPromises);
       const allUsersMap = new Map<string, any>();
+      // seenKeys tracks every known alias for already-added users so that a second
+      // Firestore document for the same person (e.g. one keyed by email, one auto-ID)
+      // is never added to the list.
+      const seenKeys = new Set<string>();
+      const registerUser = (u: any) => {
+        for (const field of ['id', 'userId', 'email', 'uid', 'authUid', 'firebaseUid']) {
+          const v = String(u[field] || '').trim().toLowerCase();
+          if (v) seenKeys.add(v);
+        }
+      };
+      const isDuplicate = (u: any) => {
+        for (const field of ['id', 'userId', 'email', 'uid', 'authUid', 'firebaseUid']) {
+          const v = String(u[field] || '').trim().toLowerCase();
+          if (v && seenKeys.has(v)) return true;
+        }
+        return false;
+      };
       for (const u of guideUsersRes.records) {
         allUsersMap.set(u.id, u);
+        registerUser(u);
       }
       for (const res of residencyUsersArr) {
         for (const u of res.records) {
-          // Dedup by DB record ID only — custom userId is NOT reliable for dedup
-          // (duplicate custom userIds caused valid users to be incorrectly excluded)
-          if (!allUsersMap.has(u.id)) {
+          // Dedup by DB id AND by email/userId aliases — prevents the same person
+          // from appearing twice when they have two Firestore documents.
+          if (!isDuplicate(u)) {
             allUsersMap.set(u.id, u);
+            registerUser(u);
           }
         }
       }
@@ -835,7 +854,21 @@ export default createEndpoint({
       const allUsersFilter: any = { status: 'Active' };
       if (input.segment) allUsersFilter.segment = input.segment;
       const { records } = await Users.findAll({ filters: allUsersFilter, fields: USER_FIELDS, limit: 2000 });
-      users = records;
+      // Dedup: the same person can have two Firestore documents (one auto-ID and one keyed by email).
+      // Keep the first occurrence (Firestore returns documents ordered by insertion time, so the
+      // most-recently-updated record typically comes first via query ordering).
+      const seenKeysAll = new Set<string>();
+      users = records.filter(u => {
+        for (const field of ['id', 'userId', 'email', 'uid', 'authUid', 'firebaseUid']) {
+          const v = String(u[field] || '').trim().toLowerCase();
+          if (v && seenKeysAll.has(v)) return false;
+        }
+        for (const field of ['id', 'userId', 'email', 'uid', 'authUid', 'firebaseUid']) {
+          const v = String(u[field] || '').trim().toLowerCase();
+          if (v) seenKeysAll.add(v);
+        }
+        return true;
+      });
     }
 
     const scopedUserIds = await hierarchyPromise;

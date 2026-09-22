@@ -56,24 +56,31 @@ export default createEndpoint({
     const pendingCandidates = pendingCandidatesRaw.filter((user: any) =>
       String(user.status || '').trim().toUpperCase().replace(/[\s_-]+/g, '_') === 'PENDING_APPROVAL'
     );
-    const hierarchy = await getScopedHierarchyUserIds(context.user);
-    const pendingRecords = pendingCandidates.filter(user => isUserInHierarchy(user, hierarchy));
-
     const userSegment = context.user.segment || 'PW';
 
     const checkIsPwUser = (u: any) => {
       return !!u.isPrabhupadaWorldUser || u.segment === 'PW';
     };
 
+    const isPwAdminOrSuperAdmin = !!(
+      context.user.isBvSuperAdmin ||
+      context.user.isBvAdmin ||
+      context.user.isPwAdmin ||
+      userRole === 'SUPER_ADMIN' ||
+      userRole === 'ADMIN' ||
+      userRole === 'PW_ADMIN'
+    );
+    // PW registrations form a shared admin queue. They are not assigned by
+    // mentor/guide at registration, and a stale guide link must not hide one.
+    const isPwIntakeAdmin = String(context.user.segment || '').toUpperCase() === 'PW' && isPwAdminOrSuperAdmin;
+    const hierarchy = isPwIntakeAdmin ? null : await getScopedHierarchyUserIds(context.user);
+    const pendingRecords = pendingCandidates.filter(user =>
+      isPwIntakeAdmin ? checkIsPwUser(user) : isUserInHierarchy(user, hierarchy)
+    );
+
     let allUsers: any[] = [];
 
     if (userSegment === 'PW') {
-      const isPwAdminOrSuperAdmin = !!(
-        context.user.isBvSuperAdmin ||
-        context.user.isBvAdmin ||
-        userRole === 'SUPER_ADMIN' ||
-        userRole === 'ADMIN'
-      );
       allUsers = pendingRecords.filter(u => {
         if (!checkIsPwUser(u)) return false;
         if (isPwAdminOrSuperAdmin) return true;

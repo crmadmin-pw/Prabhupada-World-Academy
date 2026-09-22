@@ -171,8 +171,10 @@ export default createEndpoint({
       const isHiranyavarnaOrPwAdmin = !!(
         context.user.isBvSuperAdmin ||
         context.user.isBvAdmin ||
+        context.user.isPwAdmin ||
         userRole === 'SUPER_ADMIN' ||
-        userRole === 'ADMIN'
+        userRole === 'ADMIN' ||
+        userRole === 'PW_ADMIN'
       );
 
       const filteredAshray = rawAshray.filter((r: any) => {

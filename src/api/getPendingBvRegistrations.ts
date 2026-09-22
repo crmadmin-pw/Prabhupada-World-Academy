@@ -158,10 +158,26 @@ export default createEndpoint({
       ? await getGuideScope(context.user.email || '').catch(() => null)
       : null;
 
+    const isPwAdminUser = String(context.user.segment || '').toUpperCase() === 'PW' && !!(
+      context.user.isBvSuperAdmin ||
+      context.user.isBvAdmin ||
+      context.user.isPwAdmin ||
+      role === 'SUPER_ADMIN' ||
+      role === 'ADMIN' ||
+      role === 'PW_ADMIN'
+    );
+
     const hierarchy = await getScopedHierarchyUserIds(context.user);
     const filteredRecords = records.filter(r => {
       const u = userMap[r.userId] || userMap[r.userDbId] || userMap[r.id] || (r.email ? userMap[r.email.toLowerCase()] : null);
-      if (!isUserInHierarchy(u || { id: r.userDbId, userId: r.userId, email: r.email }, hierarchy)) return false;
+      const isPwUser = !!(u?.isPrabhupadaWorldUser || r.isPrabhupadaWorldUser) ||
+        (u?.segment === 'PW' || r.segment === 'PW');
+      const requestUser = u || { id: r.userDbId, userId: r.userId, email: r.email, segment: r.segment,
+        isPrabhupadaWorldUser: r.isPrabhupadaWorldUser, guide: r.guide, selectedGuideId: r.selectedGuideId };
+      // PW BV applications are also reviewed by the shared PW admin queue;
+      // hierarchy still scopes FOLK and non-admin callers.
+      if (!(targetSegment === 'PW' && isPwAdminUser && isPwUser) &&
+        !isUserInHierarchy(requestUser, hierarchy)) return false;
       // A successful assignment or rejection is definitive. Do not show an old duplicate
       // registration record as pending after the member has joined a group or been rejected.
       const registrationIdentities = [r.userId, r.userDbId, u?.id, u?.userId]
@@ -173,8 +189,6 @@ export default createEndpoint({
         u?.bvRegistrationStatus === 'Rejected' ||
         registrationIdentities.some(identity => memberIdentities.has(identity))
       ) return false;
-      const isPwUser = !!(u?.isPrabhupadaWorldUser || r.isPrabhupadaWorldUser) || 
-        (u?.segment === 'PW' || r.segment === 'PW');
 
       if (targetSegment === 'PW') {
         return isPwUser; // PW Admin / Super Admin sees ONLY Prabhupada World registrations

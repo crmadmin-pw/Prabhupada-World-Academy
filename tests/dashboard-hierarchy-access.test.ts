@@ -12,6 +12,7 @@ import getSadhanaStats from '../src/api/getSadhanaStats';
 import getSadhanaLeaderboard from '../src/api/getSadhanaLeaderboard';
 import getActiveSadhanaMentors from '../src/api/getActiveSadhanaMentors';
 import getPendingApprovals from '../src/api/getPendingApprovals';
+import getPendingBvRegistrations from '../src/api/getPendingBvRegistrations';
 import getUserDetailForGuide from '../src/api/getUserDetailForGuide';
 import getOneToOneContext from '../src/api/getOneToOneContext';
 import getBvSessionMatrix from '../src/api/getBvSessionMatrix';
@@ -166,10 +167,10 @@ test('BV reports and dropdowns include indirect groups and reject a forged group
   assert.deepEqual((await resolveBvScopedGroups(superAdmin, { segment: 'PW' })).map(g => g.id), ['group-a', 'group-b']);
 });
 
-test('counts and profile drilldowns cannot leak another admin member', async t => {
+test('PW approval queue is shared while member data stays scoped to the admin', async t => {
   mockDatabase(t);
   const approvals = await call(getPendingApprovals, { guideId: 'ALL' });
-  assert.ok(!JSON.stringify(approvals).includes('pending-b'));
+  assert.ok(JSON.stringify(approvals).includes('pending-b'));
   assert.ok(JSON.stringify(approvals).includes('pending-a'));
   const subscriptions = await call(getPushSubscriptionStats, { segment: 'PW' });
   assert.equal(subscriptions.totalSubscriptions, 1);
@@ -179,6 +180,42 @@ test('counts and profile drilldowns cannot leak another admin member', async t =
   assert.ok(!JSON.stringify(attendance).includes('member-b'));
   await assert.rejects(call(getUserDetailForGuide, { userId: 'member-b' }), /not assigned/);
   await assert.rejects(call(getOneToOneContext, { userId: 'member-b' }), /not assigned/);
+});
+
+test('PW admin intake shows all PW joining requests, with and without a guide', async t => {
+  const previousUsers = fixture.Users;
+  const previousRegistrations = fixture.BvMemberRegistrations;
+  const unassignedApproval = member('pw-join-unassigned', { status: 'Pending Approval', guide: null });
+  const assignedApproval = member('pw-join-foreign', { status: 'Pending Approval', guide: otherAdmin.id });
+  const unassignedBv = member('pw-bv-unassigned', { bvRegistrationStatus: 'Pending Approval', guide: '' });
+  const assignedBv = member('pw-bv-foreign', { bvRegistrationStatus: 'Pending Approval', guide: otherAdmin.id });
+  const folkApproval = member('folk-join', { status: 'Pending Approval', segment: 'FOLK' });
+  const folkBv = member('folk-bv', { bvRegistrationStatus: 'Pending Approval', segment: 'FOLK' });
+  fixture.Users = [...users, unassignedApproval, assignedApproval, unassignedBv, assignedBv, folkApproval, folkBv];
+  fixture.BvMemberRegistrations = [
+    { id: 'bv-intake', userId: unassignedBv.userId, userDbId: unassignedBv.id, email: unassignedBv.email,
+      status: 'Pending Approval', segment: 'PW', fullName: unassignedBv.fullName },
+    { id: 'bv-foreign', userId: assignedBv.userId, userDbId: assignedBv.id, email: assignedBv.email,
+      status: 'Pending Approval', segment: 'PW', fullName: assignedBv.fullName },
+    { id: 'bv-folk', userId: folkBv.userId, userDbId: folkBv.id, email: folkBv.email,
+      status: 'Pending Approval', segment: 'FOLK', fullName: folkBv.fullName },
+  ];
+  t.after(() => { fixture.Users = previousUsers; fixture.BvMemberRegistrations = previousRegistrations; });
+  mockDatabase(t);
+
+  const approvals = await call(getPendingApprovals, { guideId: 'ALL' });
+  assert.ok(approvals.some((row: any) => row.userId === unassignedApproval.id));
+  assert.ok(approvals.some((row: any) => row.userId === assignedApproval.id));
+  assert.ok(!approvals.some((row: any) => row.userId === folkApproval.id));
+  const superApprovals = await call(getPendingApprovals, { guideId: 'ALL' }, superAdmin);
+  assert.ok(superApprovals.some((row: any) => row.userId === assignedApproval.id));
+
+  const bvRegistrations = await call(getPendingBvRegistrations, { segment: 'PW' });
+  assert.ok(bvRegistrations.some((row: any) => row.id === 'bv-intake'));
+  assert.ok(bvRegistrations.some((row: any) => row.id === 'bv-foreign'));
+  assert.ok(!bvRegistrations.some((row: any) => row.id === 'bv-folk'));
+  const superBvRegistrations = await call(getPendingBvRegistrations, { segment: 'PW' }, superAdmin);
+  assert.ok(superBvRegistrations.some((row: any) => row.id === 'bv-foreign'));
 });
 
 test('preaching analytics aggregate only the current admin hierarchy and super admins retain all guides', async t => {
