@@ -102,9 +102,13 @@ async function main(): Promise<void> {
   await Promise.all(workers);
   results.sort((a, b) => `${a.sourceTable}|${a.sourceRecordId}|${a.field}|${a.url}`.localeCompare(`${b.sourceTable}|${b.sourceRecordId}|${b.field}|${b.url}`));
 
+  const sourceManifest = readJson<any>(path.join(ziteDir, 'manifest.json'));
   const attachmentManifest = {
     kind: 'zite-attachment-snapshot',
-    capturedSourceWatermark: readJson<any>(path.join(ziteDir, 'manifest.json')).watermark,
+    capturedSourceWatermark: sourceManifest.watermark ?? null,
+    capturedSourceStartedAt: sourceManifest.captureStartedAt ?? null,
+    capturedSourceFinishedAt: sourceManifest.capturedAt ?? null,
+    sourceManifestChecksum: sourceManifest.checksum,
     verifiedAt: new Date().toISOString(),
     count: results.length,
     uniqueFiles: new Set(results.map((row) => row.checksum)).size,

@@ -46,6 +46,38 @@ node --import tsx scripts/zite-firestore-migration/verifyAppliedMigration.ts <ru
 
 ## Functional repair workflow
 
+### Catch-up capture while Zite remains writable
+
+The September 23 catch-up authorization differs from the original migration:
+Zite wins business-data conflicts, while current roles, permissions, login
+identities, and current-only records remain protected. LLP remains excluded;
+legacy push subscriptions remain archive-only. Do not reuse the original
+current-wins planner as an incremental source-wins importer.
+
+`finalizeCatchupCapture.ts` is **offline only**. It combines previously exported
+1,000-row keyset pages, rejects duplicate/missing pages and LLP tables, and
+produces checksummed source files plus exact-email identity/collision reports.
+It does not plan or execute database writes.
+
+```bash
+node --import tsx scripts/zite-firestore-migration/finalizeCatchupCapture.ts <catchup-run-dir>
+node --import tsx scripts/zite-firestore-migration/snapshotAttachments.ts <catchup-run-dir>
+node --import tsx --test tests/zite-catchup-capture.test.ts tests/zite-firestore-migration.test.ts
+```
+
+Inputs are `zite/capture-start.json`, `zite/page-index.json`, source page files,
+and a fresh `firestore/manifest.json` with its Users snapshot. A page index must
+contain exactly the 49 non-LLP tables, with `name`, `page` (page count), and
+`count` for each table; source pages are named `<safe-table-name>-0000.jsonl`.
+The capture-start file records `startedAt` and `replayFrom`.
+
+With Zite still accepting writes, this is not a simultaneous point-in-time
+snapshot or a final cut-over. Replay from the **capture start**, not its end,
+on the next catch-up to cover writes made during pagination. Resolve new
+identity/access decisions with the operator before importing affected data.
+
+### Original functional repair
+
 The post-migration functional audit found relationship fields that were copied
 as legacy display values instead of canonical destination document IDs. Repair
 planning and rehearsal use a separate, production-disabled workflow:
