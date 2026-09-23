@@ -76,6 +76,49 @@ snapshot or a final cut-over. Replay from the **capture start**, not its end,
 on the next catch-up to cover writes made during pagination. Resolve new
 identity/access decisions with the operator before importing affected data.
 
+### Guarded catch-up pass
+
+The incremental pass tools consume the private capture directory plus a pass
+directory containing explicit identity decisions, a fresh Firestore/Auth
+snapshot, refreshed source schema, and overlapping source deltas. They do not
+change Zite or Firebase Auth, delete destination documents, merge by phone, or
+change existing public USER numbers.
+
+```bash
+node --import tsx scripts/zite-firestore-migration/planCatchup.ts <capture-dir> <pass-dir>
+node --import tsx scripts/zite-firestore-migration/executeCatchup.ts <pass-dir> migration-catchup-0923 prepare-rehearsal <plan-hash>
+node --import tsx scripts/zite-firestore-migration/executeCatchup.ts <pass-dir> migration-catchup-0923 apply-rehearsal <plan-hash>
+node --import tsx scripts/zite-firestore-migration/executeCatchup.ts <pass-dir> migration-catchup-0923 verify <plan-hash>
+node --import tsx scripts/zite-firestore-migration/verifyCatchupFunctional.ts <pass-dir> migration-catchup-0923
+node --import tsx scripts/zite-firestore-migration/verifyCatchupIdempotency.ts <pass-dir>
+```
+
+Only after the explicit source-wins authorization, a verified restore,
+review-free plan, successful rehearsal/read-back, functional replay, and zero
+operational changes on repeated planning:
+
+```bash
+node --import tsx scripts/zite-firestore-migration/executeCatchup.ts <pass-dir> '(default)' apply-production <plan-hash>
+node --import tsx scripts/zite-firestore-migration/executeCatchup.ts <pass-dir> '(default)' verify <plan-hash>
+node --import tsx scripts/zite-firestore-migration/verifyCatchupFunctional.ts <pass-dir> '(default)'
+```
+
+Incoming profile creation uses a transaction that rechecks current emails and
+public USER numbers. Updates have read-back-checked before-values and live
+update-time preconditions. A concurrent write stops its atomic batch. Re-running
+the exact approved plan rechecks current state, skips already-matching writes,
+and preserves new login activity; it must not bypass a changed business field.
+Immutable `_MigrationCatchupHistory` records preserve the source and preimage
+before operational changes. Raw typed preimages and append-only commit
+journals are also saved privately in the pass directory.
+
+Functional verification reads database documents, then replays the real local
+profile/login/history/Guide handlers with **all model writes intercepted**.
+It is not proof of an authenticated browser Google sign-in. Malformed source
+detail JSON is retained verbatim and reported, never silently repaired or lost.
+The first pass uses the original migration baseline; later passes must retain
+overlap while Zite remains writable. No scheduler or final cut-off is implied.
+
 ### Original functional repair
 
 The post-migration functional audit found relationship fields that were copied
