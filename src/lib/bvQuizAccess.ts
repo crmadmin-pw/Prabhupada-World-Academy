@@ -2,7 +2,7 @@ import { AppError, BvGroupMembers, BvGroups, Guides, Users } from '@/lib/backend
 import type { ApiUserContext } from '@/lib/apiAuthorization';
 import { getScopedHierarchyUserIds } from '@/lib/hierarchyUtils';
 
-export type QuizDepartment = 'FOLK' | 'OTHER';
+export type QuizDepartment = 'FOLK' | 'PW' | 'OTHER';
 
 type QuizAccessUser = ApiUserContext | (Record<string, unknown> & {
   id?: string;
@@ -37,8 +37,67 @@ export interface QuizGroupScope {
 export function normalizeQuizDepartment(value: unknown, fallback: QuizDepartment = 'OTHER'): QuizDepartment {
   const normalized = String(value || '').trim().replace(/[\s_-]+/g, '').toUpperCase();
   if (normalized === 'FOLK') return 'FOLK';
-  if (normalized !== 'FOLK' && normalized) return 'OTHER';
+  if (normalized === 'PW' || normalized === 'PRABHUPADAWORLD') return 'PW';
+  if (normalized) return 'OTHER';
   return fallback;
+}
+
+/** Department of the signed-in account. An empty segment stays unresolved so a
+ * FOLK caller is never treated as Prabhupada World, or the reverse. */
+export function quizUserDepartment(user: QuizAccessUser | null | undefined): QuizDepartment {
+  const explicit = String(user?.segment || '').trim();
+  if (explicit) return normalizeQuizDepartment(explicit, 'OTHER');
+  const record = user as Record<string, unknown> | null | undefined;
+  if (record?.isFolkUser === true) return 'FOLK';
+  if (record?.isPrabhupadaWorldUser === true) return 'PW';
+  const role = normalizeQuizRole(user?.normalizedRole || user?.role);
+  if (role === 'GUIDE' || role === 'SUPER_GUIDE') return 'FOLK';
+  if (role === 'ADMIN' || role === 'PW_ADMIN' || role === 'SUPER_ADMIN') return 'PW';
+  return 'OTHER';
+}
+
+/** PW Admin and Super Admin are the only accounts that may author quiz content. */
+export function isPwQuizContentManager(user: QuizAccessUser | null | undefined): boolean {
+  if (!isActiveUser(user) || !user || quizUserDepartment(user) !== 'PW') return false;
+  const role = normalizeQuizRole(user.normalizedRole || user.role);
+  return user.isBvSuperAdmin === true || user.isBvAdmin === true ||
+    role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'PW_ADMIN';
+}
+
+/** PW reading-group facilitators (RGF). Sub-facilitators cannot publish a quiz to a group. */
+export function isPwQuizFacilitator(user: QuizAccessUser | null | undefined): boolean {
+  if (!isActiveUser(user) || !user || quizUserDepartment(user) !== 'PW') return false;
+  const role = normalizeQuizRole(user.normalizedRole || user.role);
+  return user.isBvFacilitator === true || user.isBvsl === true ||
+    role === 'BVSL' || role === 'RGF' || role === 'FACILITATOR';
+}
+
+export function readActiveGroupIds(quiz: any): string[] {
+  const raw = quiz?.activeGroupIds;
+  if (Array.isArray(raw)) return raw.map((value: unknown) => String(value)).filter(Boolean);
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.map((value: unknown) => String(value)).filter(Boolean);
+    } catch { /* stored as a comma-separated list */ }
+    return raw.split(',').map(value => value.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+/** A PW quiz reaches a group only after that group's facilitator turns it on. */
+export function pwQuizEnabledForGroup(quiz: any, group: any): boolean {
+  if (quiz?.isActive === false) return false;
+  const active = new Set(quizRefValues(readActiveGroupIds(quiz)));
+  return [...quizGroupAliases(group)].some(alias => active.has(alias));
+}
+
+export function withGroupActivation(activeGroupIds: string[], group: any, active: boolean): string[] {
+  const aliases = quizGroupAliases(group);
+  const kept = activeGroupIds.filter(id => !aliases.has(id.trim().toLowerCase()));
+  if (!active) return kept;
+  const canonical = String(group?.id || '');
+  return canonical ? [...kept, canonical] : kept;
 }
 
 export function normalizeQuizRole(value: unknown): string {
@@ -91,7 +150,8 @@ export function canReadFolkQuizResults(user: QuizAccessUser | null | undefined):
   return user.isBvSupervisor === true || user.isBvMentor === true;
 }
 
-export function canManageQuizContent(user: QuizAccessUser | null | undefined, department: 'FOLK'): boolean {
+export function canManageQuizContent(user: QuizAccessUser | null | undefined, department: 'FOLK' | 'PW'): boolean {
+  if (department === 'PW') return isPwQuizContentManager(user);
   return department === 'FOLK' && isFolkQuizContentManager(user);
 }
 
@@ -131,7 +191,7 @@ async function loadDepartmentDirectory(): Promise<Map<string, QuizDepartment>> {
     const explicit = String(record?.segment || '').trim();
     const department = explicit
       ? normalizeQuizDepartment(explicit)
-      : (record?.isPrabhupadaWorldUser === true ? 'OTHER' : null);
+      : (record?.isPrabhupadaWorldUser === true ? 'PW' : null);
     if (!department) continue;
     for (const alias of directoryAliases(record)) departmentByAlias.set(alias, department);
   }
@@ -171,7 +231,7 @@ async function getExpandedAliases(reference: unknown): Promise<Set<string>> {
 
 export async function getQuizGroupsForUser(
   user: QuizAccessUser,
-  department: 'FOLK',
+  department: 'FOLK' | 'PW',
   options: { includeInactive?: boolean; readOnly?: boolean } = {},
 ): Promise<QuizGroupScope[]> {
   if (!isActiveUser(user)) return [];
@@ -204,6 +264,10 @@ export async function getQuizGroupsForUser(
       const directlyOwned = owners.some(reference => callerAliases.has(reference));
       const directlyAssigned = subFacilitators.some(reference => callerAliases.has(reference));
 
+      if (department === 'PW') {
+        if (isPwQuizContentManager(user)) return true;
+        return isPwQuizFacilitator(user) && directlyOwned;
+      }
       if (!isFolkQuizContentManager(user) && !allowFolkSupervisorRead) return false;
       if (allowFolkSupervisorRead) {
         if (supervisorScope === null) return true;
@@ -282,8 +346,8 @@ export async function getUserQuizMemberships(user: QuizAccessUser): Promise<any[
   });
 }
 
-export async function getUserQuizGroups(user: QuizAccessUser, department: 'FOLK'): Promise<any[]> {
-  if (normalizeQuizDepartment(user.segment) !== 'FOLK') return [];
+export async function getUserQuizGroups(user: QuizAccessUser, department: 'FOLK' | 'PW'): Promise<any[]> {
+  if (quizUserDepartment(user) !== department) return [];
   const memberships = await getUserQuizMemberships(user);
   const groups: any[] = [];
   const seen = new Set<string>();
@@ -308,26 +372,42 @@ export function legacyQuizMatchesGroup(quiz: any, group: any): boolean {
 export async function assertQuizParticipantAccess(
   user: QuizAccessUser,
   quiz: any,
-  fallbackDepartment: 'FOLK' = 'FOLK',
-): Promise<{ department: 'FOLK'; group: any }> {
-  const department = await resolveQuizDepartment(quiz, fallbackDepartment);
-  if (department !== 'FOLK' || normalizeQuizDepartment(user.segment) !== 'FOLK') {
-    throw new AppError({ code: 'FORBIDDEN', message: 'Quizzes are available only in FOLK' });
+  fallbackDepartment: 'FOLK' | 'PW' = 'FOLK',
+): Promise<{ department: 'FOLK' | 'PW'; group: any }> {
+  const userDepartment = quizUserDepartment(user);
+  if (userDepartment !== 'FOLK' && userDepartment !== 'PW') {
+    throw new AppError({ code: 'FORBIDDEN', message: 'Quizzes are not available for this account' });
   }
-  if (quiz.isActive !== true) {
+  const department = await resolveQuizDepartment(quiz, fallbackDepartment);
+  if ((department !== 'FOLK' && department !== 'PW') || department !== userDepartment) {
+    throw new AppError({ code: 'FORBIDDEN', message: 'This quiz belongs to another department' });
+  }
+  if (quiz.isActive === false || (department === 'FOLK' && quiz.isActive !== true)) {
     throw new AppError({ code: 'FORBIDDEN', message: 'This quiz is not currently published' });
   }
 
   const groups = await getUserQuizGroups(user, department);
-  const group = groups.find(candidate => legacyQuizMatchesGroup(quiz, candidate));
+  const group = department === 'PW'
+    ? groups.find(candidate => pwQuizEnabledForGroup(quiz, candidate))
+    : groups.find(candidate => legacyQuizMatchesGroup(quiz, candidate));
   if (!group) {
-    throw new AppError({ code: 'FORBIDDEN', message: 'This quiz is not active for your reading group' });
+    throw new AppError({
+      code: 'FORBIDDEN',
+      message: department === 'PW'
+        ? 'This quiz is not turned on for your reading group'
+        : 'This quiz is not active for your reading group',
+    });
   }
   return { department, group };
 }
 
-export function requireQuizContentManager(user: QuizAccessUser, department: 'FOLK'): void {
+export function requireQuizContentManager(user: QuizAccessUser, department: 'FOLK' | 'PW'): void {
   if (!canManageQuizContent(user, department)) {
-    throw new AppError({ code: 'FORBIDDEN', message: 'Only authorized FOLK quiz managers can manage quiz content' });
+    throw new AppError({
+      code: 'FORBIDDEN',
+      message: department === 'PW'
+        ? 'Only Prabhupada World admins can manage quiz content'
+        : 'Only authorized FOLK quiz managers can manage quiz content',
+    });
   }
 }

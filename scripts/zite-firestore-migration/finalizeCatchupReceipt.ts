@@ -9,14 +9,20 @@ async function main(){
   const functional=readJson<any>(path.join(pass,'production-functional-verification.json'));
   if(readback.planHash!==plan.planHash||readback.mismatches.length||functional.planHash!==plan.planHash||functional.errors.length)throw new Error('Production verification must pass');
   const writes=readJsonLines(path.join(pass,'catchup-writes.jsonl')).filter(w=>w.phase>0);
+  const destinationManifest=readJson<any>(path.join(pass,'firestore/manifest.json'));
   const retention=[];
   for(const collection of new Set(writes.map(w=>w.collection))){
     const before=readJsonLines(path.join(pass,'firestore/tables',collection+'.jsonl'));
     const after=readJsonLines(path.join(pass,'production-functional-snapshot',collection+'.jsonl'));
     const ids=new Set(after.map(r=>r.id));const missing=before.filter(r=>!ids.has(r.id));
-    const expected=before.length+writes.filter(w=>w.collection===collection&&w.operation==='create').length;
-    if(missing.length||after.length!==expected)throw new Error('Collection retention/count check failed: '+collection);
-    retention.push({collection,before:before.length,after:after.length,expected,missingBeforeIds:0});
+    const creates=writes.filter(w=>w.collection===collection&&w.operation==='create');
+    const expected=before.length+creates.length;
+    const expectedIds=new Set([...before.map(r=>r.id),...creates.map(w=>w.documentId)]);
+    const additional=after.filter(r=>!expectedIds.has(r.id));
+    const capturedAt=destinationManifest.tables.find((t:any)=>t.collection===collection)?.capturedAt??destinationManifest.capturedAt;
+    const concurrentAddsAllowed=plan.planner==='incremental-three-way'&&additional.every(r=>r.createTime&&r.createTime>capturedAt);
+    if(missing.length||creates.some(w=>!ids.has(w.documentId))||after.length<expected||(after.length!==expected&&!concurrentAddsAllowed))throw new Error('Collection retention/count check failed: '+collection);
+    retention.push({collection,before:before.length,after:after.length,expected,missingBeforeIds:0,additionalConcurrentRecords:additional.map(r=>({id:r.id,createTime:r.createTime}))});
   }
   const beforeAuth=readJson<any>(path.join(pass,'firebase-auth.json')).users;
   const afterAuth=readJson<any>(path.join(pass,'post-apply/firebase-auth.json')).users;
@@ -39,6 +45,7 @@ async function main(){
     verifiedPlannedWrites:readback.matchingWrites,counts:plan.counts,retention,
     firebaseAuthIdentitiesPreserved:beforeAuth.length,currentPushSubscriptionsPreserved:pushAfter.length,
     registeredProfilesChecked:functional.registeredProfilesChecked,affectedHistoryEntriesChecked:functional.historyEntriesVerified,
+    entryDetailsVerified:functional.entryDetailsVerified,submissionStatusesVerified:functional.submissionStatusesVerified,missingReportCellsVerified:functional.missingReportCellsVerified,
     authenticatedBrowserLoginVerified:false,guideChecks:functional.guideChecks,
     approvedAccounts:{advaitaStatus:advaita.data.status,mathuranathRole:mathuranath.data.role,renumberings:plan.renumberings.map((r:any)=>({...r,status:users.find(u=>u.id===r.sourceId)?.data.status}))},
     sourceLimitations:plan.limitations,sourceWarnings:functional.sourceWarnings,preExistingNumberCollisions:plan.existingNumberCollisions,

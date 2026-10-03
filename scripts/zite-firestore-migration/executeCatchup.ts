@@ -11,13 +11,15 @@ const [passArg,database,mode,expectedHash]=process.argv.slice(2);
 if(!passArg||!database||!['prepare-rehearsal','apply-rehearsal','apply-production','verify'].includes(mode))throw new Error('Usage: executeCatchup.ts <pass-dir> <database> <prepare-rehearsal|apply-rehearsal|apply-production|verify> <plan-hash>');
 const pass=path.resolve(passArg),capture=path.dirname(pass);
 const production=database==='(default)';
-if(!production&&database!=='migration-catchup-0923')throw new Error('Unexpected rehearsal database');
+if(!production&&!/^migration-catchup-(?:0923|\d{8})$/.test(database))throw new Error('Unexpected rehearsal database');
 if(production&&!['apply-production','verify'].includes(mode)||!production&&mode==='apply-production')throw new Error('Mode/database mismatch');
 const plan=readJson<any>(path.join(pass,'catchup-plan.json'));
+const rehearsalDatabase=plan.rehearsalDatabase??'migration-catchup-0923';
+if(!production&&database!==rehearsalDatabase)throw new Error('Rehearsal database does not match plan');
 const writes=readJsonLines(path.join(pass,'catchup-writes.jsonl'));
 validateCatchupPlan(plan,writes);if(expectedHash!==plan.planHash)throw new Error('Explicit plan hash is required');
 const backup=readJson<any>(path.join(capture,'firestore/backup-verification.json'));
-if(backup.restoredDatabaseId!=='migration-catchup-0923'||backup.totalRestoredDocuments!==backup.totalExpectedDocuments)throw new Error('Backup restore is not verified');
+if(backup.restoredDatabaseId!==rehearsalDatabase||backup.totalRestoredDocuments!==backup.totalExpectedDocuments)throw new Error('Backup restore is not verified');
 const prefix=`https://firestore.googleapis.com/v1/projects/bvpw108/databases/${encodeURIComponent(database)}/documents`;
 const target=(w:any)=>documentName('bvpw108',database,w.collection,w.documentId);
 async function api(url:string,body?:any):Promise<any>{
@@ -74,8 +76,22 @@ if(mode==='prepare-rehearsal'){
   const users=await queryUsers();assertExistingIdentities(users);
   const actual=await getDocuments(writes);const pending:any[]=[];
   for(const w of writes){const row=actual.get(target(w));if(matches(row,w))continue;if(w.operation==='create'){if(row)throw new Error('Create target is occupied: '+target(w));}
-    else{if(!row)throw new Error('Update target disappeared: '+target(w));for(const k of Object.keys(w.data)){if(k==='migrationCatchupProvenance')continue;if(canonicalJson(row.data[k])!==canonicalJson(w.before[k]))throw new Error('Data changed since planning: '+target(w)+'.'+k);}}
+    else{if(!row)throw new Error('Update target disappeared: '+target(w));if(production&&plan.planner==='incremental-three-way'&&row.updateTime!==w.precondition.updateTime)throw new Error('Document changed since incremental planning: '+target(w));for(const k of Object.keys(w.data)){if(k==='migrationCatchupProvenance')continue;if(canonicalJson(row.data[k])!==canonicalJson(w.before[k]))throw new Error('Data changed since planning: '+target(w)+'.'+k);}}
     pending.push(w);
+  }
+  // A current-app submission may use a new random document ID after planning.
+  // Check business identity as well as the create-only document precondition.
+  if(plan.planner==='incremental-three-way'){
+    const aliases=new Map<string,string>();for(const user of users)for(const field of ['id','userId','uid','firebaseUid','authUid']){const value=field==='id'?user.id:user.data[field];if(value)aliases.set(String(value),user.id);}
+    const owner=(value:any)=>{const id=String(Array.isArray(value)?value[0]:value);return aliases.get(id)??id;};
+    for(const collection of ['SadhanaEntries','BvslPreachingEntries']){
+      const incoming=pending.filter(w=>w.collection===collection&&w.operation==='create');if(!incoming.length)continue;
+      const keys=new Set<string>();for(const w of incoming){const key=owner(w.data.user)+'|'+String(w.data.entryDate).slice(0,10);if(keys.has(key))throw new Error('Duplicate planned owner/date: '+key);keys.add(key);}
+      const minDate=incoming.map(w=>String(w.data.entryDate).slice(0,10)).sort()[0];
+      const response=await api(prefix+':runQuery',{structuredQuery:{from:[{collectionId:collection}],where:{fieldFilter:{field:{fieldPath:'entryDate'},op:'GREATER_THAN_OR_EQUAL',value:{stringValue:minDate}}},select:{fields:[{fieldPath:'user'},{fieldPath:'entryDate'},{fieldPath:'entryId'}]}}});
+      const rows=response.filter((r:any)=>r.document).map((r:any)=>({id:r.document.name.split('/').at(-1),data:decodeFields(r.document.fields??{})}));
+      for(const w of incoming){const conflict=rows.find((r:any)=>r.id!==w.documentId&&owner(r.data.user)===owner(w.data.user)&&String(r.data.entryDate).slice(0,10)===String(w.data.entryDate).slice(0,10));if(conflict)throw new Error('Concurrent owner/date submission; re-plan required: '+collection+'/'+conflict.id);}
+    }
   }
   // Save fresh typed preimages before any operation, including native timestamps.
   const evidenceFile=path.join(pass,`${production?'production':'rehearsal'}-preimages-${Date.now()}.jsonl`);

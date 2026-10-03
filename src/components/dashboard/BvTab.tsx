@@ -206,7 +206,7 @@ export default function BvTab({ userId, segment }: Props) {
         </Card>
       )}
 
-      {segment === 'FOLK' && status?.myGroup && (
+      {(segment === 'FOLK' || segment === 'PW') && status?.myGroup && (
         <BvQuizSection userId={userId} />
       )}
 

@@ -1,3 +1,4 @@
+import { getSadhanaMentorResidencyScope } from '@/lib/sadhanaMentorResidencyScope';
 import { z } from 'zod';
 import { scopeRealtimeDependencies } from '@/lib/requestQueries';
 import { getReportReferenceData } from '../lib/reportReferenceData';
@@ -13,7 +14,7 @@ import { getGuideScope } from '../lib/guideScope';
 import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
 import { resolveBvAdminFacilitators } from '@/lib/bvAdminFacilitatorScope';
 
-const USER_FIELDS = ['id', 'userId', 'fullName', 'email', 'phone', 'segment', 'isPrabhupadaWorldUser', 'sadhanaMentor', 'ashrayLevel', 'residency', 'residencyApproved', 'temporaryResidencyEnabled', 'temporaryResidency', 'residencyJoinDate', 'scholarSince', 'residentSince', 'currentStreak', 'lastStreakUpdatedAt', 'guide', 'role', 'isBvSuperAdmin', 'isBvAdmin', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
+const USER_FIELDS = ['status', 'id', 'userId', 'fullName', 'email', 'phone', 'segment', 'isPrabhupadaWorldUser', 'sadhanaMentor', 'ashrayLevel', 'residency', 'residencyApproved', 'temporaryResidencyEnabled', 'temporaryResidency', 'residencyJoinDate', 'scholarSince', 'residentSince', 'currentStreak', 'lastStreakUpdatedAt', 'guide', 'role', 'isBvSuperAdmin', 'isBvAdmin', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
 const ENTRY_FIELDS = [
   'id', 'user', 'entryDate', 'totalScore', 'maxScore', 'scorePercent',
   'flagSick', 'flagOs', 'submittedAt', 'templateMode',
@@ -721,7 +722,8 @@ export default createEndpoint({
     void referencePromise.catch(() => {});
 
     const isPwMentor = !!mentorMode && input.segment === 'PW';
-    const hierarchyPromise = getDashboardHierarchyScope(context.user, inputGuideId);
+    const residencyMentorScope = await getSadhanaMentorResidencyScope(context.user);
+    const hierarchyPromise = residencyMentorScope ? Promise.resolve(null) : getDashboardHierarchyScope(context.user, inputGuideId);
     void hierarchyPromise.catch(() => {});
     const mentorRecord = isPwMentor
       ? (await Users.findOne({ id: context.user.id, fields: ['id', 'userId', 'email'] }).catch(() => null)
@@ -739,7 +741,7 @@ export default createEndpoint({
     if (isHierarchyAdmin(context.user)) guideDbId = null;
 
     // For BVSL/Mentor mode, resolve guide from authenticated user's guide field
-    if ((bvslMode || mentorMode) && !isPwMentor) {
+    if ((bvslMode || mentorMode) && !isPwMentor && !residencyMentorScope) {
       const userRec = await Users.findOne({ id: context.user.id, fields: ['id', 'guide'] }) || (context.user?.email
         ? await Users.findOne({ filters: { email: context.user.email }, fields: ['id', 'guide'] })
         : null);
@@ -770,6 +772,8 @@ export default createEndpoint({
       guideDbId = scope?.guideId || context.user.id;
     }
 
+    if (residencyMentorScope) guideDbId = null;
+
     // Get residencies for this guide
     let availableResidencies: { residencyId: string; residencyName: string }[] = [];
     let guideResidencyIds: string[] = [];
@@ -785,6 +789,7 @@ export default createEndpoint({
         : (guide?.folkResidencies ? [guide.folkResidencies as string] : []);
     }
     const availableResidenciesPromise = referencePromise.then(async reference => {
+      if (residencyMentorScope) return residencyMentorScope.residencies.map((r: any) => ({ residencyId: r.id, residencyName: r.residencyName || '' }));
       if (isHierarchyAdmin(context.user) && !isHierarchySuperAdmin(context.user)) {
         if (input.segment === 'PW' || facilitatorMode) return [];
         return getAllResidencies.execute({ input: { segment: input.segment }, context });
@@ -799,7 +804,10 @@ export default createEndpoint({
 
     // Phase 1 FIX: include both guide-assigned users AND users in any of the guide's residencies
     let users: any[] = [];
-    if (facilitatorMode) {
+    if (residencyMentorScope) {
+      const { records } = await Users.findAll({ filters: { status: 'Active' }, fields: USER_FIELDS, limit: 2000 });
+      users = records.filter(residencyMentorScope.includes);
+    } else if (facilitatorMode) {
       users = await resolveBvAdminFacilitators(context.user, inputGuideId, USER_FIELDS, input.segment);
     } else if (isPwMentor) {
       const { records } = await Users.findAll({ filters: { status: 'Active' }, fields: USER_FIELDS, limit: 2000 });
@@ -935,7 +943,7 @@ export default createEndpoint({
     }
 
     // BVSL/RGSF reports use authoritative assigned-group memberships.
-    if (bvslMode) {
+    if (bvslMode && !residencyMentorScope) {
       users = await resolveBvGroupMemberUsers(context.user, USER_FIELDS, {
         groupId: input.groupId,
         segment: input.segment,

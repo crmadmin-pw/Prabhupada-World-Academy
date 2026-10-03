@@ -15,6 +15,7 @@ import BvslSessionPanel from '@/components/bvsl/BvslSessionPanel';
 import BvslMembersTable from '@/components/bvsl/BvslMembersTable';
 import BvslSadhanaReportPanel from '@/components/bvsl/BvslSadhanaReportPanel';
 import BvslQuizPanel from '@/components/bvsl/BvslQuizPanel';
+import PwQuizPanel from '@/components/bv/PwQuizPanel';
 import BvSection from '@/components/guide/BvSection';
 import BvslOneToOneTab from '@/components/bvsl/BvslOneToOneTab';
 import BvslWeeklyPlanTab from '@/components/bvsl/BvslWeeklyPlanTab';
@@ -65,7 +66,7 @@ export default function RgfDashboard() {
     { value: 'weekplan',  label: 'Weekly Plan', icon: ClipboardList },
     { value: 'groups',    label: 'Groups',      icon: Users },
     { value: 'session',   label: 'Attendance',  icon: CheckSquare },
-    ...(isFolk ? [{ value: 'quizzes', label: 'Quizzes', icon: Brain }] : []),
+    { value: 'quizzes', label: 'Quizzes', icon: Brain },
     { value: 'bvreport',  label: 'BV Report',   icon: BarChart3 },
     { value: 'report',    label: 'Sadhana',     icon: FileText },
     { value: 'members',   label: 'Members',     icon: Users },
@@ -97,11 +98,13 @@ export default function RgfDashboard() {
               {activeTab === 'members' && <BvslMembersTable bvslId={bvslId} />}
               {activeTab === 'bvreport' && <BvSection guideId={bvslId} bvslMode />}
               {activeTab === 'report' && <BvslSadhanaReportPanel bvslId={bvslId} />}
-              {isFolk && activeTab === 'quizzes' && (
+              {activeTab === 'quizzes' && (isFolk ? (
                 <BvslQuizPanel
                   groups={groups.map((g: any) => ({ id: g.id, groupName: g.groupName }))}
                 />
-              )}
+              ) : (
+                <PwQuizPanel mode="facilitator" />
+              ))}
               {activeTab === 'onetone' && <BvslOneToOneTab />}
               {!isFolk && activeTab === 'meetings' && <MeetingsAndMomTab department="PW" />}
             </>

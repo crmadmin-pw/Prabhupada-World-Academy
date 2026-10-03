@@ -1,3 +1,4 @@
+import MissingSadhanaTab from '@/components/guide/MissingSadhanaTab';
 import { useReactiveLoader } from '@/hooks/useReactiveLoader';
 import TableScrollArea from '@/components/mobile/TableScrollArea';
 import { useEffect, useState, useMemo } from 'react';
@@ -359,6 +360,7 @@ export default function SadhanaMentorDashboard() {
 
   const tabs: TabConfig[] = [
     { value: 'reports', label: 'Sadhana Report', icon: BarChart3 },
+    ...(isFolkMentor ? [{ value: 'missing', label: 'Missing Report', icon: BookOpen }] : []),
     { value: 'members', label: 'Members List', icon: Users },
     ...(isPwMentor ? [{ value: 'meetings', label: 'Meetings & MoM', icon: Video }] : []),
     { value: 'one-to-one', label: 'One-to-One', icon: MessageSquare },
@@ -379,6 +381,9 @@ export default function SadhanaMentorDashboard() {
             <>
               {activeTab === 'reports' && (
                 <SadhanaSection guideId={effectiveGuideId} mentorMode={true} />
+              )}
+              {isFolkMentor && activeTab === 'missing' && (
+                <MissingSadhanaTab guideId={effectiveGuideId} segment="FOLK" />
               )}
               {activeTab === 'one-to-one' && (
                 <OneToOneTab guideId={effectiveGuideId} />

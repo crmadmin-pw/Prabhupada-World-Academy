@@ -43,6 +43,13 @@ interface Props {
 }
 
 type QuizListItem = GetBvQuizzesOutputType['quizzes'][0];
+type EditableQuiz = {
+  id: string;
+  title?: string;
+  description?: string;
+  isActive?: boolean;
+  quizDate?: string;
+};
 
 function generateId() {
   return Math.random().toString(36).slice(2, 10);
@@ -60,14 +67,16 @@ function emptyQuestion(): QuizQuestion {
 }
 
 // --- Quiz Editor ---
-function QuizEditor({
+export function QuizEditor({
   groupId,
   editingQuiz,
+  department = 'FOLK',
   onSaved,
   onCancel,
 }: {
   groupId?: string;
-  editingQuiz: QuizListItem | null;
+  editingQuiz: EditableQuiz | null;
+  department?: 'FOLK' | 'PW';
   onSaved: () => void;
   onCancel: () => void;
 }) {
@@ -89,7 +98,7 @@ function QuizEditor({
 
   useEffect(() => {
     if (!editingQuiz) return;
-    getBvQuizDetail({ quizId: editingQuiz.id, department: 'FOLK', includeAnswers: true })
+    getBvQuizDetail({ quizId: editingQuiz.id, department, includeAnswers: true })
       .then((quiz: any) => {
         setTitle(quiz.title || 'Untitled Quiz');
         setDescription(quiz.description || '');
@@ -112,7 +121,7 @@ function QuizEditor({
         toast.error(message);
       })
       .finally(() => setLoadingQuiz(false));
-  }, [editingQuiz?.id]);
+  }, [department, editingQuiz?.id]);
 
   const addQuestion = () => {
     const q = emptyQuestion();
@@ -174,10 +183,10 @@ function QuizEditor({
     try {
       await createBvQuiz({
         quizId: editingQuiz?.id,
-        department: 'FOLK',
+        department,
         title,
         description,
-        groupId: groupId || undefined,
+        groupId: department === 'PW' ? undefined : (groupId || undefined),
         questions,
         isActive,
         quizDate,
@@ -215,7 +224,7 @@ function QuizEditor({
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <Switch id="quiz-active" checked={isActive} onCheckedChange={setIsActive} />
-            <Label htmlFor="quiz-active" className="text-sm">Active</Label>
+            <Label htmlFor="quiz-active" className="text-sm">{department === 'PW' ? 'Published' : 'Active'}</Label>
           </div>
           <Button onClick={handleSave} disabled={saving} size="sm">
             {saving && <Loader2 className="w-4 h-4 animate-spin mr-1" />}
@@ -417,13 +426,15 @@ function QuestionCard({
 }
 
 // --- Quiz Result Panel ---
-function QuizResultsPanel({
+export function QuizResultsPanel({
   quiz,
   groupId,
+  department = 'FOLK',
   onBack,
 }: {
-  quiz: QuizListItem;
+  quiz: EditableQuiz & { title: string };
   groupId?: string;
+  department?: 'FOLK' | 'PW';
   onBack: () => void;
 }) {
   const [subs, setSubs] = useState<any[]>([]);
@@ -433,7 +444,7 @@ function QuizResultsPanel({
   const loadResults = useReactiveLoader(async (read, silent = false) => {
     if (!silent) !read.background && setLoading(true);
     try {
-      const result = await read(() => getBvQuizSubmissions({ quizId: quiz.id, department: 'FOLK', groupId }));
+      const result = await read(() => getBvQuizSubmissions({ quizId: quiz.id, department, groupId }));
       setSubs(result.submissions);
       setAnalytics(result.analytics);
     } catch {
@@ -442,7 +453,7 @@ function QuizResultsPanel({
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [groupId, quiz.id]);
+  }, [department, groupId, quiz.id]);
 
   useEffect(() => {
     void loadResults();

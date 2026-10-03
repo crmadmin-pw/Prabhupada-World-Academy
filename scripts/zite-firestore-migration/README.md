@@ -119,7 +119,36 @@ detail JSON is retained verbatim and reported, never silently repaired or lost.
 The first pass uses the original migration baseline; later passes must retain
 overlap while Zite remains writable. No scheduler or final cut-off is implied.
 
-### Original functional repair
+### Subsequent catch-ups with both applications still in use
+
+Use `planIncrementalCatchup.ts` with a fresh source capture, destination snapshot,
+and the previous completed pass. Its `incremental-policy.json` specifies
+`priorPass`, `replayFrom`, `conflictPolicy`, and the isolated `rehearsalDatabase`.
+It compares source fields with the previous source capture and current fields
+with the previously applied destination. Unchanged source fields cannot revert
+current-app edits. Start conflicts in `review` mode; record the user's decision
+before selecting `source-wins` or `preserve-current`. A `source-wins` decision
+also requires the exact `collection/documentId` values in `sourceWinsTargets`.
+
+For the October 1 continuation, preserve existing profiles and app counters.
+Incoming Sadhana/preaching entries use deterministic `ZITE-ENTRY-<source-id>` /
+`ZITE-BV-ENTRY-<source-id>` identifiers, with original numbers in `legacyEntryId`.
+Both apps generated overlapping sequential numbers, and entry-detail lookup uses
+that number. Existing destination entry IDs are never renumbered. Imported
+entry dates use `YYYY-MM-DD` so exact-date and inclusive report queries find them.
+
+The executor checks live owner/date collisions before applying creates. Continue
+to use a verified backup restore, hash-bound rehearsal, read-back, functional
+verification, and idempotency checks. Functional checks include entry detail,
+submission status, and the missing-Sadhana report. They replay application
+handlers over database reads; authenticated browser verification remains separate.
+
+```bash
+node --import tsx scripts/zite-firestore-migration/planIncrementalCatchup.ts <capture-dir> <pass-dir>
+node --import tsx --test tests/zite-incremental-catchup.test.ts tests/zite-catchup-guards.test.ts
+```
+
+### Original functional repair commands
 
 The post-migration functional audit found relationship fields that were copied
 as legacy display values instead of canonical destination document IDs. Repair

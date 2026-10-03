@@ -7,13 +7,6 @@ import { getGuideScope } from '../lib/guideScope';
 const CACHE_KEY = 'ref:residencies_v3';
 const TTL = 5 * 1000; // 5 seconds — updates instantly when centers are added/deleted
 
-const DEFAULT_RESIDENCIES = [
-  { residencyId: 'FOLK-MUMBAI', residencyName: 'HKM Mumbai FOLK Center' },
-  { residencyId: 'FOLK-JUHU', residencyName: 'Juhu FOLK Center' },
-  { residencyId: 'FOLK-VRV', residencyName: 'VRV Hostel' },
-  { residencyId: 'FOLK-MAIN', residencyName: 'Main Center' },
-];
-
 export default createEndpoint({
   description: 'Get all active folk residencies (server-cached 1h)',
   public: true,
@@ -33,7 +26,7 @@ export default createEndpoint({
           residencyId: r.id || r.residencyId,
           residencyName: r.residencyName || r.name || '',
         }));
-      return activeResidencies.length > 0 ? activeResidencies : DEFAULT_RESIDENCIES;
+      return activeResidencies;
     }, TTL);
 
     const scope = isHierarchyAdmin(context?.user) && !isHierarchySuperAdmin(context.user)

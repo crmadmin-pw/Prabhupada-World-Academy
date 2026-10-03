@@ -5,6 +5,8 @@ import {
   canReadFolkQuizResults,
   findScopedQuizGroup,
   getQuizGroupsForUser,
+  isPwQuizContentManager,
+  isPwQuizFacilitator,
   legacyQuizMatchesGroup,
   quizGroupAliases,
   quizRefValues,
@@ -35,7 +37,7 @@ export default createEndpoint({
   authenticated: true,
   inputSchema: z.object({
     quizId: z.string().min(1),
-    department: z.literal('FOLK').optional(),
+    department: z.enum(['FOLK', 'PW']).optional(),
     groupId: z.string().optional(),
   }),
   outputSchema: z.any(),
@@ -44,7 +46,24 @@ export default createEndpoint({
     const quiz = await BvQuizzes.findOne({ id: input.quizId });
     if (!quiz) throw new AppError({ code: 'NOT_FOUND', message: 'Quiz not found' });
 
-    if (await resolveQuizDepartment(quiz, 'FOLK') !== 'FOLK') {
+    const department = await resolveQuizDepartment(quiz, input.department || 'FOLK');
+    if (department === 'PW') {
+      const canManageContent = isPwQuizContentManager(context.user);
+      if (!canManageContent && !isPwQuizFacilitator(context.user)) {
+        throw new AppError({ code: 'FORBIDDEN', message: 'You do not have access to these quiz results' });
+      }
+      const scopedGroups = await getQuizGroupsForUser(context.user, 'PW', { readOnly: true });
+      const selectedGroup = input.groupId ? findScopedQuizGroup(scopedGroups, input.groupId) : null;
+      if (input.groupId && !selectedGroup) {
+        throw new AppError({ code: 'FORBIDDEN', message: 'You can view results only for your reading groups' });
+      }
+      if (!canManageContent && !selectedGroup && scopedGroups.length === 0) {
+        throw new AppError({ code: 'FORBIDDEN', message: 'You can view results only for your reading groups' });
+      }
+      const visibleGroups = selectedGroup ? [selectedGroup] : scopedGroups;
+      return buildQuizSubmissionReport(quiz, visibleGroups, scopedGroups);
+    }
+    if (department !== 'FOLK') {
       throw new AppError({ code: 'FORBIDDEN', message: 'Only FOLK quiz results are available' });
     }
 
@@ -162,3 +181,91 @@ export default createEndpoint({
     };
   },
 });
+
+async function buildQuizSubmissionReport(quiz: any, visibleGroups: { id: string; groupName: string; record: any }[], scopedGroups: { id: string; groupName: string; record: any }[]) {
+  const [{ records: submissions }, { records: memberships }, { records: users }] = await Promise.all([
+    BvQuizSubmissions.findAll({ filters: { quiz: quiz.id }, limit: 5000 }),
+    BvGroupMembers.findAll({
+      limit: 5000,
+      fields: ['id', 'group', 'groupId', 'user', 'userId', 'memberId'],
+    }).catch(() => ({ records: [] })),
+    Users.findAll({
+      limit: 5000,
+      fields: ['id', 'userId', 'email', 'fullName', 'name'],
+    }).catch(() => ({ records: [] })),
+  ]);
+  const visibleSubmissions = submissions.filter(submission =>
+    visibleGroups.some(group => submissionMatchesGroup(submission, group.record, memberships))
+  );
+  const userByAlias = new Map<string, any>();
+  for (const user of users) {
+    for (const alias of quizRefValues([user.id, user.userId, user.email, user.fullName, user.name])) {
+      userByAlias.set(alias, user);
+    }
+  }
+  const groupByAlias = new Map<string, typeof scopedGroups[0]>();
+  for (const group of scopedGroups) {
+    for (const alias of quizGroupAliases(group.record)) groupByAlias.set(alias, group);
+  }
+  const normalizedSubmissions = visibleSubmissions
+    .sort((a, b) => String(b.submittedAt || '').localeCompare(String(a.submittedAt || '')))
+    .map(submission => {
+      const user = quizRefValues([submission.user, submission.userId]).map(alias => userByAlias.get(alias)).find(Boolean);
+      const submissionGroup = quizRefValues([submission.group, submission.groupId]).map(alias => groupByAlias.get(alias)).find(Boolean);
+      return {
+        id: submission.id,
+        userId: user?.userId || submission.userId || submission.user || '',
+        userName: user?.fullName || user?.name || 'Unknown',
+        groupId: submissionGroup?.id || submission.group || '',
+        groupName: submissionGroup?.groupName || 'Reading Group',
+        score: submission.score ?? 0,
+        totalQuestions: submission.totalQuestions ?? 0,
+        percentage: submission.percentage ?? 0,
+        submittedAt: submission.submittedAt || '',
+        answersJson: submission.answersJson || '[]',
+      };
+    });
+
+  let questions: any[] = [];
+  try { questions = JSON.parse(quiz.questionsJson || '[]'); } catch {}
+  const questionAnalytics = questions.map((question: any) => {
+    const optionCounts = (Array.isArray(question.options) ? question.options : []).map(() => 0);
+    let responses = 0;
+    let correctResponses = 0;
+    for (const submission of normalizedSubmissions) {
+      let answers: any[] = [];
+      try { answers = JSON.parse(submission.answersJson || '[]'); } catch {}
+      const selected = answers.find(answer => answer.questionId === question.id)?.selected;
+      if (!Array.isArray(selected)) continue;
+      responses += 1;
+      if (answerIsCorrect(question, selected)) correctResponses += 1;
+      for (const optionIndex of selected) {
+        if (Number.isInteger(optionIndex) && optionIndex >= 0 && optionIndex < optionCounts.length) {
+          optionCounts[optionIndex] += 1;
+        }
+      }
+    }
+    return {
+      questionId: question.id,
+      questionText: question.text || '',
+      options: Array.isArray(question.options) ? question.options : [],
+      responses,
+      correctResponses,
+      correctPercentage: responses ? Math.round((correctResponses / responses) * 100) : 0,
+      optionCounts,
+    };
+  });
+  const publicSubmissions = normalizedSubmissions.map(({ answersJson: _answersJson, ...submission }) => submission);
+  const averagePercentage = publicSubmissions.length
+    ? Math.round(publicSubmissions.reduce((sum, submission) => sum + submission.percentage, 0) / publicSubmissions.length)
+    : 0;
+  return {
+    submissions: publicSubmissions,
+    analytics: {
+      totalSubmissions: publicSubmissions.length,
+      averagePercentage,
+      passingCount: publicSubmissions.filter(submission => submission.percentage >= 70).length,
+      questionAnalytics,
+    },
+  };
+}

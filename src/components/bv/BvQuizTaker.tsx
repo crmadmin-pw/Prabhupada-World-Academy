@@ -93,6 +93,7 @@ export default function BvQuizTaker({ quizId, submissionId, onBack, onSubmitted 
     try {
       const res = await submitBvQuiz({ quizId, answers: answersPayload });
       setResult(res as SubmitResult);
+      setShowReview(true);
       onSubmitted?.();
     } catch (e: any) {
       toast.error(e.message || 'Failed to submit quiz');

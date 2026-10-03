@@ -10,19 +10,27 @@ import getUserProfile from '../../src/api/getUserProfile';
 import resolveUserLogin from '../../src/api/resolveUserLogin';
 import getUserHistory from '../../src/api/getUserHistory';
 import getGuideUsers from '../../src/api/getGuideUsers';
+import getEntryDetail from '../../src/api/getEntryDetail';
+import sadhanaStatus from '../../src/api/sadhanaStatus';
+import getMissingSadhanaReport from '../../src/api/getMissingSadhanaReport';
 import { buildApiUserContext } from '../../src/lib/apiAuthorization';
 
 async function main(){
-  const [passArg,database]=process.argv.slice(2);if(!passArg||!['migration-catchup-0923','(default)'].includes(database))throw new Error('Explicit pass and approved database required');
+  const [passArg,database]=process.argv.slice(2);if(!passArg||!(database==='(default)'||/^migration-catchup-(?:0923|\d{8})$/.test(database)))throw new Error('Explicit pass and approved database required');
   const pass=path.resolve(passArg);const plan=readJson<any>(path.join(pass,'catchup-plan.json'));const writes=readJsonLines(path.join(pass,'catchup-writes.jsonl'));validateCatchupPlan(plan,writes);
   const production=database==='(default)';
+  if(!production&&database!==(plan.rehearsalDatabase??'migration-catchup-0923'))throw new Error('Rehearsal database does not match plan');
+  const simulatePlan=process.argv.includes('--simulate-plan');
+  if(production&&simulatePlan)throw new Error('Production checks cannot simulate writes');
   const reuseRehearsalSnapshot=process.argv.includes('--reuse-rehearsal-snapshot');
   if(production&&reuseRehearsalSnapshot)throw new Error('Production verification must refresh database reads');
   const manifests=readJson<any>(path.join(pass,'firestore/manifest.json'));
   const tables=new Map<string,any[]>();
   for(const t of manifests.tables)tables.set(t.collection,readJsonLines(path.join(pass,'firestore',t.file)).map(r=>({id:r.id,...r.data})));
   const refreshed=[...new Set(['Users','Guides','FolkResidencies','BvGroupMembers','BvGroups',...writes.filter(w=>w.phase>0).map(w=>w.collection)])];
-  for(let i=0;i<refreshed.length;i+=3){await Promise.all(refreshed.slice(i,i+3).map(async collection=>{const file=path.join(pass,production?'production-functional-snapshot':'rehearsal-functional-snapshot',collection+'.jsonl');const rows=reuseRehearsalSnapshot?readJsonLines(file):await listCollection('bvpw108',database,collection,firebaseAccessToken());if(!rows.length&&reuseRehearsalSnapshot)throw new Error('Missing rehearsal snapshot '+collection);tables.set(collection,rows.map(r=>({...r.data,id:r.id})));if(!reuseRehearsalSnapshot)writeJsonLines(file,rows);console.log(`${collection}: ${rows.length}`);}));}
+  if(simulatePlan){
+    for(const w of writes.filter(w=>w.phase>0)){const rows=tables.get(w.collection)??[],index=rows.findIndex(r=>r.id===w.documentId);if(index<0)rows.push({...w.data,id:w.documentId});else rows[index]={...rows[index],...w.data,id:w.documentId};tables.set(w.collection,rows);}
+  }else for(let i=0;i<refreshed.length;i+=3){await Promise.all(refreshed.slice(i,i+3).map(async collection=>{const file=path.join(pass,production?'production-functional-snapshot':'rehearsal-functional-snapshot',collection+'.jsonl');const rows=reuseRehearsalSnapshot?readJsonLines(file):await listCollection('bvpw108',database,collection,firebaseAccessToken());if(!rows.length&&reuseRehearsalSnapshot)throw new Error('Missing rehearsal snapshot '+collection);tables.set(collection,rows.map(r=>({...r.data,id:r.id})));if(!reuseRehearsalSnapshot)writeJsonLines(file,rows);console.log(`${collection}: ${rows.length}`);}));}
   // Redirect every model read/write before calling handlers. No handler can
   // mutate a database or send an email during this verification.
   const attemptedHandlerWrites:any[]=[];
@@ -60,6 +68,34 @@ async function main(){
     authChecks.push({email:auth.email,profileId:resolved?.id??null,registered:!!(resolved?.userId&&resolved.status),disabled:auth.disabled??false});
   }
   const changedEntries=writes.filter(w=>w.collection==='SadhanaEntries');
+  let entryDetailsVerified=0,submissionStatusesVerified=0,missingReportCellsVerified=0;
+  if(plan.planner==='incremental-three-way'){
+    for(const w of changedEntries){
+      try{
+        const stored=entries.find(e=>e.id===w.documentId)!;
+        assert.equal(entries.filter(e=>e.entryId===stored.entryId).length,1,'Entry detail identity must be unique');
+        const detail:any=await getEntryDetail.execute({input:{entryId:stored.entryId},context:context(users.find(u=>u.id===stored.user))} as any);
+        assert.equal(detail.found,true);assert.equal(detail.entry.entryDate,stored.entryDate);assert.equal(detail.entry.totalScore,stored.totalScore??0);entryDetailsVerified++;
+      }catch(e){errors.push({check:'entry-detail-handler',id:w.documentId,error:String(e)});}
+    }
+    const dates=[...new Set(changedEntries.map(w=>String(w.data.entryDate??w.before.entryDate).slice(0,10)))].sort();
+    for(const date of dates){
+      try{
+        const report:any=await sadhanaStatus.execute({input:{date}} as any);
+        for(const w of changedEntries.filter(w=>String(w.data.entryDate??w.before.entryDate).slice(0,10)===date)){
+          const owner=w.data.user??w.before.user;
+          assert.equal(report.data.find((u:any)=>u.id===owner)?.sadhanaStatus,'submitted',`Imported entry remains missing: ${w.documentId}`);submissionStatusesVerified++;
+        }
+      }catch(e){errors.push({check:'submission-status-handler',date,error:String(e)});}
+    }
+    const administrator=users.find(u=>u.status==='Active'&&['SUPER_GUIDE','SUPER_ADMIN'].includes(String(u.role??'').toUpperCase().replace(/\s+/g,'_')));
+    if(!administrator)errors.push({check:'missing-report-handler',error:'No existing report administrator'});
+    else if(dates.length){try{
+      const report:any=await getMissingSadhanaReport.execute({input:{startDate:dates[0],endDate:dates.at(-1)},context:context(administrator)} as any);
+      for(const w of changedEntries){const owner=w.data.user??w.before.user,date=String(w.data.entryDate??w.before.entryDate).slice(0,10);if(!report.matrix[owner])continue;assert.ok(['filled','late'].includes(report.matrix[owner][date]),`Missing Sadhana report excludes ${w.documentId}`);missingReportCellsVerified++;}
+      assert.ok(missingReportCellsVerified>0,'No imported entries exercised the missing report');
+    }catch(e){errors.push({check:'missing-report-handler',error:String(e)});}}
+  }
   for(const ownerId of new Set(changedEntries.map(w=>w.data.user??w.before?.user))){
     const user=users.find(u=>u.id===ownerId);if(!user){errors.push({check:'history-owner',ownerId});continue;}
     try{const got:any[]=[];let offset=0;for(;;){const page:any=await getUserHistory.execute({input:{limit:200,offset,includeFieldValues:true},context:context(user)} as any);got.push(...page.entries);if(!page.hasMore)break;offset+=200;if(offset>20000)throw new Error('History pagination did not terminate');}
@@ -81,6 +117,7 @@ async function main(){
     }catch(e){errors.push({check:'guide-handler',guideId,error:String(e)});}
   }
   const result={kind:'read-only-catchup-functional-verification',database,planHash:plan.planHash,verifiedAt:new Date().toISOString(),method:'actual-database-readback-replayed-through-local-endpoint-handlers-with-all-model-writes-intercepted',authenticatedBrowserLoginVerified:false,registeredProfilesChecked:logins.length,historyEntriesVerified,authChecks,guideChecks,logins,sourceWarnings,interceptedHandlerWriteCount:attemptedHandlerWrites.length,errors};
-  writeJson(path.join(pass,production?'production-functional-verification.json':'functional-verification.json'),result);console.log(JSON.stringify({...result,authChecks:authChecks.length,logins:logins.filter(r=>plan.renumberings.some((n:any)=>n.email===r.email)||r.email==='adpd@hkmmumbai.org')},null,2));if(errors.length)throw new Error('Functional verification has failures');
+  const verifiedResult={...result,method:simulatePlan?'offline-plan-simulation-not-database-verification':result.method,entryDetailsVerified,submissionStatusesVerified,missingReportCellsVerified};
+  writeJson(path.join(pass,simulatePlan?'simulated-functional-verification.json':production?'production-functional-verification.json':'functional-verification.json'),verifiedResult);console.log(JSON.stringify({...verifiedResult,authChecks:authChecks.length,logins:logins.filter(r=>plan.renumberings.some((n:any)=>n.email===r.email)||r.email==='adpd@hkmmumbai.org')},null,2));if(errors.length)throw new Error('Functional verification has failures');
 }
 main().catch(error=>{console.error(error instanceof Error?error.message:error);process.exitCode=1;});

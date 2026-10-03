@@ -2051,6 +2051,13 @@ export const sendServiceReminders = (input: sendServiceReminders_Input): Promise
 export type SendServiceRemindersOutputType = sendServiceReminders_Output;
 export type SendServiceRemindersInputType = sendServiceReminders_Input;
 
+import type setBvQuizGroupActive_Type from '../api/setBvQuizGroupActive';
+type setBvQuizGroupActive_Input = z.input<typeof setBvQuizGroupActive_Type.inputSchema>;
+type setBvQuizGroupActive_Output = ReturnType<typeof setBvQuizGroupActive_Type.execute> extends Promise<infer R> ? R : ReturnType<typeof setBvQuizGroupActive_Type.execute>;
+export const setBvQuizGroupActive = (input: setBvQuizGroupActive_Input): Promise<setBvQuizGroupActive_Output> => invokeEndpoint('setBvQuizGroupActive', input);
+export type SetBvQuizGroupActiveOutputType = setBvQuizGroupActive_Output;
+export type SetBvQuizGroupActiveInputType = setBvQuizGroupActive_Input;
+
 import type setAshrayLevel_Type from '../api/setAshrayLevel';
 type setAshrayLevel_Input = z.input<typeof setAshrayLevel_Type.inputSchema>;
 type setAshrayLevel_Output = ReturnType<typeof setAshrayLevel_Type.execute> extends Promise<infer R> ? R : ReturnType<typeof setAshrayLevel_Type.execute>;

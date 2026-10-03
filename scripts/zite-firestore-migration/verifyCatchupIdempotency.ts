@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { canonicalJson, readJson, readJsonLines, sha256, writeJson, writeJsonLines } from './common';
 import { planCatchup } from './planCatchup';
+import { planIncrementalCatchup } from './planIncrementalCatchup';
 const pass=path.resolve(process.argv[2]??'');if(!process.argv[2])throw new Error('Pass directory required');
 const verified=readJson<any>(path.join(pass,'rehearsal-readback.json'));
 const functional=readJson<any>(path.join(pass,'functional-verification.json'));
@@ -21,6 +22,7 @@ const tables=prior.tables.map((t:any)=>{
 });
 const manifest={...prior,tables,capturedAt:functional.verifiedAt,source:'verified-rehearsal-readback-over-original-unchanged-collections'};
 writeJson(path.join(out,'firestore/manifest.json'),{...manifest,checksum:sha256(canonicalJson(manifest))});
-const repeated=planCatchup(path.dirname(pass),out);
+if(plan.planner==='incremental-three-way')writeJson(path.join(out,'incremental-policy.json'),readJson(path.join(pass,'incremental-policy.json')));
+const repeated=plan.planner==='incremental-three-way'?planIncrementalCatchup(path.dirname(pass),out):planCatchup(path.dirname(pass),out);
 const result={planHash:plan.planHash,verifiedAt:new Date().toISOString(),operationalWritesOnRepeat:repeated.operationalWrites,reviews:repeated.reviews,historyVersionWritesOnRepeat:repeated.historyWrites,passed:repeated.operationalWrites===0&&repeated.reviews.length===0};
 writeJson(path.join(pass,'idempotency-verification.json'),result);console.log(JSON.stringify(result));if(!result.passed)throw new Error('Repeated catch-up would modify operational data');

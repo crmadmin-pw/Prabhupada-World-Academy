@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { createEndpoint, AppError, BvQuizSubmissions, BvQuizzes } from '@/lib/backend-sdk';
-import { quizRefValues, resolveQuizDepartment } from '@/lib/bvQuizAccess';
+import { quizRefValues, quizUserDepartment, resolveQuizDepartment } from '@/lib/bvQuizAccess';
 
 export default createEndpoint({
   description: 'Get the current user\'s completed BV quiz with their answer review',
@@ -9,8 +9,9 @@ export default createEndpoint({
   outputSchema: z.any(),
   execute: async ({ input, context }) => {
     if (!context.user) throw new AppError({ code: 'UNAUTHORIZED', message: 'Authentication required' });
-    if (String(context.user.segment || '').toUpperCase() !== 'FOLK') {
-      throw new AppError({ code: 'FORBIDDEN', message: 'Quizzes are available only in FOLK' });
+    const department = quizUserDepartment(context.user);
+    if (department !== 'FOLK' && department !== 'PW') {
+      throw new AppError({ code: 'FORBIDDEN', message: 'Quizzes are not available for this account' });
     }
 
     // A result can only ever be reviewed by the user who submitted it.
@@ -35,7 +36,7 @@ export default createEndpoint({
       fields: ['id', 'quizTitle', 'description', 'department', 'isActive', 'createdAt', 'questionsJson'],
     }) : null;
     if (!quiz) throw new AppError({ code: 'NOT_FOUND', message: 'The original quiz is no longer available' });
-    if (await resolveQuizDepartment(quiz, 'FOLK') !== 'FOLK') {
+    if (await resolveQuizDepartment(quiz, department) !== department) {
       throw new AppError({ code: 'NOT_FOUND', message: 'The original quiz is no longer available' });
     }
 

@@ -56,9 +56,13 @@ async function main(): Promise<void> {
   const manifest = readJson<any>(manifestPath);
   const token = firebaseAccessToken();
   const restoredCounts: Array<{ collection: string; expected: number; actual: number }> = [];
-  for (const table of manifest.tables) {
-    const actual = await restoredCollectionCount(restoredDatabaseId, table.collection, token);
-    restoredCounts.push({ collection: table.collection, expected: table.count, actual });
+  for (let offset = 0; offset < manifest.tables.length; offset += 6) {
+    const batch = await Promise.all(manifest.tables.slice(offset, offset + 6).map(async (table: any) => ({
+      collection: table.collection,
+      expected: table.count,
+      actual: await restoredCollectionCount(restoredDatabaseId, table.collection, token),
+    })));
+    restoredCounts.push(...batch);
   }
   const mismatches = restoredCounts.filter((row) => row.actual !== row.expected);
   if (mismatches.length) throw new Error(`Restored collection count mismatch: ${JSON.stringify(mismatches)}`);

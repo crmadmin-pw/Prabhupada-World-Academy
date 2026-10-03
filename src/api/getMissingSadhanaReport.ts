@@ -1,3 +1,4 @@
+import { getSadhanaMentorResidencyScope } from '@/lib/sadhanaMentorResidencyScope';
 import { z } from 'zod';
 import { scopeRealtimeDependencies } from '@/lib/requestQueries';
 import { createEndpoint, Users, Guides, SadhanaEntries, FolkResidencies } from '@/lib/backend-sdk';
@@ -7,7 +8,7 @@ import { getGuideScope } from '../lib/guideScope';
 import getGuides from './getGuides';
 import { getReportReferenceData } from '../lib/reportReferenceData';
 
-const USER_FIELDS = ['id', 'userId', 'fullName', 'email', 'status', 'role', 'isBvAdmin', 'isBvSuperAdmin', 'residency', 'guide', 'isScholar', 'residencyClaimed', 'residencyApproved', 'residencyGuideVerified', 'residentSince'];
+const USER_FIELDS = ['segment', 'isPrabhupadaWorldUser', 'id', 'userId', 'fullName', 'email', 'status', 'role', 'isBvAdmin', 'isBvSuperAdmin', 'residency', 'guide', 'isScholar', 'residencyClaimed', 'residencyApproved', 'residencyGuideVerified', 'residentSince'];
 
 // Guides and Super Guides oversee Sadhana; they are not expected to submit a
 // daily member report. Normalize legacy spacing/casing so the rule applies to
@@ -54,8 +55,9 @@ export default createEndpoint({
       !!context.user.isBvSuperAdmin ||
       !!context.user.isBvAdmin;
 
-    const scopePromise = isSuperGuide ? Promise.resolve(null) : getGuideScope(context.user.email || '');
-    const hierarchyPromise = getDashboardHierarchyScope(context.user, input.guideId);
+    const residencyMentorScope = await getSadhanaMentorResidencyScope(context.user);
+    const scopePromise = (isSuperGuide || residencyMentorScope) ? Promise.resolve(null) : getGuideScope(context.user.email || '');
+    const hierarchyPromise = residencyMentorScope ? Promise.resolve(null) : getDashboardHierarchyScope(context.user, input.guideId);
     const displayPromise = Promise.all([
       getGuides.execute({ input: { segment: input.segment || 'ALL' }, context }),
       getReportReferenceData(),
@@ -102,6 +104,7 @@ export default createEndpoint({
     const userMap = new Map(baseUsers.map(user => [user.id, user]));
     for (const result of resFetches) for (const user of result.records) userMap.set(user.id, user);
     let allUsers = Array.from(userMap.values());
+    if (residencyMentorScope) allUsers = allUsers.filter(residencyMentorScope.includes);
 
     const scopedUserIds = await hierarchyPromise;
     if (scopedUserIds !== null) {

@@ -89,7 +89,15 @@ export default function ApprovalsTab({ guideId = '', reviewerGuideId, isSuperGui
       setCleanlinessReviews(Array.isArray(cleanReviews) ? cleanReviews : []);
       setAllGuides(guidesRes.guides);
       setSadhanaMentors(sadhanaMentorsRes || []);
-      onCountLoaded?.(pendingRes.length + requestsRes.guideTransfers.length + requestsRes.ashrayUpgrades.length + residencyTransferRes.length + (!isPwAdmin ? (Array.isArray(cleanReviews) ? cleanReviews.length : 0) : 0));
+      const registrationCount = pendingRes.length;
+      const ashrayCount = requestsRes.ashrayUpgrades.length;
+      // Prabhupada World approvals only show registrations and Ashraya requests.
+      // Guide transfers, residency transfers and cleanliness reviews are hidden
+      // there, so they must not keep the sidebar badge above zero.
+      const visibleCount = isPwAdmin
+        ? registrationCount + ashrayCount
+        : registrationCount + requestsRes.guideTransfers.length + ashrayCount + residencyTransferRes.length + (Array.isArray(cleanReviews) ? cleanReviews.length : 0);
+      onCountLoaded?.(visibleCount);
     } catch {
       if (read.cancelled) return;
       if (!background) toast.error('Failed to load approvals');

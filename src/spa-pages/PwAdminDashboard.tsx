@@ -5,7 +5,7 @@ import { useDashboardPrefetch } from '@/hooks/useDashboardPrefetch';
 import { dashboardScope } from '@/lib/dashboardScope';
 import React, { useCallback, useEffect, useRef, useState, Suspense, lazy } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, CalendarCheck, LayoutGrid, AlertCircle, ClipboardCheck, Database, Leaf, CalendarClock, Bell, Video } from 'lucide-react';
+import { Users, CalendarCheck, LayoutGrid, AlertCircle, ClipboardCheck, Database, Leaf, CalendarClock, Bell, Video, Brain } from 'lucide-react';
 import { useAuth } from '@/lib/auth-sdk';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { getUserDashboardPath } from '@/lib/userDashboardRoutes';
@@ -27,6 +27,7 @@ const SuperBvRegistrationsTab = lazy(() => import('@/components/super/SuperBvReg
 const BvAdminManagementTab = lazy(() => import('@/components/super/BvAdminManagementTab'));
 const MeetingsAndMomTab = lazy(() => import('@/components/super/MeetingsAndMomTab'));
 const BvslOneToOneTab = lazy(() => import('@/components/bvsl/BvslOneToOneTab'));
+const PwQuizPanel = lazy(() => import('@/components/bv/PwQuizPanel'));
 import {
   getCurrentGuide, getPushSubscriptionStats, GetPushSubscriptionStatsOutputType,
   getPendingApprovals, getGuideRequests, getCleanlinessReviews,
@@ -84,6 +85,12 @@ export default function PwAdminDashboard() {
   const [approvalCount, setApprovalCount] = useState(0);
   const [bvRegCount, setBvRegCount] = useState(0);
   const resolvedBvRegistrationIdsRef = useRef<Set<string>>(new Set());
+  const approvalCountEpoch = useRef(0);
+  const approvalGuideId = isSuperAdmin ? 'ALL' : adminGroupScopeId;
+  const reportApprovalCount = useCallback((count: number) => {
+    approvalCountEpoch.current += 1;
+    setApprovalCount(count);
+  }, []);
 
   // Sync with browser back/forward buttons
   useEffect(() => {
@@ -112,9 +119,10 @@ export default function PwAdminDashboard() {
   }, [user?.email]);
 
   const fetchCounts = useReactiveLoader(async (read) => {
+      const epoch = approvalCountEpoch.current;
       await read(() => Promise.all([
-        getPendingApprovals({ guideId: 'ALL' }),
-        getGuideRequests({ guideId: 'ALL' }),
+        getPendingApprovals({ guideId: approvalGuideId }),
+        getGuideRequests({ guideId: approvalGuideId }),
         getPendingBvRegistrations({ segment: 'PW' }).catch(() => []),
       ])).then(([pending, requests, bvRegs]) => {
         const registrations = Array.isArray(bvRegs) ? bvRegs : [];
@@ -124,14 +132,18 @@ export default function PwAdminDashboard() {
             resolvedBvRegistrationIdsRef.current.delete(resolvedId);
           }
         }
-        setApprovalCount(
-          pending.length + (requests?.ashrayUpgrades || []).length
-        );
+        // The open Approvals page reports the lists the admin can actually see.
+        // Ignore an older sidebar read that still includes a request just approved.
+        if (epoch === approvalCountEpoch.current) {
+          setApprovalCount(
+            pending.length + (requests?.ashrayUpgrades || []).length
+          );
+        }
         setBvRegCount(registrations.filter(
           reg => !resolvedBvRegistrationIdsRef.current.has(String(reg.id)),
         ).length);
       }).catch(() => {});
-  }, []);
+  }, [approvalGuideId]);
 
   const handleBvRegistrationResolved = useCallback((registrationId: string) => {
     resolvedBvRegistrationIdsRef.current.add(registrationId);
@@ -147,6 +159,7 @@ export default function PwAdminDashboard() {
     { value: 'users', label: 'Members / Users', icon: Users },
     { value: 'approvals', label: 'Approvals', icon: ClipboardCheck, badge: approvalCount },
     { value: 'bhakti-vriksha', label: 'Bhakti Vriksha', icon: Leaf, badge: bvRegCount },
+    { value: 'quizzes', label: 'Quizzes', icon: Brain },
     { value: 'meetings', label: 'Meetings & MoM', icon: Video },
     { value: 'reminders', label: 'Notifications', icon: Bell },
     ...(isSuperAdmin ? [{ value: 'stats', label: 'Stats', icon: LayoutGrid }] : []),
@@ -255,7 +268,7 @@ export default function PwAdminDashboard() {
                       <h2 className="text-lg font-bold">Registrations & Ashraya Approvals</h2>
                       <p className="text-sm text-muted-foreground">Review new registrations and Ashraya upgrade requests for Prabhupada World members</p>
                     </div>
-                    <ApprovalsTab guideId={isSuperAdmin ? 'ALL' : adminGroupScopeId} isSuperGuide={isSuperAdmin} isPwAdmin={true} />
+                    <ApprovalsTab guideId={approvalGuideId} isSuperGuide={isSuperAdmin} isPwAdmin={true} onCountLoaded={reportApprovalCount} />
                   </DashboardPanel>
                 )}
 
@@ -303,6 +316,16 @@ export default function PwAdminDashboard() {
                 {visitedTabs.has('missing-sadhana') && (
                   <DashboardPanel active={activeTab === 'missing-sadhana'}>
                     <MissingSadhanaTab guideId="ALL" />
+                  </DashboardPanel>
+                )}
+
+                {visitedTabs.has('quizzes') && (
+                  <DashboardPanel active={activeTab === 'quizzes'}>
+                    <div className="space-y-1 mb-4">
+                      <h2 className="text-lg font-bold">Quizzes</h2>
+                      <p className="text-sm text-muted-foreground">Create quizzes for Prabhupada World. Facilitators turn each quiz on for their own reading groups.</p>
+                    </div>
+                    <PwQuizPanel mode="admin" />
                   </DashboardPanel>
                 )}
 

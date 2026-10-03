@@ -1,3 +1,4 @@
+import { getSadhanaMentorResidencyScope } from '@/lib/sadhanaMentorResidencyScope';
 import { z } from 'zod';
 import { getScopedHierarchyUserIds, isUserInHierarchy } from '../lib/hierarchyUtils';
 import { createEndpoint, Users, SadhanaEntries, Guides, FolkResidencies } from '@/lib/backend-sdk';
@@ -83,7 +84,7 @@ export default createEndpoint({
     // Fetch all active users
     const { records: allUsers } = await Users.findAll({
       filters: { status: 'Active' },
-      fields: ['id', 'userId', 'fullName', 'email', 'phone', 'ashrayLevel', 'residency', 'residencyApproved', 'residencyJoinDate', 'scholarSince', 'residentSince', 'currentStreak', 'lastStreakUpdatedAt', 'guide', 'bvReportingAdminId', 'sadhanaMentor'],
+      fields: ['status', 'role', 'isBvAdmin', 'isBvSuperAdmin', 'segment', 'isPrabhupadaWorldUser', 'id', 'userId', 'fullName', 'email', 'phone', 'ashrayLevel', 'residency', 'residencyApproved', 'residencyJoinDate', 'scholarSince', 'residentSince', 'currentStreak', 'lastStreakUpdatedAt', 'guide', 'bvReportingAdminId', 'sadhanaMentor'],
       limit: 1000,
     });
 
@@ -94,8 +95,10 @@ export default createEndpoint({
     const currentUid = String(currentUser?.userId || '').toLowerCase();
     const currentEmail = String(context.user?.email || '').toLowerCase();
 
-    const hierarchy = await getScopedHierarchyUserIds(context.user);
+    const residencyMentorScope = await getSadhanaMentorResidencyScope(context.user);
+    const hierarchy = residencyMentorScope ? null : await getScopedHierarchyUserIds(context.user);
     const users = allUsers.filter((u: any) => {
+      if (residencyMentorScope) return residencyMentorScope.includes(u);
       if (!isUserInHierarchy(u, hierarchy)) return false;
       // Never expose incomplete profile records as blank member rows. A mentor
       // can only act on a real, identifiable member.

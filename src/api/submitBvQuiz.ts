@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { createEndpoint, BvQuizzes, BvQuizSubmissions, AppError } from '@/lib/backend-sdk';
 import { createHash } from 'crypto';
-import { assertQuizParticipantAccess, quizRefValues } from '@/lib/bvQuizAccess';
+import { assertQuizParticipantAccess, quizRefValues, quizUserDepartment } from '@/lib/bvQuizAccess';
 
 export default createEndpoint({
   description: 'Submit answers for a BV quiz and get the result',
@@ -16,13 +16,14 @@ export default createEndpoint({
   outputSchema: z.any(),
   execute: async ({ input, context }) => {
     if (!context.user) throw new AppError({ code: 'UNAUTHORIZED', message: 'Authentication required' });
-    if (String(context.user.segment || '').toUpperCase() !== 'FOLK') {
-      throw new AppError({ code: 'FORBIDDEN', message: 'Quizzes are available only in FOLK' });
+    const userDepartment = quizUserDepartment(context.user);
+    if (userDepartment !== 'FOLK' && userDepartment !== 'PW') {
+      throw new AppError({ code: 'FORBIDDEN', message: 'Quizzes are not available for this account' });
     }
 
     const quiz = await BvQuizzes.findOne({ id: input.quizId });
     if (!quiz) throw new AppError({ code: 'NOT_FOUND', message: 'Quiz not found' });
-    const access = await assertQuizParticipantAccess(context.user, quiz, 'FOLK');
+    const access = await assertQuizParticipantAccess(context.user, quiz, userDepartment);
 
     // Check all identity aliases because older submissions may store a public
     // userId while current records use the Firestore Users document id.

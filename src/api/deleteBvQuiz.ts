@@ -3,6 +3,7 @@ import { createEndpoint, BvQuizzes, BvQuizSubmissions, AppError } from '@/lib/ba
 import {
   findScopedQuizGroup,
   getQuizGroupsForUser,
+  isPwQuizContentManager,
   requireQuizContentManager,
   resolveQuizDepartment,
 } from '@/lib/bvQuizAccess';
@@ -12,7 +13,7 @@ export default createEndpoint({
   authenticated: true,
   inputSchema: z.object({
     quizId: z.string(),
-    department: z.literal('FOLK').optional(),
+    department: z.enum(['FOLK', 'PW']).optional(),
   }),
   outputSchema: z.object({ success: z.boolean() }),
   execute: async ({ input, context }) => {
@@ -20,7 +21,24 @@ export default createEndpoint({
     const quiz = await BvQuizzes.findOne({ id: input.quizId });
     if (!quiz) throw new AppError({ code: 'NOT_FOUND', message: 'Quiz not found' });
 
-    if (await resolveQuizDepartment(quiz, 'FOLK') !== 'FOLK') {
+    const department = await resolveQuizDepartment(quiz, input.department || 'FOLK');
+    if (input.department && input.department !== department) {
+      throw new AppError({ code: 'FORBIDDEN', message: 'The quiz belongs to another department' });
+    }
+    if (department === 'PW') {
+      if (!isPwQuizContentManager(context.user)) {
+        throw new AppError({ code: 'FORBIDDEN', message: 'Only Prabhupada World admins can delete quizzes' });
+      }
+      const { records: pwSubmissions } = await BvQuizSubmissions.findAll({
+        filters: { quiz: input.quizId },
+        limit: 5000,
+        fields: ['id'],
+      });
+      await Promise.all(pwSubmissions.map(submission => BvQuizSubmissions.delete({ id: submission.id })));
+      await BvQuizzes.delete({ id: input.quizId });
+      return { success: true };
+    }
+    if (department !== 'FOLK') {
       throw new AppError({ code: 'FORBIDDEN', message: 'Only FOLK quizzes can be managed' });
     }
     requireQuizContentManager(context.user, 'FOLK');
