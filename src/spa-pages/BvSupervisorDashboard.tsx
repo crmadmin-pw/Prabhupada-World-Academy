@@ -228,6 +228,7 @@ export default function BvSupervisorDashboard() {
                 <BvSection
                   guideId={profile?.userId || 'ALL'}
                   bvslMode
+                  segment={isFolk ? 'FOLK' : 'PW'}
                   summaryOnlyGroups
                   groupOptions={(data?.groups || []).map((group: any) => ({
                     id: group.id,

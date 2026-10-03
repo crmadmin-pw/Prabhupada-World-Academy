@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { getScopedHierarchyUserIds, isUserInHierarchy } from '../lib/hierarchyUtils';
 import { createEndpoint, Users, SadhanaEntries, BvAttendance } from '@/lib/backend-sdk';
 import { getTodayIST, daysAgo } from '../lib/streakUtils';
+import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
+import { pwScoreFromFieldValues } from '@/lib/pwSadhana';
 
 const USER_IDENTITY_FIELDS = [
   'id', 'userId', 'email', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId',
@@ -43,13 +45,13 @@ export default createEndpoint({
     // and BV attendance so the context never silently shows empty values.
     const user = await Users.findOne({
       id: input.userId,
-      fields: [...USER_IDENTITY_FIELDS, 'fullName', 'currentStreak', 'ashrayLevel', 'residencyApproved', 'residencyGuideVerified'],
+      fields: [...USER_IDENTITY_FIELDS, 'fullName', 'currentStreak', 'ashrayLevel', 'residencyApproved', 'residencyGuideVerified', 'segment', 'isPrabhupadaWorldUser'],
     }).catch(() => undefined) || await Users.findOne({
       filters: { userId: input.userId },
-      fields: [...USER_IDENTITY_FIELDS, 'fullName', 'currentStreak', 'ashrayLevel', 'residencyApproved', 'residencyGuideVerified'],
+      fields: [...USER_IDENTITY_FIELDS, 'fullName', 'currentStreak', 'ashrayLevel', 'residencyApproved', 'residencyGuideVerified', 'segment', 'isPrabhupadaWorldUser'],
     }).catch(() => undefined) || await Users.findOne({
       filters: { email: input.userId },
-      fields: [...USER_IDENTITY_FIELDS, 'fullName', 'currentStreak', 'ashrayLevel', 'residencyApproved', 'residencyGuideVerified'],
+      fields: [...USER_IDENTITY_FIELDS, 'fullName', 'currentStreak', 'ashrayLevel', 'residencyApproved', 'residencyGuideVerified', 'segment', 'isPrabhupadaWorldUser'],
     }).catch(() => undefined);
 
     if (!user?.id) {
@@ -71,9 +73,9 @@ export default createEndpoint({
             // Query by date first to avoid a composite index and then match
             // every supported identity alias in memory.
             filters: { entryDate: { gte: startDate, lte: today } } as any,
-            fields: ['id', 'entryDate', 'scorePercent', 'totalScore', 'maxScore', 'templateMode',
+            fields: ['id', 'entryDate', 'scorePercent', 'totalScore', 'maxScore', 'templateMode', 'fieldValuesJson',
               'roundsCount', 'spReadingMinutes', 'preachingMinutes', 'booksDistributed',
-              'nrChantingRounds', 'nrReadingMinutes', 'nrHearingMinutes', 'fieldValuesJson', 'flagSick', 'flagOs', 'user'],
+              'nrChantingRounds', 'nrReadingMinutes', 'nrHearingMinutes', 'flagSick', 'flagOs', 'user'],
             limit: 2000,
             offset,
           });
@@ -107,6 +109,7 @@ export default createEndpoint({
     });
 
     const isResident = !!(user.residencyApproved || user.residencyGuideVerified);
+    const isPw = isPwSadhanaUser(user);
 
     // Group entries by week
     const weekMap = new Map<string, typeof entries>();
@@ -130,12 +133,14 @@ export default createEndpoint({
       const src = entries.filter(e => !e.flagSick && !e.flagOs);
       const base = src.length > 0 ? src : entries;
       const n = base.length;
-      const storedScores = base.map(e => Number(e.scorePercent)).filter(Number.isFinite);
+      const storedScores = isPw
+        ? base.map(entry => pwScoreFromFieldValues(entry.fieldValuesJson).scorePercent).filter((value): value is number => value != null)
+        : base.map(e => Number(e.scorePercent)).filter(Number.isFinite);
       const earned = base.reduce((s, e) => s + (Number(e.totalScore) || 0), 0);
       const maxTotal = base.reduce((s, e) => s + (Number(e.maxScore) || 0), 0);
       const scorePercent = storedScores.length > 0
         ? Math.round(storedScores.reduce((sum, score) => sum + score, 0) / storedScores.length)
-        : maxTotal > 0 ? Math.round((earned / maxTotal) * 100) : null;
+        : (!isPw && maxTotal > 0 ? Math.round((earned / maxTotal) * 100) : null);
       const rounds = base.reduce((sum, entry) => {
         const fields = parseFieldValues(entry.fieldValuesJson);
         const raw = isResident
@@ -143,7 +148,9 @@ export default createEndpoint({
           : entry.nrChantingRounds ?? fields.chanting ?? fields.rounds ?? entry.roundsCount;
         return sum + (Number(raw) || 0);
       }, 0) / n;
-      const readingMins = isResident ? base.reduce((s, e) => s + (Number(e.spReadingMinutes) || 0), 0) / n : base.reduce((s, e) => s + (Number(e.nrReadingMinutes) || 0), 0) / n;
+      const readingMins = isPw
+        ? base.reduce((s, e) => s + pwScoreFromFieldValues(e.fieldValuesJson).reading, 0) / n
+        : isResident ? base.reduce((s, e) => s + (Number(e.spReadingMinutes) || 0), 0) / n : base.reduce((s, e) => s + (Number(e.nrReadingMinutes) || 0), 0) / n;
       const hearingMins = !isResident ? base.reduce((s, e) => s + (Number(e.nrHearingMinutes) || 0), 0) / n : null;
       const preachingMins = entries.reduce((s, e) => s + (Number(e.preachingMinutes) || 0), 0);
       const books = entries.reduce((s, e) => s + (Number(e.booksDistributed) || 0), 0);
@@ -158,12 +165,16 @@ export default createEndpoint({
     const bvAttendanceCount = attendance.length;
 
     const improvementAreas: string[] = [];
-    if (avgScore !== null && avgScore < 70) improvementAreas.push('Overall Score');
-    if (avgRounds < 12) improvementAreas.push('Chanting Rounds');
-    if (isResident) { const avgR = weeks.filter(w => w.readingMins != null).reduce((s, w) => s + (w.readingMins || 0), 0) / (weeks.filter(w => w.readingMins != null).length || 1); if (avgR < 15) improvementAreas.push('SP Reading'); }
-    if (totalPreachingMins < 60) improvementAreas.push('Preaching');
-    if (bvAttendanceCount < 3) improvementAreas.push('BV Attendance');
+    if (isPw) {
+      if (avgScore !== null && avgScore < 100) improvementAreas.push('Below the assigned chanting or reading');
+    } else {
+      if (avgScore !== null && avgScore < 70) improvementAreas.push('Overall Score');
+      if (avgRounds < 12) improvementAreas.push('Chanting Rounds');
+      if (isResident) { const avgR = weeks.filter(w => w.readingMins != null).reduce((s, w) => s + (w.readingMins || 0), 0) / (weeks.filter(w => w.readingMins != null).length || 1); if (avgR < 15) improvementAreas.push('SP Reading'); }
+      if (totalPreachingMins < 60) improvementAreas.push('Preaching');
+      if (bvAttendanceCount < 3) improvementAreas.push('BV Attendance');
+    }
 
-    return { userName: user?.fullName || '', streak: user?.currentStreak || 0, ashrayLevel: user?.ashrayLevel || null, isResident, weeks, bvAttendanceCount, totalPreachingMins, totalBooks, improvementAreas };
+    return { userName: user?.fullName || '', streak: user?.currentStreak || 0, ashrayLevel: user?.ashrayLevel || null, isResident, isPw, weeks, bvAttendanceCount, totalPreachingMins, totalBooks, improvementAreas };
   },
 });

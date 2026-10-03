@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { formatPwProgress, pwFieldPercent, scorePwSadhana } from '../src/lib/pwSadhana';
+import { formatPwProgress, pwFieldPercent, pwScoreFromFieldValues, scorePwSadhana } from '../src/lib/pwSadhana';
 
 test('chanting and reading cap at 100 percent when the member exceeds the assignment', () => {
   const scored = scorePwSadhana({ chanting: 12, reading: 45, chantingTarget: 8, readingTarget: 30 });
@@ -16,6 +16,16 @@ test('a partial day is the share of each assigned target', () => {
   assert.equal(scored.readingPercent, 50);
   assert.equal(scored.scorePercent, 50);
   assert.equal(formatPwProgress(4, 8), '4/8');
+});
+
+test('a saved day uses the target from that day', () => {
+  const scored = pwScoreFromFieldValues(JSON.stringify({
+    chanting: 4,
+    reading: 30,
+    _meta: { pwChantingTarget: 8, pwReadingTarget: 30 },
+  }));
+  assert.equal(scored.scorePercent, 75);
+  assert.equal(pwScoreFromFieldValues(JSON.stringify({ chanting: 4, reading: 10 })).scorePercent, null);
 });
 
 test('an unassigned member has no percentage and keeps the filled number', () => {

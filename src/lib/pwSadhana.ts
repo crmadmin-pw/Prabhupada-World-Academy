@@ -27,6 +27,34 @@ export function formatPwProgress(actual: number | null | undefined, target: numb
   return target == null ? shown : `${shown}/${target}`;
 }
 
+/** Percent stored with a submitted day. Days from before a target was assigned have no percentage. */
+export function pwScoreFromFieldValues(fieldValuesJson: unknown): {
+  hasSnapshot: boolean;
+  chanting: number;
+  reading: number;
+  scorePercent: number | null;
+} {
+  let stored: Record<string, any> = {};
+  if (typeof fieldValuesJson === 'string') {
+    try { stored = JSON.parse(fieldValuesJson) || {}; } catch { stored = {}; }
+  } else if (fieldValuesJson && typeof fieldValuesJson === 'object') {
+    stored = fieldValuesJson as Record<string, any>;
+  }
+  const meta = stored._meta;
+  const hasSnapshot = !!meta && typeof meta === 'object' && ('pwChantingTarget' in meta || 'pwReadingTarget' in meta);
+  const chanting = Number(stored.chanting ?? stored.rounds ?? 0) || 0;
+  const reading = Number(stored.reading ?? 0) || 0;
+  const scorePercent = hasSnapshot
+    ? scorePwSadhana({
+        chanting,
+        reading,
+        chantingTarget: pwTarget(meta.pwChantingTarget),
+        readingTarget: pwTarget(meta.pwReadingTarget),
+      }).scorePercent
+    : null;
+  return { hasSnapshot, chanting, reading, scorePercent };
+}
+
 export function scorePwSadhana(input: {
   chanting: number;
   reading: number;

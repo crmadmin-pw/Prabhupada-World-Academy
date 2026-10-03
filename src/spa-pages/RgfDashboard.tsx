@@ -96,7 +96,7 @@ export default function RgfDashboard() {
               )}
               {activeTab === 'session' && <BvslSessionPanel bvslId={bvslId} groups={groups} />}
               {activeTab === 'members' && <BvslMembersTable bvslId={bvslId} canAssignSadhana={!isFolk} />}
-              {activeTab === 'bvreport' && <BvSection guideId={bvslId} bvslMode />}
+              {activeTab === 'bvreport' && <BvSection guideId={bvslId} bvslMode segment={isFolk ? 'FOLK' : 'PW'} />}
               {activeTab === 'report' && <BvslSadhanaReportPanel bvslId={bvslId} hideImprovement={!isFolk} />}
               {activeTab === 'quizzes' && (isFolk ? (
                 <BvslQuizPanel

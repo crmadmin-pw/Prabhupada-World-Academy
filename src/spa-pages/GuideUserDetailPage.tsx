@@ -174,7 +174,7 @@ export default function GuideUserDetailPage() {
     .map((e: any) => e.scorePercent as number);
   const sadhanaAvg = recentScores.length > 0
     ? Math.round(recentScores.reduce((s: number, d: number) => s + d, 0) / recentScores.length)
-    : 0;
+    : null;
 
   const isPw = isPwSadhanaUser(data.user);
   const isResident = data.user.isResident;
@@ -227,7 +227,7 @@ export default function GuideUserDetailPage() {
         {/* Metrics */}
         <div className="grid gap-4 md:grid-cols-4 mb-6">
           <MetricCard icon={<Flame className="w-6 h-6 text-orange-500" />} label="Sadhana Streak" value={`${data.metrics.currentStreak} days`} />
-          <MetricCard icon={<TrendingUp className="w-6 h-6 text-primary" />} label="Sadhana Avg Score" value={`${sadhanaAvg}%`} />
+          <MetricCard icon={<TrendingUp className="w-6 h-6 text-primary" />} label={isPw ? 'Sadhana %' : 'Sadhana Avg Score'} value={sadhanaAvg != null ? `${sadhanaAvg}%` : '—'} />
           <MetricCard icon={<Leaf className="w-6 h-6 text-green-600" />} label="BV Weekly Score" value={bvWeeklyScore !== null ? String(bvWeeklyScore) : '—'} />
           <MetricCard icon={<Star className="w-6 h-6 text-amber-500" />} label="Ashraya Checked" value={`${checkedCount} / ${totalRequired}`} />
         </div>
@@ -316,7 +316,7 @@ export default function GuideUserDetailPage() {
               defaultSelected="scorePercent"
               height={220}
               loading={trendLoading}
-              showThreshold
+              showThreshold={!isPw}
             />
           </CardContent>
         </Card>

@@ -5,6 +5,8 @@ import { computeStreak, getTodayIST } from '../lib/streakUtils';
 import { requireGuideRole } from '../lib/userUtils';
 import { getGuideScope, isUserInGuideScope } from '../lib/guideScope';
 import { isBvGroupProfileAdministrator } from '../lib/bvGroupMemberProfileNavigation';
+import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
+import { pwScoreFromFieldValues } from '@/lib/pwSadhana';
 
 const USER_FIELDS = ['id', 'userId', 'fullName', 'displayName', 'name', 'phone', 'email', 'ashrayLevel', 'status',
   'residency', 'residencyApproved', 'residencyGuideVerified', 'selectedFolkResidency',
@@ -12,7 +14,7 @@ const USER_FIELDS = ['id', 'userId', 'fullName', 'displayName', 'name', 'phone',
   'currentStreak', 'lastStreakUpdatedAt', 'guide', 'sadhanaMentor', 'segment', 'isPrabhupadaWorldUser',
   'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
 const ENTRY_FIELDS = ['id', 'entryId', 'entryDate', 'totalScore', 'maxScore', 'scorePercent',
-  'flagSick', 'flagOs', 'submittedAt', 'user'];
+  'flagSick', 'flagOs', 'submittedAt', 'user', 'fieldValuesJson'];
 
 /** Resolve a user record by DB UUID or custom userId field (e.g. "USER-031") */
 async function resolveUser(id: string) {
@@ -256,7 +258,13 @@ export default createEndpoint({
       ((b.entryDate as string) || '').localeCompare((a.entryDate as string) || '')
     );
 
-    const scores = sortedEntries.map((e: any) => Math.min(100, e.scorePercent ?? 0)).filter((s: number) => s > 0);
+    const isPwMember = isPwSadhanaUser(userRecord);
+    const entryPercent = (entry: any) => isPwMember
+      ? pwScoreFromFieldValues(entry.fieldValuesJson).scorePercent
+      : (entry.scorePercent == null
+          ? (Number(entry.maxScore) > 0 ? Math.min(100, Math.round((Number(entry.totalScore) / Number(entry.maxScore)) * 100)) : null)
+          : Number(entry.scorePercent));
+    const scores = sortedEntries.map(entryPercent).filter((score: number | null): score is number => score != null && score > 0);
     const avgScorePercent = scores.length > 0 ? Math.round(scores.reduce((a: number, b: number) => a + b, 0) / scores.length) : 0;
 
     const streak = computeStreak(sortedEntries as any[], todayStr);
@@ -319,9 +327,7 @@ export default createEndpoint({
         entryDate: (e.entryDate as string) || '',
         totalScore: (e.totalScore as number) ?? 0,
         maxScore: (e.maxScore as number) ?? 0,
-        scorePercent: e.scorePercent == null
-          ? (Number(e.maxScore) > 0 ? Math.min(100, Math.round((Number(e.totalScore) / Number(e.maxScore)) * 100)) : null)
-          : Number(e.scorePercent),
+        scorePercent: entryPercent(e),
         flagSick: !!(e.flagSick),
         flagOs: !!(e.flagOs),
         submittedAt: (e.submittedAt as string) || '',

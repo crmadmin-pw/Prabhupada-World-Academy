@@ -5,6 +5,7 @@ import { getGuideScope } from '../lib/guideScope';
 import { requireGuideRole, isScholar as checkIsScholar } from '../lib/userUtils';
 import { resolveBvGroupMemberUsers } from '../lib/bvGroupMemberScope';
 import { resolveBvAdminFacilitators } from '../lib/bvAdminFacilitatorScope';
+import { pwScoreFromFieldValues } from '@/lib/pwSadhana';
 
 const USER_FIELDS = ['id', 'userId', 'fullName', 'displayName', 'name', 'email', 'segment', 'ashrayLevel', 'residency', 'residencyApproved', 'temporaryResidencyEnabled', 'temporaryResidency', 'residencyJoinDate', 'scholarSince', 'residentSince', 'sadhanaMentor', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
 const ENTRY_FIELDS = [
@@ -240,12 +241,20 @@ export default createEndpoint({
       const fv = parseFieldValues(e.fieldValuesJson as string);
       const isNREntry = isNonResidentEntry(e.templateMode);
 
-      if (e.scorePercent != null) { agg.total += Number(e.scorePercent); agg.count++; }
-
       const addField = (key: string, val: number) => {
         agg.fieldSums[key] = (agg.fieldSums[key] || 0) + val;
         agg.fieldCounts[key] = (agg.fieldCounts[key] || 0) + 1;
       };
+
+      if (input.segment === 'PW') {
+        const scored = pwScoreFromFieldValues(e.fieldValuesJson);
+        if (scored.scorePercent != null) { agg.total += scored.scorePercent; agg.count++; }
+        addField('rounds', scored.chanting);
+        addField('reading', scored.reading);
+        continue;
+      }
+
+      if (e.scorePercent != null) { agg.total += Number(e.scorePercent); agg.count++; }
 
       // Common
       addField('preachingMinutes', Number(e.preachingMinutes ?? 0));
@@ -362,11 +371,17 @@ export default createEndpoint({
     const userSummaries = users.map(u => {
       const ue = (entriesByUser.get(u.id) || []).sort((a: any, b: any) => (a.entryDate as string).localeCompare(b.entryDate as string));
       const submitted = ue.length;
-      const avgScore = submitted > 0 ? Math.round(ue.reduce((s: number, e: any) => s + (e.scorePercent ?? 0), 0) / submitted) : 0;
-      const fh = ue.filter((e: any) => (e.entryDate as string) < midDate);
-      const sh = ue.filter((e: any) => (e.entryDate as string) >= midDate);
-      const fhAvg = fh.length ? fh.reduce((s: number, e: any) => s + (e.scorePercent ?? 0), 0) / fh.length : null;
-      const shAvg = sh.length ? sh.reduce((s: number, e: any) => s + (e.scorePercent ?? 0), 0) / sh.length : null;
+      const percents = input.segment === 'PW'
+        ? ue.map((e: any) => pwScoreFromFieldValues(e.fieldValuesJson).scorePercent).filter((value: number | null): value is number => value != null)
+        : ue.map((e: any) => e.scorePercent).filter((value: any) => value != null);
+      const avgScore = percents.length > 0 ? Math.round(percents.reduce((s: number, value: number) => s + Number(value), 0) / percents.length) : 0;
+      const entryPercent = (entry: any) => input.segment === 'PW'
+        ? pwScoreFromFieldValues(entry.fieldValuesJson).scorePercent
+        : entry.scorePercent;
+      const fh = ue.filter((e: any) => (e.entryDate as string) < midDate).map(entryPercent).filter((value: any) => value != null);
+      const sh = ue.filter((e: any) => (e.entryDate as string) >= midDate).map(entryPercent).filter((value: any) => value != null);
+      const fhAvg = fh.length ? fh.reduce((s: number, value: number) => s + Number(value), 0) / fh.length : null;
+      const shAvg = sh.length ? sh.reduce((s: number, value: number) => s + Number(value), 0) / sh.length : null;
       let trend: 'up' | 'down' | 'flat' = 'flat';
       if (fhAvg != null && shAvg != null) {
         if (shAvg - fhAvg > 5) trend = 'up';

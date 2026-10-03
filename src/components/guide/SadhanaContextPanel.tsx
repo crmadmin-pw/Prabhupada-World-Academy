@@ -11,6 +11,7 @@ interface ContextData {
   streak: number;
   ashrayLevel: string | null;
   isResident: boolean;
+  isPw?: boolean;
   weeks: { weekDate: string; scorePercent: number | null; entryCount: number; rounds: number | null; readingMins: number | null; hearingMins: number | null; preachingMins: number; books: number }[];
   bvAttendanceCount: number;
   totalPreachingMins: number;
@@ -45,6 +46,7 @@ export default function SadhanaContextPanel({ userId }: Props) {
   // The context is ordered oldest → newest. Show the latest reported rounds,
   // not the first historical week that happened to contain an entry.
   const latestRounds = [...data.weeks].reverse().find(w => w.rounds != null)?.rounds;
+  const latestReading = [...data.weeks].reverse().find(w => w.readingMins != null)?.readingMins;
 
   return (
     <div className="space-y-3 pt-1">
@@ -75,8 +77,17 @@ export default function SadhanaContextPanel({ userId }: Props) {
           <p className="text-[10px] text-muted-foreground">Rounds</p>
         </div>
         <div className="text-center bg-muted rounded p-2">
-          <div className="flex items-center justify-center gap-1"><Megaphone className="h-3 w-3 text-blue-500" /><span className="text-sm font-bold">{data.totalPreachingMins}m</span></div>
-          <p className="text-[10px] text-muted-foreground">Preaching</p>
+          {data.isPw ? (
+            <>
+              <div className="text-sm font-bold">{latestReading ?? '—'}{latestReading != null ? 'm' : ''}</div>
+              <p className="text-[10px] text-muted-foreground">Reading</p>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center justify-center gap-1"><Megaphone className="h-3 w-3 text-blue-500" /><span className="text-sm font-bold">{data.totalPreachingMins}m</span></div>
+              <p className="text-[10px] text-muted-foreground">Preaching</p>
+            </>
+          )}
         </div>
         <div className="text-center bg-muted rounded p-2">
           <div className="flex items-center justify-center gap-1"><Users className="h-3 w-3 text-purple-500" /><span className="text-sm font-bold">{data.bvAttendanceCount}</span></div>
@@ -95,7 +106,7 @@ export default function SadhanaContextPanel({ userId }: Props) {
           </div>
         </div>
       )}
-      {data.totalBooks > 0 && (
+      {!data.isPw && data.totalBooks > 0 && (
         <p className="text-xs text-muted-foreground flex items-center gap-1">
           <BookOpen className="h-3 w-3" /> {data.totalBooks} book(s) distributed in last 4 weeks
         </p>

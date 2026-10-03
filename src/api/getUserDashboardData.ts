@@ -1,11 +1,13 @@
 import { z } from 'zod';
 import { createEndpoint, Users, SadhanaEntries } from '@/lib/backend-sdk';
 import { computeStreak, daysAgo } from '../lib/streakUtils';
+import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
+import { pwScoreFromFieldValues } from '@/lib/pwSadhana';
 
 // Minimal field sets
-const USER_FIELDS = ['id', 'userId', 'fullName', 'email', 'ashrayLevel', 'residencyApproved'];
+const USER_FIELDS = ['id', 'userId', 'fullName', 'email', 'ashrayLevel', 'residencyApproved', 'segment', 'isPrabhupadaWorldUser'];
 const ENTRY_FIELDS = ['id', 'entryId', 'user', 'entryDate', 'totalScore', 'maxScore', 'scorePercent',
-  'flagSick', 'flagOs', 'submittedAt', 'templateMode', 'ashrayLevelUsed',
+  'flagSick', 'flagOs', 'submittedAt', 'templateMode', 'ashrayLevelUsed', 'fieldValuesJson',
   'maNaGvPoints', 'quotesTulasiPoints', 'japaVisiblePoints', 'sbPoints',
   'cleanlinessPoints', 'reportSendingPoints', 'dailyServicePoints',
   'roundsPoints', 'spReadingPoints', 'sleepQualityPoints'];
@@ -103,8 +105,12 @@ export default createEndpoint({
     }
     const entries = Array.from(entriesByDate.values());
 
+    const isPw = isPwSadhanaUser(userRecord || context.user);
     // For residents: apply scorePercent correction immediately so all downstream calcs use it
     const correctedEntries = entries.map(e => {
+      if (isPw) {
+        return { ...e, scorePercent: pwScoreFromFieldValues(e.fieldValuesJson).scorePercent, totalScore: null };
+      }
       const isNR = String(e.templateMode || '').toUpperCase().includes('NON_RESIDENT');
       if (isNR) return e;
       const colSum = Number(e.maNaGvPoints ?? 0) + Number(e.quotesTulasiPoints ?? 0) +

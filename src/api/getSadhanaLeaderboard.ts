@@ -6,8 +6,10 @@ import { getGuideScope } from '../lib/guideScope';
 import { bvUserAliases, resolveBvGroupMemberUsers } from '../lib/bvGroupMemberScope';
 import { requireGuideRole } from '../lib/userUtils';
 import { resolveBvAdminFacilitators } from '../lib/bvAdminFacilitatorScope';
+import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
+import { pwScoreFromFieldValues } from '@/lib/pwSadhana';
 
-const ENTRY_FIELDS = ['id', 'user', 'entryDate', 'totalScore', 'scorePercent', 'maxScore', 'flagSick', 'flagOs', 'submittedAt'];
+const ENTRY_FIELDS = ['id', 'user', 'entryDate', 'totalScore', 'scorePercent', 'maxScore', 'flagSick', 'flagOs', 'submittedAt', 'fieldValuesJson'];
 const STREAK_ENTRY_FIELDS = ['id', 'user', 'entryDate', 'scorePercent'];
 const USER_FIELDS = ['id', 'fullName', 'email', 'segment', 'isPrabhupadaWorldUser', 'ashrayLevel', 'residency', 'residencyApproved', 'guide', 'status', 'userId', 'role', 'currentStreak', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
 
@@ -277,7 +279,14 @@ export default createEndpoint({
         // Averaging daily scorePercent values is wrong: Sick/OS days (max=8) produce
         // high daily %s that inflate the range average vs normal days (max=20).
         let avgScore: number | null;
-        if (userEntries.length === 1) {
+        if (isPwSadhanaUser(u)) {
+          const pwPercents = userEntries
+            .map(entry => pwScoreFromFieldValues(entry.fieldValuesJson).scorePercent)
+            .filter((value): value is number => value != null);
+          avgScore = pwPercents.length > 0
+            ? Math.round(pwPercents.reduce((sum, value) => sum + value, 0) / pwPercents.length)
+            : null;
+        } else if (userEntries.length === 1) {
           const pct = userEntries[0]?.scorePercent;
           avgScore = pct != null ? Math.round(pct) : null;
         } else {

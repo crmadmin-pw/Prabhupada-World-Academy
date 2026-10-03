@@ -98,6 +98,7 @@ export default function RgsfDashboard() {
                 <BvSection
                   guideId={bvslId}
                   bvslMode
+                  segment={isFolk ? 'FOLK' : 'PW'}
                   improvementDetailBasePath="/rgsf/users"
                 />
               )}

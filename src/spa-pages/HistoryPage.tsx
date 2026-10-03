@@ -31,7 +31,7 @@ const EntryRow = memo(({ entry, onClick }: {
         <div className="font-medium">{format(new Date(entry.entryDate), 'EEEE')}</div>
         <div className="text-sm text-muted-foreground">
           Score: <span className="font-semibold text-primary">
-            {entry.scorePercent != null ? `${entry.scorePercent}%` : entry.totalScore}
+            {entry.scorePercent != null ? `${entry.scorePercent}%` : (entry.totalScore != null ? entry.totalScore : 'Submitted')}
           </span>
         </div>
       </div>
@@ -67,7 +67,7 @@ const CalendarDay = memo(({ day, entry, isToday, isFuture, onClick }: {
       {entry && (
         <>
           <div className="font-bold text-sm">
-            {entry.scorePercent != null ? `${entry.scorePercent}%` : entry.totalScore}
+            {entry.scorePercent != null ? `${entry.scorePercent}%` : (entry.totalScore != null ? entry.totalScore : 'Submitted')}
           </div>
           <div className="flex gap-0.5 justify-center">
             {entry.flagSick && <span>🤒</span>}

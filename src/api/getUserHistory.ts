@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { createEndpoint, SadhanaEntries } from '@/lib/backend-sdk';
+import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
+import { pwScoreFromFieldValues } from '@/lib/pwSadhana';
 
 // Only the fields needed for the history view — avoids large fieldValuesJson on list
 const LIST_FIELDS = ['id', 'entryId', 'entryDate', 'totalScore', 'maxScore', 'scorePercent',
@@ -25,7 +27,8 @@ export default createEndpoint({
   execute: async ({ input, context }) => {
     const limit = input.limit ?? 50;
     const offset = input.offset ?? 0;
-    const fields = input.includeFieldValues ? FULL_FIELDS : LIST_FIELDS;
+    const isPw = isPwSadhanaUser(context.user);
+    const fields = input.includeFieldValues || isPw ? FULL_FIELDS : LIST_FIELDS;
 
     const { records, hasMore } = await SadhanaEntries.findAll({
       filters: { user: context.user!.id },
@@ -47,7 +50,8 @@ export default createEndpoint({
         }
         // For residents: recalculate scorePercent using MAX(column sum, DB total)
         const isNR = String(e.templateMode || '').toUpperCase().includes('NON_RESIDENT');
-        let scorePercent = e.scorePercent ?? null;
+        const pwScored = isPw ? pwScoreFromFieldValues(e.fieldValuesJson) : null;
+        let scorePercent = pwScored ? pwScored.scorePercent : (e.scorePercent ?? null);
         if (!isNR) {
           const colSum = Number(e.maNaGvPoints ?? 0) + Number(e.quotesTulasiPoints ?? 0) +
             Number(e.japaVisiblePoints ?? 0) + Number(e.sbPoints ?? 0) +
@@ -62,8 +66,8 @@ export default createEndpoint({
           entryId: e.entryId || e.id,
           rowId: e.id,
           entryDate: e.entryDate || '',
-          totalScore: e.totalScore ?? 0,
-          maxScore: e.maxScore ?? 0,
+          totalScore: isPw ? null : (e.totalScore ?? 0),
+          maxScore: isPw ? null : (e.maxScore ?? 0),
           scorePercent,
           templateMode: e.templateMode || 'NON_RESIDENT_TEMPLATE',
           ashrayLevelUsed: e.ashrayLevelUsed || '',

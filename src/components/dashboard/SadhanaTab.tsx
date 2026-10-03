@@ -294,7 +294,7 @@ export default function SadhanaTab({ metrics, history, userId, residencyId, isRe
           <CardHeader className="pb-3"><CardTitle className="text-sm font-medium text-muted-foreground">Today's Score</CardTitle></CardHeader>
           <CardContent>
             {metrics.todaySubmitted ? (<>
-              <div className="text-3xl font-bold text-primary">{metrics.todayPercent != null ? `${metrics.todayPercent}%` : metrics.todayScore}</div>
+              <div className="text-3xl font-bold text-primary">{metrics.todayPercent != null ? `${metrics.todayPercent}%` : (metrics.todayScore != null ? metrics.todayScore : '—')}</div>
               <p className="text-xs text-muted-foreground mt-1">
                 {submittedAtDisplay ? `Submitted ${submittedAtDisplay}` : `Submitted on ${format(new Date(), 'MMM dd, yyyy')}`}
               </p>

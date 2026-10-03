@@ -150,7 +150,7 @@ export default function GuideLeaderboardDisplay({ leaderboard, dateLabel }: Prop
                         <div className={`text-sm font-bold ${scoreColor(entry.scorePercent, entry.isResident)}`}>
                           {entry.scorePercent}%
                         </div>
-                      ) : entry.todayScore !== null ? (
+                      ) : isFolk && entry.todayScore !== null ? (
                         <div className="text-sm font-bold text-primary">{entry.todayScore} pts</div>
                       ) : (
                         <div className="text-sm text-muted-foreground">—</div>
@@ -176,9 +176,11 @@ export default function GuideLeaderboardDisplay({ leaderboard, dateLabel }: Prop
                 </Button>
               </div>
             )}
+            {isFolk && (
             <p className="text-[10px] text-muted-foreground px-4 py-2 border-t">
               Ranking: Score › Ashray Level › Streak › Submission Time
             </p>
+            )}
           </>
         )}
       </CardContent>

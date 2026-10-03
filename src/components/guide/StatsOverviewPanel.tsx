@@ -328,7 +328,7 @@ export default function StatsOverviewPanel({ guideId, bvslMode, mentorMode, faci
               fieldConfigs={groupFieldConfigs}
               defaultSelected="scorePercent"
               height={260}
-              showThreshold
+              showThreshold={!isPw}
               isResident={!isPw && (residencyFilter === 'resident' || residencyFilter === 'scholar' || residencyFilter === 'all')}
               loading={groupLoading && !groupStats}
             />
@@ -412,7 +412,7 @@ export default function StatsOverviewPanel({ guideId, bvslMode, mentorMode, faci
               fieldConfigs={isPw ? PW_FIELD_CONFIGS : (userStats.isResident ? RESIDENT_FIELD_CONFIGS : NR_FIELD_CONFIGS)}
               defaultSelected="scorePercent"
               height={240}
-              showThreshold
+              showThreshold={!isPw}
               isResident={!isPw && userStats.isResident}
             />
           ) : (

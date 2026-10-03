@@ -225,7 +225,7 @@ export default function SadhanaLeaderboard({
                     <div className="text-right shrink-0">
                       {entry.scorePercent != null ? (
                         <div className={`text-sm font-bold ${scoreColor(entry.scorePercent, !isPw && entry.isResident)}`}>{entry.scorePercent}%</div>
-                      ) : entry.todayScore !== null ? (
+                      ) : !isPw && entry.todayScore !== null ? (
                         <div className="text-sm font-bold text-primary">{entry.todayScore} pts</div>
                       ) : (
                         <div className="text-sm text-muted-foreground">—</div>

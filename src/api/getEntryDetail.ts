@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { createEndpoint, SadhanaEntries, Users } from '@/lib/backend-sdk';
 import { NON_RESIDENT_FIELDS, RESIDENT_FIELDS } from '../config/sadhanaFields';
 import { isPwSadhanaUser, PW_SADHANA_FORM_KEYS } from '@/lib/sadhanaDepartment';
-import { formatPwProgress, pwTarget } from '@/lib/pwSadhana';
+import { formatPwProgress, pwScoreFromFieldValues, pwTarget } from '@/lib/pwSadhana';
 
 // Human-readable labels for common field keys
 const FIELD_LABEL_MAP: Record<string, string> = {
@@ -138,7 +138,9 @@ export default createEndpoint({
         : rawMaxPoints;
       fields.push({
         fieldKey: key,
-        fieldLabel: def.fieldLabel || FIELD_LABEL_MAP[key] || key,
+        fieldLabel: isPw
+          ? (key === 'chanting' ? 'Chanting (rounds)' : 'Reading (minutes)')
+          : (def.fieldLabel || FIELD_LABEL_MAP[key] || key),
         displayValue,
         points: typeof points === 'number' ? points : undefined,
         maxPoints: effectiveMaxPoints !== null ? effectiveMaxPoints : undefined,
@@ -167,14 +169,16 @@ export default createEndpoint({
       });
     }
 
+    const pwScored = isPw ? pwScoreFromFieldValues(entry.fieldValuesJson) : null;
     return {
       found: true,
       entry: {
         entryId: entry.entryId || entry.id,
         entryDate: entry.entryDate || '',
-        totalScore: entry.totalScore ?? 0,
-        maxScore: entry.maxScore ?? meta.maxScore ?? null,
-        scorePercent: entry.scorePercent ?? null,
+        totalScore: isPw ? null : (entry.totalScore ?? 0),
+        maxScore: isPw ? null : (entry.maxScore ?? meta.maxScore ?? null),
+        scorePercent: isPw ? pwScored!.scorePercent : (entry.scorePercent ?? null),
+        isPw,
         templateMode: meta.templateMode ?? entry.templateMode ?? null,
         submittedAt: entry.submittedAt || '',
         flagSick: entry.flagSick || false,

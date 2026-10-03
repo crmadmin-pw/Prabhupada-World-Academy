@@ -15,8 +15,8 @@ interface Props {
   onClose: () => void;
 }
 
-function ScoreBadge({ scorePercent, totalScore }: { scorePercent: number | null; totalScore: number }) {
-  const display = scorePercent != null ? `${scorePercent}%` : String(totalScore);
+function ScoreBadge({ scorePercent, totalScore }: { scorePercent: number | null; totalScore: number | null }) {
+  const display = scorePercent != null ? `${scorePercent}%` : totalScore != null ? String(totalScore) : '—';
   const color = scorePercent == null ? 'secondary'
     : scorePercent >= 75 ? 'default'
     : scorePercent >= 50 ? 'secondary'
@@ -38,13 +38,13 @@ function SadhanaContent({ entry }: { entry: EntryData }) {
     <div className="space-y-4">
       <div className="flex items-center gap-3">
         <ScoreBadge scorePercent={entry.scorePercent} totalScore={entry.totalScore} />
-        {entry.maxScore && <span className="text-xs text-muted-foreground">out of {entry.maxScore}</span>}
+        {entry.maxScore != null && !(entry as any).isPw && <span className="text-xs text-muted-foreground">out of {entry.maxScore}</span>}
         {entry.flagSick && <Badge variant="outline">🤒 Sick</Badge>}
         {entry.flagOs && <Badge variant="outline">✈️ OS</Badge>}
       </div>
       <p className="text-xs text-muted-foreground">
         Submitted at {format(new Date(entry.submittedAt), 'h:mm a')}
-        {entry.templateMode && ` · ${entry.templateMode.replace('_TEMPLATE', '')}`}
+        {entry.templateMode && !(entry as any).isPw && ` · ${entry.templateMode.replace('_TEMPLATE', '')}`}
       </p>
       <div className="rounded-lg border bg-muted/30 px-3">
         {(entry.fields ?? []).length === 0
