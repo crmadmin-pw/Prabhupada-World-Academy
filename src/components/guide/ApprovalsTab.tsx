@@ -150,6 +150,7 @@ export default function ApprovalsTab({ guideId = '', reviewerGuideId, isSuperGui
     });
     toast.success(`✅ ${approveTarget.fullName} approved`);
     showEnrollmentToast(approveTarget.fullName, result);
+    window.dispatchEvent(new CustomEvent('pwa:member-directory-changed'));
     loadAll();
   };
 
@@ -169,6 +170,7 @@ export default function ApprovalsTab({ guideId = '', reviewerGuideId, isSuperGui
       toast.success(`✅ ${editUser.fullName} details saved & approved`);
       showEnrollmentToast(editUser.fullName, result);
       setEditUser(null);
+      window.dispatchEvent(new CustomEvent('pwa:member-directory-changed'));
       loadAll();
     } catch (error: any) {
       toast.error(error?.message || `Could not approve ${editUser.fullName}. Please try again.`);

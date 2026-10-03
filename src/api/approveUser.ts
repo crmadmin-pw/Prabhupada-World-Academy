@@ -28,7 +28,7 @@ export default createEndpoint({
     if (!context.user) throw new Error('Unauthorized');
 
     // Fetch user record (needed for both auth check and email notification)
-    const userFields = ['id', 'userId', 'email', 'fullName', 'residency', 'guide', 'phone', 'ashrayLevel', 'tagMangoEnrollmentAttempts', 'segment', 'isPrabhupadaWorldUser'];
+    const userFields = ['id', 'userId', 'email', 'fullName', 'residency', 'guide', 'selectedGuideId', 'phone', 'ashrayLevel', 'tagMangoEnrollmentAttempts', 'segment', 'isPrabhupadaWorldUser', 'bvReportingAdminId', 'bvReportingFacilitatorId', 'bvReportingSupervisorId'];
     // Approval lists expose the stable public userId, while migrated records
     // may be referenced by the Firestore document ID or email.
     const userRecord = await Users.findOne({ id: input.userId, fields: userFields }) ||
@@ -73,6 +73,22 @@ export default createEndpoint({
     };
     if (input.ashrayLevel) updates.ashrayLevel = input.ashrayLevel;
     if (input.newGuideId) updates.guide = input.newGuideId;
+    // A PW registration has no reading group yet. Link the member to the
+    // approving admin so they appear in that admin's directory immediately.
+    const existingParent = [
+      userRecord.bvReportingFacilitatorId,
+      userRecord.bvReportingSupervisorId,
+      userRecord.bvReportingAdminId,
+    ].some(value => String(value || '').trim());
+    if (isPwUser && canApprovePwUser && !existingParent) {
+      const adminId = String(context.user.userId || context.user.id || '').trim();
+      if (adminId) {
+        updates.guide = input.newGuideId || adminId;
+        updates.selectedGuideId = updates.guide;
+        updates.bvReportingAdminId = adminId;
+        updates.bvReportingAdminName = context.user.fullName || context.user.name || '';
+      }
+    }
     if (input.selectedFolkResidency) {
       updates.residency = input.selectedFolkResidency;
       if (input.residencyApproved) updates.residentSince = today;

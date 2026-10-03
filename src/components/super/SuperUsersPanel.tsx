@@ -275,6 +275,12 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  useEffect(() => {
+    const refreshDirectory = () => { void loadData(true); };
+    window.addEventListener('pwa:member-directory-changed', refreshDirectory);
+    return () => window.removeEventListener('pwa:member-directory-changed', refreshDirectory);
+  }, [loadData]);
+
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
