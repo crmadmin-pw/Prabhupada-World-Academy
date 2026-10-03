@@ -380,7 +380,7 @@ export default function SadhanaMentorDashboard() {
           {(activeTab) => (
             <>
               {activeTab === 'reports' && (
-                <SadhanaSection guideId={effectiveGuideId} mentorMode={true} />
+                <SadhanaSection guideId={effectiveGuideId} mentorMode={true} hideImprovement={isPwMentor} />
               )}
               {isFolkMentor && activeTab === 'missing' && (
                 <MissingSadhanaTab guideId={effectiveGuideId} segment="FOLK" />

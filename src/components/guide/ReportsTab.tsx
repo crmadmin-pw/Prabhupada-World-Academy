@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { GetGuideDetailedReportOutputType, recalculateScoresForDate } from '@/lib/endpoints-sdk';
 import { useEndpointQuery } from '@/hooks/useEndpointQuery';
 import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
+import { formatPwProgress, pwTarget } from '@/lib/pwSadhana';
 import { format, subDays, startOfMonth, endOfMonth, startOfISOWeek, endOfISOWeek, getISOWeek, getISOWeekYear } from 'date-fns';
 import { ASHRAY_LEVELS } from '@/types/enums';
 import { scoreColor } from '@/lib/scoring';
@@ -49,6 +50,11 @@ type ResidencyFilter = 'all' | 'resident' | 'non_resident' | 'scholar';
 // ── "All" view: 6 common fields shared between residents and non-residents ──────
 // These use remapped keys (common_*). Scoring scales differ per group (R rounds max=4,
 // NR max=8) so we show raw values only — maxPoints: null means neutral cell styling.
+const PW_FIELD_DEFS: FieldDef[] = [
+  { key: 'pw_chanting', shortLabel: 'Chanting', maxPoints: null, isScoring: false, forResident: true, forNR: true },
+  { key: 'pw_reading', shortLabel: 'Reading', maxPoints: null, isScoring: false, forResident: true, forNR: true },
+];
+
 const COMMON_FIELD_DEFS: FieldDef[] = [
   { key: 'common_rounds',    shortLabel: 'Rounds', maxPoints: null, isScoring: false, forResident: true, forNR: true },
   { key: 'common_reading',   shortLabel: 'Read',   maxPoints: null, isScoring: false, forResident: true, forNR: true },
@@ -361,7 +367,24 @@ export default function ReportsTab({ guideId = '', senderName, bvslMode, mentorM
     // Residents and NR use different field keys and scoring scales for the same
     // concept (rounds, reading, hearing, seva, preaching, books). We inject the
     // raw values under common_* keys so a single column covers both groups.
-    const remapped = residencyFilter === 'all'
+    const remapped = isPw
+      ? withResidency.map(u => {
+          const chantingTarget = pwTarget((u as any).pwChantingTarget);
+          const readingTarget = pwTarget((u as any).pwReadingTarget);
+          const chanting = u.submitted ? Number((u as any).chantingRaw ?? 0) : null;
+          const reading = u.submitted ? Number((u as any).readingRaw ?? 0) : null;
+          const progress = {
+            pw_chanting: u.submitted ? formatPwProgress(chanting, chantingTarget) : null,
+            pw_reading: u.submitted ? formatPwProgress(reading, readingTarget) : null,
+          };
+          return {
+            ...u,
+            scorePercent: u.submitted ? ((u as any).pwScorePercent ?? null) : null,
+            fieldScores: { ...u.fieldScores, ...progress },
+            fieldRawValues: { ...(u.fieldRawValues || {}), ...progress },
+          };
+        })
+      : residencyFilter === 'all'
       ? withResidency.map(u => {
           const fs = u.fieldScores;
           const commonScores: Record<string, number | string | null> = {
@@ -388,14 +411,16 @@ export default function ReportsTab({ guideId = '', senderName, bvslMode, mentorM
     // (e.g. two residents sharing "USER-031") would cause one rank to overwrite the other.
     submittedSorted.forEach((u, idx) => rankedMap.set((u as any).id || u.userId, idx + 1));
     return remapped.map(u => ({ ...u, rank: rankedMap.get((u as any).id || u.userId) }));
-  }, [clientFilteredUsers, residencies, residencyFilter]);
+  }, [clientFilteredUsers, residencies, residencyFilter, isPw]);
 
   const summary = useMemo(() => {
     if (!rawReportData) return null;
-    return computeSummary(clientFilteredUsers, residencyFilter === 'scholar');
-  }, [clientFilteredUsers, rawReportData, residencyFilter]);
+    return computeSummary((isPw ? usersForTable : clientFilteredUsers) as ReportUser[], residencyFilter === 'scholar');
+  }, [clientFilteredUsers, usersForTable, rawReportData, residencyFilter, isPw]);
 
-  const visibleFieldDefs: FieldDef[] = residencyFilter === 'all'
+  const visibleFieldDefs: FieldDef[] = isPw
+    ? PW_FIELD_DEFS
+    : residencyFilter === 'all'
     // "All" view: use the 6 common fields with remapped keys (raw values, no scoring scale mismatch)
     ? COMMON_FIELD_DEFS
     : (rawReportData?.fieldDefs ?? []).filter(d => {
@@ -964,18 +989,17 @@ export default function ReportsTab({ guideId = '', senderName, bvslMode, mentorM
                       </CardContent>
         </Card>
 
-        {/* Scoring Criteria Reference */}
+        {!isPw && (
         <ScoringCriteriaPanel
           mode={
-            isPw
-              ? 'pw'
-              : residencyFilter === 'resident' || residencyFilter === 'scholar'
+            residencyFilter === 'resident' || residencyFilter === 'scholar'
               ? 'resident'
               : residencyFilter === 'non_resident'
               ? 'non_resident'
               : 'all'
           }
         />
+        )}
 
         {/* Report Content */}
         {!rawReportData && loading && (
@@ -1018,6 +1042,7 @@ export default function ReportsTab({ guideId = '', senderName, bvslMode, mentorM
                   <div className="text-2xl font-bold mt-1">{summary?.totalUsers ?? 0}</div>
                 </CardContent>
               </Card>
+              {!isPw && <>
               {/* 2 — Total Books */}
               <Card className="flex-1 min-w-[110px]">
                 <CardContent className="pt-4 pb-3">
@@ -1032,6 +1057,7 @@ export default function ReportsTab({ guideId = '', senderName, bvslMode, mentorM
                   <div className="text-2xl font-bold mt-1 text-primary">{minutesToHHMM(totalPreachingMins)}</div>
                 </CardContent>
               </Card>
+              </>}
               {/* 4 — Avg Rounds */}
               <Card className="flex-1 min-w-[110px]">
                 <CardContent className="pt-4 pb-3">
@@ -1045,11 +1071,12 @@ export default function ReportsTab({ guideId = '', senderName, bvslMode, mentorM
                   <div className="flex items-center gap-2"><BookOpen className="w-4 h-4 text-primary" /><span className="text-xs text-muted-foreground">Avg Reading</span></div>
                   <div className="text-2xl font-bold mt-1 text-primary">
                     {summary?.readingAvg != null
-                      ? minutesToHHMM(Math.round(summary.readingAvg))
-                      : '00:00'}
+                      ? (isPw ? `${Math.round(summary.readingAvg)} min` : minutesToHHMM(Math.round(summary.readingAvg)))
+                      : (isPw ? '0 min' : '00:00')}
                   </div>
                 </CardContent>
               </Card>
+              {!isPw && <>
               {/* 6 — Avg SB/Hearing */}
               <Card className="flex-1 min-w-[110px]">
                 <CardContent className="pt-4 pb-3">
@@ -1063,8 +1090,9 @@ export default function ReportsTab({ guideId = '', senderName, bvslMode, mentorM
                   </div>
                 </CardContent>
               </Card>
+              </>}
               {/* 7 — Avg Sleep Time — residents only */}
-              {(residencyFilter === 'resident' || residencyFilter === 'scholar' || residencyFilter === 'all') && summary?.sleepTimeAvg != null && (
+              {!isPw && (residencyFilter === 'resident' || residencyFilter === 'scholar' || residencyFilter === 'all') && summary?.sleepTimeAvg != null && (
                 <Card className="flex-1 min-w-[110px]">
                   <CardContent className="pt-4 pb-3">
                     <div className="flex items-center gap-2"><Moon className="w-4 h-4 text-indigo-500" /><span className="text-xs text-muted-foreground">Avg Sleep (hrs)</span></div>

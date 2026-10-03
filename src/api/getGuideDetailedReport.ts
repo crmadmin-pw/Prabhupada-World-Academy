@@ -12,9 +12,10 @@ import { NON_RESIDENT_FIELDS } from '../config/sadhanaFields';
 import { computeStreak, getTodayIST, daysAgo } from '../lib/streakUtils';
 import { getGuideScope } from '../lib/guideScope';
 import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
+import { pwFieldPercent, pwOverallPercent, pwTarget } from '@/lib/pwSadhana';
 import { resolveBvAdminFacilitators } from '@/lib/bvAdminFacilitatorScope';
 
-const USER_FIELDS = ['status', 'id', 'userId', 'fullName', 'email', 'phone', 'segment', 'isPrabhupadaWorldUser', 'sadhanaMentor', 'ashrayLevel', 'residency', 'residencyApproved', 'temporaryResidencyEnabled', 'temporaryResidency', 'residencyJoinDate', 'scholarSince', 'residentSince', 'currentStreak', 'lastStreakUpdatedAt', 'guide', 'role', 'isBvSuperAdmin', 'isBvAdmin', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
+const USER_FIELDS = ['status', 'id', 'userId', 'fullName', 'email', 'phone', 'segment', 'isPrabhupadaWorldUser', 'sadhanaMentor', 'ashrayLevel', 'residency', 'residencyApproved', 'temporaryResidencyEnabled', 'temporaryResidency', 'residencyJoinDate', 'scholarSince', 'residentSince', 'currentStreak', 'lastStreakUpdatedAt', 'guide', 'role', 'isBvSuperAdmin', 'isBvAdmin', 'pwChantingTarget', 'pwReadingTarget', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
 const ENTRY_FIELDS = [
   'id', 'user', 'entryDate', 'totalScore', 'maxScore', 'scorePercent',
   'flagSick', 'flagOs', 'submittedAt', 'templateMode',
@@ -248,7 +249,7 @@ const FIELD_DEFS = [
 
 function aggregateEntries(entries: any[], isResident: boolean, ashrayLevel?: string | null) {
   if (entries.length === 0) {
-    return { fieldScores: {} as Record<string, number | string | null>, fieldRawValues: {} as Record<string, number | string | null>, totalScore: null, scorePercent: null, chantingRaw: null, readingRaw: null, hearingRaw: null, flagSick: false, flagOs: false, submittedAt: null };
+    return { fieldScores: {} as Record<string, number | string | null>, fieldRawValues: {} as Record<string, number | string | null>, totalScore: null, scorePercent: null, chantingRaw: null, readingRaw: null, hearingRaw: null, flagSick: false, flagOs: false, submittedAt: null, pwChantingTarget: null, pwReadingTarget: null, pwScorePercent: null };
   }
 
   // For single-entry (daily): flag if any entry has it.
@@ -670,7 +671,32 @@ function aggregateEntries(entries: any[], isResident: boolean, ashrayLevel?: str
     totalScore = entries.reduce((s, e) => s + (e.totalScore ?? 0), 0);
   }
 
-  return { fieldScores, fieldRawValues, totalScore, scorePercent, chantingRaw, readingRaw, hearingRaw, flagSick, flagOs, submittedAt };
+  const snapshots = entries.map(entry => {
+    const fv = parseFieldValues(entry.fieldValuesJson);
+    const meta = fv._meta;
+    const has = !!meta && typeof meta === 'object' && ('pwChantingTarget' in meta || 'pwReadingTarget' in meta);
+    return { has, fv, meta: has ? meta as Record<string, unknown> : null };
+  });
+  let pwChantingTarget: number | null = null;
+  let pwReadingTarget: number | null = null;
+  let pwScorePercent: number | null = null;
+  if (snapshots.some(snapshot => snapshot.has)) {
+    const chantTargets = snapshots.map(snapshot => snapshot.has ? pwTarget(snapshot.meta?.pwChantingTarget) : null);
+    const readTargets = snapshots.map(snapshot => snapshot.has ? pwTarget(snapshot.meta?.pwReadingTarget) : null);
+    pwChantingTarget = chantTargets.every(target => target === chantTargets[0]) ? chantTargets[0] : null;
+    pwReadingTarget = readTargets.every(target => target === readTargets[0]) ? readTargets[0] : null;
+    const percents = snapshots.map((snapshot, index) => snapshot.has
+      ? pwOverallPercent([
+          pwFieldPercent(Number(snapshot.fv.chanting ?? snapshot.fv.rounds ?? 0), chantTargets[index]),
+          pwFieldPercent(Number(snapshot.fv.reading ?? 0), readTargets[index]),
+        ])
+      : null).filter((percent): percent is number => percent != null);
+    pwScorePercent = percents.length
+      ? Math.round(percents.reduce((sum, percent) => sum + percent, 0) / percents.length)
+      : null;
+  }
+
+  return { fieldScores, fieldRawValues, totalScore, scorePercent, chantingRaw, readingRaw, hearingRaw, flagSick, flagOs, submittedAt, pwChantingTarget, pwReadingTarget, pwScorePercent };
 }
 
 
@@ -1106,6 +1132,9 @@ export default createEndpoint({
         nrFieldNA,
         nrFieldLeaderboard,
         guideId: (Array.isArray(u.guide) ? u.guide[0] : u.guide) as string | null || null,
+        pwChantingTarget: agg.pwChantingTarget,
+        pwReadingTarget: agg.pwReadingTarget,
+        pwScorePercent: agg.pwScorePercent,
       };
     });
 

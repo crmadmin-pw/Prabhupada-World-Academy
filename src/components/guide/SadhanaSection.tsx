@@ -20,6 +20,7 @@ interface SadhanaSectionProps {
   mentorMode?: boolean;
   facilitatorMode?: boolean;
   groupOptions?: SadhanaGroupOption[];
+  hideImprovement?: boolean;
 }
 
 type SubTab = 'report' | 'stats' | 'improvement' | 'leaderboard';
@@ -41,7 +42,7 @@ function readStoredSubTab(): SubTab {
   return 'report';
 }
 
-export default function SadhanaSection({ guideId, senderName, bvslMode, mentorMode, facilitatorMode, groupOptions = [] }: SadhanaSectionProps) {
+export default function SadhanaSection({ guideId, senderName, bvslMode, mentorMode, facilitatorMode, groupOptions = [], hideImprovement = false }: SadhanaSectionProps) {
   const [subTab, setSubTab] = useState<SubTab>(readStoredSubTab);
   const [visited, setVisited] = useState<Set<SubTab>>(() => new Set([readStoredSubTab()]));
 
@@ -71,7 +72,7 @@ export default function SadhanaSection({ guideId, senderName, bvslMode, mentorMo
     <div className="space-y-4">
       {/* Sub-tab bar */}
       <div className="flex gap-0 border-b border-border overflow-x-auto overflow-y-hidden scrollbar-none [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-        {SUB_TABS.map(({ value, label, icon: Icon }) => (
+        {SUB_TABS.filter(tab => !(hideImprovement && tab.value === 'improvement')).map(({ value, label, icon: Icon }) => (
           <button
             key={value}
             onClick={() => setSubTab(value)}
@@ -102,7 +103,7 @@ export default function SadhanaSection({ guideId, senderName, bvslMode, mentorMo
       {visited.has('stats') && (
         <DashboardPanel active={subTab === 'stats'}><StatsOverviewPanel guideId={guideId} bvslMode={bvslMode} mentorMode={mentorMode} facilitatorMode={facilitatorMode} groupOptions={groupOptions} /></DashboardPanel>
       )}
-      {visited.has('improvement') && (
+      {!hideImprovement && visited.has('improvement') && (
         <DashboardPanel active={subTab === 'improvement'}><ImprovementTab guideId={guideId} bvslMode={bvslMode} mentorMode={mentorMode} facilitatorMode={facilitatorMode} /></DashboardPanel>
       )}
       {visited.has('leaderboard') && (

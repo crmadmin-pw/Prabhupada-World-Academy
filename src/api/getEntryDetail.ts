@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createEndpoint, SadhanaEntries, Users } from '@/lib/backend-sdk';
 import { NON_RESIDENT_FIELDS, RESIDENT_FIELDS } from '../config/sadhanaFields';
 import { isPwSadhanaUser, PW_SADHANA_FORM_KEYS } from '@/lib/sadhanaDepartment';
+import { formatPwProgress, pwTarget } from '@/lib/pwSadhana';
 
 // Human-readable labels for common field keys
 const FIELD_LABEL_MAP: Record<string, string> = {
@@ -125,9 +126,11 @@ export default createEndpoint({
       if (!key || key.startsWith('_')) continue;
       const val = rawFieldValues[key];
       if (val === undefined || val === null) continue;
-      const displayValue = formatDisplayValue(key, val);
-      const points = rawFieldValues[`_pts_${key}`] ?? rawFieldValues[`_nr_pts_${key}`];
-      const rawMaxPoints = MAX_POINTS_MAP[key] ?? null;
+      const displayValue = isPw
+        ? formatPwProgress(Number(val), pwTarget(key === 'chanting' ? meta.pwChantingTarget : meta.pwReadingTarget))
+        : formatDisplayValue(key, val);
+      const points = isPw ? undefined : rawFieldValues[`_pts_${key}`] ?? rawFieldValues[`_nr_pts_${key}`];
+      const rawMaxPoints = isPw ? null : (MAX_POINTS_MAP[key] ?? null);
       // For NR leaderboard-risk fields: hide maxPoints badge when points are 0
       const isNRLeaderboardField = isNREntry && NR_LEADERBOARD_RISK_FIELDS.has(key);
       const effectiveMaxPoints = (isNRLeaderboardField && !(typeof points === 'number' && points > 0))

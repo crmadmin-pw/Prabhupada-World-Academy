@@ -101,7 +101,7 @@ export default function RgsfDashboard() {
                   improvementDetailBasePath="/rgsf/users"
                 />
               )}
-              {activeTab === 'report' && <BvslSadhanaReportPanel bvslId={bvslId} />}
+              {activeTab === 'report' && <BvslSadhanaReportPanel bvslId={bvslId} hideImprovement={!isFolk} />}
               {isFolk && activeTab === 'quizzes' && (
                 <BvslQuizPanel
                   groups={groups.map((g: any) => ({ id: g.id, groupName: g.groupName }))}

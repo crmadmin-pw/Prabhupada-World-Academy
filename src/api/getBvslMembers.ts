@@ -124,9 +124,9 @@ async function _fetchBvslMembers({ input, context }: { input: any; context: any 
         let memberUsers: any[] = [];
         if (userIds.length > 0) {
           const userQueries = await Promise.all([
-            Users.findAll({ filters: { id: { in: userIds } } as any, fields: ['id', 'userId', 'fullName', 'phone', 'ashrayLevel', 'email', 'residency', 'residencyApproved', 'role', 'roles', 'isRgsf'], limit: 500 }).catch(() => ({ records: [] })),
-            Users.findAll({ filters: { userId: { in: userIds } } as any, fields: ['id', 'userId', 'fullName', 'phone', 'ashrayLevel', 'email', 'residency', 'residencyApproved', 'role', 'roles', 'isRgsf'], limit: 500 }).catch(() => ({ records: [] })),
-            Users.findAll({ filters: { email: { in: userIds } } as any, fields: ['id', 'userId', 'fullName', 'phone', 'ashrayLevel', 'email', 'residency', 'residencyApproved', 'role', 'roles', 'isRgsf'], limit: 500 }).catch(() => ({ records: [] })),
+            Users.findAll({ filters: { id: { in: userIds } } as any, fields: ['id', 'userId', 'fullName', 'phone', 'ashrayLevel', 'email', 'residency', 'residencyApproved', 'role', 'roles', 'isRgsf', 'pwChantingTarget', 'pwReadingTarget'], limit: 500 }).catch(() => ({ records: [] })),
+            Users.findAll({ filters: { userId: { in: userIds } } as any, fields: ['id', 'userId', 'fullName', 'phone', 'ashrayLevel', 'email', 'residency', 'residencyApproved', 'role', 'roles', 'isRgsf', 'pwChantingTarget', 'pwReadingTarget'], limit: 500 }).catch(() => ({ records: [] })),
+            Users.findAll({ filters: { email: { in: userIds } } as any, fields: ['id', 'userId', 'fullName', 'phone', 'ashrayLevel', 'email', 'residency', 'residencyApproved', 'role', 'roles', 'isRgsf', 'pwChantingTarget', 'pwReadingTarget'], limit: 500 }).catch(() => ({ records: [] })),
           ]);
           const uniqueUsers = new Map<string, any>();
           userQueries.flatMap(result => result.records || []).forEach((user: any) => uniqueUsers.set(String(user.id), user));
@@ -184,6 +184,8 @@ async function _fetchBvslMembers({ input, context }: { input: any; context: any 
             isResident: !!(u.residencyApproved && residencyId),
             residencyName: residencyId ? (residencyMap[residencyId] || null) : null,
             isRgsf: !!(u.isRgsf || u.role === 'RGSF' || (Array.isArray(u.roles) && u.roles.includes('RGSF'))),
+            pwChantingTarget: u.pwChantingTarget ?? null,
+            pwReadingTarget: u.pwReadingTarget ?? null,
           };
         }).filter(member => member !== null);
 
@@ -202,7 +204,7 @@ async function _fetchBvslMembers({ input, context }: { input: any; context: any 
 
     const { records } = await Users.findAll({
       filters: filter,
-      fields: ['id', 'userId', 'fullName', 'phone', 'ashrayLevel', 'email', 'role', 'isBvSuperAdmin'],
+      fields: ['id', 'userId', 'fullName', 'phone', 'ashrayLevel', 'email', 'role', 'isBvSuperAdmin', 'pwChantingTarget', 'pwReadingTarget'],
       limit: 500,
     });
 
@@ -236,6 +238,8 @@ async function _fetchBvslMembers({ input, context }: { input: any; context: any 
         groupName: '',
         isResident: false,
         residencyName: null,
+        pwChantingTarget: u.pwChantingTarget ?? null,
+        pwReadingTarget: u.pwReadingTarget ?? null,
       };
     }).filter(member => member !== null);
 

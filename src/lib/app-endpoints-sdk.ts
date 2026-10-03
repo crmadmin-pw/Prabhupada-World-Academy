@@ -993,6 +993,13 @@ export const getBvslMembers = (input: getBvslMembers_Input): Promise<getBvslMemb
 export type GetBvslMembersOutputType = getBvslMembers_Output;
 export type GetBvslMembersInputType = getBvslMembers_Input;
 
+import type setPwSadhanaTargets_Type from '../api/setPwSadhanaTargets';
+type setPwSadhanaTargets_Input = z.input<typeof setPwSadhanaTargets_Type.inputSchema>;
+type setPwSadhanaTargets_Output = ReturnType<typeof setPwSadhanaTargets_Type.execute> extends Promise<infer R> ? R : ReturnType<typeof setPwSadhanaTargets_Type.execute>;
+export const setPwSadhanaTargets = (input: setPwSadhanaTargets_Input): Promise<setPwSadhanaTargets_Output> => invokeEndpoint('setPwSadhanaTargets', input);
+export type SetPwSadhanaTargetsOutputType = setPwSadhanaTargets_Output;
+export type SetPwSadhanaTargetsInputType = setPwSadhanaTargets_Input;
+
 import type getBvslOneToOneData_Type from '../api/getBvslOneToOneData';
 type getBvslOneToOneData_Input = z.input<typeof getBvslOneToOneData_Type.inputSchema>;
 type getBvslOneToOneData_Output = ReturnType<typeof getBvslOneToOneData_Type.execute> extends Promise<infer R> ? R : ReturnType<typeof getBvslOneToOneData_Type.execute>;

@@ -26,6 +26,7 @@ import BvslPreachingSection, { BV_DURATION_KEYS } from '@/components/BvslPreachi
 import ScoringCriteriaPanel from '@/components/guide/ScoringCriteriaPanel';
 import SadhanaFieldRenderer from '@/components/form/SadhanaFieldRenderer';
 import NRScoringCriteria from '@/components/form/NRScoringCriteria';
+import { scorePwSadhana } from '@/lib/pwSadhana';
 import {
   normalizeFieldType, parseCriteria, isNRCriteria,
   calculateNRPoints, calculateResidentPoints, parseNumericValue,
@@ -79,6 +80,8 @@ export default function DailySadhanaForm() {
   const userId = profile?.userId || '';
   const ashrayLevel = profile?.ashrayLevel || '';
   const isFolkUser = getUserDepartment(profile) === 'FOLK';
+  const isPwUser = getUserDepartment(profile) === 'PW';
+  const [pwTargets, setPwTargets] = useState<{ chanting: number | null; reading: number | null }>({ chanting: null, reading: null });
   const [userRoleFromDb, setUserRoleFromDb] = useState<string | null>(null);
   const userRole = userRoleFromDb || profile?.role || 'USER';
   // RGFs are the current Reading Group Facilitator role.  Their Bhakti
@@ -115,6 +118,15 @@ export default function DailySadhanaForm() {
   }, [isResident, entryDate]);
 
   const scoreResult = useMemo(() => {
+    if (isPwUser) {
+      const pw = scorePwSadhana({
+        chanting: Number(formValues.chanting) || 0,
+        reading: Number(formValues.reading) || 0,
+        chantingTarget: pwTargets.chanting,
+        readingTarget: pwTargets.reading,
+      });
+      return { totalScore: pw.scorePercent ?? 0, maxScore: pw.scorePercent == null ? 0 : 100, scorePercent: pw.scorePercent };
+    }
     if (!isResident) return baseScoreResult; // NR: no report_sending
     // All resident entries (normal AND sick/OS) include report_sending
     const totalScore = baseScoreResult.totalScore + reportSendingPts;
@@ -123,7 +135,7 @@ export default function DailySadhanaForm() {
     const maxScore = isSickOrOs ? 8 : (baseScoreResult.maxScore + 1);
     const scorePercent = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : null;
     return { totalScore, maxScore, scorePercent };
-  }, [baseScoreResult, isResident, isSickOrOs, reportSendingPts]);
+  }, [baseScoreResult, isResident, isSickOrOs, reportSendingPts, isPwUser, formValues.chanting, formValues.reading, pwTargets]);
 
   const bvTotalMinutes = useMemo(() => {
     return BV_DURATION_KEYS.reduce((sum, key) => sum + (bvslValues[key] || 0), 0);
@@ -181,6 +193,10 @@ export default function DailySadhanaForm() {
       setUserJoinDate(result.userJoinDate || result.residencyJoinDate);
       setTemplateMode(result.templateMode || 'RESIDENT_TEMPLATE');
       setIsResident(result.isResident ?? false);
+      setPwTargets({
+        chanting: result.isPw ? result.pwChantingTarget ?? null : null,
+        reading: result.isPw ? result.pwReadingTarget ?? null : null,
+      });
       setIsOfficialResident(result.isOfficialResident ?? false);
       setTempResidencyEnabled(result.tempResidencyEnabled ?? false);
       setTempResidencyId(result.tempResidencyId ?? null);
@@ -365,7 +381,9 @@ export default function DailySadhanaForm() {
         existingRowId,
         existingEntryId,
       });
-      const scoreLabel = scoreResult.scorePercent != null
+      const scoreLabel = isPwUser
+        ? (scoreResult.scorePercent != null ? `${scoreResult.scorePercent}%` : 'saved')
+        : scoreResult.scorePercent != null
         ? `${scoreResult.scorePercent}%`
         : `${scoreResult.totalScore} pts`;
       toast.success(`Sadhana saved! (Score: ${scoreLabel})`, { id: 'sadhana-submit' });
@@ -524,12 +542,20 @@ export default function DailySadhanaForm() {
             </>
           )}
 
+          {isPwUser && (
+            <p className="text-sm text-muted-foreground">
+              {pwTargets.chanting || pwTargets.reading
+                ? `Assigned by your RGF: ${pwTargets.chanting ? `${pwTargets.chanting} rounds` : 'chanting not assigned'}${pwTargets.reading ? `, ${pwTargets.reading} minutes of reading` : ''}. More than the assignment still counts as 100%.`
+                : 'No chanting rounds or reading minutes are assigned yet. Fill in what you did. A percentage appears once your RGF assigns a target.'}
+            </p>
+          )}
+
           {/* NR: Filled Same Day auto-indicator + personalized scoring targets */}
-          {!isResident && <NRFilledSameDayIndicator ashrayLevel={ashrayLevel} entryDate={entryDate} />}
-          {!isResident && ashrayLevel && <NRScoringCriteria ashrayLevel={ashrayLevel} />}
+          {!isPwUser && !isResident && <NRFilledSameDayIndicator ashrayLevel={ashrayLevel} entryDate={entryDate} />}
+          {!isPwUser && !isResident && ashrayLevel && <NRScoringCriteria ashrayLevel={ashrayLevel} />}
 
           {/* Scoring Criteria Reference */}
-          <ScoringCriteriaPanel isResident={isResident} />
+          {!isPwUser && <ScoringCriteriaPanel isResident={isResident} />}
 
           {/* Summary + Submit */}
           <div className="bg-card border rounded-xl p-4 shadow-sm space-y-4">
@@ -537,8 +563,14 @@ export default function DailySadhanaForm() {
               <>
                 <div className="grid grid-cols-2 gap-4">
                   <div className={isSickOrOs ? 'opacity-50' : ''}>
-                    <p className="text-sm text-muted-foreground">Sadhana Score</p>
-                    {percentage != null ? (
+                    <p className="text-sm text-muted-foreground">{isPwUser ? 'Sadhana' : 'Sadhana Score'}</p>
+                    {isPwUser ? (
+                      scoreResult.scorePercent != null ? (
+                        <p className="text-2xl font-bold text-primary">{scoreResult.scorePercent}%</p>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No target assigned, so this day has no percentage.</p>
+                      )
+                    ) : percentage != null ? (
                       <>
                         <p className="text-2xl font-bold text-primary">
                           {percentage}%
@@ -573,8 +605,21 @@ export default function DailySadhanaForm() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between gap-4 flex-wrap">
                   <div className={isSickOrOs ? 'opacity-50' : ''}>
-                    <p className="text-sm text-muted-foreground">Sadhana Score</p>
-                    {percentage != null ? (
+                    <p className="text-sm text-muted-foreground">{isPwUser ? 'Sadhana' : 'Sadhana Score'}</p>
+                    {isPwUser ? (
+                      scoreResult.scorePercent != null ? (
+                        <>
+                          <p className="text-3xl font-bold text-primary">{scoreResult.scorePercent}%</p>
+                          <p className="text-xs text-muted-foreground">
+                            {pwTargets.chanting ? `${formValues.chanting || 0}/${pwTargets.chanting} rounds` : `${formValues.chanting || 0} rounds`}
+                            {' · '}
+                            {pwTargets.reading ? `${formValues.reading || 0}/${pwTargets.reading} min` : `${formValues.reading || 0} min`}
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No target assigned, so this day has no percentage.</p>
+                      )
+                    ) : percentage != null ? (
                       <>
                         <p className="text-3xl font-bold text-primary">
                           {percentage}%

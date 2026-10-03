@@ -311,7 +311,7 @@ export default function SadhanaTab({ metrics, history, userId, residencyId, isRe
           <CardContent>
             <div className="flex items-center gap-2"><Flame className="w-8 h-8 text-orange-500" /><div className="text-3xl font-bold">{metrics.currentStreak}</div></div>
             <p className="text-xs text-muted-foreground mt-1">{metrics.currentStreak === 0 ? 'Start your streak today!' : `${metrics.currentStreak} consecutive day${metrics.currentStreak !== 1 ? 's' : ''}`}</p>
-            <p className="text-xs text-muted-foreground/70 mt-0.5">Sadhana Score {isResident ? '≥ 95%' : '≥ 75%'}</p>
+            {!progressData?.isPw && <p className="text-xs text-muted-foreground/70 mt-0.5">Sadhana Score {isResident ? '≥ 95%' : '≥ 75%'}</p>}
             {metrics.streakAtRisk && (
               <p className="text-xs text-orange-500 mt-1 font-medium">⚠️ Submit today to keep your streak!</p>
             )}
@@ -382,15 +382,14 @@ export default function SadhanaTab({ metrics, history, userId, residencyId, isRe
                 isResident={isResident}
                 defaultSelected="scorePercent"
                 height={210}
-                showThreshold
+                showThreshold={!progressData?.isPw}
               />
             )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Areas of Improvement — entry-count based, independent period selector */}
-      <ImprovementInsights
+      {!progressData?.isPw && <ImprovementInsights
         insights={insightData?.insightFields ?? []}
         insightData={insightData}
         isResident={insightData?.isResident ?? isResident}
@@ -398,7 +397,7 @@ export default function SadhanaTab({ metrics, history, userId, residencyId, isRe
         period={insightPeriod}
         onPeriodChange={setInsightPeriod}
         loading={insightLoading}
-      />
+      />}
 
       <EntryDetailModal userId={userId} entryDate={selectedDate} onClose={() => setSelectedDate(null)} />
     </div>

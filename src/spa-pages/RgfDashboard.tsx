@@ -95,9 +95,9 @@ export default function RgfDashboard() {
                 />
               )}
               {activeTab === 'session' && <BvslSessionPanel bvslId={bvslId} groups={groups} />}
-              {activeTab === 'members' && <BvslMembersTable bvslId={bvslId} />}
+              {activeTab === 'members' && <BvslMembersTable bvslId={bvslId} canAssignSadhana={!isFolk} />}
               {activeTab === 'bvreport' && <BvSection guideId={bvslId} bvslMode />}
-              {activeTab === 'report' && <BvslSadhanaReportPanel bvslId={bvslId} />}
+              {activeTab === 'report' && <BvslSadhanaReportPanel bvslId={bvslId} hideImprovement={!isFolk} />}
               {activeTab === 'quizzes' && (isFolk ? (
                 <BvslQuizPanel
                   groups={groups.map((g: any) => ({ id: g.id, groupName: g.groupName }))}

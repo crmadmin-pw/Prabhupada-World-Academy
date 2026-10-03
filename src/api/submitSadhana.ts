@@ -5,6 +5,7 @@ import { getNRMaxScore, fillingSameDayApplies } from '../lib/userUtils';
 import { TEMPLATE_MODES } from '../types/enums';
 import { computeStreak, daysAgo } from '../lib/streakUtils';
 import { getUserDepartment } from '../lib/userDashboardRoutes';
+import { pwTarget, scorePwSadhana } from '../lib/pwSadhana';
 
 
 /** Normalize templateMode to canonical TEMPLATE_MODES values */
@@ -237,7 +238,7 @@ export default createEndpoint({
 
     // Block inactive users from submitting, and retain the legacy/custom ID only
     // to locate an entry saved by the earlier, incorrect write path.
-    const userRec = await Users.findOne({ id: authenticatedUserId, fields: ['id', 'userId', 'status', 'segment', 'isPrabhupadaWorldUser', 'isFolkUser'] });
+    const userRec = await Users.findOne({ id: authenticatedUserId, fields: ['id', 'userId', 'status', 'segment', 'isPrabhupadaWorldUser', 'isFolkUser', 'pwChantingTarget', 'pwReadingTarget'] });
     if (userRec?.status === 'Inactive') {
       throw new Error('Your account has been deactivated. Please contact your guide.');
     }
@@ -295,6 +296,27 @@ export default createEndpoint({
       entryId,
       now,
     );
+    if (getUserDepartment(userRec) === 'PW') {
+      const chantingTarget = pwTarget(userRec?.pwChantingTarget);
+      const readingTarget = pwTarget(userRec?.pwReadingTarget);
+      const scored = scorePwSadhana({
+        chanting: Number(fv?.chanting) || 0,
+        reading: Number(fv?.reading) || 0,
+        chantingTarget,
+        readingTarget,
+      });
+      record.totalScore = scored.scorePercent ?? 0;
+      record.maxScore = scored.scorePercent == null ? 0 : 100;
+      record.scorePercent = scored.scorePercent ?? 0;
+      const stored = JSON.parse(record.fieldValuesJson);
+      stored._meta = {
+        ...(stored._meta || {}),
+        pwChantingTarget: chantingTarget,
+        pwReadingTarget: readingTarget,
+        scorePercent: record.scorePercent,
+      };
+      record.fieldValuesJson = JSON.stringify(stored);
+    }
 
     // Run main entry save + optional BVSL preaching in parallel where possible
     const bvData = fv._bvsl_preaching;

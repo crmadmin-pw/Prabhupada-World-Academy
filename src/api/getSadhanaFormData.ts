@@ -4,6 +4,8 @@ import { getTodayIST } from '../lib/streakUtils';
 import { RESIDENT_FIELDS, NON_RESIDENT_FIELDS, toFormField } from '../config/sadhanaFields';
 import { serverCacheGetOrFetch } from '../lib/serverCache';
 import { getUserDepartment } from '../lib/userDashboardRoutes';
+import { isPwSadhanaUser } from '../lib/sadhanaDepartment';
+import { pwTarget } from '../lib/pwSadhana';
 
 // ── Field cache keys & TTL ─────────────────────────────────────────────────────
 export const FIELD_CACHE_KEY_RESIDENT  = 'sadhana_fields:resident';
@@ -113,7 +115,8 @@ async function loadFormFields(isResident: boolean): Promise<FormField[]> {
 
 // ── User/entry field selectors ─────────────────────────────────────────────────
 const USER_FIELDS  = ['id', 'userId', 'residency', 'residencyApproved', 'residencyJoinDate', 'ashrayLevel',
-  'role', 'segment', 'isPrabhupadaWorldUser', 'isFolkUser', 'temporaryResidencyEnabled', 'temporaryResidency'];
+  'role', 'segment', 'isPrabhupadaWorldUser', 'isFolkUser', 'temporaryResidencyEnabled', 'temporaryResidency',
+  'pwChantingTarget', 'pwReadingTarget'];
 const ENTRY_FIELDS = ['id', 'entryId', 'entryDate', 'totalScore', 'maxScore', 'scorePercent',
   'templateMode', 'ashrayLevelUsed', 'flagSick', 'flagOs', 'submittedAt', 'fieldValuesJson'];
 
@@ -165,12 +168,26 @@ export default createEndpoint({
     const tempResidencyEnabled = isFolkUser && !!(userInfo?.temporaryResidencyEnabled);
     const isTempResident = !isOfficialResident && !!(tempResidencyEnabled && tempResidencyId);
 
+    const isPw = isPwSadhanaUser(userInfo);
     const isResident    = isOfficialResident || isTempResident;
     const templateMode  = isResident ? 'RESIDENT_TEMPLATE' : 'NON_RESIDENT_TEMPLATE';
 
     // ✅ Fields loaded from memory cache — zero DB cost after first load
     // fillingSameDay is auto-computed server-side (like report_sending for residents) — never shown in form
-    const visibleFields = (await loadFormFields(isResident)).filter(f => f.fieldKey !== 'fillingSameDay' && f.fieldKey !== 'report_sending');
+    const loadedFields = (await loadFormFields(isResident)).filter(f => f.fieldKey !== 'fillingSameDay' && f.fieldKey !== 'report_sending');
+    const visibleFields = isPw
+      ? loadedFields
+          .filter(field => field.fieldKey === 'chanting' || field.fieldKey === 'reading')
+          .map(field => ({
+            ...field,
+            fieldType: 'number' as const,
+            fieldLabel: field.fieldKey === 'chanting' ? 'Chanting (rounds)' : 'Reading (minutes)',
+            criteria: null,
+            contributesToScore: false,
+            minValue: 0,
+            maxValue: field.fieldKey === 'chanting' ? 192 : 1440,
+          }))
+      : loadedFields;
 
     let parsedFieldValues: Record<string, unknown> = {};
     if (existingEntry?.fieldValuesJson) {
@@ -189,6 +206,9 @@ export default createEndpoint({
       residencyJoinDate:    userInfo?.residencyJoinDate,
       userRole:             userInfo?.role || 'User',
       isResident,
+      isPw,
+      pwChantingTarget: isPw ? pwTarget(userInfo?.pwChantingTarget) : null,
+      pwReadingTarget: isPw ? pwTarget(userInfo?.pwReadingTarget) : null,
       isOfficialResident,
       tempResidencyEnabled: isTempResident,
       tempResidencyId:      isTempResident ? (tempResidencyId as string) : null,

@@ -2,8 +2,9 @@ import { z } from 'zod';
 import { createEndpoint, Users, SadhanaEntries, BvAttendance } from '@/lib/backend-sdk';
 import { fillingSameDayApplies } from '@/lib/userUtils';
 import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
+import { pwFieldPercent, pwOverallPercent, pwTarget } from '@/lib/pwSadhana';
 
-const USER_FIELDS = ['id', 'userId', 'email', 'segment', 'isPrabhupadaWorldUser', 'ashrayLevel', 'residencyApproved', 'residencyGuideVerified', 'residency', 'selectedFolkResidency', 'temporaryResidencyEnabled', 'temporaryResidency', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
+const USER_FIELDS = ['id', 'userId', 'email', 'segment', 'isPrabhupadaWorldUser', 'ashrayLevel', 'residencyApproved', 'residencyGuideVerified', 'residency', 'selectedFolkResidency', 'temporaryResidencyEnabled', 'temporaryResidency', 'pwChantingTarget', 'pwReadingTarget', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
 const USER_IDENTITY_FIELDS = ['id', 'userId', 'email', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
 const ENTRY_FIELDS = [
   'id', 'user', 'entryDate', 'scorePercent', 'totalScore', 'maxScore', 'roundsCount', 'spReadingMinutes',
@@ -337,9 +338,8 @@ const NR_FIELD_DEFS = [
 ];
 
 const PW_FIELD_DEFS = [
-  ...NR_FIELD_DEFS.filter(field => !['fillingSameDay', 'bhaktiVriksha'].includes(field.key)),
-  { key: 'preachingMinutes', label: 'Preaching', unit: 'min' },
-  { key: 'booksDistributed', label: 'Books Distributed', unit: '' },
+  { key: 'rounds', label: 'Chanting', unit: 'rounds' },
+  { key: 'reading', label: 'Reading', unit: 'min' },
 ];
 
 export default createEndpoint({
@@ -499,6 +499,20 @@ export default createEndpoint({
       };
     });
 
+    if (isPw) {
+      for (const row of allValues) {
+        const source = trendSorted.find(entry => String(entry.entryDate || '').slice(0, 10) === row.date);
+        const stored = source ? parseFieldValues(source.fieldValuesJson as string) : {};
+        const meta = (stored._meta && typeof stored._meta === 'object') ? stored._meta as Record<string, unknown> : {};
+        const chantingTarget = pwTarget('pwChantingTarget' in meta ? meta.pwChantingTarget : targetUser.pwChantingTarget);
+        const readingTarget = pwTarget('pwReadingTarget' in meta ? meta.pwReadingTarget : targetUser.pwReadingTarget);
+        row.scorePercent = pwOverallPercent([
+          pwFieldPercent(row.rounds, chantingTarget),
+          pwFieldPercent(row.reading, readingTarget),
+        ]);
+      }
+    }
+
     // Trend chart aggregation
     let aggregated: EntryValues[] = [];
     if (period === 'daily') {
@@ -597,7 +611,7 @@ export default createEndpoint({
 
     // Build improvement insights — sick/OS aware
     const insightDefs = isPw
-      ? NR_INSIGHT_DEFS.filter(field => field.key !== 'nrFillingSameDayPts')
+      ? []
       : effectiveIsResident ? RESIDENT_INSIGHT_DEFS : NR_INSIGHT_DEFS;
 
     const insightFields = noEntry ? [] : insightDefs.map(def => {

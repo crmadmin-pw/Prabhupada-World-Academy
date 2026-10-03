@@ -241,6 +241,7 @@ export default function BvSupervisorDashboard() {
                 <SadhanaSection
                   guideId={profile?.userId || ''}
                   bvslMode
+                  hideImprovement={!isFolk}
                   groupOptions={(data?.groups || []).map((group: any) => ({
                     id: group.id,
                     groupId: group.groupId,

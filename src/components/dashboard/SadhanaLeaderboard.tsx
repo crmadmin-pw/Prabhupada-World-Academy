@@ -251,9 +251,11 @@ export default function SadhanaLeaderboard({
                 </Button>
               </div>
             )}
+            {!isPw && (
             <p className="text-[10px] text-muted-foreground px-4 py-2 border-t">
               Ranking Criteria: Sadhana Score › Ashray Level › Streak Count › Submission Time
             </p>
+            )}
           </>
         )}
       </CardContent>

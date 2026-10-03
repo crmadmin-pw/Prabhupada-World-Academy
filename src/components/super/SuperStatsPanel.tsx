@@ -193,7 +193,7 @@ export default function SuperStatsPanel({ segment, isActive }: SuperStatsPanelPr
               <TableRow>
                 <TableHead>{isPw ? "Admin / Mentor" : "Guide"}</TableHead>
                 <TableHead className="text-center">Active Users</TableHead>
-                <TableHead className="text-center">Avg Sadhana Score</TableHead>
+                <TableHead className="text-center">{isPw ? 'Avg Sadhana %' : 'Avg Sadhana Score'}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
