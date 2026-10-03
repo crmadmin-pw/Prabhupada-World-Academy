@@ -7,6 +7,7 @@ import BvImprovementTab from '@/components/guide/BvImprovementTab';
 import GuideBvTab from '@/components/guide/GuideBvTab';
 import BvSessionMatrixTab from '@/components/guide/BvSessionMatrixTab';
 import SadhanaSection from '@/components/guide/SadhanaSection';
+import StatsOverviewPanel from '@/components/guide/StatsOverviewPanel';
 import BvslManagementTab from '@/components/guide/BvslManagementTab';
 import BvAdminManagementTab from '@/components/super/BvAdminManagementTab';
 import ImprovementTab from '@/components/guide/ImprovementTab';
@@ -64,16 +65,19 @@ export default function BvSection({ guideId, bvslMode, residencyIds, groupOption
     try { sessionStorage.setItem(STORAGE_KEY, subTab); } catch {}
   }, [subTab]);
 
-  const activeSubTab = !showManagementTab && subTab === 'management'
+  const requestedSubTab = !showManagementTab && subTab === 'management'
     ? 'groups'
     : ((!isSupervisorOrAbove && subTab === 'report') ? 'bvmatrix' : subTab);
+  const activeSubTab = segment === 'PW' && (requestedSubTab === 'report' || requestedSubTab === 'improvement')
+    ? 'bvmatrix'
+    : requestedSubTab;
 
   const tabs = [
     { value: 'bvmatrix'    as SubTab, label: 'BV Report',    icon: Grid3X3    },
-    ...(isSupervisorOrAbove ? [{ value: 'report' as SubTab, label: 'RGF/RGSF Report', icon: BarChart3 }] : []),
+    ...(isSupervisorOrAbove && segment !== 'PW' ? [{ value: 'report' as SubTab, label: 'RGF/RGSF Report', icon: BarChart3 }] : []),
     ...(!bvslMode ? [{ value: 'sadhana'     as SubTab, label: 'RGF/RGSF Sadhana', icon: Activity   }] : []),
     { value: 'stats'       as SubTab, label: 'Stats',        icon: TrendingUp },
-    ...(segment === 'PW' && useMemberSadhanaImprovements ? [] : [{ value: 'improvement' as SubTab, label: 'Improvement', icon: Lightbulb }]),
+    ...(segment === 'PW' ? [] : [{ value: 'improvement' as SubTab, label: 'Improvement', icon: Lightbulb }]),
     { value: 'groups'      as SubTab, label: 'Groups',       icon: Users      },
     ...(showManagementTab ? [{ value: 'management' as SubTab, label: 'Manage Groups', icon: Settings2 }] : []),
   ];
@@ -100,7 +104,10 @@ export default function BvSection({ guideId, bvslMode, residencyIds, groupOption
       <DashboardPanel active={activeSubTab === 'bvmatrix'}>{<BvSessionMatrixTab guideId={guideId} bvslMode={bvslMode} residencyIds={residencyIds} segment={segment} />}</DashboardPanel>
       <DashboardPanel active={activeSubTab === 'report'}>{<BvReportTab guideId={guideId} bvslMode={bvslMode} residencyIds={residencyIds} segment={segment} />}</DashboardPanel>
       <DashboardPanel active={activeSubTab === 'sadhana'}>{<SadhanaSection guideId={guideId} bvslMode={bvslMode} facilitatorMode hideImprovement={segment === 'PW'} />}</DashboardPanel>
-      <DashboardPanel active={activeSubTab === 'stats'}>{<BvStatsPanel guideId={guideId} bvslMode={bvslMode} residencyIds={residencyIds} showIndividualStats={isSupervisorOrAbove} groupOptions={groupOptions} segment={segment} />}</DashboardPanel>
+      <DashboardPanel active={activeSubTab === 'stats'}>{segment === 'PW'
+        ? <StatsOverviewPanel guideId={guideId} bvslMode={bvslMode} groupOptions={groupOptions} />
+        : <BvStatsPanel guideId={guideId} bvslMode={bvslMode} residencyIds={residencyIds} showIndividualStats={isSupervisorOrAbove} groupOptions={groupOptions} segment={segment} />
+      }</DashboardPanel>
       <DashboardPanel active={activeSubTab === 'improvement'}>{(isBvSupervisorDashboard ? (
         <div className="space-y-6">
           {segment !== 'PW' && (

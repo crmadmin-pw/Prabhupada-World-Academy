@@ -135,7 +135,7 @@ export default function EntryDetailModal({ userId, entryDate, onClose }: Props) 
         )}
 
         {!loading && (entry || bvEntry) && (
-          bvEntry ? (
+          bvEntry && !(entry as any)?.isPw ? (
             <Tabs defaultValue="sadhana">
               <TabsList className="w-full">
                 <TabsTrigger value="sadhana" className="flex-1">Sadhana</TabsTrigger>

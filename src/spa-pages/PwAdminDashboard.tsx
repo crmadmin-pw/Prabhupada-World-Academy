@@ -241,8 +241,8 @@ export default function PwAdminDashboard() {
                 {visitedTabs.has('bv') && (
                   <DashboardPanel active={activeTab === 'bv'}>
                     <div className="space-y-1 mb-4">
-                      <h2 className="text-lg font-bold">Bhakti Vriksha Preaching Overview</h2>
-                      <p className="text-sm text-muted-foreground">Bhakti Vriksha attendance and group reports</p>
+                      <h2 className="text-lg font-bold">Bhakti Vriksha Report</h2>
+                      <p className="text-sm text-muted-foreground">Attendance, chanting, and reading</p>
                     </div>
                     <SuperBvReportTab
                       isPwAdmin={true}

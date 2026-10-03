@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { getBvslWeeklyPlan, saveBvslWeeklyPlan, getBvslBooksSummary } from '@/lib/endpoints-sdk';
 import type { GetBvslWeeklyPlanOutputType } from '@/lib/endpoints-sdk';
 import WeeklyPlanDayCard from './WeeklyPlanDayCard';
+import { useUserProfile } from '@/contexts/UserProfileContext';
 
 type DayData = {
   goal1: string; goal2: string;
@@ -37,6 +38,9 @@ interface Props {
 }
 
 export default function BvslWeeklyPlanTab({ userEmail }: Props) {
+  const { profile } = useUserProfile();
+  const department = String(profile?.segment || '').trim().toUpperCase().replace(/[\s_-]+/g, '');
+  const isPw = department === 'PW' || department === 'PRABHUPADAWORLD' || profile?.isPrabhupadaWorldUser === true;
   const [weekStart, setWeekStart] = useState(() => {
     const now = new Date();
     const ws = startOfWeek(now, { weekStartsOn: 1 });
@@ -132,7 +136,7 @@ export default function BvslWeeklyPlanTab({ userEmail }: Props) {
       </div>
 
       {/* Books summary card */}
-      {totalBooks > 0 ? (
+      {!isPw && (totalBooks > 0 ? (
         <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl p-3 shadow-sm">
           <div className="flex items-center gap-2 mb-1">
             <BookOpen className="w-4 h-4 text-emerald-600" />
@@ -159,7 +163,7 @@ export default function BvslWeeklyPlanTab({ userEmail }: Props) {
             </a>
           </div>
         </div>
-      )}
+      ))}
 
       {/* Summary stats */}
       <div className="grid grid-cols-3 gap-2">

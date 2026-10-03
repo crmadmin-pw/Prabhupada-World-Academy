@@ -39,6 +39,8 @@ export default function SuperBvReportTab({ isPwAdmin = false, segment, guideId, 
   const [subTab, setSubTab]               = useState<SubTab>('overview');
 
   const effectiveSegment = segment || (isPwAdmin ? 'PW' : 'FOLK');
+  const visibleSubTabs = effectiveSegment === 'PW' ? SUB_TABS.filter(tab => tab.value !== 'preaching') : SUB_TABS;
+  const activeSubTab = effectiveSegment === 'PW' && subTab === 'preaching' ? 'overview' : subTab;
 
   const guideQuery = useEndpointQuery<GetGuidesOutputType>('getGuides', { segment: effectiveSegment });
   const guides = guideQuery.data?.guides || [];
@@ -53,12 +55,12 @@ export default function SuperBvReportTab({ isPwAdmin = false, segment, guideId, 
     <div className="space-y-4">
       {/* Sub-tab nav */}
       <div className="flex gap-0 border-b border-border overflow-x-auto">
-        {SUB_TABS.map(({ value, label, icon: Icon }) => (
+        {visibleSubTabs.map(({ value, label, icon: Icon }) => (
           <button
             key={value}
             onClick={() => setSubTab(value)}
             className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap ${
-              subTab === value
+              activeSubTab === value
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
             }`}
@@ -70,7 +72,7 @@ export default function SuperBvReportTab({ isPwAdmin = false, segment, guideId, 
       </div>
 
       {/* ── BV Overview (existing) ── */}
-      <DashboardPanel active={subTab === 'overview'}>{(
+      <DashboardPanel active={activeSubTab === 'overview'}>{(
         <div className="space-y-4">
           {isSuperAdmin && (
             <div className="flex items-center gap-3 flex-wrap">
@@ -95,8 +97,9 @@ export default function SuperBvReportTab({ isPwAdmin = false, segment, guideId, 
         </div>
       )}</DashboardPanel>
 
-      {/* ── Preaching Analytics (new) ── */}
-      <DashboardPanel active={subTab === 'preaching'}>{<SuperBvPreachingAnalytics />}</DashboardPanel>
+      {effectiveSegment !== 'PW' && (
+      <DashboardPanel active={activeSubTab === 'preaching'}>{<SuperBvPreachingAnalytics />}</DashboardPanel>
+      )}
     </div>
   );
 }

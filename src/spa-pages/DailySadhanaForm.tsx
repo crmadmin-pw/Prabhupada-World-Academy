@@ -334,7 +334,7 @@ export default function DailySadhanaForm() {
     if (missing.length > 0) { toast.error(`Please fill: ${missing.map(f => f.fieldLabel).join(', ')}`); return; }
 
     // BV-FIX-1: Validate RGF preaching fields are compulsory
-    if (isBvsl) {
+    if (isBvsl && !isPwUser) {
       const bvDurationFields = ['pr_calling_time', 'pr_one_on_one_time', 'pr_book_dist_time', 'pr_rdua_time', 'pr_plan_time'];
       const bvNumberFields = ['pr_books_distributed', 'pr_contacts_collected', 'pr_unique_one_on_ones'];
       const missingDuration = bvDurationFields.filter(k => bvslValues[k] === undefined || bvslValues[k] === null || bvslValues[k] === '');
@@ -500,14 +500,16 @@ export default function DailySadhanaForm() {
                 <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
                   {isResident
                     ? 'Temple morning program is exempted. Your score will be evaluated only from Chanting (Rounds) + Book Reading (maximum 7 points) plus 1 bonus point for same-day submission.'
-                    : `Temple attendance is exempted. Your score is evaluated only from Chanting Rounds + Book Reading (max ${sickMaxScore} points).`}
+                    : isPwUser
+                      ? 'Fill the chanting rounds and reading minutes you completed.'
+                      : `Temple attendance is exempted. Your score is evaluated only from Chanting Rounds + Book Reading (max ${sickMaxScore} points).`}
                 </p>
               </div>
             </div>
           )}
 
           {/* Form fields */}
-          {isBvsl ? (
+          {isBvsl && !isPwUser ? (
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-3">
               <TabsList className="w-full">
                 <TabsTrigger value="sadhana" className="flex-1 flex items-center gap-1.5">
@@ -559,7 +561,7 @@ export default function DailySadhanaForm() {
 
           {/* Summary + Submit */}
           <div className="bg-card border rounded-xl p-4 shadow-sm space-y-4">
-            {isBvsl ? (
+            {isBvsl && !isPwUser ? (
               <>
                 <div className="grid grid-cols-2 gap-4">
                   <div className={isSickOrOs ? 'opacity-50' : ''}>

@@ -82,7 +82,16 @@ export default function BvMentorDashboard() {
       maxWidth="max-w-7xl"
       showProfile={true}
     >
-      <BvSection guideId={guideId} residencyIds={residencyIds} />
+      <BvSection
+        guideId={guideId}
+        residencyIds={residencyIds}
+        segment={(() => {
+          const department = String(profile?.segment || '').trim().toUpperCase().replace(/[\s_-]+/g, '');
+          if (department === 'FOLK') return 'FOLK';
+          if (department === 'PW' || department === 'PRABHUPADAWORLD' || profile?.isPrabhupadaWorldUser) return 'PW';
+          return undefined;
+        })()}
+      />
     </DashboardLayout>
   );
 }
