@@ -1,4 +1,5 @@
 import { useReactiveLoader } from '@/hooks/useReactiveLoader';
+import { REALTIME_INVALIDATION_EVENT } from '@/lib/realtimeChannels';
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -109,6 +110,16 @@ export default function ApprovalsTab({ guideId = '', reviewerGuideId, isSuperGui
   useEffect(() => {
     void loadAll();
   }, [guideId, reviewerGuideId, isPwAdmin]);
+
+  useEffect(() => {
+    const refreshApprovals = (event: Event) => {
+      const endpoints = (event as CustomEvent<{ endpoints?: string[] }>).detail?.endpoints || [];
+      if (!endpoints.includes('getPendingApprovals') && !endpoints.includes('getGuideRequests')) return;
+      void loadAll({ background: true });
+    };
+    window.addEventListener(REALTIME_INVALIDATION_EVENT, refreshApprovals);
+    return () => window.removeEventListener(REALTIME_INVALIDATION_EVENT, refreshApprovals);
+  }, [loadAll]);
 
 
   const openEdit = (user: PendingUser) => {

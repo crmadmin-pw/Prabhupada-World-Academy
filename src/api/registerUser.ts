@@ -5,6 +5,7 @@ import { enforceRateLimit } from '../utils/rateLimit';
 import { serverCacheInvalidate } from '../lib/serverCache';
 import { profileCacheKey } from './getUserProfile';
 import { resolveGuideReference } from '../lib/guideResolution';
+import { publishUsersRevision } from '../lib/publishUsersRevision';
 
 export default createEndpoint({
   description: 'Register new user — updates the user sync record with profile data. Phone is primary identifier.',
@@ -85,6 +86,7 @@ export default createEndpoint({
           statusChangedAt: new Date().toISOString(),
         } });
         serverCacheInvalidate(profileCacheKey(existingProfile.id));
+        await publishUsersRevision(existingProfile.id, existingProfile);
         return { success: true, userId: String(existingProfile.userId), status: 'PENDING_APPROVAL' };
       }
       return { success: true, userId: String(existingProfile.userId), status: 'ACTIVE' };
@@ -179,6 +181,7 @@ export default createEndpoint({
     } else {
       await Users.update({ id: targetRecordId, record: firestoreRecord });
     }
+    await publishUsersRevision(targetRecordId, existingFirestoreUser);
 
 
     // ── Email: confirmation to the newly registered devotee ──

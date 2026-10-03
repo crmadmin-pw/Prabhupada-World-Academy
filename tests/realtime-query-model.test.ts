@@ -33,6 +33,16 @@ test('unrelated tables and unprojected bookkeeping changes do not invalidate a r
   assert.equal(dependencyAffected(dependency, { ...change(before), table: 'Meetings' }), false);
 });
 
+test('a new pending registration invalidates the open approvals read', () => {
+  const approvals = { table: 'Users', query: { fields: ['id', 'fullName', 'status', 'segment', 'isPrabhupadaWorldUser'] } };
+  const registration = {
+    table: 'Users', id: 'new-devotee', version: '000000000200.000000000',
+    after: { fullName: 'New Devotee', status: 'Pending Approval', segment: 'PW', isPrabhupadaWorldUser: true },
+  };
+  assert.equal(dependencyAffected(approvals, registration), true);
+  assert.ok(dependencyTopics(approvals).some(topic => changeTopics(registration).includes(topic)));
+});
+
 test('ordering changes invalidate a limited result even when not projected', () => {
   const dep = { table: 'Users', query: { fields: ['fullName'], sorts: [{ field: 'score', dir: 'desc' }] } };
   assert.equal(dependencyAffected(dep, { table: 'Users', id: 'u', version: '1', before: { fullName: 'A', score: 1 }, after: { fullName: 'A', score: 2 } }), true);
