@@ -12,15 +12,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { toast } from 'sonner';
 import { Loader2, Plus, Users, ShieldCheck, Clock, BookOpen, ChevronRight, Pencil } from 'lucide-react';
 import { createBvGroup, getBvslGroups, getAllBvGroupsAdmin, getGuideUsers, updateBvGroup, getClientCachedQuery } from '@/lib/app-endpoints-sdk';
+import MeetingScheduleFields from '@/components/bv/MeetingScheduleFields';
+import { formatMeetingSchedule, meetingScheduleError, type MeetingDayKey } from '@/lib/meetingSchedule';
 
 import { useUserProfile } from '@/contexts/UserProfileContext';
-
-const TIME_PREFERENCES = [
-  '7:45 PM – 8:15 PM (Everyday)',
-  '1:00 PM – 1:30 PM (Monday to Friday)',
-  '8:30 PM – 9:00 PM (Monday to Friday)',
-  '11:00 AM – 12:00 PM (Saturday & Sunday only)',
-];
 
 const isRgfUser = (user: any) => {
   const role = String(user?.role || '').toUpperCase().replace(/\s+/g, '_');
@@ -78,8 +73,9 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupBvslId, setNewGroupBvslId] = useState('');
-  const [newGroupTime, setNewGroupTime] = useState('');
-  const [timeSelectionMode, setTimeSelectionMode] = useState<'select' | 'custom'>('select');
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
+  const [meetingDays, setMeetingDays] = useState<MeetingDayKey[]>([]);
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [renameTarget, setRenameTarget] = useState<{ groupKey: string; groupName: string } | null>(null);
   const [renameValue, setRenameValue] = useState('');
@@ -181,20 +177,26 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
       toast.error('Please select an RGF');
       return;
     }
+    const scheduleError = meetingScheduleError(startTime, endTime, meetingDays);
+    if (scheduleError) {
+      toast.error(scheduleError);
+      return;
+    }
     setCreatingGroup(true);
     try {
       await createBvGroup({
         groupName: newGroupName.trim(),
         bvslId: newGroupBvslId,
-        meetingTime: newGroupTime.trim() || undefined,
+        meetingTime: formatMeetingSchedule(startTime, endTime, meetingDays),
       });
       toast.success(`Created Reading Group "${newGroupName}"`);
       window.dispatchEvent(new Event('pwa:member-directory-changed'));
       setCreateGroupOpen(false);
       setNewGroupName('');
       setNewGroupBvslId('');
-      setNewGroupTime('');
-      setTimeSelectionMode('select');
+      setStartTime('');
+      setEndTime('');
+      setMeetingDays([]);
       loadData();
     } catch (err: any) {
       toast.error(err?.message || 'Failed to create group');
@@ -414,11 +416,12 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
       <Dialog open={createGroupOpen} onOpenChange={(open) => {
         setCreateGroupOpen(open);
         if (!open) {
-          setTimeSelectionMode('select');
-          setNewGroupTime('');
+          setStartTime('');
+          setEndTime('');
+          setMeetingDays([]);
         }
       }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Plus className="w-5 h-5 text-primary" /> Create New Reading Group
@@ -459,54 +462,15 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
               </Select>
             </div>
 
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">Meeting time *</Label>
-              {timeSelectionMode === 'select' ? (
-                <Select
-                  value={newGroupTime || undefined}
-                  onValueChange={(val: string | null) => {
-                    const cleanVal = val || '';
-                    if (cleanVal === 'CUSTOM') {
-                      setTimeSelectionMode('custom');
-                      setNewGroupTime('');
-                    } else {
-                      setNewGroupTime(cleanVal);
-                    }
-                  }}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select preferred time slot..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {TIME_PREFERENCES.map(t => (
-                      <SelectItem key={t} value={t}>{t}</SelectItem>
-                    ))}
-                    <SelectItem value="CUSTOM">Custom...</SelectItem>
-                  </SelectContent>
-                </Select>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <Input
-                    placeholder="e.g. 7:45 PM – 8:15 PM (Everyday)"
-                    value={newGroupTime}
-                    onChange={e => setNewGroupTime(e.target.value)}
-                    className="flex-1"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="text-xs shrink-0"
-                    onClick={() => {
-                      setTimeSelectionMode('select');
-                      setNewGroupTime('');
-                    }}
-                  >
-                    Select List
-                  </Button>
-                </div>
-              )}
-            </div>
+            <MeetingScheduleFields
+              key={createGroupOpen ? 'open' : 'closed'}
+              startTime={startTime}
+              endTime={endTime}
+              days={meetingDays}
+              onStartTimeChange={setStartTime}
+              onEndTimeChange={setEndTime}
+              onDaysChange={setMeetingDays}
+            />
           </div>
 
           <DialogFooter>

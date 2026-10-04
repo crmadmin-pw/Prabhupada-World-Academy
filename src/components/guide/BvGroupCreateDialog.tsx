@@ -3,9 +3,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { createGroupForBvsl } from '@/lib/endpoints-sdk';
+import MeetingScheduleFields from '@/components/bv/MeetingScheduleFields';
+import { formatMeetingSchedule, meetingScheduleError, type MeetingDayKey } from '@/lib/meetingSchedule';
 import { ChevronsUpDown, Check, Search } from 'lucide-react';
 
 type EligibleMember = { userId: string; fullName: string; ashrayLevel: string | null; isBvsl: boolean };
@@ -18,19 +19,13 @@ interface Props {
   eligibleMembers: EligibleMember[];
 }
 
-const TIME_PREFERENCES = [
-  '7:45 PM – 8:15 PM (Everyday)',
-  '1:00 PM – 1:30 PM (Monday to Friday)',
-  '8:30 PM – 9:00 PM (Monday to Friday)',
-  '11:00 AM – 12:00 PM (Saturday & Sunday only)',
-];
-
 export default function BvGroupCreateDialog({ open, onClose, onCreated, guideId, eligibleMembers }: Props) {
   const [bvslUserId, setBvslUserId] = useState('');
   const [groupName, setGroupName] = useState('');
   const [description, setDescription] = useState('');
-  const [meetingTime, setMeetingTime] = useState('');
-  const [timeSelectionMode, setTimeSelectionMode] = useState<'select' | 'custom'>('select');
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
+  const [meetingDays, setMeetingDays] = useState<MeetingDayKey[]>([]);
   const [saving, setSaving] = useState(false);
   const [comboOpen, setComboOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -57,6 +52,8 @@ export default function BvGroupCreateDialog({ open, onClose, onCreated, guideId,
   const handleCreate = async () => {
     if (!bvslUserId) { toast.error('Please select an RGF leader'); return; }
     if (!groupName.trim()) { toast.error('Group name is required'); return; }
+    const scheduleError = meetingScheduleError(startTime, endTime, meetingDays);
+    if (scheduleError) { toast.error(scheduleError); return; }
     setSaving(true);
     try {
       await createGroupForBvsl({ 
@@ -64,23 +61,23 @@ export default function BvGroupCreateDialog({ open, onClose, onCreated, guideId,
         guideId, 
         groupName: groupName.trim(), 
         description: description.trim(),
-        meetingTime: meetingTime.trim() || undefined,
+        meetingTime: formatMeetingSchedule(startTime, endTime, meetingDays),
       });
       toast.success(`Group "${groupName}" created!`);
-      setGroupName(''); setDescription(''); setBvslUserId(''); setSearchQuery(''); setMeetingTime(''); setTimeSelectionMode('select');
+      setGroupName(''); setDescription(''); setBvslUserId(''); setSearchQuery(''); setStartTime(''); setEndTime(''); setMeetingDays([]);
       onCreated();
     } catch { toast.error('Failed to create group'); }
     finally { setSaving(false); }
   };
 
   const handleClose = () => {
-    setGroupName(''); setDescription(''); setBvslUserId(''); setSearchQuery(''); setComboOpen(false); setMeetingTime(''); setTimeSelectionMode('select');
+    setGroupName(''); setDescription(''); setBvslUserId(''); setSearchQuery(''); setComboOpen(false); setStartTime(''); setEndTime(''); setMeetingDays([]);
     onClose();
   };
 
   return (
     <Dialog open={open} onOpenChange={v => !v && handleClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader><DialogTitle>Create BV Group for RGF</DialogTitle></DialogHeader>
         <div className="space-y-4 py-2">
 
@@ -148,54 +145,15 @@ export default function BvGroupCreateDialog({ open, onClose, onCreated, guideId,
             <label className="text-sm font-medium mb-1 block">Description</label>
             <Input value={description} onChange={e => setDescription(e.target.value)} placeholder="Optional description" />
           </div>
-          <div>
-            <label className="text-sm font-medium mb-1 block">Meeting time *</label>
-            {timeSelectionMode === 'select' ? (
-              <Select
-                value={meetingTime || undefined}
-                onValueChange={(val: string | null) => {
-                  const cleanVal = val || '';
-                  if (cleanVal === 'CUSTOM') {
-                    setTimeSelectionMode('custom');
-                    setMeetingTime('');
-                  } else {
-                    setMeetingTime(cleanVal);
-                  }
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select preferred time slot..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {TIME_PREFERENCES.map(t => (
-                    <SelectItem key={t} value={t}>{t}</SelectItem>
-                  ))}
-                  <SelectItem value="CUSTOM">Custom...</SelectItem>
-                </SelectContent>
-              </Select>
-            ) : (
-              <div className="flex items-center gap-2">
-                <Input
-                  placeholder="e.g. 7:45 PM – 8:15 PM (Everyday)"
-                  value={meetingTime}
-                  onChange={e => setMeetingTime(e.target.value)}
-                  className="flex-1"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="text-xs shrink-0"
-                  onClick={() => {
-                    setTimeSelectionMode('select');
-                    setMeetingTime('');
-                  }}
-                >
-                  Select List
-                </Button>
-              </div>
-            )}
-          </div>
+          <MeetingScheduleFields
+            key={open ? 'open' : 'closed'}
+            startTime={startTime}
+            endTime={endTime}
+            days={meetingDays}
+            onStartTimeChange={setStartTime}
+            onEndTimeChange={setEndTime}
+            onDaysChange={setMeetingDays}
+          />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={handleClose}>Cancel</Button>

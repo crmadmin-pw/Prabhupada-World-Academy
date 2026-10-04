@@ -23,6 +23,7 @@ import { ASHRAY_LEVELS } from '@/types/enums';
 import { fmt } from '@/lib/fmt';
 import { scoreColor } from '@/lib/scoring';
 import { isActiveDirectoryMember } from '@/lib/memberDirectoryStatus';
+import { isBhaktiVrikshaDirectoryMember } from '@/lib/bvDirectoryMembership';
 import { MEMBER_DIRECTORY_CHANGED_EVENT, mergeApprovedDirectoryMembers, type ApprovedDirectoryMember } from '@/lib/memberDirectorySync';
 import { EmptyState, ConfirmDialog } from '@/shared';
 
@@ -927,20 +928,7 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                     (myEmail && uId && myEmail === uId) ||
                     (myId && uEmail && myId === uEmail)
                   );
-                  const isBvUser = !!(
-                    (u as any).isBvMember ||
-                    (u as any).bvRegistrationStatus === 'Approved' ||
-                    (u as any).isBvAdmin ||
-                    (u as any).isBvSupervisor ||
-                    (u as any).isBvMentor ||
-                    (u as any).isBvFacilitator ||
-                    (u as any).isBvsl ||
-                    (u as any).isBvSubFacilitator ||
-                    (u as any).bvGroupId ||
-                    (u as any).bvReportingFacilitatorId ||
-                    (u as any).bvReportingSupervisorId ||
-                    (u as any).bvReportingAdminId
-                  );
+                  const isBvUser = isBhaktiVrikshaDirectoryMember(u);
                   const bvRoleLabels = getBvRoleLabels(u);
                   const currentBvRole = ((u as any).isBvAdmin || (u as any).isBvSuperAdmin) ? 'ADMIN' :
                     (u as any).isBvSupervisor ? 'SUPERVISOR' :
@@ -1049,7 +1037,7 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                             {isUserAdmin ? (
                               <span className="text-muted-foreground font-medium cursor-default">{superAdminDisplayName}</span>
                             ) : currentBvRole === 'NA' ? (
-                              <span className="text-muted-foreground/60 font-normal cursor-default">—</span>
+                              <span className="text-muted-foreground/60 text-xs font-normal px-2.5 py-1 bg-muted/30 border border-border/50 rounded inline-block">NA</span>
                             ) : (
                               <button
                                 type="button"
@@ -1130,7 +1118,7 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                             </SelectContent>
                           </Select>
                         ) : (
-                          <span className="text-muted-foreground">NA</span>
+                          <span className="text-muted-foreground/60 text-xs font-normal px-2.5 py-1 bg-muted/30 border border-border/50 rounded inline-block">NA</span>
                         )}
                       </td>
                       {/* The Guide dropdown belongs only to FOLK. PW BV ownership
