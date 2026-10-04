@@ -129,7 +129,7 @@ function directoryRowFromApproval(member: ApprovedDirectoryMember): User {
     bvReportingAdminName: member.bvReportingAdminName || null,
     _guideId: guideId,
     _guideName: guideName,
-  } as User;
+  } as unknown as User;
 }
 
 function hasSharedIdentity(left: Set<string>, right: Set<string>): boolean {

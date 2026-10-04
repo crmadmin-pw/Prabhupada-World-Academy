@@ -13,10 +13,10 @@ test('PW approval links an unassigned member to the approving admin', async (t) 
     isPrabhupadaWorldUser: true,
     status: 'Pending Approval',
   };
-  let written: Record<string, unknown> | null = null;
+  const captured: { record: Record<string, unknown> | null } = { record: null };
   t.mock.method(Users, 'findOne', async () => user);
   t.mock.method(Users, 'update', async (args: { record: Record<string, unknown> }) => {
-    written = args.record;
+    captured.record = args.record;
   });
 
   const result = await approveUser.execute({
@@ -37,11 +37,11 @@ test('PW approval links an unassigned member to the approving admin', async (t) 
   } as never);
 
   assert.equal(result.success, true);
-  assert.equal(written?.status, 'Active');
-  assert.equal(written?.guide, 'USER-ADMIN');
-  assert.equal(written?.selectedGuideId, 'USER-ADMIN');
-  assert.equal(written?.bvReportingAdminId, 'USER-ADMIN');
-  assert.equal(written?.bvReportingAdminName, 'Admin Das');
+  assert.equal(captured.record?.status, 'Active');
+  assert.equal(captured.record?.guide, 'USER-ADMIN');
+  assert.equal(captured.record?.selectedGuideId, 'USER-ADMIN');
+  assert.equal(captured.record?.bvReportingAdminId, 'USER-ADMIN');
+  assert.equal(captured.record?.bvReportingAdminName, 'Admin Das');
 });
 
 test('PW approval keeps a member who already reports to someone else', async (t) => {
@@ -55,10 +55,10 @@ test('PW approval keeps a member who already reports to someone else', async (t)
     status: 'Pending Approval',
     bvReportingFacilitatorId: 'USER-RGF',
   };
-  let written: Record<string, unknown> | null = null;
+  const captured: { record: Record<string, unknown> | null } = { record: null };
   t.mock.method(Users, 'findOne', async () => user);
   t.mock.method(Users, 'update', async (args: { record: Record<string, unknown> }) => {
-    written = args.record;
+    captured.record = args.record;
   });
 
   const result = await approveUser.execute({
@@ -79,7 +79,7 @@ test('PW approval keeps a member who already reports to someone else', async (t)
   } as never);
 
   assert.equal(result.success, true);
-  assert.equal(written?.status, 'Active');
-  assert.equal(written?.bvReportingAdminId, undefined);
-  assert.equal(written?.guide, undefined);
+  assert.equal(captured.record?.status, 'Active');
+  assert.equal(captured.record?.bvReportingAdminId, undefined);
+  assert.equal(captured.record?.guide, undefined);
 });
