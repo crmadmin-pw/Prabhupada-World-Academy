@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createEndpoint, Users, BvMemberRegistrations, AppError } from '@/lib/backend-sdk';
 import { serverCacheInvalidate } from '../lib/serverCache';
 import { profileCacheKey } from './getUserProfile';
+import { publishCollectionRevision, publishUsersRevision } from '../lib/publishUsersRevision';
 
 function isAtLeastFourteen(value: string): boolean {
   const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value);
@@ -129,6 +130,8 @@ export default createEndpoint({
     }).catch(() => {});
 
     serverCacheInvalidate(profileCacheKey(userId));
+    await publishCollectionRevision('BvMemberRegistrations', registrationRecord.id);
+    await publishUsersRevision(targetId);
 
     return {
       success: true,

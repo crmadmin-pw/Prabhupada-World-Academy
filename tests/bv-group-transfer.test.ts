@@ -55,6 +55,23 @@ test('moving a BV member replaces old memberships and synchronizes their profile
     assert.equal(updatedMember?.bvGroupId, newGroup.id);
     assert.equal(updatedMember?.bvGroupName, newGroup.groupName);
     assert.equal(updatedMember?.bvReportingFacilitatorId, facilitator.userId);
+    assert.equal(updatedMember?.pendingBvGroupAssignmentNotice, true);
+    assert.equal(updatedMember?.roleNoticeAcknowledged, false);
+
+    const assignedContext = { user: { id: member.id, userId: member.userId, email: member.email } };
+    const assignedProfile = await getUserProfile.execute({ input: {}, context: assignedContext } as never);
+    assert.equal(assignedProfile.user?.pendingBvGroupAssignmentNotice, true);
+    assert.equal(assignedProfile.user?.bvGroupName, newGroup.groupName);
+    assert.equal(assignedProfile.user?.isBvMember, true);
+
+    // The membership row can be briefly invisible to the profile read that
+    // opens the member's notice. That read must not erase the assignment.
+    await BvGroupMembers.delete({ id: newMembershipId });
+    const preservedProfile = await getUserProfile.execute({ input: {}, context: assignedContext } as never);
+    assert.equal(preservedProfile.user?.pendingBvGroupAssignmentNotice, true);
+    assert.equal(preservedProfile.user?.bvGroupName, newGroup.groupName);
+    assert.equal(preservedProfile.user?.bvGroupId, newGroup.id);
+    assert.equal(preservedProfile.user?.isBvMember, true);
 
     // Legacy array references must also disappear, including duplicates in
     // a different group. Profile refresh must not restore attendance access.

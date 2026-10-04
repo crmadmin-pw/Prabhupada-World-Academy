@@ -23,6 +23,8 @@ import type {
   GetGuidesOutputType,
 } from '@/lib/endpoints-sdk';
 import { useNavigate } from 'react-router-dom';
+import { useUserProfile } from '@/contexts/UserProfileContext';
+import { publishMemberDirectoryChange } from '@/lib/memberDirectorySync';
 import { fmt } from '@/lib/fmt';
 import { EmptyState, ConfirmDialog, AsyncButton } from '@/shared';
 import { ASHRAY_LEVELS } from '@/types/enums';
@@ -42,6 +44,7 @@ interface ApprovalsTabProps {
 
 export default function ApprovalsTab({ guideId = '', reviewerGuideId, isSuperGuide = false, isPwAdmin = false, onCountLoaded }: ApprovalsTabProps) {
   const navigate = useNavigate();
+  const { profile } = useUserProfile();
   const actionGuideId = reviewerGuideId || guideId;
   const [pendingUsers, setPendingUsers] = useState<PendingUser[]>([]);
   const [guideTransfers, setGuideTransfers] = useState<GuideRequest[]>([]);
@@ -143,6 +146,23 @@ export default function ApprovalsTab({ guideId = '', reviewerGuideId, isSuperGui
     // 'Skipped' is silent — no toast needed
   };
 
+  const publishApprovedMember = (user: PendingUser, extras?: { ashrayLevel?: string | null; guideId?: string | null; sadhanaMentor?: string }) => {
+    publishMemberDirectoryChange({
+      userId: user.userId,
+      fullName: user.fullName,
+      email: user.email,
+      phone: user.phone,
+      ashrayLevel: extras?.ashrayLevel ?? user.ashrayLevel,
+      segment: isPwAdmin ? 'PW' : 'FOLK',
+      isPrabhupadaWorldUser: isPwAdmin,
+      guideId: extras?.guideId ?? user.guideId,
+      sadhanaMentor: extras?.sadhanaMentor,
+      bvReportingAdminId: isPwAdmin ? (profile?.userId || null) : null,
+      bvReportingAdminName: isPwAdmin ? (profile?.fullName || null) : null,
+      status: 'ACTIVE',
+    });
+  };
+
   const handleApproveClick = (user: PendingUser) => {
     if (isPwAdmin) {
       openEdit(user);
@@ -161,7 +181,7 @@ export default function ApprovalsTab({ guideId = '', reviewerGuideId, isSuperGui
     });
     toast.success(`✅ ${approveTarget.fullName} approved`);
     showEnrollmentToast(approveTarget.fullName, result);
-    window.dispatchEvent(new CustomEvent('pwa:member-directory-changed'));
+    publishApprovedMember(approveTarget);
     loadAll();
   };
 
@@ -180,8 +200,12 @@ export default function ApprovalsTab({ guideId = '', reviewerGuideId, isSuperGui
       });
       toast.success(`✅ ${editUser.fullName} details saved & approved`);
       showEnrollmentToast(editUser.fullName, result);
+      publishApprovedMember(editUser, {
+        ashrayLevel: editedAshray || editUser.ashrayLevel,
+        guideId: editedGuideId && editedGuideId !== editUser.guideId ? editedGuideId : editUser.guideId,
+        sadhanaMentor: editedSadhanaMentorId || undefined,
+      });
       setEditUser(null);
-      window.dispatchEvent(new CustomEvent('pwa:member-directory-changed'));
       loadAll();
     } catch (error: any) {
       toast.error(error?.message || `Could not approve ${editUser.fullName}. Please try again.`);

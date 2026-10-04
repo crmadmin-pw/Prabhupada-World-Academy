@@ -11,7 +11,7 @@ const USER_FIELDS = ['id', 'userId', 'fullName', 'phone', 'email', 'role', 'stat
   'isBvMentor', 'bvMentorGuideId', 'isCleanlinessManager', 'isFolkLead', 'isTripCoordinator',
   'acknowledgedFolkLead', 'acknowledgedTripCoordinator', 'acknowledgedSadhanaMentor',
   'isBvSuperAdmin', 'isBvAdmin', 'isBvSupervisor', 'isBvFacilitator', 'isBvSubFacilitator',
-  'pendingRoleNotice', 'pendingBvGroupAssignmentNotice', 'pendingBvGroupRemovalNotice', 'roleNoticeAcknowledged', 'bvRegistrationStatus', 'bvGroupId', 'bvGroupName', 'isBvMember', 'isPrabhupadaWorldUser', 'pendingBvRejectionNotice', 'segment', 'pendingBvApprovalNotice',
+  'pendingRoleNotice', 'pendingBvGroupAssignmentNotice', 'pendingBvGroupRemovalNotice', 'roleNoticeAcknowledged', 'bvRegistrationStatus', 'bvGroupId', 'bvGroupName', 'bvReportingFacilitatorName', 'isBvMember', 'isPrabhupadaWorldUser', 'pendingBvRejectionNotice', 'segment', 'pendingBvApprovalNotice',
   'pendingAshrayNoticeStatus', 'pendingAshrayNoticeLevel', 'ashrayNoticeAcknowledged', 'isFolkUser'];
 const GUIDE_FIELDS = ['id', 'fullName', 'abbr'];
 const RESIDENCY_FIELDS = ['id', 'residencyName', 'residencyId'];
@@ -132,8 +132,12 @@ export default createEndpoint({
     const needsMembershipSync = hasBvMembership
       ? (!userRecord.isBvMember || userRecord.bvRegistrationStatus !== 'Approved' || (groupId && userRecord.bvGroupId !== groupId))
       : (!!userRecord.isBvMember || !!userRecord.bvGroupId || !!userRecord.bvGroupName);
+    // A group assigned moments ago can be missing from the indexed membership
+    // lookup. Keep that assignment and its one-time notice until the member
+    // acknowledges it, instead of clearing the group on this read.
+    const preservePendingAssignment = !hasBvMembership && !!userRecord.pendingBvGroupAssignmentNotice;
 
-    if (needsMembershipSync) {
+    if (!preservePendingAssignment && needsMembershipSync) {
       const membershipFields = hasBvMembership
         ? {
             isBvMember: true,
@@ -241,7 +245,7 @@ export default createEndpoint({
     const result = buildProfileResult({
       userRecord, guideId, residencyId, guideRecord, residencyRecord,
       primaryRole, isBvsl, isSadhanaMentor, isServiceAllocator, isBvMentor, lastLoginAt, userEmail: context.user.email,
-      hasBvMembership,
+      hasBvMembership, preservePendingAssignment,
       normalizeStatus,
       hasPendingGuideTransfer: !!pendingGuideTransfer,
       hasPendingResidencyTransfer: !!pendingResidencyTransfer,
@@ -261,7 +265,7 @@ export default createEndpoint({
 function buildProfileResult({
   userRecord, guideId, residencyId, guideRecord, residencyRecord,
   primaryRole, isBvsl, isSadhanaMentor, isServiceAllocator, isBvMentor,
-  lastLoginAt, userEmail, hasBvMembership, normalizeStatus, hasPendingGuideTransfer, hasPendingResidencyTransfer,
+  lastLoginAt, userEmail, hasBvMembership, preservePendingAssignment, normalizeStatus, hasPendingGuideTransfer, hasPendingResidencyTransfer,
   isPendingResidencyLeave,
   latestGuideTransferStatus, latestResidencyTransferStatus, latestGuideTransferId, latestResidencyTransferId,
   latestAshrayStatus, latestAshrayId, latestAshrayRequestedLevel
@@ -318,9 +322,12 @@ function buildProfileResult({
       bvRegistrationStatus: userRecord.bvRegistrationStatus || null,
       bvGroupId: userRecord.bvGroupId || null,
       bvGroupName: userRecord.bvGroupName || null,
+      bvReportingFacilitatorName: userRecord.bvReportingFacilitatorName || null,
       // Attendance is available only to active BV members. Keep this field in
       // the fresh profile response rather than relying on client-side state.
-      isBvMember: !!hasBvMembership,
+      // A just-assigned group can be missing from the membership lookup for a
+      // moment; the pending notice means that assignment is already real.
+      isBvMember: hasBvMembership || preservePendingAssignment,
       isPrabhupadaWorldUser: !!(userRecord.isPrabhupadaWorldUser),
       pendingBvRejectionNotice: !!(userRecord.pendingBvRejectionNotice),
       pendingBvApprovalNotice: !!(userRecord.pendingBvApprovalNotice),

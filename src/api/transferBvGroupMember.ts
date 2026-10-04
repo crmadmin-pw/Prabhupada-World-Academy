@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createEndpoint, AppError, BvGroupMembers, BvGroups, Users } from '@/lib/backend-sdk';
 import { serverCacheInvalidate } from '@/lib/serverCache';
+import { publishCollectionRevision, publishUsersRevision } from '@/lib/publishUsersRevision';
 
 function referenceValues(value: unknown): string[] {
   if (Array.isArray(value)) return value.flatMap(referenceValues);
@@ -72,6 +73,9 @@ export default createEndpoint({
         },
       });
       serverCacheInvalidate();
+      // The member's browser is already open. Publish the profile revision here
+      // so their one-time notice appears without waiting for a page reload.
+      await publishUsersRevision(user.id, user);
       return { success: true, groupId: '', groupName: '' };
     }
 
@@ -145,6 +149,8 @@ export default createEndpoint({
 
     // Group cards, detail pages, and dashboard caches all depend on this.
     serverCacheInvalidate();
-    return { success: true, groupId: group.groupId || group.id, groupName: group.groupName || 'Reading Group' };
+    await publishCollectionRevision('BvGroupMembers', retainedId);
+    await publishUsersRevision(user.id, user);
+    return { success: true, groupId: group.id, groupName: group.groupName || 'Reading Group' };
   },
 });

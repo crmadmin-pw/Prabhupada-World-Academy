@@ -1,4 +1,3 @@
-import { useReactiveEffect } from '@/hooks/useReactiveEffect';
 import { useEffect, useState } from 'react';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { acknowledgeBvRoleNotice, acknowledgeBvApprovalNotice, acknowledgeBvRejectionNotice, acknowledgeAshrayNotice, getUserBvStatus } from '@/lib/endpoints-sdk';
@@ -38,21 +37,22 @@ export default function RoleAcknowledgementHandler() {
     }
   }
 
-  // Fetch Reading Group details when approval popup is triggered
-  useReactiveEffect((read) => {
-    if (popupType === 'bv_approval_notice' || popupType === 'bv_group_assignment_notice') {
-      read(() => getUserBvStatus({}))
-        .then(res => {
-          if (res?.myGroup) {
-            !read.cancelled && setGroupInfo({
-              groupName: res.myGroup.groupName,
-              bvslName: res.myGroup.bvslName,
-              rgsfName: res.myGroup.rgsfName,
-            });
-          }
-        })
-        .catch(() => {});
-    }
+  // Fetch Reading Group details when the notice opens. Bypass the client
+  // cache: this session's last status read still says the member is unassigned.
+  useEffect(() => {
+    if (popupType !== 'bv_approval_notice' && popupType !== 'bv_group_assignment_notice') return;
+    let cancelled = false;
+    getUserBvStatus({ _nocache: true } as { userId?: string; localDate?: string })
+      .then(res => {
+        if (cancelled || !res?.myGroup) return;
+        setGroupInfo({
+          groupName: res.myGroup.groupName,
+          bvslName: res.myGroup.bvslName,
+          rgsfName: res.myGroup.rgsfName,
+        });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
   }, [popupType]);
 
   // Sync open state with popup detection
@@ -184,7 +184,7 @@ export default function RoleAcknowledgementHandler() {
         {popupType === 'bv_group_assignment_notice' && (
           <div className="bg-primary/10 border border-primary/20 rounded-lg p-3 text-sm text-left my-1 space-y-1">
             <p><strong>Reading Group:</strong> {groupInfo?.groupName || (profile as any).bvGroupName || 'Your assigned Reading Group'}</p>
-            <p><strong>RGF:</strong> {groupInfo?.bvslName || 'Not assigned'}</p>
+            <p><strong>RGF:</strong> {groupInfo?.bvslName || (profile as any).bvReportingFacilitatorName || 'Not assigned'}</p>
             <p><strong>RGSF:</strong> {groupInfo?.rgsfName || 'None'}</p>
           </div>
         )}

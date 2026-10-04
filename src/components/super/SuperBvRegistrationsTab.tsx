@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { Loader2, Users, CheckCircle2, Clock, Leaf, Phone, HeartHandshake, BookOpen, Calendar, Building } from 'lucide-react';
-import { getPendingBvRegistrations, approveAndAssignBvMember, getBvslGroups, getAllBvGroupsAdmin, rejectBvRegistration, getClientCachedQuery } from '@/lib/app-endpoints-sdk';
+import { getPendingBvRegistrations, approveAndAssignBvMember, getBvslGroups, getAllBvGroupsAdmin, rejectBvRegistration, approveBvJoinRequest, getClientCachedQuery } from '@/lib/app-endpoints-sdk';
 import { getBvGroupAssignmentOptions, isBvGroupActive, isBvGroupTimeMatch } from '@/lib/bvGroupAssignment';
 
 const normalizeSegment = (value: unknown): 'PW' | 'FOLK' | undefined => {
@@ -120,18 +120,26 @@ export default function SuperBvRegistrationsTab({
   }, [segment, guideId, isSuperGuide]);
 
 
+  const finishDecision = (reg: any, message: string) => {
+    resolvedRegistrationIdsRef.current.add(String(reg.id));
+    setRegistrations(current => current.filter(item => item.id !== reg.id));
+    onRegistrationResolved?.(String(reg.id));
+    toast.success(message);
+  };
+
   const handleReject = async (reg: any) => {
     if (!window.confirm(`Are you sure you want to reject the Bhakti Vriksha registration for ${reg.fullName}?`)) return;
     setRejectingId(reg.id);
     try {
-      await rejectBvRegistration({ registrationId: reg.id });
+      if (reg.source === 'group-join') {
+        await approveBvJoinRequest({ requestId: reg.id, action: 'reject' });
+      } else {
+        await rejectBvRegistration({ registrationId: reg.id });
+      }
       // Do not wait for the Firestore invalidation round-trip before updating
       // this active queue. The realtime listener still reconciles this with
       // the server in the background for every open dashboard session.
-      resolvedRegistrationIdsRef.current.add(String(reg.id));
-      setRegistrations(current => current.filter(item => item.id !== reg.id));
-      onRegistrationResolved?.(String(reg.id));
-      toast.success(`Rejected registration for ${reg.fullName}`);
+      finishDecision(reg, `Rejected registration for ${reg.fullName}`);
     } catch (err: any) {
       toast.error(err?.message || 'Failed to reject registration');
     } finally {
@@ -162,6 +170,20 @@ export default function SuperBvRegistrationsTab({
       toast.error(err?.message || 'Failed to approve registration');
     } finally {
       setAssigning(false);
+    }
+  };
+
+  const handleApproveJoin = async (reg: any) => {
+    setAssigning(true);
+    setRejectingId(reg.id);
+    try {
+      await approveBvJoinRequest({ requestId: reg.id, action: 'approve' });
+      finishDecision(reg, `Approved ${reg.fullName}${reg.requestedGroupName ? ` for ${reg.requestedGroupName}` : ''}`);
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to approve join request');
+    } finally {
+      setAssigning(false);
+      setRejectingId(null);
     }
   };
 
@@ -236,6 +258,9 @@ export default function SuperBvRegistrationsTab({
                         <Phone className="w-3 h-3" /> {reg.phoneE164 || `${reg.phoneCountryCode} ${reg.phone}`}
                       </span>
                     </div>
+                    {reg.requestedGroupName && (
+                      <p className="text-xs text-muted-foreground mt-0.5">Requested group: {reg.requestedGroupName}</p>
+                    )}
                     {reg.address && (
                       <p className="text-xs text-muted-foreground mt-0.5">📍 {reg.address}</p>
                     )}
@@ -251,17 +276,28 @@ export default function SuperBvRegistrationsTab({
                       {rejectingId === reg.id ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
                       Reject
                     </Button>
-                    <Button
-                      size="sm"
-                      className="font-semibold shrink-0"
-                      onClick={() => {
-                        setSelectedReg(reg);
-                        setShowAllGroups(false);
-                        setTargetGroupId('');
-                      }}
-                    >
-                      Approve & Assign Group
-                    </Button>
+                    {reg.source === 'group-join' ? (
+                      <Button
+                        size="sm"
+                        className="font-semibold shrink-0"
+                        onClick={() => handleApproveJoin(reg)}
+                        disabled={rejectingId === reg.id}
+                      >
+                        Approve
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        className="font-semibold shrink-0"
+                        onClick={() => {
+                          setSelectedReg(reg);
+                          setShowAllGroups(false);
+                          setTargetGroupId('');
+                        }}
+                      >
+                        Approve & Assign Group
+                      </Button>
+                    )}
                   </div>
                 </div>
 

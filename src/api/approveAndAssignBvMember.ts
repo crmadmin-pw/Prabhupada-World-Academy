@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createEndpoint, BvMemberRegistrations, BvGroupMembers, Users, BvGroups, AppError } from '@/lib/backend-sdk';
 import { serverCacheInvalidate } from '../lib/serverCache';
+import { publishCollectionRevision, publishUsersRevision } from '../lib/publishUsersRevision';
 // Synthetic IDs are generated for registrations that exist only in the Users table
 // (users whose bvRegistrationStatus is Pending Approval but never wrote a BvMemberRegistrations doc).
 const isSyntheticId = (id: string) => id.startsWith('BVREG-');
@@ -248,6 +249,10 @@ export default createEndpoint({
         },
       });
       serverCacheInvalidate(profileCacheKey(targetUser.id));
+      // Open group cards watch this membership. Publish the committed row so
+      // their member count refetches without a page reload.
+      await publishCollectionRevision('BvGroupMembers', memberRecordId);
+      await publishUsersRevision(targetUser.id);
     } else {
       // Approval without a group is still a completed approval. Attendance
       // remains unavailable until a real BvGroupMembers record is created.

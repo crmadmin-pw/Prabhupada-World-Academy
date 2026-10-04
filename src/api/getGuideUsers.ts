@@ -217,9 +217,24 @@ export default createEndpoint({
     // Map userId/id -> groupId
     const userGroupMap = new Map<string, string>();
     allGroupMembers.forEach((m: any) => {
-      const uId = String(m.userId || m.user || '').toLowerCase();
       const gId = String(m.groupId || m.group || '');
-      if (uId && gId) userGroupMap.set(uId, gId);
+      for (const ref of [m.user, m.userId, m.memberId]) {
+        const uId = String(ref || '').trim().toLowerCase();
+        if (uId && gId) userGroupMap.set(uId, gId);
+      }
+    });
+    // An RGF is the group's facilitator, not necessarily a member row.
+    // Membership still wins when the same person is also in a group.
+    allBvGroups.forEach((g: any) => {
+      const groupKey = String(g.id || g.groupId || '');
+      if (!groupKey) return;
+      const leaderRefs = [g.bvslLeader, g.bvslId]
+        .flatMap((value: unknown) => Array.isArray(value) ? value : [value])
+        .map(value => String(value || '').trim().toLowerCase())
+        .filter(Boolean);
+      for (const ref of leaderRefs) {
+        if (!userGroupMap.has(ref)) userGroupMap.set(ref, groupKey);
+      }
     });
 
     // Map groupId -> RGF info { id, name }

@@ -96,6 +96,72 @@ export function realtimeChannelsForEndpoint(name: string): RealtimeChannel[] {
   return [...channels];
 }
 
+const MEMBERSHIP_MUTATIONS = new Set([
+  'addGroupMember',
+  'approveAndAssignBvMember',
+  'approveBvJoinRequest',
+  'assignBvRole',
+  'bulkAddGroupMembers',
+  'deleteBvGroup',
+  'hardDeleteBvGroups',
+  'joinBvGroupByToken',
+  'joinGroupByToken',
+  'leaveBvGroup',
+  'removeBvGroupMember',
+  'removeGroupMember',
+  'transferBvGroupMember',
+]);
+
+/** Reads that render a reading-group member count. Membership writes refresh
+ * only these cached results, once, instead of polling or clearing every query. */
+const MEMBERSHIP_COUNT_READS = [
+  'getAllBvGroups',
+  'getAllBvGroupsAdmin',
+  'getBvGroupSadhanaMonitor',
+  'getBvSupervisorOverview',
+  'getBvslGroups',
+  'getGroupMembers',
+  'getGuideGroupStats',
+  'getGuideGroups',
+  'getSuperGuideBvStats',
+  'getSystemBvGroups',
+  'getUserBvStatus',
+] as const;
+
+/** Approval and Reading Group assignment change the member directory.
+ * Invalidate that exact cached read when the mutation commits. Firestore
+ * revisions still reconcile it; this does not poll. */
+const DIRECTORY_MUTATIONS = new Set(['approveUser', 'transferBvGroupMember']);
+const DIRECTORY_READS = ['getGuideUsers'] as const;
+
+export function directoryReads(endpoint: string): readonly string[] {
+  return DIRECTORY_MUTATIONS.has(endpoint) ? DIRECTORY_READS : [];
+}
+
+export function membershipCountReads(endpoint: string, input?: unknown): readonly string[] {
+  if (!MEMBERSHIP_MUTATIONS.has(endpoint)) return [];
+  const record = input && typeof input === 'object' ? input as { groupId?: unknown; action?: unknown } : undefined;
+  // Approving without a group, or rejecting a request, does not change a count.
+  if (endpoint === 'approveAndAssignBvMember' && !record?.groupId) return [];
+  if (endpoint === 'approveBvJoinRequest' && record?.action === 'reject') return [];
+  return MEMBERSHIP_COUNT_READS;
+}
+
+/** Immediate badge adjustment for the group named by the mutation.
+ * The following refetch replaces it with the server count. */
+export function membershipCountAdjustment(endpoint: string, input: unknown): { groupId: string; delta: number } | undefined {
+  if (!input || typeof input !== 'object') return undefined;
+  const record = input as { groupId?: unknown; groupDbId?: unknown; action?: unknown; userIds?: unknown };
+  const groupId = String(record.groupId || record.groupDbId || '').trim();
+  if (!groupId || !MEMBERSHIP_MUTATIONS.has(endpoint)) return undefined;
+  if (endpoint === 'approveBvJoinRequest') return record.action === 'approve' ? { groupId, delta: 1 } : undefined;
+  if (endpoint === 'approveAndAssignBvMember') return record.groupId ? { groupId, delta: 1 } : undefined;
+  if (endpoint === 'bulkAddGroupMembers') return { groupId, delta: Array.isArray(record.userIds) ? record.userIds.length : 0 };
+  if (['addGroupMember', 'joinBvGroupByToken', 'joinGroupByToken'].includes(endpoint)) return { groupId, delta: 1 };
+  if (['removeGroupMember', 'removeBvGroupMember', 'leaveBvGroup'].includes(endpoint)) return { groupId, delta: -1 };
+  return undefined;
+}
+
 export function normalizeRealtimeDepartment(value: unknown): RealtimeDepartment | null {
   const normalized = String(value || '').trim().toUpperCase().replace(/[\s_-]+/g, '');
   if (normalized === 'FOLK') return 'FOLK';

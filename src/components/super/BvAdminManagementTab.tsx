@@ -1,4 +1,5 @@
 import { useReactiveLoader } from '@/hooks/useReactiveLoader';
+import { REALTIME_INVALIDATION_EVENT } from '@/lib/realtimeChannels';
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -145,6 +146,22 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
     return () => { cancelled = true; };
   }, [loadData]);
 
+  useEffect(() => {
+    const applyMembership = (event: Event) => {
+      const membership = (event as CustomEvent<{ membership?: { groupId?: string; delta?: number } }>).detail?.membership;
+      const groupId = membership?.groupId;
+      const delta = membership?.delta;
+      if (!groupId || !delta) return;
+      setGroups(current => current.map(item => {
+        const ids = [item.id, item.groupId, item.groupDbId].filter(Boolean).map(value => String(value));
+        if (!ids.includes(groupId)) return item;
+        return { ...item, memberCount: Math.max(0, Number(item.memberCount || 0) + delta) };
+      }));
+    };
+    window.addEventListener(REALTIME_INVALIDATION_EVENT, applyMembership);
+    return () => window.removeEventListener(REALTIME_INVALIDATION_EVENT, applyMembership);
+  }, []);
+
   // getAllBvGroupsAdmin performs guide/RGF hierarchy scoping on the server.
   // Do not apply a second browser-side ownership filter: the compact API group
   // response intentionally omits raw hierarchy fields, so re-filtering it was
@@ -168,6 +185,7 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
         meetingTime: newGroupTime.trim() || undefined,
       });
       toast.success(`Created Reading Group "${newGroupName}"`);
+      window.dispatchEvent(new Event('pwa:member-directory-changed'));
       setCreateGroupOpen(false);
       setNewGroupName('');
       setNewGroupBvslId('');

@@ -120,6 +120,15 @@ test('admin dropdowns, member directory and meeting invitees are scoped after ca
   assert.deepEqual(sorted(allMentors.map((u: any) => u.fullName)), ['mentor-a', 'mentor-b']);
 });
 
+test('an RGF group name comes from the group they facilitate', async t => {
+  mockDatabase(t);
+  const directory = await call(getGuideUsers, { guideId: 'ALL', statusFilter: 'all' });
+  const rgfRow = directory.users.find((user: any) => user.userId === 'rgf-a');
+  assert.equal(rgfRow?.bvGroupName, 'Group A');
+  const memberRow = directory.users.find((user: any) => user.userId === 'direct-a');
+  assert.equal(memberRow?.bvGroupName ?? null, null);
+});
+
 test('Sadhana report rows, stats, leaderboard and guide filters exclude foreign users', async t => {
   mockDatabase(t);
   for (const guideId of ['ALL', otherAdmin.id]) {
@@ -216,6 +225,58 @@ test('PW admin intake shows all PW joining requests, with and without a guide', 
   assert.ok(!bvRegistrations.some((row: any) => row.id === 'bv-folk'));
   const superBvRegistrations = await call(getPendingBvRegistrations, { segment: 'PW' }, superAdmin);
   assert.ok(superBvRegistrations.some((row: any) => row.id === 'bv-foreign'));
+});
+
+test('PW admin receives a supervisor request to join a Bhakti Vriksha group', async t => {
+  const previousUsers = fixture.Users;
+  const previousRegistrations = fixture.BvMemberRegistrations;
+  const previousRequests = fixture.BvGroupRequests;
+  const previousGroups = fixture.BvGroups;
+  const previousMembers = fixture.BvGroupMembers;
+  const supervisorApplicant = member('pw-supervisor-join', {
+    isBvSupervisor: true,
+    isBvMember: true,
+    bvReportingAdminId: admin.userId,
+    bvRegistrationStatus: 'Pending Approval',
+  });
+  const supervisorDirectJoin = member('pw-supervisor-direct', {
+    isBvSupervisor: true,
+    isBvMember: true,
+    bvReportingAdminId: admin.id,
+  });
+  const joinedSupervisor = member('pw-supervisor-joined', {
+    isBvSupervisor: true,
+    isBvMember: true,
+    bvRegistrationStatus: 'Pending Approval',
+  });
+  fixture.Users = [...users, supervisorApplicant, supervisorDirectJoin, joinedSupervisor];
+  fixture.BvMemberRegistrations = [
+    { id: 'bv-supervisor', userId: supervisorApplicant.userId, userDbId: supervisorApplicant.id,
+      email: supervisorApplicant.email, status: 'Pending Approval', segment: 'PW', fullName: supervisorApplicant.fullName },
+  ];
+  fixture.BvGroups = [...groups, {
+    id: 'group-supervisor', groupId: 'public-group-supervisor', groupName: 'Supervisor Group', segment: 'PW', isActive: true,
+  }];
+  fixture.BvGroupRequests = [
+    { id: 'join-supervisor', user: supervisorDirectJoin.id, group: 'group-supervisor', status: 'Pending', requestedAt: '2026-10-04T00:00:00.000Z' },
+    { id: 'join-already-member', user: joinedSupervisor.id, group: 'group-supervisor', status: 'Pending', requestedAt: '2026-10-04T00:00:00.000Z' },
+  ];
+  fixture.BvGroupMembers = [...memberships, { id: 'membership-supervisor', user: joinedSupervisor.id, group: 'group-supervisor' }];
+  t.after(() => {
+    fixture.Users = previousUsers;
+    fixture.BvMemberRegistrations = previousRegistrations;
+    fixture.BvGroupRequests = previousRequests;
+    fixture.BvGroups = previousGroups;
+    fixture.BvGroupMembers = previousMembers;
+  });
+  mockDatabase(t);
+
+  const bvRegistrations = await call(getPendingBvRegistrations, { segment: 'PW' });
+  assert.ok(bvRegistrations.some((row: any) => row.id === 'bv-supervisor'));
+  const directJoin = bvRegistrations.find((row: any) => row.id === 'join-supervisor');
+  assert.equal(directJoin?.requestedGroupName, 'Supervisor Group');
+  assert.equal(directJoin?.source, 'group-join');
+  assert.ok(!bvRegistrations.some((row: any) => row.id === 'join-already-member'));
 });
 
 test('preaching analytics aggregate only the current admin hierarchy and super admins retain all guides', async t => {

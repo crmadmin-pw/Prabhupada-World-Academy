@@ -59,6 +59,31 @@ test('committed query revisions invalidate exact reads without discarding unrela
   assert.ok(sdk.getEndpointCacheSnapshot('getMeetings', { department: 'PW' }), 'mutation responses do not broadcast broad cache invalidations');
 });
 
+test('assigning a reading-group member refreshes that card without clearing unrelated queries', async () => {
+  const { sdk, pending, flush, reply } = setup();
+  const groups = sdk.queryEndpoint('getBvslGroups', { bvslId: 'ALL' });
+  const meetings = sdk.queryEndpoint('getMeetings', { department: 'PW' });
+  await flush();
+  reply(0, { groups: [{ id: 'g', memberCount: 0 }] }, 200, { 'X-Realtime-Token': 'groups-token', 'X-Realtime-Version': '0001' });
+  reply(1, { meetings: [] });
+  await Promise.all([groups, meetings]);
+  const assigned = sdk.approveAndAssignBvMember({ registrationId: 'reg', groupId: 'g' });
+  await flush();
+  assert.equal(pending.length, 3);
+  reply(2, { success: true });
+  await assigned;
+  assert.equal(sdk.isEndpointQueryFresh('getBvslGroups', { bvslId: 'ALL' }), false);
+  assert.equal(sdk.getEndpointCacheSnapshot('getBvslGroups', { bvslId: 'ALL' }).data.groups[0].memberCount, 0);
+  assert.equal(sdk.getEndpointQueryRevision('getBvslGroups', { bvslId: 'ALL' }), 1);
+  assert.ok(sdk.isEndpointQueryFresh('getMeetings', { department: 'PW' }));
+  const approvalOnly = sdk.approveAndAssignBvMember({ registrationId: 'reg' });
+  await flush();
+  reply(3, { success: true });
+  await approvalOnly;
+  assert.equal(sdk.getEndpointQueryRevision('getBvslGroups', { bvslId: 'ALL' }), 1);
+  assert.equal(sdk.getEndpointQueryRevision('getMeetings', { department: 'PW' }) || 0, 0);
+});
+
 test('an older in-flight response cannot roll back a reconciled query watermark', async () => {
   const { sdk, pending, flush, reply } = setup();
   const headers = version => ({ 'X-Realtime-Token': 'meeting-token', 'X-Realtime-Version': version });
@@ -122,6 +147,30 @@ test('active consumers retain revisions through cache churn, then release subscr
   releaseB();
   assert.equal(sdk.getEndpointRealtimeTokens().includes('token-visible'), false);
   assert.ok(sdk.getEndpointRealtimeTokens().length <= 250);
+});
+
+test('approving a member drops the cached directory so the next read cannot reuse it', async () => {
+  const { sdk, pending, flush, reply } = setup();
+  const headers = { 'X-Realtime-Token': 'directory-token', 'X-Realtime-Version': '0001' };
+  const directory = sdk.queryEndpoint('getGuideUsers', { guideId: 'ALL', statusFilter: 'all' });
+  await flush();
+  reply(0, { users: [{ userId: 'existing', fullName: 'Existing' }] }, 200, headers);
+  await directory;
+  assert.equal(sdk.isEndpointQueryFresh('getGuideUsers', { guideId: 'ALL', statusFilter: 'all' }), true);
+  const stale = sdk.queryEndpoint('getGuideUsers', { guideId: 'ALL', statusFilter: 'all', bypassCache: true });
+  await flush();
+  const approval = sdk.approveUser({ userId: 'new-member' });
+  await flush();
+  reply(pending.length - 1, { success: true });
+  await approval;
+  assert.equal(sdk.isEndpointQueryFresh('getGuideUsers', { guideId: 'ALL', statusFilter: 'all' }), false, 'approval must not leave the pre-approval directory fresh');
+  const refreshed = sdk.queryEndpoint('getGuideUsers', { guideId: 'ALL', statusFilter: 'all' });
+  await flush();
+  reply(pending.length - 1, { users: [{ userId: 'new-member', fullName: 'New Devotee' }] }, 200, headers);
+  assert.deepEqual(await refreshed, { users: [{ userId: 'new-member', fullName: 'New Devotee' }] });
+  reply(1, { users: [{ userId: 'existing', fullName: 'Existing' }] }, 200, headers);
+  await stale;
+  assert.equal(sdk.getEndpointCacheSnapshot('getGuideUsers', { guideId: 'ALL', statusFilter: 'all' }).data.users[0].fullName, 'New Devotee');
 });
 
 test('an evicted in-flight request cannot overwrite the same query after re-registration', async () => {

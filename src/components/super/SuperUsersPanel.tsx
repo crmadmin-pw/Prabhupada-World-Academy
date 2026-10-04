@@ -1,7 +1,7 @@
 import { useReactiveLoader } from '@/hooks/useReactiveLoader';
 import FilterPanel from '@/components/mobile/FilterPanel';
 import { useIsMobile } from '@/hooks/useIsMobile';
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -23,12 +23,51 @@ import { ASHRAY_LEVELS } from '@/types/enums';
 import { fmt } from '@/lib/fmt';
 import { scoreColor } from '@/lib/scoring';
 import { isActiveDirectoryMember } from '@/lib/memberDirectoryStatus';
+import { MEMBER_DIRECTORY_CHANGED_EVENT, mergeApprovedDirectoryMembers, type ApprovedDirectoryMember } from '@/lib/memberDirectorySync';
 import { EmptyState, ConfirmDialog } from '@/shared';
 
 import MultiRoleAssignModal from './MultiRoleAssignModal';
 import BulkUserManagement from '@/components/guide/BulkUserManagement';
 
 type User = GetGuideUsersOutputType['users'][0] & { id?: string; _guideId: string; _guideName: string };
+type PendingGroupAssignment = {
+  groupId: string;
+  groupIds: string[];
+  groupName: string;
+  member: boolean;
+};
+
+function memberIdentityKeys(user: { id?: string; userId?: string; email?: string; userDbId?: string } | null | undefined): string[] {
+  return [user?.id, user?.userId, user?.userDbId, user?.email]
+    .filter(Boolean)
+    .map(value => String(value).toLowerCase());
+}
+
+/** Keep a just-confirmed Reading Group on the row when a directory reload
+ * still has the pre-assignment response. */
+function mergePendingGroupAssignments(list: User[], pending: Map<string, PendingGroupAssignment>): User[] {
+  if (pending.size === 0) return list;
+  return list.map(candidate => {
+    const assignment = memberIdentityKeys(candidate)
+      .map(key => pending.get(key))
+      .find((value): value is PendingGroupAssignment => !!value);
+    if (!assignment) return candidate;
+    const serverGroupId = String((candidate as any).bvGroupId || '');
+    const serverGroupName = String((candidate as any).bvGroupName || '');
+    const echoed = assignment.member
+      ? assignment.groupIds.some(id => !!id && id === serverGroupId) || (!!assignment.groupName && serverGroupName === assignment.groupName)
+      : !serverGroupId && !serverGroupName;
+    // Keep the pending assignment for this session. A later stale directory
+    // response must not be treated as confirmation and then overwrite the row.
+    if (echoed) return candidate;
+    return {
+      ...candidate,
+      isBvMember: assignment.member,
+      bvGroupId: assignment.member ? assignment.groupId : null,
+      bvGroupName: assignment.member ? assignment.groupName : null,
+    };
+  });
+}
 type GuideEntry = GetGuidesOutputType['guides'][0];
 type BvGroupOption = { id: string; groupId: string; groupName: string; segment?: string | null; isActive?: boolean; facilitatorIds?: string[] };
 type SortKey = 'fullName' | 'guideName' | 'ashrayLevel' | 'latestScore' | 'latestEntryDate' | 'isResident';
@@ -70,6 +109,27 @@ function identityRefs(...values: unknown[]): Set<string> {
   };
   values.forEach(visit);
   return refs;
+}
+
+function directoryRowFromApproval(member: ApprovedDirectoryMember): User {
+  const guideId = member.guideId || member.bvReportingAdminId || '';
+  const guideName = member.guideName || member.bvReportingAdminName || 'Unassigned';
+  return {
+    userId: member.userId,
+    fullName: member.fullName,
+    email: member.email || '',
+    phone: member.phone || '',
+    status: 'ACTIVE',
+    segment: member.segment || null,
+    isPrabhupadaWorldUser: member.isPrabhupadaWorldUser === true,
+    ashrayLevel: member.ashrayLevel || null,
+    role: 'USER',
+    sadhanaMentor: member.sadhanaMentor || null,
+    bvReportingAdminId: member.bvReportingAdminId || null,
+    bvReportingAdminName: member.bvReportingAdminName || null,
+    _guideId: guideId,
+    _guideName: guideName,
+  } as User;
 }
 
 function hasSharedIdentity(left: Set<string>, right: Set<string>): boolean {
@@ -140,7 +200,9 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
     normalizedProfileRole === 'PW_ADMIN'
   );
 
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<User[]>(() => mergeApprovedDirectoryMembers([], directoryRowFromApproval));
+  const revealMemberId = useRef<string | null>(null);
+  const pendingGroupAssignments = useRef(new Map<string, PendingGroupAssignment>());
   const [guides, setGuides] = useState<GuideEntry[]>([]);
   const [bvGroups, setBvGroups] = useState<BvGroupOption[]>([]);
 
@@ -209,12 +271,14 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
         ).catch(() => ({ groups: [] })),
         isPwAdmin ? read(() => getActiveSadhanaMentors({ segment: 'PW' })).catch(() => []) : Promise.resolve([]),
         read(() => getGuideUsers({ guideId: 'ALL', statusFilter: 'all' })).then(result => {
+          // A superseded directory read must not put the pre-approval list back.
+          if (read.cancelled) return result;
           // Show the directory before the role/group dropdown lookups finish.
-          setUsers((result.users || []).map((u: any) => ({
+          setUsers(mergePendingGroupAssignments(mergeApprovedDirectoryMembers((result.users || []).map((u: any) => ({
             ...u,
             _guideId: u.selectedGuideId || u.guideId || u.guide || u.mentorId || '',
             _guideName: u.selectedGuideName || u.guideName || u.mentorName || u.selectedMentorName || '',
-          })));
+          })), directoryRowFromApproval), pendingGroupAssignments.current));
           setLoading(false);
           return result;
         }),
@@ -264,7 +328,7 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
         };
       });
 
-      setUsers(all);
+      if (!read.cancelled) setUsers(mergePendingGroupAssignments(mergeApprovedDirectoryMembers(all, directoryRowFromApproval), pendingGroupAssignments.current));
     } catch {
       if (read.cancelled) return;
       toast.error('Failed to load users');
@@ -276,9 +340,14 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
   useEffect(() => { loadData(); }, [loadData]);
 
   useEffect(() => {
-    const refreshDirectory = () => { void loadData(true); };
-    window.addEventListener('pwa:member-directory-changed', refreshDirectory);
-    return () => window.removeEventListener('pwa:member-directory-changed', refreshDirectory);
+    const refreshDirectory = (event: Event) => {
+      const member = (event as CustomEvent<{ member?: ApprovedDirectoryMember }>).detail?.member;
+      if (member?.userId) revealMemberId.current = member.userId;
+      setUsers(current => mergePendingGroupAssignments(mergeApprovedDirectoryMembers(current, directoryRowFromApproval), pendingGroupAssignments.current));
+      void loadData(true);
+    };
+    window.addEventListener(MEMBER_DIRECTORY_CHANGED_EVENT, refreshDirectory);
+    return () => window.removeEventListener(MEMBER_DIRECTORY_CHANGED_EVENT, refreshDirectory);
   }, [loadData]);
 
 
@@ -303,26 +372,41 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
   const handleTransferBvGroup = async () => {
     if (!groupTransferDialog) return;
     const { user, group } = groupTransferDialog;
+    const assigned = group.id !== '__unassigned__';
+    const snapshot = users.find(candidate =>
+      memberIdentityKeys(user).some(key => memberIdentityKeys(candidate).includes(key))
+    );
+    const assignment: PendingGroupAssignment = {
+      groupId: assigned ? group.id : '',
+      groupIds: assigned ? [group.id, group.groupId].filter(Boolean) : [],
+      groupName: assigned ? group.groupName : '',
+      member: assigned,
+    };
+    for (const key of memberIdentityKeys(user)) pendingGroupAssignments.current.set(key, assignment);
+    // Show the selected group before the directory reload returns. A reload
+    // that still has the previous response cannot put "Unassigned" back.
+    setUsers(current => mergePendingGroupAssignments(current, pendingGroupAssignments.current));
     try {
       const result = await transferBvGroupMember({
         userId: user.id || user.userId,
-        groupId: group.id === '__unassigned__' ? null : (group.id || group.groupId),
+        groupId: assigned ? (group.id || group.groupId) : null,
       });
-      setUsers(previous => previous.map(candidate =>
-        (user.id && candidate.id === user.id) || candidate.userId === user.userId
-          ? {
-              ...candidate,
-              isBvMember: group.id !== '__unassigned__',
-              bvGroupId: result.groupId || null,
-              bvGroupName: result.groupName || null,
-            }
-          : candidate
-      ));
-      toast.success(group.id === '__unassigned__'
-        ? `${user.fullName} is now unassigned from all Reading Groups`
-        : `${user.fullName} is now a member of ${result.groupName || group.groupName}`);
+      if (result.groupId && !assignment.groupIds.includes(result.groupId)) assignment.groupIds.push(result.groupId);
+      if (result.groupName) assignment.groupName = result.groupName;
+      setUsers(current => mergePendingGroupAssignments(current, pendingGroupAssignments.current));
+      toast.success(assigned
+        ? `${user.fullName} is now a member of ${result.groupName || group.groupName}`
+        : `${user.fullName} is now unassigned from all Reading Groups`);
       await loadData(true);
     } catch (error: any) {
+      for (const key of memberIdentityKeys(user)) {
+        if (pendingGroupAssignments.current.get(key) === assignment) pendingGroupAssignments.current.delete(key);
+      }
+      setUsers(current => mergePendingGroupAssignments(current.map(candidate =>
+        snapshot && memberIdentityKeys(user).some(key => memberIdentityKeys(candidate).includes(key))
+          ? snapshot
+          : candidate
+      ), pendingGroupAssignments.current));
       toast.error(error?.message || 'Failed to change the Reading Group');
       throw error;
     }
@@ -679,6 +763,14 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
 
   useEffect(() => { setPage(1); }, [search, guideFilter, ashrayFilter, residentFilter, sortKey, sortDir]);
   const pageSize = mobile ? 10 : 50;
+  useEffect(() => {
+    const id = revealMemberId.current;
+    if (!id) return;
+    const index = filtered.findIndex(user => user.userId === id || user.id === id);
+    if (index < 0) return;
+    revealMemberId.current = null;
+    setPage(Math.floor(index / pageSize) + 1);
+  }, [filtered, pageSize]);
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const currentPage = Math.min(page, pageCount);
   const pageUsers = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
@@ -861,15 +953,20 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                     return group.isActive !== false && (!groupSegment || !memberSegment || groupSegment === memberSegment);
                   });
                   const currentBvGroup = availableBvGroups.find(group =>
-                    group.id === (u as any).bvGroupId || group.groupId === (u as any).bvGroupId
+                    group.id === (u as any).bvGroupId ||
+                    group.groupId === (u as any).bvGroupId ||
+                    (!!(u as any).bvGroupName && group.groupName === (u as any).bvGroupName)
                   );
                   const userRole = String((u as any).role || '').trim().replace(/[\s-]+/g, '_').toUpperCase();
                   const isRgf = !!((u as any).isBvFacilitator || (u as any).isBvsl || ['RGF', 'BVSL', 'FACILITATOR'].includes(userRole));
                   const isSupervisor = !!((u as any).isBvSupervisor || (u as any).isBvMentor || ['SUPERVISOR', 'BV_SUPERVISOR', 'MENTOR'].includes(userRole));
                   const isRgsf = !!((u as any).isBvSubFacilitator || ['RGSF', 'SUB_FACILITATOR'].includes(userRole));
+                  const identity = [u.id, u.userId, (u as any).userDbId, (u as any).email]
+                    .filter(Boolean)
+                    .map(value => String(value).toLowerCase());
                   const roleGroup = isRgf
                     ? availableBvGroups.find(group => (group.facilitatorIds || []).some(ref =>
-                        [u.id, u.userId, (u as any).email].filter(Boolean).map(value => String(value).toLowerCase()).includes(String(ref).toLowerCase())
+                        identity.includes(String(ref).toLowerCase())
                       ))
                     : currentBvGroup;
                   const isRoleGroupLocked = isRgf || isSupervisor || isRgsf;

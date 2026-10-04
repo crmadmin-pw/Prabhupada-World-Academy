@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroupMembers, BvGroupRequests, BvGroups, AppError } from '@/lib/backend-sdk';
+import { publishCollectionRevision } from '../lib/publishUsersRevision';
 
 export default createEndpoint({
   description: 'Request to join a BV group — prevents joining more than one group',
@@ -10,10 +11,16 @@ export default createEndpoint({
     const uid = context.user!.id;
 
     // Resolve custom groupId to DB UUID
-    const groupRecord = await BvGroups.findOne({
+    let groupRecord = await BvGroups.findOne({
       filters: { groupId: input.groupId },
       fields: ['id', 'groupName', 'isActive'],
     });
+    if (!groupRecord) {
+      groupRecord = await BvGroups.findOne({
+        id: input.groupId,
+        fields: ['id', 'groupName', 'isActive'],
+      });
+    }
     if (!groupRecord) throw new AppError({ code: 'NOT_FOUND', message: 'Group not found' });
     if (!groupRecord.isActive) throw new AppError({ code: 'BAD_REQUEST', message: 'Group is no longer active' });
 
@@ -50,7 +57,7 @@ export default createEndpoint({
       });
     }
 
-    await BvGroupRequests.create({
+    const created = await BvGroupRequests.create({
       record: {
         group: groupDbId,
         user: uid,
@@ -58,6 +65,7 @@ export default createEndpoint({
         requestedAt: new Date().toISOString(),
       },
     });
+    await publishCollectionRevision('BvGroupRequests', created?.id);
     return { success: true, alreadyMember: false, alreadyRequested: false, groupName: groupRecord.groupName };
   },
 });

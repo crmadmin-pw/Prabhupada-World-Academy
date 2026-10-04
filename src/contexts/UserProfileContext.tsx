@@ -113,6 +113,7 @@ function buildProfile(userObj: any): ProfileData {
     bvRegistrationStatus: userObj.bvRegistrationStatus ?? null,
     bvGroupId: userObj.bvGroupId ?? null,
     bvGroupName: userObj.bvGroupName ?? null,
+    bvReportingFacilitatorName: userObj.bvReportingFacilitatorName ?? null,
     pendingAshrayNoticeStatus: userObj.pendingAshrayNoticeStatus ?? null,
     pendingAshrayNoticeLevel: userObj.pendingAshrayNoticeLevel ?? null,
     ashrayNoticeAcknowledged: !!(userObj.ashrayNoticeAcknowledged),

@@ -24,6 +24,10 @@ export async function registerRealtimeQuery(
     'isBvAdmin', 'isBvSuperAdmin', 'isBvSupervisor', 'isBvMentor', 'isBvFacilitator',
     'isBvSubFacilitator', 'isBvsl', 'isSadhanaMentor', 'isServiceAllocator',
     'isCleanlinessManager', 'isFolkLead', 'isTripCoordinator',
+    'isBvMember', 'bvGroupId', 'bvGroupName',
+    'pendingRoleNotice', 'pendingBvGroupAssignmentNotice', 'pendingBvGroupRemovalNotice',
+    'pendingBvApprovalNotice', 'pendingBvRejectionNotice', 'roleNoticeAcknowledged',
+    'pendingAshrayNoticeStatus', 'pendingAshrayNoticeLevel', 'ashrayNoticeAcknowledged',
   ] } }];
   const token = digest(stableValue([user.uid, endpoint, queryInput]));
   // Pagination and request deduplication can capture the same dependency

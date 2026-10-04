@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { getScopedHierarchyUserIds, isUserInHierarchy } from '../lib/hierarchyUtils';
-import { createEndpoint, BvMemberRegistrations, BvGroupMembers, Users, AppError } from '@/lib/backend-sdk';
+import { createEndpoint, BvMemberRegistrations, BvGroupMembers, BvGroupRequests, BvGroups, Users, AppError } from '@/lib/backend-sdk';
 import { getGuideScope, isUserInGuideScope } from '../lib/guideScope';
 
 const formatPhone = (phone?: string) => {
@@ -118,6 +118,73 @@ export default createEndpoint({
       }
     } catch (e) {}
 
+    // "Request to Join" writes BvGroupRequests, not a registration form.
+    // Role assignment sets isBvMember without placing the person in a group,
+    // so a supervisor's request must still reach this admin queue.
+    try {
+      const { records: joinRequests } = await BvGroupRequests.findAll({
+        filters: { status: 'Pending' },
+        fields: ['id', 'user', 'group', 'requestedAt', 'status'],
+        limit: 200,
+      }).catch(() => ({ records: [] }));
+      const firstRef = (value: unknown) => Array.isArray(value) ? value[0] : value;
+      const requestUserIds = [...new Set(joinRequests.map(request => firstRef(request.user)).filter(Boolean).map(String))];
+      const requestGroupIds = [...new Set(joinRequests.map(request => firstRef(request.group)).filter(Boolean).map(String))];
+      const missingUserIds = requestUserIds.filter(id => !userMap[id]);
+      if (missingUserIds.length > 0) {
+        const [{ records: byId }, { records: byUserId }] = await Promise.all([
+          Users.findAll({ filters: { id: { in: missingUserIds } }, limit: 200 }).catch(() => ({ records: [] })),
+          Users.findAll({ filters: { userId: { in: missingUserIds } }, limit: 200 }).catch(() => ({ records: [] })),
+        ]);
+        [...(byId || []), ...(byUserId || [])].forEach(u => {
+          if (u.id) userMap[u.id] = u;
+          if (u.userId) userMap[u.userId] = u;
+          if (u.email) userMap[u.email.toLowerCase()] = u;
+        });
+      }
+      const groupMap: Record<string, any> = {};
+      if (requestGroupIds.length > 0) {
+        const [{ records: groupsById }, { records: groupsByGroupId }] = await Promise.all([
+          BvGroups.findAll({ filters: { id: { in: requestGroupIds } }, fields: ['id', 'groupId', 'groupName', 'segment'], limit: 200 }).catch(() => ({ records: [] })),
+          BvGroups.findAll({ filters: { groupId: { in: requestGroupIds } }, fields: ['id', 'groupId', 'groupName', 'segment'], limit: 200 }).catch(() => ({ records: [] })),
+        ]);
+        [...(groupsById || []), ...(groupsByGroupId || [])].forEach(group => {
+          if (group.id) groupMap[group.id] = group;
+          if (group.groupId) groupMap[group.groupId] = group;
+        });
+      }
+      const existingApplicants = new Set(records.flatMap(registration => [
+        registration.userId, registration.userDbId, (registration.email || '').toLowerCase(),
+      ]).filter(Boolean).map(String));
+      for (const request of joinRequests) {
+        const uid = String(firstRef(request.user) || '');
+        const gid = String(firstRef(request.group) || '');
+        const applicant = userMap[uid];
+        const group = groupMap[gid];
+        const applicantKeys = [uid, applicant?.id, applicant?.userId, (applicant?.email || '').toLowerCase()].filter(Boolean).map(String);
+        if (applicantKeys.some(key => existingApplicants.has(key))) continue;
+        const isPw = !!(applicant?.isPrabhupadaWorldUser) || applicant?.segment === 'PW' || group?.segment === 'PW';
+        records.push({
+          id: request.id,
+          source: 'group-join',
+          userId: applicant?.userId || uid,
+          userDbId: applicant?.id || uid,
+          email: applicant?.email || '',
+          fullName: applicant?.fullName || applicant?.email || 'Devotee',
+          phone: formatPhone(applicant?.phone),
+          status: 'Pending Approval',
+          submittedAt: request.requestedAt || new Date().toISOString(),
+          segment: isPw ? 'PW' : (applicant?.segment || group?.segment || 'FOLK'),
+          isPrabhupadaWorldUser: isPw,
+          requestedGroupId: group?.id || gid,
+          requestedGroupName: group?.groupName || '',
+          guide: applicant?.guide,
+          selectedGuideId: applicant?.selectedGuideId,
+        });
+        applicantKeys.forEach(key => existingApplicants.add(key));
+      }
+    } catch (e) {}
+
     // Membership is the definitive approval state. Query only identifiers in
     // the pending queue (in Firestore-safe batches) instead of reading the
     // entire group-members collection on every admin dashboard refresh.
@@ -178,17 +245,17 @@ export default createEndpoint({
       // hierarchy still scopes FOLK and non-admin callers.
       if (!(targetSegment === 'PW' && isPwAdminUser && isPwUser) &&
         !isUserInHierarchy(requestUser, hierarchy)) return false;
-      // A successful assignment or rejection is definitive. Do not show an old duplicate
-      // registration record as pending after the member has joined a group or been rejected.
+      // A reading-group membership or a finished decision is definitive.
+      // isBvMember is also set when a Supervisor (or another role) is assigned,
+      // before that person has joined any group, so it must not hide the request.
       const registrationIdentities = [r.userId, r.userDbId, u?.id, u?.userId]
         .filter(Boolean)
         .map(String);
-      if (
-        u?.isBvMember ||
+      if (registrationIdentities.some(identity => memberIdentities.has(identity))) return false;
+      if (r.source !== 'group-join' && (
         u?.bvRegistrationStatus === 'Approved' ||
-        u?.bvRegistrationStatus === 'Rejected' ||
-        registrationIdentities.some(identity => memberIdentities.has(identity))
-      ) return false;
+        u?.bvRegistrationStatus === 'Rejected'
+      )) return false;
 
       if (targetSegment === 'PW') {
         return isPwUser; // PW Admin / Super Admin sees ONLY Prabhupada World registrations

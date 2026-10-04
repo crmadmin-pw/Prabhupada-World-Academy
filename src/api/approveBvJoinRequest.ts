@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroupRequests, BvGroupMembers, AppError } from '@/lib/backend-sdk';
 import { serverCacheInvalidate } from '../lib/serverCache';
+import { publishCollectionRevision } from '../lib/publishUsersRevision';
 
 export default createEndpoint({
   description: 'Approve or reject a BV group join request',
@@ -33,7 +34,7 @@ export default createEndpoint({
 
     if (input.action === 'approve') {
       const groupId = Array.isArray(request.group) ? request.group[0] : request.group as string;
-      await BvGroupMembers.create({
+      const membership = await BvGroupMembers.create({
         record: {
           user: requestUserId,
           group: groupId,
@@ -41,6 +42,7 @@ export default createEndpoint({
           joinedAt: new Date().toISOString(),
         },
       });
+      await publishCollectionRevision('BvGroupMembers', membership?.id);
 
       const Users = (await import('@/lib/backend-sdk')).Users;
       await Users.update({
@@ -52,6 +54,7 @@ export default createEndpoint({
     // Bust member-list and group-list caches — membership changed.
     serverCacheInvalidate('bvslMembers:');
     serverCacheInvalidate('allBvGroupsAdmin:');
+    await publishCollectionRevision('BvGroupRequests', id, { status: 'Pending' });
     return { success: true, message: `Join request ${input.action === 'approve' ? 'approved' : 'rejected'}` };
   },
 });

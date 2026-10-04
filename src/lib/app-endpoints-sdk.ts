@@ -5,6 +5,9 @@ import { auth } from './app-auth-sdk';
 import type { z } from 'zod';
 import {
   isReadOnlyEndpoint,
+  directoryReads,
+  membershipCountAdjustment,
+  membershipCountReads,
   REALTIME_INVALIDATION_EVENT,
   realtimeChannelsForEndpoint,
   type RealtimeChannel,
@@ -206,9 +209,10 @@ export function receiveEndpointRevision(token: string, version: string): void {
   invalidateEndpointQueryKeys(keys);
 }
 
-export function invalidateEndpointQueryKeys(keys: string[]): void {
+export function invalidateEndpointQueryKeys(keys: string[], extra?: Record<string, unknown>): void {
   const affected = keys.filter(key => queryMetadata.has(key));
-  if (!affected.length) return;
+  const membership = extra?.membership;
+  if (!affected.length && !membership) return;
   for (const key of affected) {
     queryVersions.set(key, (queryVersions.get(key) || 0) + 1);
     const cached = clientCache.get(key);
@@ -221,8 +225,18 @@ export function invalidateEndpointQueryKeys(keys: string[]): void {
       keys: affected,
       endpoints: [...new Set(affected.map(key => queryMetadata.get(key)!.name))],
       channels: [...new Set(affected.flatMap(key => queryMetadata.get(key)!.channels))],
+      ...extra,
     },
   }));
+}
+
+function invalidateCachedEndpoints(names: readonly string[], extra?: Record<string, unknown>): void {
+  if (!names.length && !extra) return;
+  const wanted = new Set(names);
+  invalidateEndpointQueryKeys(
+    [...queryMetadata.keys()].filter(key => wanted.has(queryMetadata.get(key)?.name || '')),
+    extra,
+  );
 }
 
 export function endpointCacheTtl(name: string): number {
@@ -357,6 +371,13 @@ async function invokeEndpoint(name: string, input: any): Promise<any> {
       throw Object.assign(new Error(errorData.message || 'API request failed'), { status: res.status });
     }
     const data = await res.json();
+    if (!isQuery) {
+      const membership = membershipCountAdjustment(name, input);
+      invalidateCachedEndpoints(
+        [...membershipCountReads(name, input), ...directoryReads(name)],
+        membership ? { membership } : undefined,
+      );
+    }
     const token = res.headers.get('X-Realtime-Token');
     const readVersion = res.headers.get('X-Realtime-Version') || '';
     if (isQuery && generation === cacheGeneration && queryMetadata.get(cacheKey)?.epoch === epoch && token && readVersion) {
