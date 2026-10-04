@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { toast } from 'sonner';
 import { Loader2, Users, CheckCircle2, Clock, Leaf, Phone, HeartHandshake, BookOpen, Calendar, Building } from 'lucide-react';
 import { getPendingBvRegistrations, approveAndAssignBvMember, getBvslGroups, getAllBvGroupsAdmin, rejectBvRegistration, approveBvJoinRequest, getClientCachedQuery } from '@/lib/app-endpoints-sdk';
-import { getBvGroupAssignmentOptions, isBvGroupActive, isBvGroupTimeMatch } from '@/lib/bvGroupAssignment';
+import { getBvGroupAssignmentOptions, isBvGroupActive } from '@/lib/bvGroupAssignment';
 import { publishMemberDirectoryChange } from '@/lib/memberDirectorySync';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 
@@ -393,15 +393,17 @@ export default function SuperBvRegistrationsTab({
               </div>
 
               <div className="space-y-1.5 min-w-0">
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <label className="text-sm font-semibold">Select Reading Group <span className="text-muted-foreground font-normal">(optional)</span></label>
-                  <button
-                    type="button"
-                    onClick={() => setShowAllGroups(true)}
-                    className="text-xs text-primary font-semibold underline hover:opacity-90 shrink-0"
-                  >
-                    Show all groups
-                  </button>
+                  <label className="flex items-center gap-1.5 text-xs font-semibold text-primary cursor-pointer select-none shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={showAllGroups}
+                      onChange={(e) => setShowAllGroups(e.target.checked)}
+                      className="rounded border-gray-300 text-primary focus:ring-primary h-3.5 w-3.5"
+                    />
+                    <span>Show all groups</span>
+                  </label>
                 </div>
 
                 {filteredGroups.length === 0 ? (
@@ -424,8 +426,10 @@ export default function SuperBvRegistrationsTab({
                             : undefined}
                         </SelectValue>
                       </SelectTrigger>
-                      <SelectContent className="max-w-lg">
-                        <SelectItem value={SHOW_ALL_GROUPS}>Show all groups</SelectItem>
+                      <SelectContent alignItemWithTrigger={false} className="max-w-lg">
+                        {!showAllGroups && (
+                          <SelectItem value={SHOW_ALL_GROUPS}>Show all groups</SelectItem>
+                        )}
                         {filteredGroups.map(g => (
                           <SelectItem key={g.id} value={g.id} disabled={!isBvGroupActive(g)}>
                             {g.groupName} {g.meetingTime ? `[${g.meetingTime}]` : ''} (RGF: {g.bvslName || g.bvslLeaderName || 'Unassigned'}){!isBvGroupActive(g) ? ' — Inactive (activate before assigning)' : ''}

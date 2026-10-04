@@ -167,7 +167,9 @@ export default function PwQuizPanel({ mode }: { mode: 'admin' | 'facilitator' })
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold text-sm truncate">{quiz.title}</span>
-                      {selectedGroup ? (
+                      {!quiz.isActive ? (
+                        <Badge variant="outline" className="text-xs">Draft</Badge>
+                      ) : selectedGroup ? (
                         <Badge variant="outline" className="text-xs">
                           {quiz.isActiveForGroup ? 'On for this group' : 'Off for this group'}
                         </Badge>

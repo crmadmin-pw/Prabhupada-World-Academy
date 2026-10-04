@@ -108,6 +108,7 @@ export function QuizEditor({
     return [emptyQuestion()];
   });
   const [saving, setSaving] = useState(false);
+  const [saveMode, setSaveMode] = useState<'draft' | 'publish' | null>(null);
   const [loadingQuiz, setLoadingQuiz] = useState(!!editingQuiz);
   const [loadError, setLoadError] = useState('');
   const [expandedQ, setExpandedQ] = useState<string>(questions[0]?.id || '');
@@ -208,7 +209,7 @@ export function QuizEditor({
     toast.error(`Quiz was not saved. ${message}`, { duration: VALIDATION_TOAST_MS });
   };
 
-  const handleSave = async () => {
+  const handleSave = async (publish = isActive) => {
     if (!title.trim()) return rejectSave('A quiz title is required');
     const questionsToSave = questions.filter(question => !isBlankQuestion(question));
     if (!questionsToSave.length) return rejectSave('Add at least one question');
@@ -231,6 +232,7 @@ export function QuizEditor({
       }
     }
     setSaveError(null);
+    setSaveMode(department === 'PW' ? (publish ? 'publish' : 'draft') : null);
     setSaving(true);
     try {
       await createBvQuiz({
@@ -240,10 +242,10 @@ export function QuizEditor({
         description,
         groupId: department === 'PW' ? undefined : (groupId || undefined),
         questions: questionsToSave,
-        isActive,
+        isActive: department === 'PW' ? publish : isActive,
         quizDate,
       });
-      toast.success(editingQuiz ? 'Quiz updated!' : 'Quiz created!');
+      toast.success(department === 'PW' ? (publish ? 'Quiz saved' : 'Quiz saved as draft') : (editingQuiz ? 'Quiz updated!' : 'Quiz created!'));
       onSaved();
     } catch (e: any) {
       const message = e.message || 'Failed to save quiz';
@@ -251,6 +253,7 @@ export function QuizEditor({
       toast.error(`Quiz was not saved. ${message}`, { duration: VALIDATION_TOAST_MS });
     } finally {
       setSaving(false);
+      setSaveMode(null);
     }
   };
 
@@ -276,16 +279,29 @@ export function QuizEditor({
           <ArrowLeft className="w-4 h-4 mr-1" /> Back
         </Button>
         <div className="flex items-center gap-3">
-          {department !== 'PW' && (
-            <div className="flex items-center gap-2">
-              <Switch id="quiz-active" checked={isActive} onCheckedChange={setIsActive} />
-              <Label htmlFor="quiz-active" className="text-sm">Active</Label>
-            </div>
+          {department === 'PW' ? (
+            <>
+              <Button variant="outline" onClick={() => handleSave(false)} disabled={saving} size="sm">
+                {saveMode === 'draft' && <Loader2 className="w-4 h-4 animate-spin mr-1" />}
+                Save as draft
+              </Button>
+              <Button onClick={() => handleSave(true)} disabled={saving} size="sm">
+                {saveMode === 'publish' && <Loader2 className="w-4 h-4 animate-spin mr-1" />}
+                Publish
+              </Button>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-2">
+                <Switch id="quiz-active" checked={isActive} onCheckedChange={setIsActive} />
+                <Label htmlFor="quiz-active" className="text-sm">Active</Label>
+              </div>
+              <Button onClick={() => handleSave()} disabled={saving} size="sm">
+                {saving && <Loader2 className="w-4 h-4 animate-spin mr-1" />}
+                {editingQuiz ? 'Update Quiz' : 'Publish Quiz'}
+              </Button>
+            </>
           )}
-          <Button onClick={handleSave} disabled={saving} size="sm">
-            {saving && <Loader2 className="w-4 h-4 animate-spin mr-1" />}
-            {editingQuiz ? 'Update Quiz' : department === 'PW' ? 'Create Quiz' : 'Publish Quiz'}
-          </Button>
         </div>
       </div>
 
