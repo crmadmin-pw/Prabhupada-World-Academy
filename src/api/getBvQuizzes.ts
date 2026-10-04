@@ -4,8 +4,8 @@ import {
   canManageQuizContent,
   findScopedQuizGroup,
   getQuizGroupsForUser,
+  canTurnPwQuizOnForGroup,
   isPwQuizContentManager,
-  isPwQuizFacilitator,
   legacyQuizMatchesGroup,
   pwQuizEnabledForGroup,
   quizGroupAliases,
@@ -140,7 +140,7 @@ export default createEndpoint({
 
 async function listPwQuizzes(user: any, groupId?: string) {
   const canManageContent = isPwQuizContentManager(user);
-  const canToggleGroups = canManageContent || isPwQuizFacilitator(user);
+  const canToggleGroups = canTurnPwQuizOnForGroup(user);
   if (!canManageContent && !canToggleGroups) {
     throw new AppError({ code: 'FORBIDDEN', message: 'Quiz management access is required' });
   }

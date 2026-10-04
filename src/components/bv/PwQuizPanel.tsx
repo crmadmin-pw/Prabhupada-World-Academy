@@ -26,6 +26,7 @@ type QuizListItem = {
   submissionCount: number;
   createdAt: string;
   quizDate?: string;
+  activeGroupCount?: number;
 };
 
 type QuizGroup = { id: string; groupName: string };
@@ -154,7 +155,7 @@ export default function PwQuizPanel({ mode }: { mode: 'admin' | 'facilitator' })
           <BookOpen className="w-10 h-10 mx-auto mb-3 opacity-30" />
           <p className="font-medium">No quizzes yet</p>
           <p className="text-sm mt-1">
-            {canManageContent ? 'Create a quiz for Prabhupada World facilitators to turn on.' : 'An admin has not published any quizzes yet.'}
+            {canManageContent ? 'Create a quiz for Prabhupada World facilitators to turn on.' : 'An admin has not created any quizzes yet.'}
           </p>
         </div>
       ) : (
@@ -166,12 +167,15 @@ export default function PwQuizPanel({ mode }: { mode: 'admin' | 'facilitator' })
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold text-sm truncate">{quiz.title}</span>
-                      <Badge variant={quiz.isActive ? 'default' : 'outline'} className="text-xs">
-                        {quiz.isActive ? 'Published' : 'Unpublished'}
-                      </Badge>
-                      {selectedGroup && (
+                      {selectedGroup ? (
                         <Badge variant="outline" className="text-xs">
                           {quiz.isActiveForGroup ? 'On for this group' : 'Off for this group'}
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-xs">
+                          {(quiz.activeGroupCount || 0) > 0
+                            ? `On for ${quiz.activeGroupCount} ${(quiz.activeGroupCount || 0) === 1 ? 'group' : 'groups'}`
+                            : 'Not on for any group'}
                         </Badge>
                       )}
                     </div>

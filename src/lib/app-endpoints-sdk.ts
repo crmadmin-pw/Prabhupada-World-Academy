@@ -8,6 +8,7 @@ import {
   directoryReads,
   membershipCountAdjustment,
   membershipCountReads,
+  quizReads,
   REALTIME_INVALIDATION_EVENT,
   realtimeChannelsForEndpoint,
   type RealtimeChannel,
@@ -374,7 +375,7 @@ async function invokeEndpoint(name: string, input: any): Promise<any> {
     if (!isQuery) {
       const membership = membershipCountAdjustment(name, input);
       invalidateCachedEndpoints(
-        [...membershipCountReads(name, input), ...directoryReads(name)],
+        [...membershipCountReads(name, input), ...directoryReads(name), ...quizReads(name)],
         membership ? { membership } : undefined,
       );
     }

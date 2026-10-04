@@ -139,6 +139,22 @@ export function directoryReads(endpoint: string): readonly string[] {
   return DIRECTORY_MUTATIONS.has(endpoint) ? DIRECTORY_READS : [];
 }
 
+const QUIZ_MUTATIONS = new Set(['createBvQuiz', 'deleteBvQuiz', 'setBvQuizGroupActive']);
+const QUIZ_READS = [
+  'getBvQuizDetail',
+  'getBvQuizzes',
+  'getBvQuizSubmissions',
+  'getMyBvQuizSubmissionReview',
+  'getMyBvQuizSubmissions',
+] as const;
+
+/** Quiz writes must refresh the editor and lists immediately. A realtime
+ * revision can arrive after the admin reopens the quiz and would otherwise
+ * restore the pre-save copy from cache. */
+export function quizReads(endpoint: string): readonly string[] {
+  return QUIZ_MUTATIONS.has(endpoint) ? QUIZ_READS : [];
+}
+
 export function membershipCountReads(endpoint: string, input?: unknown): readonly string[] {
   if (!MEMBERSHIP_MUTATIONS.has(endpoint)) return [];
   const record = input && typeof input === 'object' ? input as { groupId?: unknown; action?: unknown } : undefined;

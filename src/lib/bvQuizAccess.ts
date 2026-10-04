@@ -72,6 +72,11 @@ export function isPwQuizFacilitator(user: QuizAccessUser | null | undefined): bo
     role === 'BVSL' || role === 'RGF' || role === 'FACILITATOR';
 }
 
+/** Turning a quiz on for a reading group belongs only to that group's facilitator. */
+export function canTurnPwQuizOnForGroup(user: QuizAccessUser | null | undefined): boolean {
+  return isPwQuizFacilitator(user) && !isPwQuizContentManager(user);
+}
+
 export function readActiveGroupIds(quiz: any): string[] {
   const raw = quiz?.activeGroupIds;
   if (Array.isArray(raw)) return raw.map((value: unknown) => String(value)).filter(Boolean);

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  canTurnPwQuizOnForGroup,
   isPwQuizContentManager,
   isPwQuizFacilitator,
   pwQuizEnabledForGroup,
@@ -19,6 +20,9 @@ test('Prabhupada World admins can author quizzes and facilitators cannot', () =>
   assert.equal(isPwQuizFacilitator({ ...active, segment: 'PW', role: 'USER', isBvFacilitator: true }), true);
   assert.equal(isPwQuizFacilitator({ ...active, segment: 'PW', role: 'RGSF', isBvSubFacilitator: true }), false);
   assert.equal(isPwQuizFacilitator({ ...active, segment: 'FOLK', role: 'USER', isBvFacilitator: true }), false);
+  assert.equal(canTurnPwQuizOnForGroup({ ...active, segment: 'PW', role: 'USER', isBvFacilitator: true }), true);
+  assert.equal(canTurnPwQuizOnForGroup({ ...active, segment: 'PW', role: 'ADMIN', isBvAdmin: true }), false);
+  assert.equal(canTurnPwQuizOnForGroup({ ...active, segment: 'PW', role: 'SUPER_ADMIN', isBvSuperAdmin: true, isBvFacilitator: true }), false);
 });
 
 test('a quiz stays hidden until the facilitator turns that group on', () => {

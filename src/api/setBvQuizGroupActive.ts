@@ -3,8 +3,7 @@ import { createEndpoint, BvQuizzes, AppError } from '@/lib/backend-sdk';
 import {
   findScopedQuizGroup,
   getQuizGroupsForUser,
-  isPwQuizContentManager,
-  isPwQuizFacilitator,
+  canTurnPwQuizOnForGroup,
   readActiveGroupIds,
   resolveQuizDepartment,
   withGroupActivation,
@@ -25,8 +24,8 @@ export default createEndpoint({
   }),
   execute: async ({ input, context }) => {
     if (!context.user) throw new AppError({ code: 'UNAUTHORIZED', message: 'Authentication required' });
-    if (!isPwQuizContentManager(context.user) && !isPwQuizFacilitator(context.user)) {
-      throw new AppError({ code: 'FORBIDDEN', message: 'Only a Prabhupada World facilitator or admin can turn a quiz on for a group' });
+    if (!canTurnPwQuizOnForGroup(context.user)) {
+      throw new AppError({ code: 'FORBIDDEN', message: 'Only a reading group facilitator can turn a quiz on for a group' });
     }
 
     const quiz = await BvQuizzes.findOne({ id: input.quizId });

@@ -265,6 +265,56 @@ export default function BvRegistrationModal({ open, onOpenChange, onSuccess, seg
               </div>
 
               <div className="space-y-1.5">
+                <Label htmlFor="dob">Date of Birth *</Label>
+                <Input
+                  id="dob"
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="DD/MM/YYYY"
+                  value={dob}
+                  onChange={handleDobChange}
+                  maxLength={10}
+                  required
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Gender *</Label>
+                <Select value={gender} onValueChange={(val: any) => val && setGender(val)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Male">Male</SelectItem>
+                    <SelectItem value="Female">Female</SelectItem>
+                    <SelectItem value="Other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="occupation">Occupation *</Label>
+                <Input
+                  id="occupation"
+                  value={occupation}
+                  onChange={e => setOccupation(e.target.value.replace(/[^a-zA-Z\s.-]/g, ''))}
+                  placeholder="e.g. Software Engineer / Student"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1.5 md:col-span-2">
+                <Label htmlFor="companyName">Company / Institution Name *</Label>
+                <Input
+                  id="companyName"
+                  value={companyName}
+                  onChange={e => setCompanyName(e.target.value.replace(/[^a-zA-Z\s.-]/g, ''))}
+                  placeholder="e.g. Infosys / ABC College"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1.5">
                 <Label>Phone Number *</Label>
                 <div className="flex gap-2">
                   <Input
@@ -306,56 +356,6 @@ export default function BvRegistrationModal({ open, onOpenChange, onSuccess, seg
                     required
                   />
                 </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="dob">Date of Birth *</Label>
-                <Input
-                  id="dob"
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="DD/MM/YYYY"
-                  value={dob}
-                  onChange={handleDobChange}
-                  maxLength={10}
-                  required
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label>Gender *</Label>
-                <Select value={gender} onValueChange={(val: any) => val && setGender(val)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Male">Male</SelectItem>
-                    <SelectItem value="Female">Female</SelectItem>
-                    <SelectItem value="Other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="occupation">Occupation *</Label>
-                <Input
-                  id="occupation"
-                  value={occupation}
-                  onChange={e => setOccupation(e.target.value.replace(/[^a-zA-Z\s.-]/g, ''))}
-                  placeholder="e.g. Software Engineer / Student"
-                  required
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="companyName">Company / Institution Name *</Label>
-                <Input
-                  id="companyName"
-                  value={companyName}
-                  onChange={e => setCompanyName(e.target.value.replace(/[^a-zA-Z\s.-]/g, ''))}
-                  placeholder="e.g. Infosys / ABC College"
-                  required
-                />
               </div>
             </div>
 

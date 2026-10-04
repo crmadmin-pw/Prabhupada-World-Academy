@@ -360,8 +360,9 @@ export async function POST(
     if (endpointConfig.inputSchema) {
       const parseResult = endpointConfig.inputSchema.safeParse(body);
       if (!parseResult.success) {
+        const issue = parseResult.error.issues[0]?.message;
         return NextResponse.json(
-          { message: 'Validation failed', errors: parseResult.error.errors },
+          { message: issue ? `Validation failed: ${issue}` : 'Validation failed', errors: parseResult.error.issues },
           { status: 400 }
         );
       }

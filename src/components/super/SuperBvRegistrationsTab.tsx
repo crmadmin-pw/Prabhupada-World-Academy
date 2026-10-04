@@ -12,6 +12,8 @@ import { getBvGroupAssignmentOptions, isBvGroupActive, isBvGroupTimeMatch } from
 import { publishMemberDirectoryChange } from '@/lib/memberDirectorySync';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 
+const SHOW_ALL_GROUPS = '__show_all_groups__';
+
 const normalizeSegment = (value: unknown): 'PW' | 'FOLK' | undefined => {
   const normalized = String(value || '').trim().toUpperCase().replace(/[\s_-]+/g, '');
   if (normalized === 'FOLK') return 'FOLK';
@@ -50,10 +52,9 @@ export default function SuperBvRegistrationsTab({
   // confirms that the registration has left the pending queue.
   const resolvedRegistrationIdsRef = useRef<Set<string>>(new Set());
 
-  // Start with the applicant's time-matched active group. "Show all groups
-  // anyway" exposes every department group, including inactive ones as
-  // disabled options so the list is complete without allowing an accidental
-  // assignment to a disabled reading group.
+  // Start with the applicant's time-matched active group. "Show all groups"
+  // stays available even when a time already matches, and exposes every
+  // department group, including inactive ones as disabled options.
   // Some older Super Guide-created groups do not carry complete segment
   // metadata, so applying the segment filter after this explicit action can
   // incorrectly hide otherwise valid groups from the dropdown.
@@ -392,24 +393,30 @@ export default function SuperBvRegistrationsTab({
               </div>
 
               <div className="space-y-1.5 min-w-0">
-                <label className="text-sm font-semibold">Select Reading Group <span className="text-muted-foreground font-normal">(optional)</span></label>
+                <div className="flex items-center justify-between gap-3">
+                  <label className="text-sm font-semibold">Select Reading Group <span className="text-muted-foreground font-normal">(optional)</span></label>
+                  <button
+                    type="button"
+                    onClick={() => setShowAllGroups(true)}
+                    className="text-xs text-primary font-semibold underline hover:opacity-90 shrink-0"
+                  >
+                    Show all groups
+                  </button>
+                </div>
 
                 {filteredGroups.length === 0 ? (
-                  <div className="text-xs border border-amber-200 bg-amber-50/50 text-amber-800 rounded p-3 space-y-1.5">
-                    <p>No active Reading Groups match this devotee's preferred time slot (<strong>{selectedReg.timePreference}</strong>).</p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowAllGroups(true);
-                      }}
-                      className="text-xs text-primary font-semibold underline hover:opacity-90 block"
-                    >
-                      Show all groups anyway
-                    </button>
+                  <div className="text-xs border border-amber-200 bg-amber-50/50 text-amber-800 rounded p-3">
+                    <p>No active Reading Groups match this devotee's preferred time slot (<strong>{selectedReg.timePreference}</strong>). Use Show all groups to choose another slot.</p>
                   </div>
                 ) : (
                   <>
-                    <Select value={targetGroupId || undefined} onValueChange={(val: string | null) => val && setTargetGroupId(val)}>
+                    <Select value={targetGroupId || undefined} onValueChange={(val: string | null) => {
+                      if (!val || val === SHOW_ALL_GROUPS) {
+                        if (val === SHOW_ALL_GROUPS) setShowAllGroups(true);
+                        return;
+                      }
+                      setTargetGroupId(val);
+                    }}>
                       <SelectTrigger className="w-full min-w-0 max-w-full overflow-hidden">
                         <SelectValue placeholder="Select group..." className="truncate min-w-0">
                           {selectedGroup
@@ -418,6 +425,7 @@ export default function SuperBvRegistrationsTab({
                         </SelectValue>
                       </SelectTrigger>
                       <SelectContent className="max-w-lg">
+                        <SelectItem value={SHOW_ALL_GROUPS}>Show all groups</SelectItem>
                         {filteredGroups.map(g => (
                           <SelectItem key={g.id} value={g.id} disabled={!isBvGroupActive(g)}>
                             {g.groupName} {g.meetingTime ? `[${g.meetingTime}]` : ''} (RGF: {g.bvslName || g.bvslLeaderName || 'Unassigned'}){!isBvGroupActive(g) ? ' — Inactive (activate before assigning)' : ''}

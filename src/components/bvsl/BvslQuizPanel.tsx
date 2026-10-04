@@ -64,6 +64,13 @@ function missingTextMessage(numbers: number[]) {
   return `${labels.slice(0, -1).join(', ')}, and ${labels[labels.length - 1]} are missing question text`;
 }
 
+function isBlankQuestion(question: QuizQuestion) {
+  return !question.text.trim()
+    && !question.explanation.trim()
+    && question.correctAnswers.length === 0
+    && question.options.every(option => !option.trim());
+}
+
 function emptyQuestion(): QuizQuestion {
   return {
     id: generateId(),
@@ -91,7 +98,7 @@ export function QuizEditor({
 }) {
   const [title, setTitle] = useState(editingQuiz?.title || 'Untitled Quiz');
   const [description, setDescription] = useState(editingQuiz?.description || '');
-  const [isActive, setIsActive] = useState(editingQuiz?.isActive ?? true);
+  const [isActive, setIsActive] = useState(editingQuiz?.isActive ?? department !== 'PW');
   const [quizDate, setQuizDate] = useState(() => {
     if (editingQuiz?.quizDate) return editingQuiz.quizDate;
     return format(new Date(), 'yyyy-MM-dd');
@@ -108,8 +115,10 @@ export function QuizEditor({
 
   useEffect(() => {
     if (!editingQuiz) return;
+    let cancelled = false;
     getBvQuizDetail({ quizId: editingQuiz.id, department, includeAnswers: true })
       .then((quiz: any) => {
+        if (cancelled) return;
         setTitle(quiz.title || 'Untitled Quiz');
         setDescription(quiz.description || '');
         setIsActive(quiz.isActive === true);
@@ -126,11 +135,15 @@ export function QuizEditor({
         setExpandedQ(loadedQuestions[0]?.id || '');
       })
       .catch((error: any) => {
+        if (cancelled) return;
         const message = error.message || 'Failed to load quiz for editing';
         setLoadError(message);
         toast.error(message);
       })
-      .finally(() => setLoadingQuiz(false));
+      .finally(() => {
+        if (!cancelled) setLoadingQuiz(false);
+      });
+    return () => { cancelled = true; };
   }, [department, editingQuiz?.id]);
 
   const addQuestion = () => {
@@ -197,12 +210,15 @@ export function QuizEditor({
 
   const handleSave = async () => {
     if (!title.trim()) return rejectSave('A quiz title is required');
-    const missingText = questions.flatMap((q, i) => (q.text.trim() ? [] : [i + 1]));
+    const questionsToSave = questions.filter(question => !isBlankQuestion(question));
+    if (!questionsToSave.length) return rejectSave('Add at least one question');
+    if (questionsToSave.length !== questions.length) setQuestions(questionsToSave);
+    const missingText = questionsToSave.flatMap((q, i) => (q.text.trim() ? [] : [i + 1]));
     if (missingText.length) {
-      return rejectSave(missingTextMessage(missingText), questions[missingText[0] - 1].id);
+      return rejectSave(missingTextMessage(missingText), questionsToSave[missingText[0] - 1].id);
     }
-    for (let i = 0; i < questions.length; i++) {
-      const q = questions[i];
+    for (let i = 0; i < questionsToSave.length; i++) {
+      const q = questionsToSave[i];
       const label = `Q${i + 1}`;
       if (q.options.some(o => !o.trim())) {
         return rejectSave(`${label} has an empty option`, q.id);
@@ -223,7 +239,7 @@ export function QuizEditor({
         title,
         description,
         groupId: department === 'PW' ? undefined : (groupId || undefined),
-        questions,
+        questions: questionsToSave,
         isActive,
         quizDate,
       });
@@ -260,13 +276,15 @@ export function QuizEditor({
           <ArrowLeft className="w-4 h-4 mr-1" /> Back
         </Button>
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <Switch id="quiz-active" checked={isActive} onCheckedChange={setIsActive} />
-            <Label htmlFor="quiz-active" className="text-sm">{department === 'PW' ? 'Published' : 'Active'}</Label>
-          </div>
+          {department !== 'PW' && (
+            <div className="flex items-center gap-2">
+              <Switch id="quiz-active" checked={isActive} onCheckedChange={setIsActive} />
+              <Label htmlFor="quiz-active" className="text-sm">Active</Label>
+            </div>
+          )}
           <Button onClick={handleSave} disabled={saving} size="sm">
             {saving && <Loader2 className="w-4 h-4 animate-spin mr-1" />}
-            {editingQuiz ? 'Update Quiz' : 'Publish Quiz'}
+            {editingQuiz ? 'Update Quiz' : department === 'PW' ? 'Create Quiz' : 'Publish Quiz'}
           </Button>
         </div>
       </div>
