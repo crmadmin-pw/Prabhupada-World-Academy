@@ -55,6 +55,15 @@ function generateId() {
   return Math.random().toString(36).slice(2, 10);
 }
 
+const VALIDATION_TOAST_MS = 8000;
+
+function missingTextMessage(numbers: number[]) {
+  const labels = numbers.map(n => `Q${n}`);
+  if (labels.length === 1) return `${labels[0]} is missing question text`;
+  if (labels.length === 2) return `${labels[0]} and ${labels[1]} are missing question text`;
+  return `${labels.slice(0, -1).join(', ')}, and ${labels[labels.length - 1]} are missing question text`;
+}
+
 function emptyQuestion(): QuizQuestion {
   return {
     id: generateId(),
@@ -95,6 +104,7 @@ export function QuizEditor({
   const [loadingQuiz, setLoadingQuiz] = useState(!!editingQuiz);
   const [loadError, setLoadError] = useState('');
   const [expandedQ, setExpandedQ] = useState<string>(questions[0]?.id || '');
+  const [saveError, setSaveError] = useState<{ questionId?: string; message: string } | null>(null);
 
   useEffect(() => {
     if (!editingQuiz) return;
@@ -159,6 +169,13 @@ export function QuizEditor({
     updateQuestion(qId, { options: opts, correctAnswers: correct });
   };
 
+  const focusQuestion = (id: string) => {
+    setExpandedQ(id);
+    requestAnimationFrame(() => {
+      document.getElementById(`quiz-q-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  };
+
   const toggleCorrect = (qId: string, idx: number) => {
     const q = questions.find(q => q.id === qId);
     if (!q) return;
@@ -172,13 +189,32 @@ export function QuizEditor({
     }
   };
 
+  const rejectSave = (message: string, questionId?: string) => {
+    setSaveError({ message, questionId });
+    if (questionId) focusQuestion(questionId);
+    toast.error(`Quiz was not saved. ${message}`, { duration: VALIDATION_TOAST_MS });
+  };
+
   const handleSave = async () => {
-    if (!title.trim()) return toast.error('Quiz title is required');
-    for (const q of questions) {
-      if (!q.text.trim()) return toast.error('All questions must have text');
-      if (q.options.some(o => !o.trim())) return toast.error('All options must be filled in');
-      if (q.correctAnswers.length === 0) return toast.error('Each question must have at least one correct answer');
+    if (!title.trim()) return rejectSave('A quiz title is required');
+    const missingText = questions.flatMap((q, i) => (q.text.trim() ? [] : [i + 1]));
+    if (missingText.length) {
+      return rejectSave(missingTextMessage(missingText), questions[missingText[0] - 1].id);
     }
+    for (let i = 0; i < questions.length; i++) {
+      const q = questions[i];
+      const label = `Q${i + 1}`;
+      if (q.options.some(o => !o.trim())) {
+        return rejectSave(`${label} has an empty option`, q.id);
+      }
+      if (q.type === 'multiple' && q.correctAnswers.length < 2) {
+        return rejectSave(`${label} needs at least two correct answers. Click the circle beside each right option.`, q.id);
+      }
+      if (q.correctAnswers.length === 0) {
+        return rejectSave(`${label} needs a correct answer. Click the circle beside the right option.`, q.id);
+      }
+    }
+    setSaveError(null);
     setSaving(true);
     try {
       await createBvQuiz({
@@ -194,7 +230,9 @@ export function QuizEditor({
       toast.success(editingQuiz ? 'Quiz updated!' : 'Quiz created!');
       onSaved();
     } catch (e: any) {
-      toast.error(e.message || 'Failed to save quiz');
+      const message = e.message || 'Failed to save quiz';
+      setSaveError({ message });
+      toast.error(`Quiz was not saved. ${message}`, { duration: VALIDATION_TOAST_MS });
     } finally {
       setSaving(false);
     }
@@ -232,6 +270,12 @@ export function QuizEditor({
           </Button>
         </div>
       </div>
+
+      {saveError && (
+        <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-950">
+          Quiz was not saved. {saveError.message}
+        </div>
+      )}
 
       {/* Quiz Title & Description */}
       <Card className="border-l-4 border-l-primary">
@@ -282,6 +326,7 @@ export function QuizEditor({
           onRemoveOption={idx => removeOption(q.id, idx)}
           onToggleCorrect={idx => toggleCorrect(q.id, idx)}
           onRemove={questions.length > 1 ? () => removeQuestion(q.id) : undefined}
+          issue={saveError?.questionId === q.id ? saveError.message : undefined}
         />
       ))}
 
@@ -300,7 +345,7 @@ export function QuizEditor({
 // --- Question Card ---
 function QuestionCard({
   question, index, isExpanded, onToggle, onUpdate,
-  onAddOption, onUpdateOption, onRemoveOption, onToggleCorrect, onRemove,
+  onAddOption, onUpdateOption, onRemoveOption, onToggleCorrect, onRemove, issue,
 }: {
   question: QuizQuestion;
   index: number;
@@ -312,9 +357,10 @@ function QuestionCard({
   onRemoveOption: (idx: number) => void;
   onToggleCorrect: (idx: number) => void;
   onRemove?: () => void;
+  issue?: string;
 }) {
   return (
-    <Card className={`transition-shadow ${isExpanded ? 'shadow-md' : ''}`}>
+    <Card id={`quiz-q-${question.id}`} className={`transition-shadow ${isExpanded ? 'shadow-md' : ''} ${issue ? 'border-rose-300' : ''}`}>
       <CardContent className="pt-3 pb-3">
         {/* Collapsed header */}
         <div
@@ -329,7 +375,7 @@ function QuestionCard({
           <Badge variant="outline" className="text-xs shrink-0">
             {question.type === 'single' ? 'Single' : 'Multiple'}
           </Badge>
-          {question.correctAnswers.length > 0 && (
+          {(question.type === 'multiple' ? question.correctAnswers.length >= 2 : question.correctAnswers.length > 0) && (
             <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
           )}
           {isExpanded ? <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />}
@@ -365,7 +411,12 @@ function QuestionCard({
 
             {/* Options */}
             <div className="space-y-2">
-              <p className="text-xs text-muted-foreground font-medium">Options — click ✓ to mark correct answer(s)</p>
+              <p className="text-xs text-muted-foreground font-medium">
+                {question.type === 'multiple'
+                  ? 'Options — mark at least two correct answers'
+                  : 'Options — click ✓ to mark the correct answer'}
+              </p>
+              {issue && <p className="text-xs font-medium text-rose-700">{issue}</p>}
               {question.options.map((opt, idx) => {
                 const isCorrect = question.correctAnswers.includes(idx);
                 return (

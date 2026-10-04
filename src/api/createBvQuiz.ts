@@ -19,6 +19,9 @@ const questionSchema = z.object({
   if (question.type === 'single' && question.correctAnswers.length !== 1) {
     context.addIssue({ code: 'custom', path: ['correctAnswers'], message: 'Single-answer questions require exactly one correct answer' });
   }
+  if (question.type === 'multiple' && question.correctAnswers.length < 2) {
+    context.addIssue({ code: 'custom', path: ['correctAnswers'], message: 'Multiple-answer questions require at least two correct answers' });
+  }
   if (new Set(question.correctAnswers).size !== question.correctAnswers.length) {
     context.addIssue({ code: 'custom', path: ['correctAnswers'], message: 'Correct answers must be unique' });
   }

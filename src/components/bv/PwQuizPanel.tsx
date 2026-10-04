@@ -102,7 +102,12 @@ export default function PwQuizPanel({ mode }: { mode: 'admin' | 'facilitator' })
         department="PW"
         editingQuiz={editingQuiz}
         onCancel={() => { setView('list'); setEditingQuiz(null); }}
-        onSaved={() => { setView('list'); setEditingQuiz(null); void loadQuizzes(selectedGroupId || undefined); }}
+        onSaved={() => {
+          setView('list');
+          setEditingQuiz(null);
+          const groupId = selectedGroupId && selectedGroupId !== 'ALL' ? selectedGroupId : undefined;
+          void loadQuizzes(groupId);
+        }}
       />
     );
   }

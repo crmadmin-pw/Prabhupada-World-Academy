@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, Users, AppError } from '@/lib/backend-sdk';
 import { serverCacheInvalidate } from '../lib/serverCache';
-import { publishCollectionRevision, publishUsersRevision } from '../lib/publishUsersRevision';
 
 function firstValue(value: unknown): string {
   return Array.isArray(value) ? String(value[0] || '') : String(value || '');
@@ -31,38 +30,40 @@ async function syncAssignedGroupNames(groupKeys: Set<string>, groupName: string)
     users.set(String(user.id), user);
   };
 
-  await Promise.all([...groupKeys].map(async key => {
-    const { records } = await Users.findAll({
-      filters: { bvGroupId: key },
-      fields: ['id', 'bvGroupId', 'bvGroupName'],
-      limit: 2000,
-    }).catch(() => ({ records: [] }));
-    records.forEach(remember);
-  }));
+  const keys = [...groupKeys];
+  const userFields = ['id', 'bvGroupId', 'bvGroupName'];
+  const memberFields = ['id', 'group', 'groupId', 'user', 'userId', 'memberId'];
+  // Look up only this group's members. A department-wide membership scan, and
+  // a second realtime fan-out, kept the rename request spinning. The document
+  // write already refreshes open lists.
+  const [userPages, membershipPages] = await Promise.all([
+    Promise.all(keys.flatMap(key => [
+      Users.findAll({ filters: { bvGroupId: key }, fields: userFields, limit: 500 }).catch(() => ({ records: [] })),
+      Users.findAll({ filters: { bvGroupId: [key] }, fields: userFields, limit: 200 }).catch(() => ({ records: [] })),
+    ])),
+    Promise.all(keys.flatMap(key => (['group', 'groupId'] as const).flatMap(field => [
+      BvGroupMembers.findAll({ filters: { [field]: key }, fields: memberFields, limit: 500 }).catch(() => ({ records: [] })),
+      BvGroupMembers.findAll({ filters: { [field]: [key] }, fields: memberFields, limit: 200 }).catch(() => ({ records: [] })),
+    ]))),
+  ]);
+  userPages.forEach(page => (page.records || []).forEach(remember));
 
-  const { records: memberships } = await BvGroupMembers.findAll({
-    fields: ['id', 'group', 'groupId', 'user', 'userId', 'memberId'],
-    limit: 5000,
-  }).catch(() => ({ records: [] }));
   const memberKeys = new Set<string>();
-  memberships.forEach((membership: any) => {
+  membershipPages.forEach(page => (page.records || []).forEach((membership: any) => {
     if (!groupKeys.has(firstValue(membership.group)) && !groupKeys.has(firstValue(membership.groupId))) return;
     [membership.user, membership.userId, membership.memberId].forEach(value => {
       const key = firstValue(value);
       if (key) memberKeys.add(key);
     });
-  });
+  }));
 
   await Promise.all([...memberKeys].map(async userKey => {
-    const user = await Users.findOne({ id: userKey, fields: ['id', 'bvGroupId', 'bvGroupName'] }).catch(() => null)
-      || await Users.findOne({ filters: { userId: userKey }, fields: ['id', 'bvGroupId', 'bvGroupName'] }).catch(() => null);
+    const user = await Users.findOne({ id: userKey, fields: userFields }).catch(() => null)
+      || await Users.findOne({ filters: { userId: userKey }, fields: userFields }).catch(() => null);
     if (user) remember(user);
   }));
 
-  await Promise.all([...users.values()].map(async user => {
-    await Users.update({ id: user.id, record: { bvGroupName: groupName } });
-    await publishUsersRevision(user.id, user);
-  }));
+  await Promise.all([...users.values()].map(user => Users.update({ id: user.id, record: { bvGroupName: groupName } })));
 }
 
 export default createEndpoint({
@@ -124,7 +125,6 @@ export default createEndpoint({
       serverCacheInvalidate('allBvGroupsAdmin:');
       serverCacheInvalidate('bvslMembers:');
       serverCacheInvalidate('getBvGroupDetail:');
-      await publishCollectionRevision('BvGroups', group.id, group);
     }
 
     return { success: true, groupName: nameChanged ? nextName : previousName };
