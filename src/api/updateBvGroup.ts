@@ -1,27 +1,106 @@
 import { z } from 'zod';
-import { createEndpoint, BvGroups, Users, AppError } from '@/lib/backend-sdk';
+import { createEndpoint, BvGroups, BvGroupMembers, Users, AppError } from '@/lib/backend-sdk';
+import { serverCacheInvalidate } from '../lib/serverCache';
+import { publishCollectionRevision, publishUsersRevision } from '../lib/publishUsersRevision';
+
+function firstValue(value: unknown): string {
+  return Array.isArray(value) ? String(value[0] || '') : String(value || '');
+}
+
+function canRenameReadingGroup(user: any) {
+  const role = String(user?.role || '').trim().replace(/[\s-]+/g, '_').toUpperCase();
+  return !!user?.isBvAdmin || !!user?.isBvSuperAdmin ||
+    ['GUIDE', 'SUPER_GUIDE', 'ADMIN', 'PW_ADMIN', 'SUPER_ADMIN'].includes(role);
+}
+
+function renameStoredInvite(link: string | undefined, previousName: string, nextName: string) {
+  if (!link || !previousName || previousName === nextName) return undefined;
+  const encodedPrevious = encodeURIComponent(previousName);
+  if (encodedPrevious && link.includes(encodedPrevious)) {
+    return link.split(encodedPrevious).join(encodeURIComponent(nextName));
+  }
+  if (link.includes(previousName)) return link.split(previousName).join(nextName);
+  return undefined;
+}
+
+async function syncAssignedGroupNames(groupKeys: Set<string>, groupName: string) {
+  const users = new Map<string, any>();
+  const remember = (user: any) => {
+    const assignedKey = firstValue(user?.bvGroupId);
+    if (!user?.id || !groupKeys.has(assignedKey) || user.bvGroupName === groupName) return;
+    users.set(String(user.id), user);
+  };
+
+  await Promise.all([...groupKeys].map(async key => {
+    const { records } = await Users.findAll({
+      filters: { bvGroupId: key },
+      fields: ['id', 'bvGroupId', 'bvGroupName'],
+      limit: 2000,
+    }).catch(() => ({ records: [] }));
+    records.forEach(remember);
+  }));
+
+  const { records: memberships } = await BvGroupMembers.findAll({
+    fields: ['id', 'group', 'groupId', 'user', 'userId', 'memberId'],
+    limit: 5000,
+  }).catch(() => ({ records: [] }));
+  const memberKeys = new Set<string>();
+  memberships.forEach((membership: any) => {
+    if (!groupKeys.has(firstValue(membership.group)) && !groupKeys.has(firstValue(membership.groupId))) return;
+    [membership.user, membership.userId, membership.memberId].forEach(value => {
+      const key = firstValue(value);
+      if (key) memberKeys.add(key);
+    });
+  });
+
+  await Promise.all([...memberKeys].map(async userKey => {
+    const user = await Users.findOne({ id: userKey, fields: ['id', 'bvGroupId', 'bvGroupName'] }).catch(() => null)
+      || await Users.findOne({ filters: { userId: userKey }, fields: ['id', 'bvGroupId', 'bvGroupName'] }).catch(() => null);
+    if (user) remember(user);
+  }));
+
+  await Promise.all([...users.values()].map(async user => {
+    await Users.update({ id: user.id, record: { bvGroupName: groupName } });
+    await publishUsersRevision(user.id, user);
+  }));
+}
 
 export default createEndpoint({
   description: 'Update a BV group name, description, WhatsApp link, or assigned Sub-Facilitator (RGSF)',
   authenticated: true,
   inputSchema: z.object({
     groupId: z.string(),
-    groupName: z.string().optional(),
+    groupName: z.string().trim().min(1).max(200).optional(),
     description: z.string().optional(),
     whatsAppLink: z.string().optional(),
     subFacilitatorId: z.string().optional(),
     isActive: z.boolean().optional(),
   }),
   outputSchema: z.any(),
-  execute: async ({ input }: any) => {
-    const group = await BvGroups.findOne({ filters: { groupId: input.groupId }, fields: ['id'] })
-      ?? await BvGroups.findOne({ id: input.groupId, fields: ['id'] });
+  execute: async ({ input, context }: any) => {
+    if (input.groupName !== undefined && !canRenameReadingGroup(context?.user)) {
+      throw new AppError({ code: 'FORBIDDEN', message: 'Only an Admin or Super Admin can rename a reading group.' });
+    }
+
+    const groupFields = ['id', 'groupId', 'groupName', 'whatsAppLink'];
+    const group = await BvGroups.findOne({ filters: { groupId: input.groupId }, fields: groupFields })
+      ?? await BvGroups.findOne({ id: input.groupId, fields: groupFields });
     if (!group) throw new AppError({ code: 'NOT_FOUND', message: 'Group not found' });
 
     const updates: any = {};
-    if (input.groupName !== undefined) updates.groupName = input.groupName;
+    const previousName = String(group.groupName || '');
+    const nextName = input.groupName === undefined ? undefined : String(input.groupName).trim();
+    if (input.groupName !== undefined && !nextName) {
+      throw new AppError({ code: 'BAD_REQUEST', message: 'Please enter a group name' });
+    }
+    const nameChanged = nextName !== undefined && nextName !== previousName;
+    if (nameChanged) updates.groupName = nextName;
     if (input.description !== undefined) updates.description = input.description;
     if (input.whatsAppLink !== undefined) updates.whatsAppLink = input.whatsAppLink;
+    else if (nameChanged) {
+      const nextLink = renameStoredInvite(group.whatsAppLink, previousName, nextName);
+      if (nextLink) updates.whatsAppLink = nextLink;
+    }
     if (input.isActive !== undefined) updates.isActive = input.isActive;
     if (input.subFacilitatorId !== undefined) {
       updates.subFacilitatorId = input.subFacilitatorId;
@@ -36,8 +115,18 @@ export default createEndpoint({
       }
     }
 
-    await BvGroups.update({ id: group.id, record: updates });
+    if (Object.keys(updates).length > 0) {
+      await BvGroups.update({ id: group.id, record: updates });
+    }
+    if (nameChanged) {
+      const groupKeys = new Set([group.id, group.groupId].filter(Boolean).map(value => String(value)));
+      await syncAssignedGroupNames(groupKeys, nextName);
+      serverCacheInvalidate('allBvGroupsAdmin:');
+      serverCacheInvalidate('bvslMembers:');
+      serverCacheInvalidate('getBvGroupDetail:');
+      await publishCollectionRevision('BvGroups', group.id, group);
+    }
 
-    return { success: true };
+    return { success: true, groupName: nameChanged ? nextName : previousName };
   },
 });

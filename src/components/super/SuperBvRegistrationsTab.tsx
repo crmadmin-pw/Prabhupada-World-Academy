@@ -9,6 +9,8 @@ import { toast } from 'sonner';
 import { Loader2, Users, CheckCircle2, Clock, Leaf, Phone, HeartHandshake, BookOpen, Calendar, Building } from 'lucide-react';
 import { getPendingBvRegistrations, approveAndAssignBvMember, getBvslGroups, getAllBvGroupsAdmin, rejectBvRegistration, approveBvJoinRequest, getClientCachedQuery } from '@/lib/app-endpoints-sdk';
 import { getBvGroupAssignmentOptions, isBvGroupActive, isBvGroupTimeMatch } from '@/lib/bvGroupAssignment';
+import { publishMemberDirectoryChange } from '@/lib/memberDirectorySync';
+import { useUserProfile } from '@/contexts/UserProfileContext';
 
 const normalizeSegment = (value: unknown): 'PW' | 'FOLK' | undefined => {
   const normalized = String(value || '').trim().toUpperCase().replace(/[\s_-]+/g, '');
@@ -29,6 +31,7 @@ export default function SuperBvRegistrationsTab({
   /** Updates the dashboard badge immediately after a successful decision. */
   onRegistrationResolved?: (registrationId: string) => void;
 }) {
+  const { profile } = useUserProfile();
   const cachedRegs = getClientCachedQuery('getPendingBvRegistrations', { segment });
   const cachedGroups = getClientCachedQuery('getBvslGroups', { bvslId: 'ALL' });
   const hasCache = cachedRegs !== null && (isSuperGuide ? cachedGroups !== null : false);
@@ -47,10 +50,10 @@ export default function SuperBvRegistrationsTab({
   // confirms that the registration has left the pending queue.
   const resolvedRegistrationIdsRef = useRef<Set<string>>(new Set());
 
-  // Start with the applicant's time-matched active group. The explicit
-  // "Show all groups" control exposes every department group, including
-  // inactive ones as disabled options so the list is complete without allowing
-  // an accidental assignment to a disabled reading group.
+  // Start with the applicant's time-matched active group. "Show all groups
+  // anyway" exposes every department group, including inactive ones as
+  // disabled options so the list is complete without allowing an accidental
+  // assignment to a disabled reading group.
   // Some older Super Guide-created groups do not carry complete segment
   // metadata, so applying the segment filter after this explicit action can
   // incorrectly hide otherwise valid groups from the dropdown.
@@ -198,6 +201,22 @@ export default function SuperBvRegistrationsTab({
       resolvedRegistrationIdsRef.current.add(String(selectedReg.id));
       setRegistrations(current => current.filter(item => item.id !== selectedReg.id));
       onRegistrationResolved?.(String(selectedReg.id));
+      const approvedSegment = normalizeSegment(selectedReg.segment || segment);
+      publishMemberDirectoryChange({
+        userId: selectedReg.userDbId || selectedReg.userId,
+        fullName: selectedReg.fullName,
+        email: selectedReg.email,
+        phone: [selectedReg.phoneCountryCode, selectedReg.phone].filter(Boolean).join(' '),
+        segment: approvedSegment || null,
+        isPrabhupadaWorldUser: approvedSegment === 'PW' || selectedReg.isPrabhupadaWorldUser === true,
+        ashrayLevel: selectedReg.ashrayLevel,
+        status: 'ACTIVE',
+        guideId: profile?.userId || guideId || null,
+        guideName: profile?.fullName || null,
+        bvReportingAdminId: profile?.userId || null,
+        bvReportingAdminName: profile?.fullName || null,
+        bvRegistrationStatus: 'Approved',
+      });
       toast.success(`Approved ${selectedReg.fullName}. Group assignment can be completed later.`);
       setSelectedReg(null);
       setTargetGroupId('');
@@ -373,20 +392,7 @@ export default function SuperBvRegistrationsTab({
               </div>
 
               <div className="space-y-1.5 min-w-0">
-                <div className="flex flex-wrap justify-between items-center gap-2">
-                  <label className="text-sm font-semibold">Select Reading Group <span className="text-muted-foreground font-normal">(optional)</span></label>
-                  {selectedReg.timePreference && selectedReg.timePreference !== 'Flexible' && (
-                    <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={showAllGroups}
-                        onChange={(e) => setShowAllGroups(e.target.checked)}
-                        className="rounded border-gray-300 text-primary focus:ring-primary h-3.5 w-3.5"
-                      />
-                      <span>Show all groups</span>
-                    </label>
-                  )}
-                </div>
+                <label className="text-sm font-semibold">Select Reading Group <span className="text-muted-foreground font-normal">(optional)</span></label>
 
                 {filteredGroups.length === 0 ? (
                   <div className="text-xs border border-amber-200 bg-amber-50/50 text-amber-800 rounded p-3 space-y-1.5">

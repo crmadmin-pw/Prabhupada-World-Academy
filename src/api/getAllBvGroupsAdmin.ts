@@ -33,6 +33,7 @@ export default createEndpoint({
       bvslLeaderId: z.string().nullable(),
       bvslLeaderName: z.string().nullable(),
       bvslName: z.string().nullable(),
+      meetingTime: z.string().nullable(),
     })),
     error: z.string().nullable(),
   }),
@@ -215,6 +216,7 @@ async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<strin
         bvslLeaderId: bvslUser?.userId || bvslDbId || null,
         bvslLeaderName: bvslName,
         bvslName,
+        meetingTime: g.meetingTime || g.preferredTimeSlot || null,
       };
     });
 

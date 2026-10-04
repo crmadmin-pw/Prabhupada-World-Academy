@@ -45,7 +45,7 @@ const users = [admin, otherAdmin, superAdmin, supervisor, rgf, rgsf,
   member('folk-outsider', { segment: 'FOLK', guide: admin.id }),
 ];
 const groups = [
-  { id: 'group-a', groupId: 'public-group-a', groupName: 'Group A', segment: 'PW', isActive: true, bvslLeader: rgf.userId },
+  { id: 'group-a', groupId: 'public-group-a', groupName: 'Group A', segment: 'PW', isActive: true, bvslLeader: rgf.userId, meetingTime: '7:45 PM – 8:15 PM (Everyday)' },
   { id: 'group-b', groupId: 'public-group-b', groupName: 'Group B', segment: 'PW', isActive: true, bvslLeader: 'public-rgf-b', guide: otherAdmin.id },
 ];
 const memberships = [
@@ -291,6 +291,7 @@ test('preaching analytics aggregate only the current admin hierarchy and super a
   assert.ok(JSON.stringify(all).includes('rgf-b'));
   const management = await call(getAllBvGroupsAdmin, { guideId: otherAdmin.id });
   assert.deepEqual(management.groups.map((group: any) => group.groupName), ['Group A']);
+  assert.equal(management.groups[0].meetingTime, '7:45 PM – 8:15 PM (Everyday)');
 });
 
 test('FOLK administrators cannot read another guide users or residency statistics', async t => {

@@ -57,7 +57,7 @@ export default createEndpoint({
     const joinToken = generateToken();
     const appUrl = process.env.APP_APP_URL ?? 'https://pwac.app';
     const joinUrl = `${appUrl}/join-group?token=${joinToken}`;
-    const whatsAppLink = `https://wa.me/?text=${encodeURIComponent(`🙏 Hare Krishna!\n\nYou are invited to join *${input.groupName}*.\n\nClick to join: ${joinUrl}`)}`;
+    const whatsAppLink = `https://wa.me/?text=${encodeURIComponent(`Hare Krishna!\n\nYou are invited to join *${input.groupName}*.\n\nClick to join: ${joinUrl}`)}`;
 
     const group = await BvGroups.create({
       record: {

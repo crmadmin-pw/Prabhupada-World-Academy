@@ -4,6 +4,14 @@
 // ══════════════════════════════════════════════════════════════════════════════
 
 /**
+ * Name as it should appear in a WhatsApp group invitation.
+ * A trailing "Prabhu" honorific is omitted: "A B C Prabhu" becomes "A B C".
+ */
+export function nameForWhatsAppInvite(name: string | null | undefined): string {
+  return String(name ?? '').replace(/\s+prabhu$/i, '').trim();
+}
+
+/**
  * Normalize a stored phone number to a consistent E.164-style digits-only string
  * with the country code included (no leading +).
  *

@@ -149,7 +149,7 @@ export default function BvGroupCreateDialog({ open, onClose, onCreated, guideId,
             <Input value={description} onChange={e => setDescription(e.target.value)} placeholder="Optional description" />
           </div>
           <div>
-            <label className="text-sm font-medium mb-1 block">Meeting Time Preference *</label>
+            <label className="text-sm font-medium mb-1 block">Meeting time *</label>
             {timeSelectionMode === 'select' ? (
               <Select
                 value={meetingTime || undefined}

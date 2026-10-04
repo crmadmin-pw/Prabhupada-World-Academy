@@ -64,11 +64,32 @@ export default createEndpoint({
 
     let userRecord = await Users.findOne({
       id: userId,
-      fields: ['id', 'userId', 'isPrabhupadaWorldUser', 'segment', 'guide', 'selectedGuideId', 'guideName'],
+      fields: ['id', 'userId', 'email', 'isPrabhupadaWorldUser', 'segment', 'guide', 'selectedGuideId', 'guideName', 'bvRegistrationStatus'],
     }).catch(() => null);
 
     if (!userRecord && userEmail) {
       userRecord = await Users.findOne({ filters: { email: userEmail } }).catch(() => null);
+    }
+
+    const priorRegistrationIds = [...new Set([
+      `BVREG-${userId}`,
+      userRecord?.id ? `BVREG-${userRecord.id}` : '',
+      userRecord?.userId ? `BVREG-${userRecord.userId}` : '',
+    ].filter(Boolean))];
+    let priorRegistration = null;
+    for (const registrationId of priorRegistrationIds) {
+      priorRegistration = await BvMemberRegistrations.findOne({ id: registrationId }).catch(() => null);
+      if (priorRegistration) break;
+    }
+    if (!priorRegistration && userEmail) {
+      priorRegistration = await BvMemberRegistrations.findOne({ filters: { email: userEmail } }).catch(() => null);
+    }
+    const priorStatus = String(userRecord?.bvRegistrationStatus || priorRegistration?.status || '').trim().toLowerCase();
+    if (priorRegistration || ['pending approval', 'pending', 'awaiting approval', 'approved', 'rejected'].includes(priorStatus)) {
+      throw new AppError({
+        code: 'CONFLICT',
+        message: 'You have already submitted the Bhakti Vriksha form. It cannot be filled again.',
+      });
     }
 
     const isPwByGuide = !!(userRecord?.isPrabhupadaWorldUser) || userRecord?.segment === 'PW';
@@ -107,13 +128,7 @@ export default createEndpoint({
       submittedAt: new Date().toISOString(),
     };
 
-    // Upsert registration in database
-    const existing = await BvMemberRegistrations.findOne({ id: registrationRecord.id }).catch(() => null);
-    if (existing) {
-      await BvMemberRegistrations.update({ id: registrationRecord.id, record: registrationRecord });
-    } else {
-      await BvMemberRegistrations.create({ record: registrationRecord });
-    }
+    await BvMemberRegistrations.create({ record: registrationRecord });
 
     // Update main User record with spiritual & profile fields
     const targetId = userRecord?.id || userId;

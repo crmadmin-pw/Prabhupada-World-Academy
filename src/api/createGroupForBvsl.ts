@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, Users, Guides, AppError } from '@/lib/backend-sdk';
+import { nameForWhatsAppInvite } from '@/lib/userUtils';
 
 function generateToken(): string {
   const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
@@ -51,7 +52,8 @@ export default createEndpoint({
 
     const joinToken = generateToken();
     const joinUrl = `${process.env.APP_APP_URL}/join-group?token=${joinToken}`;
-    const inviteText = `🙏 Hare Krishna!\n\nYou are invited to join *${input.groupName}*${bvslUser.fullName ? ` led by *${bvslUser.fullName}*` : ''}.\n\nClick to join: ${joinUrl}`;
+    const leaderName = nameForWhatsAppInvite(bvslUser.fullName);
+    const inviteText = `Hare Krishna!\n\nYou are invited to join *${input.groupName}*${leaderName ? ` led by *${leaderName}*` : ''}.\n\nClick to join: ${joinUrl}`;
 
     const group = await BvGroups.create({
       record: {

@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Loader2, Plus, Users, ShieldCheck, Clock, BookOpen, ChevronRight } from 'lucide-react';
+import { Loader2, Plus, Users, ShieldCheck, Clock, BookOpen, ChevronRight, Pencil } from 'lucide-react';
 import { createBvGroup, getBvslGroups, getAllBvGroupsAdmin, getGuideUsers, updateBvGroup, getClientCachedQuery } from '@/lib/app-endpoints-sdk';
 
 import { useUserProfile } from '@/contexts/UserProfileContext';
@@ -81,6 +81,9 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
   const [newGroupTime, setNewGroupTime] = useState('');
   const [timeSelectionMode, setTimeSelectionMode] = useState<'select' | 'custom'>('select');
   const [creatingGroup, setCreatingGroup] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<{ groupKey: string; groupName: string } | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [renamingGroup, setRenamingGroup] = useState(false);
 
   const loadData = useReactiveLoader(async (read, silent = false) => {
     if (!silent) !read.background && setLoading(true);
@@ -102,6 +105,7 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
           groupId: g.groupId,
           totalSessions: g.totalSessions ?? g.sessionCount ?? 0,
           bvslName: g.bvslName || g.bvslLeaderName || null,
+          meetingTime: g.meetingTime || g.preferredTimeSlot || null,
         })));
         setGuides((scoped.bvsls || []).map((u: any) => ({
           // getAllBvGroupsAdmin returns the facilitator's Users row id in
@@ -199,6 +203,38 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
     }
   };
 
+  const handleRenameGroup = async () => {
+    if (!renameTarget) return;
+    const nextName = renameValue.trim();
+    if (!nextName) {
+      toast.error('Please enter a group name');
+      return;
+    }
+    if (nextName === renameTarget.groupName) {
+      setRenameTarget(null);
+      return;
+    }
+    setRenamingGroup(true);
+    const groupKey = renameTarget.groupKey;
+    setGroups(current => current.map(item =>
+      (item.groupId || item.id) === groupKey ? { ...item, groupName: nextName } : item
+    ));
+    try {
+      await updateBvGroup({ groupId: groupKey, groupName: nextName });
+      toast.success(`Renamed reading group to "${nextName}"`);
+      window.dispatchEvent(new Event('pwa:member-directory-changed'));
+      setRenameTarget(null);
+      loadData();
+    } catch (err: any) {
+      setGroups(current => current.map(item =>
+        (item.groupId || item.id) === groupKey ? { ...item, groupName: renameTarget.groupName } : item
+      ));
+      toast.error(err?.message || 'Failed to rename group');
+    } finally {
+      setRenamingGroup(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="py-12 text-center space-y-3">
@@ -244,6 +280,7 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {visibleGroups.map(group => {
                 const groupId = group.groupId || group.id;
+                const meetingTime = String(group.meetingTime || group.preferredTimeSlot || '').trim();
                 return (
                   <Card
                     key={group.id}
@@ -261,6 +298,19 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
                           </p>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0"
+                            aria-label={`Rename ${group.groupName}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setRenameTarget({ groupKey: groupId, groupName: group.groupName || '' });
+                              setRenameValue(group.groupName || '');
+                            }}
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
                           <Badge variant="outline" className="text-[10px] font-medium bg-muted/50">
                             {group.memberCount} members
                           </Badge>
@@ -269,12 +319,10 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
                       </div>
                     </CardHeader>
                     <CardContent className="p-4 space-y-2 text-xs">
-                      {group.meetingTime && (
-                        <div className="flex items-center gap-1.5 text-muted-foreground">
-                          <Clock className="w-3.5 h-3.5 text-primary" />
-                          <span>{group.meetingTime}</span>
-                        </div>
-                      )}
+                      <div className="flex items-start gap-1.5 text-muted-foreground">
+                        <Clock className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
+                        <span className="leading-snug">{meetingTime || 'Time not set'}</span>
+                      </div>
                       <div className="flex items-center gap-1.5 text-muted-foreground">
                         <BookOpen className="w-3.5 h-3.5 text-orange-500" />
                         <span>{group.totalSessions || 0} sessions held</span>
@@ -333,6 +381,35 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
         </CardContent>
       </Card>
 
+      <Dialog open={!!renameTarget} onOpenChange={(open) => { if (!open && !renamingGroup) setRenameTarget(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="w-5 h-5 text-primary" /> Rename Reading Group
+            </DialogTitle>
+            <DialogDescription>
+              This name is shown on group cards, member profiles, and reports.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5 py-2">
+            <Label className="text-xs font-semibold">Group Name *</Label>
+            <Input
+              value={renameValue}
+              onChange={e => setRenameValue(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') void handleRenameGroup(); }}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameTarget(null)} disabled={renamingGroup}>Cancel</Button>
+            <Button onClick={handleRenameGroup} disabled={renamingGroup || !renameValue.trim()}>
+              {renamingGroup && <Loader2 className="w-4 h-4 animate-spin mr-1" />}
+              Save Name
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Create Reading Group Modal */}
       <Dialog open={createGroupOpen} onOpenChange={(open) => {
         setCreateGroupOpen(open);
@@ -383,7 +460,7 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">Meeting Time Preference *</Label>
+              <Label className="text-xs font-semibold">Meeting time *</Label>
               {timeSelectionMode === 'select' ? (
                 <Select
                   value={newGroupTime || undefined}

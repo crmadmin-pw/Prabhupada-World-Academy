@@ -41,8 +41,19 @@ export default createEndpoint({
 
     if (!guideDbId) return { members: [] };
 
-    const guideRec = await Guides.findOne({ id: guideDbId, fields: ['id', 'segment'] }).catch(() => null);
+    const guideRec = await Guides.findOne({ id: guideDbId, fields: ['id', 'guideId', 'email', 'userId', 'segment'] }).catch(() => null);
     const guideSegment = guideRec?.segment || context.user.segment || 'PW';
+    const guideUser = guideRec?.email
+      ? await Users.findOne({ filters: { email: guideRec.email }, fields: ['id', 'userId', 'email'] }).catch(() => null)
+      : await Users.findOne({ id: input.guideId, fields: ['id', 'userId', 'email'] }).catch(() => null);
+    // Approved members may be linked by a user id rather than the Guides-table
+    // UUID. Match every identity the approving admin can be stored under.
+    const ownerIds = [...new Set(
+      [guideDbId, input.guideId, guideRec?.guideId, guideRec?.email, guideRec?.userId, guideUser?.id, guideUser?.userId, guideUser?.email]
+        .map(value => String(value || '').trim())
+        .filter(Boolean),
+    )];
+    const ownerKeys = new Set(ownerIds.map(value => value.toLowerCase()));
 
     // Fetch all BV groups under this guide to know who's already in a group
     const { records: groups } = await BvGroups.findAll({
@@ -70,14 +81,28 @@ export default createEndpoint({
       }
     }
 
-    const { records: users } = await Users.findAll({
-      filters: { guide: guideDbId, status: 'Active', segment: guideSegment },
-      fields: ['id', 'userId', 'fullName', 'phone', 'ashrayLevel', 'isBvsl'],
+    const memberFields = ['id', 'userId', 'fullName', 'phone', 'ashrayLevel', 'isBvsl', 'guide', 'selectedGuideId', 'bvReportingAdminId'];
+    const linkedPages = await Promise.all(ownerIds.flatMap(ownerId => (
+      ['guide', 'selectedGuideId', 'bvReportingAdminId'] as const
+    ).map(field => Users.findAll({
+      filters: { [field]: ownerId, status: 'Active', segment: guideSegment },
+      fields: memberFields,
       limit: 1000,
-    });
+    }).catch(() => ({ records: [] })))));
+    const usersById = new Map<string, any>();
+    for (const page of linkedPages) {
+      for (const user of page.records || []) if (user?.id) usersById.set(user.id, user);
+    }
+    const users = [...usersById.values()];
 
-    // Include all active users with a userId (residents and non-residents can both be in BV groups)
-    const eligible = users.filter(u => !!u.userId);
+    const reportsToGuide = (user: any) => [user.guide, user.selectedGuideId, user.bvReportingAdminId]
+      .flatMap(value => Array.isArray(value) ? value : [value])
+      .map(value => String(value || '').trim().toLowerCase())
+      .some(value => ownerKeys.has(value));
+
+    // Include every active member of this admin, including people approved
+    // before a Reading Group was chosen.
+    const eligible = users.filter(u => !!u.userId && reportsToGuide(u));
 
     return {
       members: eligible.map(u => ({

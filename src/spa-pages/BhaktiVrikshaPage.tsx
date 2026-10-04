@@ -260,7 +260,7 @@ export default function BhaktiVrikshaPage() {
               </div>
             </CardContent>
           </Card>
-        ) : ((profile as any)?.bvRegistrationStatus === 'Pending Approval' || (profile as any)?.bvRegistrationStatus === 'Pending' || bvStatus?.pendingRequest) ? (
+        ) : (['pending approval', 'pending', 'awaiting approval'].includes(String((profile as any)?.bvRegistrationStatus || '').trim().toLowerCase()) || bvStatus?.pendingRequest) ? (
           <Card className="border-2 border-dashed border-orange-300/80 bg-orange-50/50 dark:bg-orange-950/20">
             <CardContent className="py-8 text-center space-y-3">
               <div className="w-12 h-12 rounded-full bg-orange-100 dark:bg-orange-900/50 flex items-center justify-center mx-auto text-orange-600">
@@ -280,6 +280,27 @@ export default function BhaktiVrikshaPage() {
               <Button size="lg" disabled className="mt-2 font-semibold shadow-sm gap-2 bg-orange-100 text-orange-700 border border-orange-300 dark:bg-orange-900/60 dark:text-orange-200 dark:border-orange-700 cursor-not-allowed opacity-90">
                 <Clock className="w-4 h-4 text-orange-600" /> Pending Approval
               </Button>
+            </CardContent>
+          </Card>
+        ) : String((profile as any)?.bvRegistrationStatus || '').trim().toLowerCase() === 'approved' ? (
+          <Card className="border-l-4 border-l-primary">
+            <CardContent className="pt-4 pb-4">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-bold text-base">Not Assigned Yet</span>
+                <Badge className="bg-green-500 text-xs">Approved</Badge>
+              </div>
+              <p className="text-sm text-muted-foreground mt-2">
+                Your Bhakti Vriksha registration has been approved. The form cannot be filled again. An administrator will assign your Reading Group.
+              </p>
+            </CardContent>
+          </Card>
+        ) : String((profile as any)?.bvRegistrationStatus || '').trim().toLowerCase() === 'rejected' ? (
+          <Card className="border-2 border-dashed border-border bg-muted/30">
+            <CardContent className="py-8 text-center space-y-2">
+              <p className="font-bold text-lg">Bhakti Vriksha form already submitted</p>
+              <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                This form can be filled only once. Your earlier application is closed, so it cannot be submitted again.
+              </p>
             </CardContent>
           </Card>
         ) : (
@@ -359,7 +380,7 @@ export default function BhaktiVrikshaPage() {
         )}
 
         {/* Available Groups (only if not in a group AND no pending request) */}
-        {!bvStatus?.myGroup && !bvStatus?.pendingRequest && (
+        {!bvStatus?.myGroup && !bvStatus?.pendingRequest && !String((profile as any)?.bvRegistrationStatus || '').trim() && (
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <Users className="w-5 h-5 text-primary" />

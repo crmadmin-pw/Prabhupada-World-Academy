@@ -14,6 +14,46 @@ async function findUser(userId: string) {
     || await Users.findOne({ filters: { email: userId } }).catch(() => null);
 }
 
+const MEMBERSHIP_FIELDS = ['id', 'group', 'groupId', 'user', 'userId', 'memberId', 'role'];
+
+/** Membership rows for one person. Indexed lookups cover current ids and the
+ * legacy shapes that store an email or wrap the id in an array. This must not
+ * page through every membership in the department. */
+async function membershipsForUser(user: any) {
+  const keys = [...new Set([
+    user.id, user.userId, user.email, user.uid, user.authUid, user.firebaseUid,
+    user.firebaseUserId, user.firebaseAuthUid, user.authId, user.authUserId,
+    user.firebaseId, user.firebaseAuthId, user.firebase_id,
+  ].flatMap(value => Array.isArray(value) ? value : [value])
+    .map(value => String(value || '').trim())
+    .filter(Boolean))];
+  const fields = ['user', 'userId', 'memberId'] as const;
+  const chunks: string[][] = [];
+  for (let index = 0; index < keys.length; index += 30) chunks.push(keys.slice(index, index + 30));
+  const pages = await Promise.all([
+    ...chunks.flatMap(chunk => fields.map(field => BvGroupMembers.findAll({
+      filters: { [field]: { in: chunk } },
+      fields: MEMBERSHIP_FIELDS,
+      limit: 50,
+    }).catch(() => ({ records: [] as any[] })))),
+    ...keys.flatMap(key => fields.map(field => BvGroupMembers.findAll({
+      filters: { [field]: [key] },
+      fields: MEMBERSHIP_FIELDS,
+      limit: 20,
+    }).catch(() => ({ records: [] as any[] })))),
+  ]);
+  const byId = new Map<string, any>();
+  for (const page of pages) {
+    for (const membership of page.records || []) {
+      const refs = referenceValues([membership.user, membership.userId, membership.memberId]);
+      if (membership?.id && refs.some(ref => keys.some(key => key.toLowerCase() === ref))) {
+        byId.set(String(membership.id), membership);
+      }
+    }
+  }
+  return [...byId.values()];
+}
+
 export default createEndpoint({
   description: 'Move a Bhakti Vriksha member to a specific Reading Group and synchronize their reporting hierarchy.',
   authenticated: true,
@@ -31,28 +71,7 @@ export default createEndpoint({
     const user = await findUser(input.userId);
     if (!user) throw new AppError({ code: 'NOT_FOUND', message: 'Member not found' });
 
-    const memberKeys = new Set([
-      user.id, user.userId, user.email, user.uid, user.authUid, user.firebaseUid,
-      user.firebaseUserId, user.firebaseAuthUid, user.authId, user.authUserId,
-      user.firebaseId, user.firebaseAuthId, user.firebase_id,
-    ].flatMap(referenceValues));
-    // Exact Firestore `in` queries miss mixed-case and array-valued legacy
-    // references. Visit every page so no surviving row can restore membership
-    // when getUserProfile next derives the user's attendance access.
-    const memberships: any[] = [];
-    let offset = 0;
-    while (true) {
-      const page = await BvGroupMembers.findAll({
-        fields: ['id', 'group', 'groupId', 'user', 'userId', 'memberId', 'role'],
-        limit: 500,
-        offset,
-      });
-      memberships.push(...page.records.filter(membership =>
-        referenceValues([membership.user, membership.userId, membership.memberId])
-          .some(ref => memberKeys.has(ref))));
-      if (!page.hasMore) break;
-      offset += page.records.length;
-    }
+    const memberships = await membershipsForUser(user);
 
     if (input.groupId === null) {
       await Promise.all(memberships.map((membership: any) => BvGroupMembers.delete({ id: membership.id })));

@@ -63,9 +63,9 @@ export default function BvGroupAddMembersDialog({ open, onClose, onAdded, groupD
                   <span className="text-sm font-medium">{m.fullName}</span>
                   {m.ashrayLevel && <span className="text-xs text-muted-foreground ml-1.5">{m.ashrayLevel}</span>}
                 </label>
-                {m.existingGroup && (
-                  <Badge variant="secondary" className="text-[10px] shrink-0">{m.existingGroup.groupName}</Badge>
-                )}
+                <Badge variant="secondary" className="text-[10px] shrink-0">
+                  {m.existingGroup?.groupName || 'Unassigned'}
+                </Badge>
               </div>
             ))}
           </div>

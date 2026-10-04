@@ -100,6 +100,7 @@ export default function BvTab({ userId, segment }: Props) {
   // A BV registration can be approved before an administrator assigns a
   // Reading Group. This is an approved state, not a fresh registration.
   const isApprovedAwaitingAssignment = !status?.myGroup && isApproved;
+  const isRejected = normalizedRegistrationStatus === 'rejected';
 
   const attendanceRate = status?.totalSessions && status.totalSessions > 0
     ? Math.round((status.presentCount / status.totalSessions) * 100)
@@ -185,6 +186,15 @@ export default function BvTab({ userId, segment }: Props) {
             <Button size="lg" disabled className="mt-2 font-semibold shadow-sm gap-2 bg-orange-100 text-orange-700 border border-orange-300 dark:bg-orange-900/60 dark:text-orange-200 dark:border-orange-700 cursor-not-allowed opacity-90">
               <Clock className="w-4 h-4 text-orange-600" /> Pending Approval
             </Button>
+          </CardContent>
+        </Card>
+      ) : isRejected ? (
+        <Card className="border-2 border-dashed border-border bg-muted/30">
+          <CardContent className="py-8 text-center space-y-2">
+            <p className="font-bold text-lg">Bhakti Vriksha form already submitted</p>
+            <p className="text-sm text-muted-foreground max-w-md mx-auto">
+              This form can be filled only once. Your earlier application is closed, so it cannot be submitted again.
+            </p>
           </CardContent>
         </Card>
       ) : (

@@ -397,7 +397,9 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
       toast.success(assigned
         ? `${user.fullName} is now a member of ${result.groupName || group.groupName}`
         : `${user.fullName} is now unassigned from all Reading Groups`);
-      await loadData(true);
+      // The selected group is already shown. Refresh the directory behind the
+      // dialog so Confirm is not stuck on the directory request.
+      void loadData(true);
     } catch (error: any) {
       for (const key of memberIdentityKeys(user)) {
         if (pendingGroupAssignments.current.get(key) === assignment) pendingGroupAssignments.current.delete(key);

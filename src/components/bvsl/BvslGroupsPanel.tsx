@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { createBvGroup, updateBvGroup, deleteBvGroup } from '@/lib/endpoints-sdk';
 import type { GetBvslGroupsOutputType } from '@/lib/endpoints-sdk';
 import { useUserProfile } from '@/contexts/UserProfileContext';
+import { nameForWhatsAppInvite } from '@/lib/userUtils';
 
 type Group = GetBvslGroupsOutputType['groups'][0];
 
@@ -260,12 +261,14 @@ export default function BvslGroupsPanel({
                       const joinUrl = g.joinToken
                         ? `${window.location.origin}/join-group?token=${g.joinToken}`
                         : window.location.origin;
+                      const leaderName = nameForWhatsAppInvite(g.bvslName);
+                      const guideName = nameForWhatsAppInvite(g.guideName);
                       const lines = [
-                        `🙏 Hare Krishna!`,
+                        `Hare Krishna!`,
                         ``,
                         `You are invited to join *${g.groupName}* — a Bhakti Vriksha group`,
-                        g.bvslName ? `led by *${g.bvslName}*` : '',
-                        g.guideName ? `under the guidance of *${g.guideName}*.` : '',
+                        leaderName ? `led by *${leaderName}*` : '',
+                        guideName ? `under the guidance of *${guideName}*.` : '',
                         ``,
                         `Click to join: ${joinUrl}`,
                       ].filter(Boolean);

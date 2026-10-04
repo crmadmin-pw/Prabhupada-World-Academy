@@ -48,7 +48,6 @@ export default createEndpoint({
     const clearedMembership = {
       bvGroupId: '',
       bvGroupName: '',
-      bvRegistrationStatus: '',
       isBvMember: false,
       pendingBvApprovalNotice: false,
     };

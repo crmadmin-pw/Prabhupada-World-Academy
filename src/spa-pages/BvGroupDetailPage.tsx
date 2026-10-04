@@ -6,13 +6,15 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DateTimePicker } from '@/components/ui/date-time-picker';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Users, CheckCircle2, Brain, ChevronDown, ChevronUp, Loader2, Trash2 } from 'lucide-react';
+import { ArrowLeft, Users, CheckCircle2, Brain, ChevronDown, ChevronUp, Loader2, Trash2, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
-import { deleteBvGroup, getBvGroupDetail, getBvAttendanceMatrix, getBvQuizSubmissions } from '@/lib/endpoints-sdk';
+import { deleteBvGroup, getBvGroupDetail, getBvAttendanceMatrix, getBvQuizSubmissions, updateBvGroup } from '@/lib/endpoints-sdk';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
@@ -352,6 +354,9 @@ export default function BvGroupDetailPage() {
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const [renaming, setRenaming] = useState(false);
   const isDeletingRef = useRef(false);
 
   const dateRange = useMemo(() => {
@@ -428,6 +433,34 @@ export default function BvGroupDetailPage() {
   const canDeleteGroup = ['GUIDE', 'SUPER_GUIDE', 'ADMIN', 'PW_ADMIN', 'SUPER_ADMIN'].includes(normalizedRole) ||
     !!profile?.isBvAdmin || !!profile?.isBvSuperAdmin;
 
+  const handleRenameGroup = async () => {
+    if (!groupId || !detail) return;
+    const nextName = renameValue.trim();
+    const previousName = detail.group.groupName;
+    if (!nextName) {
+      toast.error('Please enter a group name');
+      return;
+    }
+    if (nextName === previousName) {
+      setRenameOpen(false);
+      return;
+    }
+    setRenaming(true);
+    setDetail(current => current ? { ...current, group: { ...current.group, groupName: nextName } } : current);
+    try {
+      await updateBvGroup({ groupId, groupName: nextName });
+      toast.success(`Renamed reading group to "${nextName}"`);
+      window.dispatchEvent(new Event('pwa:member-directory-changed'));
+      setRenameOpen(false);
+      void load();
+    } catch (error: any) {
+      setDetail(current => current ? { ...current, group: { ...current.group, groupName: previousName } } : current);
+      toast.error(error?.message || 'Failed to rename group');
+    } finally {
+      setRenaming(false);
+    }
+  };
+
   const handleDeleteGroup = async () => {
     if (!groupId || isDeletingRef.current) return;
     isDeletingRef.current = true;
@@ -463,7 +496,18 @@ export default function BvGroupDetailPage() {
           )}
           </div>
           {canDeleteGroup && (
-            <AlertDialog>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setRenameValue(detail.group.groupName || '');
+                  setRenameOpen(true);
+                }}
+              >
+                <Pencil className="mr-2 h-4 w-4" /> Rename
+              </Button>
+              <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="destructive" size="sm" className="shrink-0">
                   <Trash2 className="mr-2 h-4 w-4" /> Delete group
@@ -484,9 +528,34 @@ export default function BvGroupDetailPage() {
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
-            </AlertDialog>
+              </AlertDialog>
+            </div>
           )}
         </div>
+
+        <Dialog open={renameOpen} onOpenChange={(open) => { if (!renaming) setRenameOpen(open); }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Rename Reading Group</DialogTitle>
+              <DialogDescription>
+                This name is shown on group cards, member profiles, and reports.
+              </DialogDescription>
+            </DialogHeader>
+            <Input
+              value={renameValue}
+              onChange={e => setRenameValue(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') void handleRenameGroup(); }}
+              autoFocus
+            />
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setRenameOpen(false)} disabled={renaming}>Cancel</Button>
+              <Button onClick={handleRenameGroup} disabled={renaming || !renameValue.trim()}>
+                {renaming && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Save Name
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <div className={`grid grid-cols-2 ${isFolkGroup ? 'md:grid-cols-3' : ''} gap-3`}>
           <StatCard icon={Users} label="Members" value={detail.members.length} sub="in this group" />

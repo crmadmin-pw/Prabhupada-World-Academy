@@ -114,7 +114,7 @@ export default function BvGroupManagerPanel({ guideId }: Props) {
                         title="WhatsApp Invite"
                         onClick={() => {
                           const url = `${window.location.origin}/join-group?token=${g.joinToken}`;
-                          window.open(`https://wa.me/?text=${encodeURIComponent(`🙏 Hare Krishna!
+                          window.open(`https://wa.me/?text=${encodeURIComponent(`Hare Krishna!
 
 Join *${g.groupName}*: ${url}`)}`, '_blank');
                         }}>

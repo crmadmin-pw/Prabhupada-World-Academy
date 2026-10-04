@@ -15,6 +15,7 @@ export type ApprovedDirectoryMember = {
   sadhanaMentor?: string | null;
   bvReportingAdminId?: string | null;
   bvReportingAdminName?: string | null;
+  bvRegistrationStatus?: string | null;
 };
 
 export const MEMBER_DIRECTORY_CHANGED_EVENT = 'pwa:member-directory-changed';

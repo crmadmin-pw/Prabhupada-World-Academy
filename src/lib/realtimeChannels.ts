@@ -110,6 +110,7 @@ const MEMBERSHIP_MUTATIONS = new Set([
   'removeBvGroupMember',
   'removeGroupMember',
   'transferBvGroupMember',
+  'updateBvGroup',
 ]);
 
 /** Reads that render a reading-group member count. Membership writes refresh
@@ -131,7 +132,7 @@ const MEMBERSHIP_COUNT_READS = [
 /** Approval and Reading Group assignment change the member directory.
  * Invalidate that exact cached read when the mutation commits. Firestore
  * revisions still reconcile it; this does not poll. */
-const DIRECTORY_MUTATIONS = new Set(['approveUser', 'transferBvGroupMember']);
+const DIRECTORY_MUTATIONS = new Set(['approveUser', 'transferBvGroupMember', 'updateBvGroup']);
 const DIRECTORY_READS = ['getGuideUsers'] as const;
 
 export function directoryReads(endpoint: string): readonly string[] {
