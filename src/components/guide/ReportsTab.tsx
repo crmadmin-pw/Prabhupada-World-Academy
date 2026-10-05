@@ -1,4 +1,5 @@
 import FilterPanel from '@/components/mobile/FilterPanel';
+import { mentorReportLocation, mentorReportLocations } from '@/lib/mentorReportLocation';
 // Fix 4: Frontend filtering for residency/level/folk-residency (no re-fetch on filter change)
 // Scoped endpoint cache retains date/report combinations while revalidating.
 import { useEffect, useRef, useState, useMemo } from 'react';
@@ -267,6 +268,7 @@ export default function ReportsTab({ guideId = '', senderName, bvslMode, mentorM
     }
   }, [groupOptions, selectedGroupId]);
 
+  const [mentorLocation, setMentorLocation] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [syncing, setSyncing] = useState(false);
   const [showScholars, setShowScholars] = useState(false);
@@ -296,6 +298,8 @@ export default function ReportsTab({ guideId = '', senderName, bvslMode, mentorM
   useEffect(() => { if (reportQuery.error) toast.error('Failed to load report'); }, [reportQuery.error]);
 
   const residencies = rawReportData?.availableResidencies ?? [];
+  const mentorLocations = mentorReportLocations(rawReportData?.users ?? [], residencies);
+  const selectedMentorLocation = mentorLocations.some(option => option.value === mentorLocation) ? mentorLocation : 'all';
   const availableGuides: { guideId: string; guideName: string }[] = (rawReportData as any)?.availableGuides ?? [];
   const currentGuideId: string | null = (rawReportData as any)?.currentGuideId ?? null;
 
@@ -326,6 +330,8 @@ export default function ReportsTab({ guideId = '', senderName, bvslMode, mentorM
   const clientFilteredUsers = useMemo(() => {
     if (!rawReportData) return [];
     return rawReportData.users.filter(u => {
+      if (mentorMode && !isPw && selectedMentorLocation !== 'all' &&
+        mentorReportLocation(u, residencies).value !== selectedMentorLocation) return false;
       const isScholar = !!(u as any).isTempResident;
       // Scholar-only view: show only scholars
       if (residencyFilter === 'scholar') {
@@ -351,7 +357,7 @@ export default function ReportsTab({ guideId = '', senderName, bvslMode, mentorM
       if (searchQuery && !u.fullName.toLowerCase().includes(searchQuery.toLowerCase())) return false;
       return true;
     });
-  }, [rawReportData, residencyFilter, ashrayLevelFilter, folkResidencyId, searchQuery, showScholars, showMissing, guideFilter, bvslMode]);
+  }, [rawReportData, residencyFilter, ashrayLevelFilter, folkResidencyId, searchQuery, showScholars, showMissing, guideFilter, bvslMode, mentorMode, isPw, selectedMentorLocation, residencies]);
 
   // Compute canonical ranks from the canonical sort order
   const usersForTable = useMemo(() => {
@@ -558,7 +564,11 @@ export default function ReportsTab({ guideId = '', senderName, bvslMode, mentorM
     // Ashray segment
     const ashrayPart = ashrayLevelFilter !== 'all' ? `level-${slug(ashrayLevelFilter)}` : '';
 
-    const parts = ['sadhana-report', datePart, residencyPart, folkPart, groupPart, guidePart, ashrayPart].filter(Boolean);
+    const locationPart = mentorMode && !isPw && selectedMentorLocation !== 'all'
+      ? slug(mentorLocations.find(option => option.value === selectedMentorLocation)?.label || selectedMentorLocation)
+      : '';
+
+    const parts = ['sadhana-report', datePart, residencyPart, locationPart, folkPart, groupPart, guidePart, ashrayPart].filter(Boolean);
     return `${parts.join('-')}.${ext}`;
   };
 
@@ -626,13 +636,16 @@ export default function ReportsTab({ guideId = '', senderName, bvslMode, mentorM
 
   const handleExportImage = () => {
     if (!rawReportData) return;
+    const selectedLocationLabel = mentorLocations.find(option => option.value === selectedMentorLocation)?.label;
     const folkResName = isPw
       ? undefined
       : residencyFilter === 'non_resident'
         ? 'Non-Residents'
-        : folkResidencyId === 'all'
-          ? (residencies.length === 1 ? residencies[0].residencyName : 'All Residencies')
-          : (residencies.find(r => r.residencyId === folkResidencyId)?.residencyName || 'All Residencies');
+        : mentorMode && selectedMentorLocation !== 'all' && selectedLocationLabel
+          ? selectedLocationLabel
+          : folkResidencyId === 'all'
+            ? (residencies.length === 1 ? residencies[0].residencyName : 'All Residencies')
+            : (residencies.find(r => r.residencyId === folkResidencyId)?.residencyName || 'All Residencies');
     const ashrayLabel = ashrayLevelFilter === 'all' ? 'All Ashray Levels' : ashrayLevelFilter;
     let dateLabel = '';
     if (reportType === 'daily') {
@@ -719,6 +732,26 @@ export default function ReportsTab({ guideId = '', senderName, bvslMode, mentorM
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-2 flex-wrap">
                 <CardTitle className="text-base">Sadhana Report</CardTitle>
+                {mentorMode && !isPw && mentorLocations.length > 1 && (
+                  <div className="flex items-center gap-1.5">
+                    <Label className="text-sm font-medium whitespace-nowrap">Center:</Label>
+                    <Select value={selectedMentorLocation} onValueChange={value => setMentorLocation(value || 'all')}>
+                      <SelectTrigger className="h-8 w-[180px]" aria-label="Sadhana report center">
+                        <SelectValue>
+                          {selectedMentorLocation === 'all'
+                            ? 'All centers'
+                            : mentorLocations.find(option => option.value === selectedMentorLocation)?.label}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All centers</SelectItem>
+                        {mentorLocations.map(option => (
+                          <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 <button
                   onClick={() => fetchReport({
                     guideId,
@@ -1018,6 +1051,10 @@ export default function ReportsTab({ guideId = '', senderName, bvslMode, mentorM
               <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: 0.5 }}>SADHANA REPORT</div>
               <div style={{ fontSize: 11, fontWeight: 600, marginTop: 2 }}>{reportTitle}</div>
               <div style={{ fontSize: 9, marginTop: 2, color: '#555' }}>
+                {mentorMode && !isPw && selectedMentorLocation !== 'all'
+                  ? (mentorLocations.find(option => option.value === selectedMentorLocation)?.label || 'Selected center')
+                  : ''}
+                {mentorMode && !isPw && selectedMentorLocation !== 'all' ? ' · ' : ''}
                 {residencyFilter === 'all' ? 'All Members' : residencyFilter === 'resident' ? 'Residents Only' : residencyFilter === 'non_resident' ? 'Non-Residents Only' : 'Scholars'}
                 {ashrayLevelFilter !== 'all' ? ` · Level: ${ashrayLevelFilter}` : ''}
                 {' · '}Generated: {new Date().toLocaleString()}
