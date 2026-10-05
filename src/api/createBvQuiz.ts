@@ -9,11 +9,11 @@ import {
 } from '@/lib/bvQuizAccess';
 
 const questionSchema = z.object({
-  id: z.string().min(1),
+  id: z.coerce.string().min(1),
   text: z.string().trim().min(1),
   type: z.enum(['single', 'multiple']),
-  options: z.array(z.string().trim().min(1)).min(2),
-  correctAnswers: z.array(z.number().int().nonnegative()).min(1),
+  options: z.array(z.coerce.string().trim().min(1)).min(2),
+  correctAnswers: z.array(z.coerce.number().int().nonnegative()).min(1),
   explanation: z.string().optional(),
 }).superRefine((question, context) => {
   if (question.type === 'single' && question.correctAnswers.length !== 1) {
@@ -83,7 +83,6 @@ export default createEndpoint({
         isActive: true,
         quizDate: input.quizDate,
         department: 'PW',
-        group: null,
         updatedAt: new Date().toISOString(),
       };
       if (input.quizId) {
@@ -93,6 +92,7 @@ export default createEndpoint({
       const quiz = await BvQuizzes.create({
         record: {
           ...record,
+          group: null,
           activeGroupIds: [],
           createdBy: context.user.id,
           createdAt: new Date().toISOString(),

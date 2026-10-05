@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { createEndpoint, Users, AshrayUpgradeRequests, Trips, RentPayments, AppError } from '@/lib/backend-sdk';
+import { getScopedHierarchyUserIds, HIERARCHY_IDENTITY_FIELDS, isUserInHierarchy } from '@/lib/hierarchyUtils';
 
 async function resolveUser(id: string) {
-  const fields = ['id', 'userId', 'fullName'];
+  const fields = [...HIERARCHY_IDENTITY_FIELDS, 'fullName'];
   if (/^USER-\d+$/i.test(id)) {
     const { records } = await Users.findAll({ filters: { userId: id }, fields });
     const registered = records.find(r => r.id !== r.userId);
@@ -85,13 +86,8 @@ export default createEndpoint({
     if (!userRecord) throw new AppError({ code: 'NOT_FOUND', message: 'User not found' });
 
     const isOwnData = context.user.id === userRecord.id;
-    const isGuide = ['Guide', 'Super Guide', 'BVSL', 'Sadhana Mentor'].includes(context.user.role || '')
-      || !!(context.user.isBvsl || context.user.isSadhanaMentor)
-      || !!((context.user as any).isFolkLead)
-      || !!((context.user as any).isTripCoordinator);
-
-    if (!isOwnData && !isGuide) {
-      throw new AppError({ code: 'FORBIDDEN', message: 'Access denied' });
+    if (!isOwnData && !isUserInHierarchy(userRecord, await getScopedHierarchyUserIds(context.user))) {
+      throw new AppError({ code: 'FORBIDDEN', message: 'This user is not assigned to your hierarchy' });
     }
 
     const [tripsRes, rentRes, ashrayRes] = await Promise.all([

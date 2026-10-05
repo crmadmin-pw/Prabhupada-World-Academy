@@ -933,7 +933,7 @@ export default createEndpoint({
       const uRole = String(u.role || '').toUpperCase().replace(/\s+/g, '_');
 
       // Omit caller if caller is admin/super admin viewing report
-      if ((callerId && uId === callerId) || (callerEmail && uEmail === callerEmail)) return false;
+      if (!residencyMentorScope && ((callerId && uId === callerId) || (callerEmail && uEmail === callerEmail))) return false;
 
       if (isFolkReport) {
         // Guides and Super Guides do not fill member Sadhana in FOLK.

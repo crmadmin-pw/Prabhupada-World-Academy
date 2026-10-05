@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
-import { ChevronDown, Clock } from 'lucide-react';
+import { Clock } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import {
   MEETING_DAYS,
-  formatClock,
   formatMeetingSchedule,
   meetingScheduleError,
   type MeetingDayKey,
@@ -13,7 +12,6 @@ const HOURS = Array.from({ length: 12 }, (_, index) => String(index + 1));
 const MINUTES = Array.from({ length: 12 }, (_, index) => String(index * 5).padStart(2, '0'));
 
 type Period = 'AM' | 'PM' | '';
-type TimeTarget = 'start' | 'end';
 type ClockDraft = { hour: string; minute: string; period: Period };
 
 const EMPTY_DRAFT: ClockDraft = { hour: '', minute: '', period: '' };
@@ -39,104 +37,71 @@ function to24(draft: ClockDraft): string {
   return `${String(hours).padStart(2, '0')}:${draft.minute}`;
 }
 
-function TimeButton({
+function TimeSelect({
   label,
   value,
-  open,
-  onToggle,
+  options,
+  placeholder,
+  onChange,
 }: {
   label: string;
   value: string;
-  open: boolean;
-  onToggle: () => void;
-}) {
-  const display = formatClock(value);
-  return (
-    <div className="min-w-0 space-y-1.5">
-      <Label className="text-xs font-semibold">{label}</Label>
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-label={label}
-        onClick={onToggle}
-        className={`flex h-9 w-full items-center gap-2 rounded-lg border bg-background px-2.5 text-left text-sm transition-colors ${
-          open ? 'border-primary ring-3 ring-primary/20' : 'border-input hover:bg-muted/40'
-        }`}
-      >
-        <Clock className="size-3.5 shrink-0 text-primary" />
-        <span className={`min-w-0 flex-1 truncate ${display ? 'font-medium text-foreground' : 'text-muted-foreground'}`}>
-          {display || 'Select time'}
-        </span>
-        <ChevronDown className={`size-4 shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
-    </div>
-  );
-}
-
-function ChoiceGrid({
-  label,
-  options,
-  selected,
-  onSelect,
-}: {
-  label: string;
   options: string[];
-  selected: string;
-  onSelect: (value: string) => void;
+  placeholder: string;
+  onChange: (value: string) => void;
 }) {
   return (
-    <div className="space-y-1.5">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
-      <div className="grid grid-cols-6 gap-1">
-        {options.map(option => {
-          const isSelected = option === selected;
-          return (
-            <button
-              key={option}
-              type="button"
-              aria-pressed={isSelected}
-              onClick={() => onSelect(option)}
-              className={`h-8 rounded-md text-xs font-medium transition-colors ${
-                isSelected
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted/60 text-foreground hover:bg-muted'
-              }`}
-            >
-              {option}
-            </button>
-          );
-        })}
-      </div>
-    </div>
+    <select
+      aria-label={label}
+      value={value}
+      onChange={event => onChange(event.target.value)}
+      className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-1.5 text-sm font-medium text-foreground outline-none focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/20"
+    >
+      <option value="" disabled>{placeholder}</option>
+      {options.map(option => (
+        <option key={option} value={option}>{option}</option>
+      ))}
+    </select>
   );
 }
 
-function TimePanel({
+function TimeField({
+  label,
   draft,
   onChange,
 }: {
+  label: string;
   draft: ClockDraft;
   onChange: (draft: ClockDraft) => void;
 }) {
-  const committed = to24(draft);
-  const preview = committed
-    ? formatClock(committed)
-    : draft.hour || draft.minute || draft.period
-      ? `${draft.hour || '–'}:${draft.minute || '––'}${draft.period ? ` ${draft.period}` : ''}`
-      : 'Choose hour, minute, and AM or PM';
-
   return (
-    <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-3">
-      <div className="flex items-center justify-between gap-3">
-        <p className={`text-sm ${committed ? 'font-semibold text-foreground' : 'text-muted-foreground'}`}>{preview}</p>
-        <div className="flex rounded-md border border-border bg-background p-0.5" role="group" aria-label="AM or PM">
+    <div className="min-w-0 space-y-1.5">
+      <Label className="text-xs font-semibold">{label}</Label>
+      <div className="flex items-center gap-1 rounded-lg border border-input bg-background p-1.5" role="group" aria-label={label}>
+        <Clock className="size-3.5 shrink-0 text-primary" aria-hidden />
+        <TimeSelect
+          label={`${label} hour`}
+          value={draft.hour}
+          options={HOURS}
+          placeholder="Hr"
+          onChange={hour => onChange({ ...draft, hour })}
+        />
+        <span className="text-sm text-muted-foreground">:</span>
+        <TimeSelect
+          label={`${label} minute`}
+          value={draft.minute}
+          options={MINUTES}
+          placeholder="Min"
+          onChange={minute => onChange({ ...draft, minute })}
+        />
+        <div className="flex shrink-0 rounded-md border border-border bg-background p-0.5" role="group" aria-label={`${label} AM or PM`}>
           {(['AM', 'PM'] as const).map(period => (
             <button
               key={period}
               type="button"
               aria-pressed={draft.period === period}
               onClick={() => onChange({ ...draft, period })}
-              className={`h-7 rounded px-2.5 text-xs font-semibold ${
+              className={`h-7 rounded px-1.5 text-[11px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                 draft.period === period ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
               }`}
             >
@@ -145,8 +110,6 @@ function TimePanel({
           ))}
         </div>
       </div>
-      <ChoiceGrid label="Hour" options={HOURS} selected={draft.hour} onSelect={hour => onChange({ ...draft, hour })} />
-      <ChoiceGrid label="Minute" options={MINUTES} selected={draft.minute} onSelect={minute => onChange({ ...draft, minute })} />
     </div>
   );
 }
@@ -168,7 +131,6 @@ export default function MeetingScheduleFields({
   onEndTimeChange,
   onDaysChange,
 }: MeetingScheduleFieldsProps) {
-  const [open, setOpen] = useState<TimeTarget | null>(null);
   const [startDraft, setStartDraft] = useState<ClockDraft>(() => parseClock(startTime));
   const [endDraft, setEndDraft] = useState<ClockDraft>(() => parseClock(endTime));
   const summary = formatMeetingSchedule(startTime, endTime, days);
@@ -178,7 +140,7 @@ export default function MeetingScheduleFields({
   useEffect(() => { setStartDraft(parseClock(startTime)); }, [startTime]);
   useEffect(() => { setEndDraft(parseClock(endTime)); }, [endTime]);
 
-  const updateDraft = (target: TimeTarget, draft: ClockDraft) => {
+  const updateDraft = (target: 'start' | 'end', draft: ClockDraft) => {
     if (target === 'start') setStartDraft(draft);
     else setEndDraft(draft);
     const next = to24(draft);
@@ -193,27 +155,10 @@ export default function MeetingScheduleFields({
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-2">
-        <TimeButton
-          label="Start time *"
-          value={startTime}
-          open={open === 'start'}
-          onToggle={() => setOpen(current => current === 'start' ? null : 'start')}
-        />
-        <span className="pb-2 text-xs text-muted-foreground">to</span>
-        <TimeButton
-          label="End time *"
-          value={endTime}
-          open={open === 'end'}
-          onToggle={() => setOpen(current => current === 'end' ? null : 'end')}
-        />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <TimeField label="Start time *" draft={startDraft} onChange={draft => updateDraft('start', draft)} />
+        <TimeField label="End time *" draft={endDraft} onChange={draft => updateDraft('end', draft)} />
       </div>
-      {open && (
-        <TimePanel
-          draft={open === 'start' ? startDraft : endDraft}
-          onChange={draft => updateDraft(open, draft)}
-        />
-      )}
       <div className="space-y-1.5">
         <Label className="text-xs font-semibold">Days *</Label>
         <div className="flex flex-wrap gap-1.5" role="group" aria-label="Meeting days">

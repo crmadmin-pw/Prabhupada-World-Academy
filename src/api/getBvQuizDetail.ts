@@ -16,6 +16,7 @@ export default createEndpoint({
     quizId: z.string(),
     department: z.enum(['FOLK', 'PW']).optional(),
     includeAnswers: z.boolean().optional(),
+    bypassCache: z.boolean().optional(),
   }),
   outputSchema: z.any(),
   execute: async ({ input, context }) => {

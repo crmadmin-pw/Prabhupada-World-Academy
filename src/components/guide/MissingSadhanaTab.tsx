@@ -597,7 +597,8 @@ export default function MissingSadhanaTab({ guideId, segment }: Props) {
         (uName.includes('system administrator'))
       );
 
-      if (isSelf) return false;
+      const includeMentorSelf = !isPw && (profile?.isSadhanaMentor || profile?.role === 'SADHANA_MENTOR');
+      if (isSelf && !includeMentorSelf) return false;
       const isUserAdmin = uName.includes('admin') || uEmail.includes('admin');
       if (isUserAdmin) return false;
       return true;
@@ -622,7 +623,7 @@ export default function MissingSadhanaTab({ guideId, segment }: Props) {
       return a.fullName.localeCompare(b.fullName);
     });
     return { ...data, users };
-  }, [data, guideFilter, statusFilter, hideZeroMissed]);
+  }, [data, guideFilter, statusFilter, hideZeroMissed, profile, isPw]);
 
   const handleExport = () => {
     if (!filteredData || filteredData.users.length === 0) return;

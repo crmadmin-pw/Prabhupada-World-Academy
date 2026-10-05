@@ -241,25 +241,25 @@ export default function ReportsTab({ guideId = '', senderName, bvslMode, mentorM
     // An RGF's report scope is their reading-group membership, not the
     // facilitator's own residency. Defaulting to "Residents" can silently
     // hide non-resident group members.
-    if (isPw || bvslMode) return 'all';
+    if (isPw || bvslMode || mentorMode) return 'all';
     return (sessionStorage.getItem('guide_report_residencyFilter') as ResidencyFilter) || 'resident';
   });
   const [ashrayLevelFilter, setAshrayLevelFilter] = useState<string>('all');
   const [folkResidencyId, setFolkResidencyId] = useState<string>(() => {
     // RGF groups can contain members from another FOLK residency. Never seed
     // an invisible profile-residency filter in RGF mode.
-    if (isPw || bvslMode) return 'all';
+    if (isPw || bvslMode || mentorMode) return 'all';
     return isSuperAdmin ? 'all' : (profile?.folkResidencyCustomId || 'all');
   });
 
   useEffect(() => {
-    if (bvslMode) {
+    if (bvslMode || (mentorMode && !isPw)) {
       setFolkResidencyId('all');
       setResidencyFilter('all');
     } else if (profile && !isSuperAdmin && !isPw) {
       setFolkResidencyId(profile.folkResidencyCustomId || 'all');
     }
-  }, [profile, isSuperAdmin, isPw, bvslMode]);
+  }, [profile, isSuperAdmin, isPw, bvslMode, mentorMode]);
 
   useEffect(() => {
     if (selectedGroupId !== 'all' && !groupOptions.some(group => group.id === selectedGroupId || group.groupId === selectedGroupId)) {
@@ -311,7 +311,7 @@ export default function ReportsTab({ guideId = '', senderName, bvslMode, mentorM
 
   // NI-04: Auto-select when guide covers exactly 1 residency; reset to 'all' when multiple
   useEffect(() => {
-    if (bvslMode) {
+    if (bvslMode || (mentorMode && !isPw)) {
       setFolkResidencyId('all');
       return;
     }
@@ -320,7 +320,7 @@ export default function ReportsTab({ guideId = '', senderName, bvslMode, mentorM
     } else if (residencies.length > 1) {
       setFolkResidencyId('all');
     }
-  }, [residencies.length, bvslMode]);
+  }, [residencies.length, bvslMode, mentorMode, isPw]);
 
   // Fix 4: Client-side filtering — instant, no API call needed
   const clientFilteredUsers = useMemo(() => {

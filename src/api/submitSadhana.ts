@@ -254,8 +254,11 @@ export default createEndpoint({
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     sevenDaysAgo.setHours(0, 0, 0, 0);
     const entryDateObj = new Date(entryDate + 'T00:00:00');
-    if (entryDateObj > oneDayAhead) throw new Error('Cannot submit for a future date');
-    if (entryDateObj < sevenDaysAgo) throw new Error('Cannot submit for dates older than 7 days');
+    const isFolk = getUserDepartment(userRec) === 'FOLK';
+    const submissionTodayIST = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(serverNow);
+    if (isFolk && (!/^\d{4}-\d{2}-\d{2}$/.test(entryDate) || Number.isNaN(entryDateObj.getTime()))) throw new Error('Invalid entry date');
+    if (isFolk ? entryDate > submissionTodayIST : entryDateObj > oneDayAhead) throw new Error('Cannot submit for a future date');
+    if (!isFolk && entryDateObj < sevenDaysAgo) throw new Error('Cannot submit for dates older than 7 days');
 
     // Never trust a row or user ID supplied by the client.  First locate the
     // authenticated user's entry.  The second lookup makes entries written by

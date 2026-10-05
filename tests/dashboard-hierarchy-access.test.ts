@@ -176,7 +176,7 @@ test('BV reports and dropdowns include indirect groups and reject a forged group
   assert.deepEqual((await resolveBvScopedGroups(superAdmin, { segment: 'PW' })).map(g => g.id), ['group-a', 'group-b']);
 });
 
-test('PW approval queue is shared while member data stays scoped to the admin', async t => {
+test('PW admin sees the full member directory while reports stay in their hierarchy', async t => {
   mockDatabase(t);
   const approvals = await call(getPendingApprovals, { guideId: 'ALL' });
   assert.ok(JSON.stringify(approvals).includes('pending-b'));
@@ -187,8 +187,31 @@ test('PW approval queue is shared while member data stays scoped to the admin', 
   const attendance = await call(getSuperGuideAttendanceReport, { segment: 'PW' });
   assert.ok(JSON.stringify(attendance).includes('group-member-a'));
   assert.ok(!JSON.stringify(attendance).includes('member-b'));
-  await assert.rejects(call(getUserDetailForGuide, { userId: 'member-b' }), /not assigned/);
+  const directory = await call(getGuideUsers, { guideId: 'ALL', statusFilter: 'all', minimal: true });
+  const directoryIds = directory.users.map((user: any) => user.userId);
+  assert.ok(directoryIds.includes('member-b'));
+  assert.ok(directoryIds.includes('unassigned'));
+  assert.ok(directoryIds.includes('admin-b'));
+  assert.ok(directoryIds.includes('folk-outsider'));
+  const superDirectory = await call(getGuideUsers, { guideId: 'ALL', statusFilter: 'all', minimal: true }, superAdmin);
+  assert.deepEqual(sorted(directoryIds), sorted(superDirectory.users.map((user: any) => user.userId)));
+  const detail = await call(getUserDetailForGuide, { userId: 'member-b' });
+  assert.equal(detail.user.dbId, 'member-b');
   await assert.rejects(call(getOneToOneContext, { userId: 'member-b' }), /not assigned/);
+});
+
+test('PW admin directory reads every page even when the admin also has a mentor role', async t => {
+  const previousUsers = fixture.Users;
+  fixture.Users = [...users, ...Array.from({ length: 2005 }, (_, index) =>
+    member(`outside-${index}`, { segment: index % 2 ? 'FOLK' : null, guide: otherAdmin.id }))];
+  try {
+    mockDatabase(t);
+    const directory = await call(getGuideUsers, { guideId: otherAdmin.id, minimal: true }, { ...admin, isBvMentor: true });
+    assert.equal(directory.users.length, fixture.Users.length);
+    assert.ok(directory.users.some((user: any) => user.userId === 'outside-2004'));
+  } finally {
+    fixture.Users = previousUsers;
+  }
 });
 
 test('PW admin intake shows all PW joining requests, with and without a guide', async t => {
@@ -366,7 +389,8 @@ test('hierarchy lookup failures never grant full access', async t => {
   mockDatabase(t);
   t.mock.method(sdk.Users, 'findAll', async () => { throw new Error('database unavailable'); });
   await assert.rejects(getScopedHierarchyUserIds(admin), /database unavailable/);
-  await assert.rejects(call(getGuideUsers, { guideId: 'ALL', minimal: true }), /database unavailable/);
+  await assert.rejects(call(getGuideUsers, { guideId: 'ALL', minimal: true }, supervisor), /database unavailable/);
+  await assert.rejects(call(getGuideUsers, { guideId: 'ALL', minimal: true, forMeetingInvitees: true }), /database unavailable/);
 });
 
 test('ordinary admins see meetings they created or were invited to; super admins can view all', () => {

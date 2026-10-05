@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { createEndpoint, Users, Guides, FolkResidencies, SadhanaEntries, BvGroups, BvGroupMembers } from '@/lib/backend-sdk';
 import { getTodayIST, daysAgo } from '../lib/streakUtils';
 import { normalizeRole, normalizeStatus } from './resolveUserLogin';
-import { getDashboardHierarchyScope, HIERARCHY_IDENTITY_FIELDS, hierarchyRefs } from '../lib/hierarchyUtils';
+import { getDashboardHierarchyScope, HIERARCHY_IDENTITY_FIELDS, hierarchyRefs, isHierarchySuperAdmin, isPwDepartmentAdmin } from '../lib/hierarchyUtils';
 import { getGuideScope } from '../lib/guideScope';
 import { getReportReferenceData } from '../lib/reportReferenceData';
 
@@ -62,13 +62,16 @@ export default createEndpoint({
       !!context.user.isBvSuperAdmin ||
       !!context.user.isBvAdmin;
     const isBvMentor = !!(context.user as any).isBvMentor;
+    // Meeting invitees stay inside the caller's reporting hierarchy. The member
+    // directory does not: a Prabhupada World admin sees every user.
+    const seesEntireDirectory = isPwDepartmentAdmin(context.user) && !forMeetingInvitees;
     const statusKey = input.statusFilter || input.status || 'all';
 
     // For BV Mentors: bvMentorGuideId may be a Users-table UUID (stored when a Guide
     // tagged them) or a Guides-table UUID (stored when a Super Guide tagged them).
     // Resolve it to a Guides-table UUID so we can filter Users.guide correctly.
     let bvMentorGuideDbId: string | null = null;
-    if (isBvMentor && input.guideId) {
+    if (!seesEntireDirectory && isBvMentor && input.guideId) {
       // Try direct Guides table lookup first (covers Super Guide assignment)
       const directGuideRec = await Guides.findOne({ id: input.guideId, fields: ['id'] }).catch(() => undefined);
       if (directGuideRec) {
@@ -86,10 +89,15 @@ export default createEndpoint({
     // Run guide lookup and today's entries in parallel
     const todayStr = getTodayIST();
 
-    const guidePromise = (isSuperGuide || isBvMentor)
+    const readsEntireCatalogue = isSuperGuide || isBvMentor || seesEntireDirectory;
+    const guidePromise = readsEntireCatalogue
       ? Promise.resolve(null)
       : getGuideScope(context.user.email || '').then(scope => scope ? { id: scope.guideId, folkResidencies: scope.residencyIds } : null);
-    const hierarchyPromise = getDashboardHierarchyScope(context.user, input.guideId);
+    const hierarchyPromise = seesEntireDirectory
+      ? Promise.resolve(null)
+      : getDashboardHierarchyScope(context.user, input.guideId);
+    // A user query can fail before we await this parallel authorization read.
+    void hierarchyPromise.catch(() => {});
     const metadataPromise = Promise.all([
       input.minimal ? Promise.resolve({ records: [] }) : SadhanaEntries.findAll({
         filters: { entryDate: todayStr },
@@ -111,10 +119,10 @@ export default createEndpoint({
 
     // Build user filters
     const filters: any = {};
-    if (!isSuperGuide && !isBvMentor && guideRecord) filters.guide = (guideRecord as any).id;
+    if (!readsEntireCatalogue && guideRecord) filters.guide = (guideRecord as any).id;
     // Super Guide with explicit guideId — scope to that guide only
     // BV Mentor — use resolved Guides-table UUID
-    if (isBvMentor && bvMentorGuideDbId && bvMentorGuideDbId !== 'ALL' && bvMentorGuideDbId !== 'all') {
+    if (!seesEntireDirectory && isBvMentor && bvMentorGuideDbId && bvMentorGuideDbId !== 'ALL' && bvMentorGuideDbId !== 'all') {
       filters.guide = bvMentorGuideDbId;
     }
 
@@ -136,11 +144,17 @@ export default createEndpoint({
     }
 
     // Phase 1 FIX: also fetch users from all residencies the guide manages (deduped)
-    const baseUsersRes = await Users.findAll({ filters, fields: USER_FIELDS, limit: 2000 }).catch(() => ({ records: [] }));
-    let users: any[] = baseUsersRes?.records || [];
+    let users: any[] = [];
+    let userOffset = 0;
+    while (true) {
+      const page = await Users.findAll({ filters, fields: USER_FIELDS, limit: 2000, offset: userOffset });
+      users.push(...(page.records || []));
+      if (!page.hasMore || !page.records?.length) break;
+      userOffset += page.records.length;
+    }
 
     // If filtering by guide (non-super-guide, non-bv-mentor, no specific residency filter), also include residency-based users
-    if (!isSuperGuide && !isBvMentor && guideRecord && (!resFilter || resFilter === 'all' || resFilter === 'residents' || resFilter === 'non_residents')) {
+    if (!readsEntireCatalogue && guideRecord && (!resFilter || resFilter === 'all' || resFilter === 'residents' || resFilter === 'non_residents')) {
       const guideRids: string[] = Array.isArray((guideRecord as any).folkResidencies)
         ? (guideRecord as any).folkResidencies as string[]
         : ((guideRecord as any).folkResidencies ? [(guideRecord as any).folkResidencies as string] : []);
@@ -309,6 +323,9 @@ export default createEndpoint({
 
     // Filter out records based on strict hierarchy and self-exclusion rules
     const registeredUsers = forMeetingInvitees ? users : users.filter(u => {
+      // Directory administrators can inspect every account, including their
+      // own profile, other administrators and users without a display name.
+      if (seesEntireDirectory || isHierarchySuperAdmin(context.user)) return !!(u.userId || u.id);
       // Basic validation
       if (!(u.userId || u.id) || (u.fullName || '').trim().length === 0) {
         return false;
@@ -336,10 +353,10 @@ export default createEndpoint({
       const callerIsSuperAdmin = !!(context.user.isBvSuperAdmin || callerRole === 'SUPER_ADMIN' || callerRole === 'SUPER ADMIN');
       const callerIsAdmin = !!(context.user.isBvAdmin || callerRole === 'ADMIN' || callerRole === 'ADMINISTRATOR');
       
-      const uIsAdmin = !!(u.isBvAdmin || uRole === 'ADMIN' || uRole === 'ADMINISTRATOR');
+      const uIsAdmin = !!(u.isBvAdmin || uRole === 'ADMIN' || uRole === 'ADMINISTRATOR' || uRole === 'PW_ADMIN');
       
-      // If caller is an Admin, they should not see other Admins
-      if (callerIsAdmin && !callerIsSuperAdmin) {
+      // A Prabhupada World admin sees other admins, the same as a super admin.
+      if (callerIsAdmin && !callerIsSuperAdmin && !seesEntireDirectory) {
         if (uIsAdmin) return false;
       }
 

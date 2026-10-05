@@ -445,8 +445,8 @@ export default function DailySadhanaForm() {
           <div className="bg-card border rounded-xl p-4 shadow-sm space-y-2">
             <Label className="text-base font-medium"><Calendar className="w-4 h-4 inline mr-2" />Entry Date</Label>
             <DateTimePicker type="date" value={entryDate} onChange={setEntryDate}
-              max={format(new Date(), 'yyyy-MM-dd')} min={format(subDays(new Date(), 7), 'yyyy-MM-dd')} />
-            <p className="text-sm text-muted-foreground">Today or up to 7 days back.</p>
+              max={format(new Date(), 'yyyy-MM-dd')} min={isFolkUser ? undefined : format(subDays(new Date(), 7), 'yyyy-MM-dd')} />
+            <p className="text-sm text-muted-foreground">{isFolkUser ? 'Today or any earlier date.' : 'Today or up to 7 days back.'}</p>
           </div>
 
           {/* Temporary FOLK Residency toggle — only shown for FOLK department non-official-residents */}

@@ -2,6 +2,7 @@
 // app-endpoints-sdk.ts — Auto-generated client-side SDK for calling API routes.
 // ══════════════════════════════════════════════════════════════════════════════
 import { auth } from './app-auth-sdk';
+import { confirmBvGroupDeletion } from './confirmBvGroupDeletion';
 import type { z } from 'zod';
 import {
   isReadOnlyEndpoint,
@@ -721,9 +722,12 @@ export type DeletePendingApprovalsOutputType = deletePendingApprovals_Output;
 export type DeletePendingApprovalsInputType = deletePendingApprovals_Input;
 
 import type hardDeleteBvGroups_Type from '../api/hardDeleteBvGroups';
-type hardDeleteBvGroups_Input = z.input<typeof hardDeleteBvGroups_Type.inputSchema>;
+type hardDeleteBvGroups_Input = Omit<z.input<typeof hardDeleteBvGroups_Type.inputSchema>, 'confirmationPhrase'>;
 type hardDeleteBvGroups_Output = ReturnType<typeof hardDeleteBvGroups_Type.execute> extends Promise<infer R> ? R : ReturnType<typeof hardDeleteBvGroups_Type.execute>;
-export const hardDeleteBvGroups = (input: hardDeleteBvGroups_Input): Promise<hardDeleteBvGroups_Output> => invokeEndpoint('hardDeleteBvGroups', input);
+export const hardDeleteBvGroups = async (input: hardDeleteBvGroups_Input): Promise<hardDeleteBvGroups_Output> => {
+  const confirmationPhrase = confirmBvGroupDeletion(input.deleteAll === true);
+  return invokeEndpoint('hardDeleteBvGroups', { ...input, confirmationPhrase });
+};
 export type HardDeleteBvGroupsOutputType = hardDeleteBvGroups_Output;
 export type HardDeleteBvGroupsInputType = hardDeleteBvGroups_Input;
 

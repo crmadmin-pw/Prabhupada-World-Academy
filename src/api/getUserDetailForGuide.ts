@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { getScopedHierarchyUserIds, isUserInHierarchy } from '../lib/hierarchyUtils';
+import { getScopedHierarchyUserIds, isPwDepartmentAdmin, isUserInHierarchy } from '../lib/hierarchyUtils';
 import { createEndpoint, Users, Guides, SadhanaEntries, BvGroupMembers, BvGroups, FolkResidencies, AppError } from '@/lib/backend-sdk';
 import { computeStreak, getTodayIST } from '../lib/streakUtils';
 import { requireGuideRole } from '../lib/userUtils';
@@ -133,7 +133,7 @@ export default createEndpoint({
 
     const userRecord = await resolveUser(input.userId);
     if (!userRecord) throw new AppError({ code: 'NOT_FOUND', message: 'User not found' });
-    if (!isUserInHierarchy(userRecord, await getScopedHierarchyUserIds(context.user))) {
+    if (!isPwDepartmentAdmin(context.user) && !isUserInHierarchy(userRecord, await getScopedHierarchyUserIds(context.user))) {
       throw new AppError({ code: 'FORBIDDEN', message: 'This user is not assigned to your hierarchy' });
     }
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
-import { getAuth } from 'firebase-admin/auth';
+import { verifyFirebaseIdToken } from '@/lib/verifyFirebaseIdToken';
 import { getDownloadURL, getStorage } from 'firebase-admin/storage';
 import { Users } from '@/lib/app-backend-sdk';
 import {
@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
     const token = authHeader.replace(/^Bearer\s+/i, '').trim();
     if (!token) return jsonError('Authentication required', 401);
 
-    const decoded = await getAuth().verifyIdToken(token);
+    const decoded = await verifyFirebaseIdToken(token);
     if (!decoded.uid || !decoded.email || decoded.email_verified !== true) {
       return jsonError('A verified Firebase account is required', 403);
     }

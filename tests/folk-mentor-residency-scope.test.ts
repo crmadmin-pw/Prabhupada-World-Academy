@@ -22,11 +22,12 @@ function mockTables(t: any, users = rows) {
   }
 }
 
-test('explicit FOLK residency scope includes other guides and excludes other centers, leadership, inactive, self and PW', async t => {
+test('FOLK mentor scope includes self, residency members and linked guide members, excluding PW and leadership', async t => {
   mockTables(t);
   const scope = await getSadhanaMentorResidencyScope(mentor);
   assert.ok(scope);
-  assert.deepEqual(rows.filter(scope.includes).map(r => r.id), ['other-guide', 'legacy-residency']);
+  assert.deepEqual(rows.filter(scope.includes).map(r => r.id), ['mentor', 'other-guide', 'legacy-residency', 'vashi']);
+  assert.equal(scope.includes(member('foreign', { residency: 'vashi', guide: 'unrelated-guide' })), false);
 });
 
 test('detailed, missing and member reports use identical residency scope despite hostile guide/segment selectors', async t => {
@@ -35,10 +36,10 @@ test('detailed, missing and member reports use identical residency scope despite
   const d = await detailed.execute({ input: { guideId: 'ALL', mentorMode: true, date: '2026-10-02', reportType: 'daily', segment: 'FOLK' }, context } as any);
   const m = await missing.execute({ input: { guideId: 'guide-b', residencyId: 'vashi', startDate: '2026-10-02', endDate: '2026-10-02', segment: 'FOLK' }, context } as any);
   const list = await members.execute({ input: {}, context } as any);
-  assert.deepEqual(d.users.map((r: any) => r.id).sort(), ['legacy-residency', 'other-guide']);
-  assert.deepEqual(m.users.map((r: any) => r.id).sort(), ['legacy-residency', 'other-guide']);
-  assert.deepEqual(list.members.map((r: any) => r.userId).sort(), ['USER-legacy-residency', 'USER-other-guide']);
-  assert.equal(m.stats.totalUsers, 2);
+  assert.deepEqual(d.users.map((r: any) => r.id).sort(), ['legacy-residency', 'mentor', 'other-guide', 'vashi']);
+  assert.deepEqual(m.users.map((r: any) => r.id).sort(), ['legacy-residency', 'mentor', 'other-guide', 'vashi']);
+  assert.deepEqual(list.members.map((r: any) => r.userId).sort(), ['USER-legacy-residency', 'USER-other-guide', 'USER-vashi']);
+  assert.equal(m.stats.totalUsers, 4);
   assert.deepEqual(d.availableResidencies.map((r: any) => r.residencyId), ['powai']);
 });
 
@@ -55,14 +56,25 @@ test('PW mentors retain existing access paths', async t => {
 });
 
 
-test('unknown residency assignments cannot fall back to a shared guide', async t => {
+test('unknown residency grants add no foreign members; the linked guide and self still remain visible', async t => {
   mockTables(t, [{ ...mentor, sadhanaMentorResidencyIds: ['missing-residency'] }, ...rows.slice(1)]);
   const scope = await getSadhanaMentorResidencyScope(mentor);
   assert.ok(scope);
-  assert.equal(rows.filter(scope.includes).length, 0);
+  assert.deepEqual(rows.filter(scope.includes).map(r => r.id), ['mentor', 'vashi']);
 });
 
-test('unconfigured mentors retain existing access paths', async t => {
+test('FOLK mentors without residency grants can see their own row and their guide members', async t => {
   mockTables(t, [{ ...mentor, sadhanaMentorResidencyIds: undefined }]);
-  assert.equal(await getSadhanaMentorResidencyScope(mentor), null);
+  const scope = await getSadhanaMentorResidencyScope(mentor);
+  assert.ok(scope);
+  assert.deepEqual(rows.filter(scope.includes).map(r => r.id), ['mentor', 'vashi']);
+});
+
+test('guide public IDs, emails and Users aliases resolve to the same parent', async t => {
+  mockTables(t);
+  t.mock.method(Guides, 'findAll', async () => ({ records: [{ id: 'guide-a', guideId: 'GUIDE-A', email: 'guide@example.test' }], hasMore: false }));
+  const scope = await getSadhanaMentorResidencyScope(mentor);
+  assert.ok(scope);
+  assert.equal(scope.includes(member('alias', { residency: 'vashi', guide: ['GUIDE-A'] })), true);
+  assert.equal(scope.includes(member('alias-email', { residency: null, guide: 'guide@example.test' })), true);
 });

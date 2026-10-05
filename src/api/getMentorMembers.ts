@@ -98,7 +98,7 @@ export default createEndpoint({
     const residencyMentorScope = await getSadhanaMentorResidencyScope(context.user);
     const hierarchy = residencyMentorScope ? null : await getScopedHierarchyUserIds(context.user);
     const users = allUsers.filter((u: any) => {
-      if (residencyMentorScope) return residencyMentorScope.includes(u);
+      if (residencyMentorScope) return !residencyMentorScope.isSelf(u) && residencyMentorScope.includes(u);
       if (!isUserInHierarchy(u, hierarchy)) return false;
       // Never expose incomplete profile records as blank member rows. A mentor
       // can only act on a real, identifiable member.

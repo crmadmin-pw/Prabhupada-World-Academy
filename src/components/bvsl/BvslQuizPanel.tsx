@@ -1,5 +1,5 @@
 import { useReactiveLoader } from '@/hooks/useReactiveLoader';
-import { useState, useCallback } from 'react';
+import { useRef, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -64,6 +64,30 @@ function missingTextMessage(numbers: number[]) {
   return `${labels.slice(0, -1).join(', ')}, and ${labels[labels.length - 1]} are missing question text`;
 }
 
+function answerIndexes(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap(item => {
+    const index = Number(item);
+    return Number.isInteger(index) && index >= 0 ? [index] : [];
+  });
+}
+
+function questionOptions(value: unknown): string[] {
+  const options = Array.isArray(value) ? value.map(option => String(option ?? '')) : ['', ''];
+  return options.length >= 2 ? options : [...options, ...Array.from({ length: 2 - options.length }, () => '')];
+}
+
+function normalizeQuestion(question: Partial<QuizQuestion> | null | undefined): QuizQuestion {
+  return {
+    id: String(question?.id || generateId()),
+    text: String(question?.text || ''),
+    type: question?.type === 'multiple' ? 'multiple' : 'single',
+    options: questionOptions(question?.options),
+    correctAnswers: answerIndexes(question?.correctAnswers),
+    explanation: String(question?.explanation || ''),
+  };
+}
+
 function isBlankQuestion(question: QuizQuestion) {
   return !question.text.trim()
     && !question.explanation.trim()
@@ -112,27 +136,44 @@ export function QuizEditor({
   const [loadError, setLoadError] = useState('');
   const [expandedQ, setExpandedQ] = useState<string>(questions[0]?.id || '');
   const [saveError, setSaveError] = useState<{ questionId?: string; message: string } | null>(null);
+  const draftRef = useRef({ title, description, isActive, quizDate, questions });
+  const draftDirtyRef = useRef(false);
+  draftRef.current = { title, description, isActive, quizDate, questions };
+
+  const replaceQuestions = (next: QuizQuestion[] | ((current: QuizQuestion[]) => QuizQuestion[])) => {
+    setQuestions(current => {
+      const resolved = typeof next === 'function' ? next(current) : next;
+      draftRef.current = { ...draftRef.current, questions: resolved };
+      return resolved;
+    });
+  };
 
   useEffect(() => {
     if (!editingQuiz) return;
     let cancelled = false;
-    getBvQuizDetail({ quizId: editingQuiz.id, department, includeAnswers: true })
+    draftDirtyRef.current = false;
+    getBvQuizDetail({ quizId: editingQuiz.id, department, includeAnswers: true, bypassCache: true })
       .then((quiz: any) => {
-        if (cancelled) return;
-        setTitle(quiz.title || 'Untitled Quiz');
-        setDescription(quiz.description || '');
-        setIsActive(quiz.isActive === true);
-        setQuizDate(quiz.quizDate || format(new Date(), 'yyyy-MM-dd'));
-        const loadedQuestions = (quiz.questions || []).map((question: any) => ({
-          id: question.id || generateId(),
-          text: question.text || '',
-          type: question.type === 'multiple' ? 'multiple' : 'single',
-          options: Array.isArray(question.options) ? question.options : ['', ''],
-          correctAnswers: Array.isArray(question.correctAnswers) ? question.correctAnswers : [],
-          explanation: question.explanation || '',
-        }));
-        setQuestions(loadedQuestions.length ? loadedQuestions : [emptyQuestion()]);
-        setExpandedQ(loadedQuestions[0]?.id || '');
+        if (cancelled || draftDirtyRef.current) return;
+        const nextTitle = quiz.title || 'Untitled Quiz';
+        const nextDescription = quiz.description || '';
+        const nextActive = quiz.isActive === true;
+        const nextDate = quiz.quizDate || format(new Date(), 'yyyy-MM-dd');
+        const loadedQuestions = (quiz.questions || []).map((question: any) => normalizeQuestion(question));
+        const nextQuestions = loadedQuestions.length ? loadedQuestions : [emptyQuestion()];
+        setTitle(nextTitle);
+        setDescription(nextDescription);
+        setIsActive(nextActive);
+        setQuizDate(nextDate);
+        setQuestions(nextQuestions);
+        draftRef.current = {
+          title: nextTitle,
+          description: nextDescription,
+          isActive: nextActive,
+          quizDate: nextDate,
+          questions: nextQuestions,
+        };
+        setExpandedQ(nextQuestions[0]?.id || '');
       })
       .catch((error: any) => {
         if (cancelled) return;
@@ -147,39 +188,46 @@ export function QuizEditor({
   }, [department, editingQuiz?.id]);
 
   const addQuestion = () => {
+    draftDirtyRef.current = true;
     const q = emptyQuestion();
-    setQuestions(prev => [...prev, q]);
+    replaceQuestions(current => [...current, q]);
     setExpandedQ(q.id);
   };
 
   const removeQuestion = (id: string) => {
-    setQuestions(prev => prev.filter(q => q.id !== id));
+    draftDirtyRef.current = true;
+    replaceQuestions(current => current.filter(q => q.id !== id));
   };
 
-  const updateQuestion = (id: string, patch: Partial<QuizQuestion>) => {
-    setQuestions(prev => prev.map(q => q.id === id ? { ...q, ...patch } : q));
+  const updateQuestion = (id: string, patch: Partial<QuizQuestion> | ((question: QuizQuestion) => Partial<QuizQuestion>)) => {
+    draftDirtyRef.current = true;
+    replaceQuestions(current => current.map(question => {
+      if (question.id !== id) return question;
+      const nextPatch = typeof patch === 'function' ? patch(question) : patch;
+      return { ...question, ...nextPatch };
+    }));
   };
 
   const addOption = (qId: string) => {
-    updateQuestion(qId, {
-      options: [...(questions.find(q => q.id === qId)?.options || []), ''],
-    });
+    updateQuestion(qId, question => ({ options: [...question.options, ''] }));
   };
 
   const updateOption = (qId: string, idx: number, val: string) => {
-    const q = questions.find(q => q.id === qId);
-    if (!q) return;
-    const opts = [...q.options];
-    opts[idx] = val;
-    updateQuestion(qId, { options: opts });
+    updateQuestion(qId, question => {
+      const options = question.options.slice();
+      options[idx] = val;
+      return { options };
+    });
   };
 
   const removeOption = (qId: string, idx: number) => {
-    const q = questions.find(q => q.id === qId);
-    if (!q || q.options.length <= 2) return;
-    const opts = q.options.filter((_, i) => i !== idx);
-    const correct = q.correctAnswers.filter(c => c !== idx).map(c => c > idx ? c - 1 : c);
-    updateQuestion(qId, { options: opts, correctAnswers: correct });
+    updateQuestion(qId, question => {
+      if (question.options.length <= 2) return {};
+      return {
+        options: question.options.filter((_, optionIndex) => optionIndex !== idx),
+        correctAnswers: question.correctAnswers.filter(answer => answer !== idx).map(answer => answer > idx ? answer - 1 : answer),
+      };
+    });
   };
 
   const focusQuestion = (id: string) => {
@@ -190,16 +238,15 @@ export function QuizEditor({
   };
 
   const toggleCorrect = (qId: string, idx: number) => {
-    const q = questions.find(q => q.id === qId);
-    if (!q) return;
-    if (q.type === 'single') {
-      updateQuestion(qId, { correctAnswers: [idx] });
-    } else {
-      const already = q.correctAnswers.includes(idx);
-      updateQuestion(qId, {
-        correctAnswers: already ? q.correctAnswers.filter(c => c !== idx) : [...q.correctAnswers, idx],
-      });
-    }
+    updateQuestion(qId, question => {
+      if (question.type === 'single') return { correctAnswers: [idx] };
+      const already = question.correctAnswers.includes(idx);
+      return {
+        correctAnswers: already
+          ? question.correctAnswers.filter(answer => answer !== idx)
+          : [...question.correctAnswers, idx],
+      };
+    });
   };
 
   const rejectSave = (message: string, questionId?: string) => {
@@ -209,10 +256,13 @@ export function QuizEditor({
   };
 
   const handleSave = async () => {
-    if (!title.trim()) return rejectSave('A quiz title is required');
-    const questionsToSave = questions.filter(question => !isBlankQuestion(question));
+    const draft = draftRef.current;
+    const draftTitle = draft.title;
+    const draftQuestions = draft.questions.map(question => normalizeQuestion(question));
+    if (!draftTitle.trim()) return rejectSave('A quiz title is required');
+    const questionsToSave = draftQuestions.filter(question => !isBlankQuestion(question));
     if (!questionsToSave.length) return rejectSave('Add at least one question');
-    if (questionsToSave.length !== questions.length) setQuestions(questionsToSave);
+    if (questionsToSave.length !== draftQuestions.length) replaceQuestions(questionsToSave);
     const missingText = questionsToSave.flatMap((q, i) => (q.text.trim() ? [] : [i + 1]));
     if (missingText.length) {
       return rejectSave(missingTextMessage(missingText), questionsToSave[missingText[0] - 1].id);
@@ -236,12 +286,12 @@ export function QuizEditor({
       await createBvQuiz({
         quizId: editingQuiz?.id,
         department,
-        title,
-        description,
+        title: draftTitle,
+        description: draft.description,
         groupId: department === 'PW' ? undefined : (groupId || undefined),
         questions: questionsToSave,
-        isActive: department === 'PW' ? true : isActive,
-        quizDate,
+        isActive: department === 'PW' ? true : draft.isActive,
+        quizDate: draft.quizDate,
       });
       toast.success('Quiz saved');
       onSaved();
@@ -278,11 +328,15 @@ export function QuizEditor({
         <div className="flex items-center gap-3">
           {department !== 'PW' && (
             <div className="flex items-center gap-2">
-              <Switch id="quiz-active" checked={isActive} onCheckedChange={setIsActive} />
+              <Switch id="quiz-active" checked={isActive} onCheckedChange={value => {
+                draftDirtyRef.current = true;
+                draftRef.current = { ...draftRef.current, isActive: value };
+                setIsActive(value);
+              }} />
               <Label htmlFor="quiz-active" className="text-sm">Active</Label>
             </div>
           )}
-          <Button onClick={() => handleSave()} disabled={saving} size="sm">
+          <Button type="button" onClick={() => handleSave()} disabled={saving} size="sm">
             {saving && <Loader2 className="w-4 h-4 animate-spin mr-1" />}
             Save
           </Button>
@@ -300,13 +354,21 @@ export function QuizEditor({
         <CardContent className="pt-4 pb-4 space-y-3">
           <Input
             value={title}
-            onChange={e => setTitle(e.target.value)}
+            onChange={e => {
+              draftDirtyRef.current = true;
+              draftRef.current = { ...draftRef.current, title: e.target.value };
+              setTitle(e.target.value);
+            }}
             placeholder="Quiz title..."
             className="text-lg font-semibold border-none shadow-none px-0 focus-visible:ring-0 bg-transparent"
           />
           <Textarea
             value={description}
-            onChange={e => setDescription(e.target.value)}
+            onChange={e => {
+              draftDirtyRef.current = true;
+              draftRef.current = { ...draftRef.current, description: e.target.value };
+              setDescription(e.target.value);
+            }}
             placeholder="Description (optional)..."
             className="border-none shadow-none px-0 focus-visible:ring-0 resize-none text-sm text-muted-foreground bg-transparent"
             rows={2}
@@ -323,7 +385,11 @@ export function QuizEditor({
               id="quiz-date"
               type="date"
               value={quizDate}
-              onChange={e => setQuizDate(e.target.value)}
+              onChange={e => {
+                draftDirtyRef.current = true;
+                draftRef.current = { ...draftRef.current, quizDate: e.target.value };
+                setQuizDate(e.target.value);
+              }}
               className="h-8 w-auto text-sm"
             />
           </div>

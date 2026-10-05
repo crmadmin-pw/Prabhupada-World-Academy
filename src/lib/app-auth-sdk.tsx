@@ -18,7 +18,6 @@ import { getDepartmentLandingUrl } from '@/lib/userDashboardRoutes';
 // Uses signInWithPopup in both emulator and production.
 // This works reliably across different hosting domains without falling prey
 // to browser third-party cookie restrictions during redirect.
-// Mock auth via localStorage for local dev/testing.
 // ══════════════════════════════════════════════════════════════════════════════
 
 interface AuthContextType {
@@ -42,7 +41,8 @@ const firebaseConfig = {
 
 const isFirebaseEnabled = !!firebaseConfig.apiKey;
 // True when using the local Firebase Auth emulator (set in .env.local only — never in production)
-const isEmulatorMode = process.env.NEXT_PUBLIC_USE_AUTH_EMULATOR === 'true';
+const isEmulatorMode = process.env.NODE_ENV !== 'production'
+  && process.env.NEXT_PUBLIC_USE_AUTH_EMULATOR === 'true';
 
 let app: any;
 let auth: any;
@@ -62,21 +62,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const storedEmail = typeof window !== 'undefined' ? localStorage.getItem('auth_email') : null;
-    const isMockMode = typeof window !== 'undefined' && (
-      localStorage.getItem('auth_mock_mode') === 'true' ||
-      !isFirebaseEnabled
-    );
-
-    if (isMockMode && storedEmail) {
-      setUser({ email: storedEmail, id: storedEmail });
-      if (typeof window !== 'undefined') {
-        (window as any).__firebase_id_token = `mock_token_for_${storedEmail}`;
-      }
-      setIsLoading(false);
-      return;
-    }
-
     if (isFirebaseEnabled && auth) {
       return onAuthStateChanged(auth, async (fbUser: FirebaseUser | null) => {
         setIsLoading(true);
@@ -117,9 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         window.location.href = options.redirectUrl;
       }
     } else {
-      // Mock mode: go to local login page
-      const redirectUrl = options?.redirectUrl || `${window.location.origin}/auth-callback`;
-      window.location.href = `/login?redirectUrl=${encodeURIComponent(redirectUrl)}`;
+      throw new Error('Sign-in is unavailable because Firebase is not configured.');
     }
   };
 

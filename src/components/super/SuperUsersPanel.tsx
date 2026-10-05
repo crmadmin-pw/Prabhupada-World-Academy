@@ -683,21 +683,20 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
   const baseUsers = useMemo(() => {
     let r = users;
 
-    // Filter strictly by the current department segment (PW vs FOLK) and only show active (approved) members
-    r = r.filter(u => isUserInCurrentDepartment(u, isPwMode) && isActiveDirectoryMember(u.status));
-    // getGuideUsers has already applied the signed-in user's hierarchy scope.
-    // Re-applying it here with a legacy Guide ID can hide a valid direct member.
+    // PW admins and super admins can see the whole authorized directory,
+    // including FOLK members and records without a department assignment.
+    const seesAllDepartments = isSuperAdmin || (isPwMode && isDepartmentAdmin);
+    r = r.filter(u => (seesAllDepartments || isUserInCurrentDepartment(u, isPwMode)) && isActiveDirectoryMember(u.status));
     return r;
-  }, [users, isPwMode, isUserInCurrentDepartment]);
+  }, [users, isPwMode, isDepartmentAdmin, isSuperAdmin, isUserInCurrentDepartment]);
 
   const filtered = useMemo(() => {
     let r = baseUsers;
 
     // Never apply a stale/hidden guide filter to an Admin's department-wide
     // directory. Group and guide assignment are optional for approved users.
-    // Super Admins can inspect the complete directory by mentor. A regular
-    // department admin is already scoped to their own hierarchy and does not
-    // need a second cross-mentor filter.
+    // Super Admins can inspect the complete directory by mentor. A Prabhupada
+    // World admin already receives that same complete directory.
     // A normal Guide has no visible Guide selector and is already server-scoped.
     // Applying its hidden selector a second time can compare incompatible legacy
     // identifiers and incorrectly turn a valid member list into zero rows.

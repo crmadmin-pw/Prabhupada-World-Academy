@@ -23,6 +23,23 @@ export function isHierarchyAdmin(user: any): boolean {
     ['ADMIN', 'PW_ADMIN', 'GUIDE'].includes(role));
 }
 
+/** A Prabhupada World admin reads the full member directory, the same as a super admin. */
+export function isPwDepartmentAdmin(user: any): boolean {
+  if (!user) return false;
+  const role = String(user.role || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+  const segment = String(user.segment || '').trim().toUpperCase().replace(/[\s_-]+/g, '');
+  const explicitPwAdmin = user.isPwAdmin === true || role === 'PW_ADMIN';
+  const inPwDepartment = explicitPwAdmin || (
+    segment !== 'FOLK' && (
+      user.isPrabhupadaWorldUser === true ||
+      segment === 'PW' ||
+      segment === 'PRABHUPADAWORLD'
+    )
+  );
+  const isAdmin = explicitPwAdmin || user.isBvAdmin === true || role === 'ADMIN' || role === 'ADMINISTRATOR';
+  return inPwDepartment && isAdmin;
+}
+
 export function isUserInHierarchy(user: any, scope: Set<string> | null): boolean {
   return scope === null || hierarchyAliases(user).some(alias => scope.has(alias));
 }

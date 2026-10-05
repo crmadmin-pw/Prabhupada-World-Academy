@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Users } from '@/lib/app-backend-sdk';
 import { getApps, initializeApp, cert } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
+import { verifyFirebaseIdToken } from '@/lib/verifyFirebaseIdToken';
 import { timingSafeEqual } from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -91,58 +91,13 @@ if (apps.length === 0) {
 }
 
 async function verifyToken(token: string): Promise<{ email: string; uid: string; emailVerified: boolean }> {
-  // Support Mock auth token for local offline development
-  if (token.startsWith('mock_token_for_')) {
-    if (process.env.NODE_ENV === 'production' && process.env.NEXT_PUBLIC_USE_AUTH_EMULATOR !== 'true') {
-      throw new Error('Unauthorized: Mock tokens are forbidden in production.');
-    }
-    const email = token.replace('mock_token_for_', '');
-    if (!email) throw new Error('Unauthorized: Mock token has no email.');
-    return { email, uid: email, emailVerified: true };
-  }
-
-  // When using the Firebase Auth emulator locally, tokens are NOT signed with
-  // Google's real private keys (no 'kid' claim), so verifyIdToken() fails.
-  // Instead, decode the JWT payload directly — this is safe since we trust the
-  // local emulator environment.
-  if (process.env.FIREBASE_AUTH_EMULATOR_HOST) {
-    const parts = token.split('.');
-    if (parts.length === 3) {
-      try {
-        const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
-        const email = payload.email || payload.firebase?.identities?.email?.[0] || null;
-        const uid = payload.sub || payload.user_id || payload.uid;
-        if (uid && email) return { email, uid, emailVerified: payload.email_verified !== false };
-      } catch {}
-    }
-  }
-
-  // If Firebase Admin is initialized, verify the ID Token (production path)
-  const activeApps = getApps();
-  if (activeApps.length > 0) {
-    const decoded = await getAuth().verifyIdToken(token);
-    if (!decoded.email) throw new Error('Unauthorized: An email address is required.');
-    return {
-      email: decoded.email,
-      uid: decoded.uid,
-      emailVerified: decoded.email_verified === true,
-    };
-  }
-
-  // Fallback JWT payload decoder for local testing without Admin credentials
-  if (process.env.NODE_ENV === 'development') {
-    const parts = token.split('.');
-    if (parts.length === 3) {
-      try {
-        const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
-        const email = payload.email || null;
-        const uid = payload.sub || payload.user_id;
-        if (email && uid) return { email, uid, emailVerified: payload.email_verified !== false };
-      } catch {}
-    }
-  }
-
-  throw new Error('Authentication verification not configured. Check process.env.FIREBASE_SERVICE_ACCOUNT.');
+  const decoded = await verifyFirebaseIdToken(token);
+  if (!decoded.email) throw new Error('Unauthorized: An email address is required.');
+  return {
+    email: decoded.email,
+    uid: decoded.uid,
+    emailVerified: decoded.email_verified === true,
+  };
 }
 
 type VerifiedUser = Awaited<ReturnType<typeof verifyToken>>;
