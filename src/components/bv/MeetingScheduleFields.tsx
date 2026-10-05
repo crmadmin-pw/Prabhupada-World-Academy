@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Clock } from 'lucide-react';
+import { ChevronDown, Clock } from 'lucide-react';
 import { Label } from '@/components/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { cn } from '@/lib/utils';
 import {
   MEETING_DAYS,
   formatMeetingSchedule,
@@ -42,26 +44,63 @@ function TimeSelect({
   value,
   options,
   placeholder,
+  menuTitle,
   onChange,
 }: {
   label: string;
   value: string;
   options: string[];
   placeholder: string;
+  menuTitle: string;
   onChange: (value: string) => void;
 }) {
+  const [open, setOpen] = useState(false);
+
   return (
-    <select
-      aria-label={label}
-      value={value}
-      onChange={event => onChange(event.target.value)}
-      className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-1.5 text-sm font-medium text-foreground outline-none focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/20"
-    >
-      <option value="" disabled>{placeholder}</option>
-      {options.map(option => (
-        <option key={option} value={option}>{option}</option>
-      ))}
-    </select>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        type="button"
+        aria-label={label}
+        className="group inline-flex h-7 shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-secondary/80 px-2 text-xs font-semibold outline-none transition-colors hover:bg-secondary focus-visible:ring-2 focus-visible:ring-primary/30 data-open:bg-secondary data-open:ring-2 data-open:ring-primary/25"
+      >
+        <span className={value ? 'text-foreground' : 'text-muted-foreground'}>
+          {value || placeholder}
+        </span>
+        <ChevronDown className="size-3 shrink-0 text-muted-foreground transition-transform group-data-open:rotate-180" />
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        sideOffset={6}
+        className="w-auto gap-1.5 rounded-xl bg-popover p-2 shadow-lg ring-1 ring-primary/15"
+      >
+        <p className="px-1 text-[10px] font-bold uppercase tracking-[0.14em] text-primary">{menuTitle}</p>
+        <div className="grid grid-cols-4 gap-1" role="listbox" aria-label={label}>
+          {options.map(option => {
+            const selected = value === option;
+            return (
+              <button
+                key={option}
+                type="button"
+                role="option"
+                aria-selected={selected}
+                onClick={() => {
+                  onChange(option);
+                  setOpen(false);
+                }}
+                className={cn(
+                  'h-8 w-9 rounded-lg text-sm font-medium tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
+                  selected
+                    ? 'bg-primary font-semibold text-primary-foreground shadow-xs'
+                    : 'text-foreground hover:bg-secondary',
+                )}
+              >
+                {option}
+              </button>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -77,32 +116,34 @@ function TimeField({
   return (
     <div className="min-w-0 space-y-1.5">
       <Label className="text-xs font-semibold">{label}</Label>
-      <div className="flex items-center gap-1 rounded-lg border border-input bg-background p-1.5" role="group" aria-label={label}>
+      <div className="flex items-center gap-1 rounded-lg border border-input bg-background px-1.5 py-1" role="group" aria-label={label}>
         <Clock className="size-3.5 shrink-0 text-primary" aria-hidden />
         <TimeSelect
           label={`${label} hour`}
           value={draft.hour}
           options={HOURS}
           placeholder="Hr"
+          menuTitle="Hour"
           onChange={hour => onChange({ ...draft, hour })}
         />
-        <span className="text-sm text-muted-foreground">:</span>
+        <span className="shrink-0 text-xs font-semibold text-muted-foreground">:</span>
         <TimeSelect
           label={`${label} minute`}
           value={draft.minute}
           options={MINUTES}
           placeholder="Min"
+          menuTitle="Minute"
           onChange={minute => onChange({ ...draft, minute })}
         />
-        <div className="flex shrink-0 rounded-md border border-border bg-background p-0.5" role="group" aria-label={`${label} AM or PM`}>
+        <div className="ml-auto flex shrink-0 rounded-md bg-muted/70 p-0.5" role="group" aria-label={`${label} AM or PM`}>
           {(['AM', 'PM'] as const).map(period => (
             <button
               key={period}
               type="button"
               aria-pressed={draft.period === period}
               onClick={() => onChange({ ...draft, period })}
-              className={`h-7 rounded px-1.5 text-[11px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-                draft.period === period ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
+              className={`h-6 rounded px-1.5 text-[10px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                draft.period === period ? 'bg-primary text-primary-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               {period}
