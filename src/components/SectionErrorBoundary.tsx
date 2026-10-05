@@ -14,6 +14,24 @@ interface State {
   error: Error | null;
 }
 
+const CHUNK_RELOAD_KEY = 'chunk_reload_ts';
+
+function isChunkLoadError(error: Error | null): boolean {
+  const message = error?.message || '';
+  return error?.name === 'ChunkLoadError' || /Failed to load chunk|Loading chunk [\w./-]+ failed/.test(message);
+}
+
+function reloadForFreshBuild() {
+  try {
+    const lastReload = Number(sessionStorage.getItem(CHUNK_RELOAD_KEY) || 0);
+    if (Date.now() - lastReload < 15_000) return;
+    sessionStorage.setItem(CHUNK_RELOAD_KEY, String(Date.now()));
+  } catch {
+    return;
+  }
+  window.location.reload();
+}
+
 /**
  * Section-level error boundary for dashboard panels and complex components.
  * Wrapping each major section with this ensures a single panel failure does NOT
@@ -31,7 +49,15 @@ export default class SectionErrorBoundary extends React.Component<Props, State> 
     return { hasError: true, error };
   }
 
+  componentDidCatch(error: Error) {
+    if (isChunkLoadError(error)) reloadForFreshBuild();
+  }
+
   handleRetry = () => {
+    if (isChunkLoadError(this.state.error)) {
+      reloadForFreshBuild();
+      return;
+    }
     this.setState({ hasError: false, error: null });
   };
 

@@ -10,6 +10,7 @@ import { DashboardLayout } from '@/layouts';
 import { LoadingPage } from '@/shared';
 import TabTransition from '@/components/TabTransition';
 import SadhanaTab from '@/components/dashboard/SadhanaTab';
+import BvTab from '@/components/dashboard/BvTab';
 import { useQuery } from '@/hooks/useQuery';
 import SectionErrorBoundary from '@/components/SectionErrorBoundary';
 import PushNotificationBanner from '@/components/dashboard/PushNotificationBanner';
@@ -21,7 +22,6 @@ import {
   type SavedSadhanaEntryPayload,
 } from '@/utils/sadhanaDashboardRefresh';
 
-const BvTab = lazy(() => import('@/components/dashboard/BvTab'));
 const LeaderboardTab = lazy(() => import('@/components/dashboard/LeaderboardTab'));
 
 export default function PwUserDashboard() {
