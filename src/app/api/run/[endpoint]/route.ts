@@ -17,10 +17,14 @@ import { withRequestQueries } from '@/lib/requestQueries';
 import { registerRealtimeQuery } from '@/lib/realtimeQueryRegistration';
 import { registerRealtimeIdentity } from '@/lib/realtimeIdentityRegistration';
 
+interface SchemaIssue {
+  message?: string;
+}
+
 interface EndpointSchema {
   safeParse(input: unknown):
     | { success: true; data: unknown }
-    | { success: false; error: { errors: unknown } };
+    | { success: false; error: { errors?: unknown; issues?: SchemaIssue[] } };
 }
 
 interface EndpointConfig {
@@ -360,9 +364,10 @@ export async function POST(
     if (endpointConfig.inputSchema) {
       const parseResult = endpointConfig.inputSchema.safeParse(body);
       if (!parseResult.success) {
-        const issue = parseResult.error.issues[0]?.message;
+        const issues = parseResult.error.issues ?? [];
+        const issue = issues[0]?.message;
         return NextResponse.json(
-          { message: issue ? `Validation failed: ${issue}` : 'Validation failed', errors: parseResult.error.issues },
+          { message: issue ? `Validation failed: ${issue}` : 'Validation failed', errors: issues },
           { status: 400 }
         );
       }
