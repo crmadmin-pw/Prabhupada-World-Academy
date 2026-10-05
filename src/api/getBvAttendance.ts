@@ -3,7 +3,7 @@ import { createEndpoint, BvGroups, BvGroupMembers, BvAttendance, Users, FolkResi
 import { readBvProfileAttendance } from '../lib/bvProfileAttendance';
 
 const USER_IDENTITY_FIELDS = ['id', 'userId', 'email', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
-const USER_FIELDS = ['id', 'userId', 'email', 'fullName', 'displayName', 'name', 'residencyApproved', 'residencyGuideVerified', 'residency', 'selectedFolkResidency', 'residencyName', 'ashrayLevel', ...USER_IDENTITY_FIELDS.filter(field => !['id', 'userId', 'email'].includes(field))];
+const USER_FIELDS = ['id', 'userId', 'email', 'fullName', 'displayName', 'name', 'residencyApproved', 'residencyGuideVerified', 'residency', 'selectedFolkResidency', 'residencyName', 'ashrayLevel', 'bvGroupId', 'bvGroupName', 'isBvMember', 'pendingBvGroupAssignmentNotice', ...USER_IDENTITY_FIELDS.filter(field => !['id', 'userId', 'email'].includes(field))];
 
 function firstValue(value: unknown): string {
   if (Array.isArray(value)) return String(value[0] || '');
@@ -127,19 +127,35 @@ export default createEndpoint({
           .some(value => lookupKeys.has(value.toLowerCase()))
       );
     }
+    if (!membership && requestedUser && (requestedUser.isBvMember === true || requestedUser.pendingBvGroupAssignmentNotice === true)) {
+      const profileGroup = firstValue(requestedUser.bvGroupId || requestedUser.bvGroupName);
+      if (profileGroup) {
+        membership = {
+          id: `profile-${requestedUser.id}`,
+          user: requestedUser.id,
+          userId: requestedUser.userId,
+          group: requestedUser.bvGroupId || profileGroup,
+          groupId: requestedUser.bvGroupId || profileGroup,
+        };
+      }
+    }
     const storedGroupId = firstValue(membership?.group || membership?.groupId);
     if (!storedGroupId) {
       return { userHistory: [], leaderboard: [], userTotalPointsThisWeek: 0 };
     }
 
-    const group = await BvGroups.findOne({ id: storedGroupId, fields: ['id', 'groupId'] })
+    const groupFields = ['id', 'groupId', 'groupName'];
+    const group = await BvGroups.findOne({ id: storedGroupId, fields: groupFields })
       .catch(() => null)
-      || await BvGroups.findOne({ filters: { groupId: storedGroupId }, fields: ['id', 'groupId'] })
+      || await BvGroups.findOne({ filters: { groupId: storedGroupId }, fields: groupFields })
+        .catch(() => null)
+      || await BvGroups.findOne({ filters: { groupName: storedGroupId }, fields: groupFields })
         .catch(() => null);
     const groupReferences = [...new Set([
       storedGroupId,
       group?.id,
       group?.groupId,
+      group?.groupName,
     ].flatMap(referenceValues))];
     // Membership references are valid aliases for attendance rows but are not
     // user identities themselves. Keep them separate so a membership document
@@ -173,9 +189,20 @@ export default createEndpoint({
       }).catch(() => ({ records: [], hasMore: false })),
     ]);
 
+    let attendanceRecords = [...attendanceByGroup.records, ...attendanceByGroupId.records]
+      .filter((record: any, index: number, records: any[]) => records.findIndex(item => item.id === record.id) === index);
+    if (attendanceRecords.length === 0 && groupReferences.length > 0) {
+      const groupKeys = new Set(groupReferences.map(value => value.toLowerCase()));
+      const { records } = await BvAttendance.findAll({
+        fields: ['id', 'group', 'groupId', 'user', 'present', 'attendanceDate'],
+        limit: 5000,
+      }).catch(() => ({ records: [] as any[] }));
+      attendanceRecords = records.filter((record: any) =>
+        referenceValues([record.group, record.groupId]).some(value => groupKeys.has(value.toLowerCase()))
+      );
+    }
     const attendanceResult = {
-      records: [...attendanceByGroup.records, ...attendanceByGroupId.records]
-        .filter((record: any, index: number, records: any[]) => records.findIndex(item => item.id === record.id) === index),
+      records: attendanceRecords,
     };
     const groupMembersResult = {
       records: [...membersByGroup.records, ...membersByGroupId.records]

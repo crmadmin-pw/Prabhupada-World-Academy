@@ -13,6 +13,14 @@ function referenceValues(value: unknown): string[] {
   return String(value).split(',').map(item => item.trim().toLowerCase()).filter(Boolean);
 }
 
+/** Firestore equality is case-sensitive. Query with the stored id, and compare
+ * a lowercased copy only after the rows are in memory. */
+function exactValues(value: unknown): string[] {
+  if (Array.isArray(value)) return value.flatMap(exactValues);
+  if (value == null) return [];
+  return String(value).split(',').map(item => item.trim()).filter(Boolean);
+}
+
 export default createEndpoint({
   description: 'Get current user BV group status, attendance streak, and available groups',
   authenticated: true,
@@ -22,7 +30,7 @@ export default createEndpoint({
     const uid = context.user!.id;
     const today = getTodayIST();
 
-    const userRecord = await Users.findOne({ id: uid, fields: ['id', 'userId', 'fullName', 'email', 'bvGroupId', 'bvGroupName', 'bvRegistrationStatus', 'isBvMember', 'segment', 'isPrabhupadaWorldUser'] }).catch(() => null);
+    const userRecord = await Users.findOne({ id: uid, fields: ['id', 'userId', 'fullName', 'email', 'bvGroupId', 'bvGroupName', 'bvRegistrationStatus', 'isBvMember', 'pendingBvGroupAssignmentNotice', 'segment', 'isPrabhupadaWorldUser'] }).catch(() => null);
     const altUid = userRecord?.userId || uid;
     const userIdentityKeys = new Set([
       uid,
@@ -36,14 +44,25 @@ export default createEndpoint({
     // stale bvGroupId profile field as a synthetic membership.
     const identityKeys = new Set([
       uid,
+      context.user?.uid,
       userRecord?.id,
       altUid,
       userRecord?.fullName,
       userRecord?.email,
+      context.user?.email,
     ].flatMap(referenceValues));
+    const identityQueryKeys = [...new Set([
+      uid,
+      context.user?.uid,
+      userRecord?.id,
+      altUid,
+      userRecord?.fullName,
+      userRecord?.email,
+      context.user?.email,
+    ].flatMap(exactValues))].slice(0, 30);
     const [membershipByUser, membershipByUserId, pendingRes] = await Promise.all([
-      BvGroupMembers.findAll({ filters: { user: { in: [...identityKeys] } }, limit: 5, fields: ['id', 'group', 'groupId', 'user', 'userId', 'memberId', 'role', 'joinedAt'] }),
-      BvGroupMembers.findAll({ filters: { userId: { in: [...identityKeys] } }, limit: 5, fields: ['id', 'group', 'groupId', 'user', 'userId', 'memberId', 'role', 'joinedAt'] }),
+      BvGroupMembers.findAll({ filters: { user: { in: identityQueryKeys } }, limit: 5, fields: ['id', 'group', 'groupId', 'user', 'userId', 'memberId', 'role', 'joinedAt'] }),
+      BvGroupMembers.findAll({ filters: { userId: { in: identityQueryKeys } }, limit: 5, fields: ['id', 'group', 'groupId', 'user', 'userId', 'memberId', 'role', 'joinedAt'] }),
       BvGroupRequests.findAll({ filters: { user: uid, status: 'Pending' }, limit: 5, fields: ['id', 'group', 'requestedAt'] }),
     ]);
     // The fast indexed lookups cover current records. Fall back to the small
@@ -60,6 +79,18 @@ export default createEndpoint({
         referenceValues([member.user, member.userId, (member as any).memberId])
           .some(reference => identityKeys.has(reference))
       );
+    }
+    if (!rawMembership && userRecord && (userRecord.isBvMember === true || userRecord.pendingBvGroupAssignmentNotice === true)) {
+      const profileGroup = String(userRecord.bvGroupId || userRecord.bvGroupName || '').trim();
+      if (profileGroup) {
+        rawMembership = {
+          id: `profile-${userRecord.id}`,
+          user: userRecord.id,
+          userId: userRecord.userId,
+          group: userRecord.bvGroupId || profileGroup,
+          groupId: userRecord.bvGroupId || profileGroup,
+        } as any;
+      }
     }
     // A BvGroupMembers document is the authoritative membership record. A
     // profile flag can be stale after an approval or group assignment.
@@ -157,16 +188,20 @@ export default createEndpoint({
     const storedGroupId = Array.isArray(membership.group) ? membership.group[0] : (membership.group || (membership as any).groupId);
     if (!storedGroupId) return { myGroup: null, pendingRequest: null, availableGroups: [], todayStatus: null, streak: 0, presentCount: 0, totalSessions: 0 };
 
-    const groupRecord = await BvGroups.findOne({ id: storedGroupId, fields: ['id', 'groupId', 'groupName', 'bvslLeader', 'bvslId', 'bvslName'] })
+    const groupFields = ['id', 'groupId', 'groupName', 'bvslLeader', 'bvslId', 'bvslName'];
+    const groupRecord = await BvGroups.findOne({ id: storedGroupId, fields: groupFields })
       .catch(() => null)
-      || await BvGroups.findOne({ filters: { groupId: storedGroupId }, fields: ['id', 'groupId', 'groupName', 'bvslLeader', 'bvslId', 'bvslName'] })
+      || await BvGroups.findOne({ filters: { groupId: storedGroupId }, fields: groupFields })
+        .catch(() => null)
+      || await BvGroups.findOne({ filters: { groupName: storedGroupId }, fields: groupFields })
         .catch(() => null);
-    const groupReferences = [...new Set([storedGroupId, groupRecord?.id, groupRecord?.groupId].flatMap(referenceValues))];
+    const groupQueryRefs = [...new Set([storedGroupId, groupRecord?.id, groupRecord?.groupId, groupRecord?.groupName].flatMap(exactValues))];
+    const groupMatchKeys = new Set(groupQueryRefs.flatMap(referenceValues));
     const [membersByGroup, membersByGroupId, attendanceByGroup, attendanceByGroupId] = await Promise.all([
-      BvGroupMembers.findAll({ filters: { group: { in: groupReferences } }, fields: ['id', 'user', 'userId', 'memberId'], limit: 1000 }),
-      BvGroupMembers.findAll({ filters: { groupId: { in: groupReferences } }, fields: ['id', 'user', 'userId', 'memberId'], limit: 1000 }).catch(() => ({ records: [] })),
-      BvAttendance.findAll({ filters: { group: { in: groupReferences } }, fields: ['id', 'user', 'present', 'attendanceDate'], limit: 1000 }),
-      BvAttendance.findAll({ filters: { groupId: { in: groupReferences } }, fields: ['id', 'user', 'present', 'attendanceDate'], limit: 1000 }).catch(() => ({ records: [] })),
+      BvGroupMembers.findAll({ filters: { group: { in: groupQueryRefs } }, fields: ['id', 'user', 'userId', 'memberId'], limit: 1000 }),
+      BvGroupMembers.findAll({ filters: { groupId: { in: groupQueryRefs } }, fields: ['id', 'user', 'userId', 'memberId'], limit: 1000 }).catch(() => ({ records: [] })),
+      BvAttendance.findAll({ filters: { group: { in: groupQueryRefs } }, fields: ['id', 'user', 'group', 'groupId', 'present', 'attendanceDate'], limit: 1000 }),
+      BvAttendance.findAll({ filters: { groupId: { in: groupQueryRefs } }, fields: ['id', 'user', 'group', 'groupId', 'present', 'attendanceDate'], limit: 1000 }).catch(() => ({ records: [] })),
     ]);
 
     const group = groupRecord as any;
@@ -179,17 +214,27 @@ export default createEndpoint({
       const { records: allMemberships } = await BvGroupMembers.findAll({
         fields: ['id', 'group', 'groupId', 'user', 'userId', 'memberId'], limit: 5000,
       }).catch(() => ({ records: [] }));
-      const refs = new Set(groupReferences);
       groupMemberRecords = allMemberships.filter((member: any) =>
-        referenceValues([member.group, member.groupId]).some(value => refs.has(value))
+        referenceValues([member.group, member.groupId]).some(value => groupMatchKeys.has(value))
       );
     }
     const groupMembersRes = {
       records: groupMemberRecords,
     };
     const memberCount = groupMembersRes.records.length;
-    const allGroupAtt = [...attendanceByGroup.records, ...attendanceByGroupId.records]
+    let allGroupAtt = [...attendanceByGroup.records, ...attendanceByGroupId.records]
       .filter((attendance: any, index: number, records: any[]) => records.findIndex(item => item.id === attendance.id) === index);
+    // Group ids such as BV-GROUP-* are case-sensitive in Firestore. Recover
+    // marks in memory when the indexed read was stored under another alias.
+    if (allGroupAtt.length === 0 && groupMatchKeys.size > 0) {
+      const { records: attendanceRows } = await BvAttendance.findAll({
+        fields: ['id', 'user', 'group', 'groupId', 'present', 'attendanceDate'],
+        limit: 5000,
+      }).catch(() => ({ records: [] }));
+      allGroupAtt = attendanceRows.filter((attendance: any) =>
+        referenceValues([attendance.group, attendance.groupId]).some(value => groupMatchKeys.has(value))
+      );
+    }
 
     // Get this user's attendance
     const myAtt = allGroupAtt.filter((a: any) => {

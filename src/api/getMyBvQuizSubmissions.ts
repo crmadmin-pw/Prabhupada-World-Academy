@@ -3,9 +3,9 @@ import { AppError, BvQuizSubmissions, BvQuizzes, createEndpoint } from '@/lib/ba
 import {
   getUserQuizGroups,
   legacyQuizMatchesGroup,
+  participantQuizDepartment,
   pwQuizEnabledForGroup,
   quizRefValues,
-  quizUserDepartment,
   resolveQuizDepartment,
 } from '@/lib/bvQuizAccess';
 
@@ -18,7 +18,7 @@ export default createEndpoint({
   outputSchema: z.any(),
   execute: async ({ context }) => {
     if (!context.user) throw new AppError({ code: 'UNAUTHORIZED', message: 'Authentication required' });
-    const department = quizUserDepartment(context.user);
+    const department = await participantQuizDepartment(context.user);
     if (department !== 'FOLK' && department !== 'PW') {
       return {
         department: 'PW',

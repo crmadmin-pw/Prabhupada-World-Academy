@@ -302,7 +302,12 @@ export function findScopedQuizGroup(groups: QuizGroupScope[], reference: unknown
 }
 
 export async function findQuizGroup(reference: unknown): Promise<any | null> {
-  const refs = quizRefValues(reference);
+  // Normalize aliases only when comparing them in memory. Firestore document
+  // IDs and field equality queries are case-sensitive (BV-GROUP-* is common).
+  const exactRefs = (value: unknown): string[] => Array.isArray(value)
+    ? value.flatMap(exactRefs)
+    : value == null ? [] : String(value).split(',').map(part => part.trim()).filter(Boolean);
+  const refs = [...new Set(exactRefs(reference))];
   for (const ref of refs) {
     const group = await BvGroups.findOne({ id: ref }).catch(() => undefined) ||
       await BvGroups.findOne({ filters: { groupId: ref } }).catch(() => undefined) ||
@@ -334,6 +339,32 @@ export async function resolveQuizDepartment(quiz: any, fallback: QuizDepartment)
   return fallback;
 }
 
+/** Department used for a participant. The API context often omits legacy PW
+ * flags, so an empty segment is resolved from the saved user before falling
+ * back to the same default as the member dashboard. */
+export async function participantQuizDepartment(user: QuizAccessUser): Promise<QuizDepartment> {
+  const direct = quizUserDepartment(user);
+  if (direct === 'PW' || direct === 'FOLK') return direct;
+  if (String(user?.segment || '').trim()) return direct;
+
+  const record = await Users.findOne({ id: String(user?.id || '') }).catch(() => undefined) ||
+    await Users.findOne({ filters: { userId: String(user?.userId || '') } }).catch(() => undefined) ||
+    await Users.findOne({ filters: { email: String(user?.email || '') } }).catch(() => undefined);
+  const fromRecord = quizUserDepartment({
+    segment: record?.segment,
+    role: record?.role || user?.role,
+    normalizedRole: user?.normalizedRole,
+    isPrabhupadaWorldUser: record?.isPrabhupadaWorldUser === true,
+    isFolkUser: record?.isFolkUser === true,
+  } as QuizAccessUser);
+  if (fromRecord === 'PW' || fromRecord === 'FOLK') return fromRecord;
+  if (String(record?.segment || '').trim()) return fromRecord;
+
+  const role = normalizeQuizRole(record?.role || user?.role || user?.normalizedRole);
+  if (role === 'GUIDE' || role === 'SUPER_GUIDE') return 'FOLK';
+  return 'PW';
+}
+
 export async function getUserQuizMemberships(user: QuizAccessUser): Promise<any[]> {
   const aliases = quizUserAliases(user);
   const record = await Users.findOne({ id: String(user.id || '') }).catch(() => undefined) ||
@@ -345,14 +376,29 @@ export async function getUserQuizMemberships(user: QuizAccessUser): Promise<any[
     limit: 5000,
     fields: ['id', 'group', 'groupId', 'user', 'userId', 'memberId', 'role'],
   });
-  return records.filter((membership: any) => {
+  const matched = records.filter((membership: any) => {
     const memberRefs = quizRefValues([membership.user, membership.userId, membership.memberId]);
     return memberRefs.some(reference => aliases.has(reference));
   });
+  if (matched.length > 0) return matched;
+
+  // A reading-group assignment can be saved on the profile before the
+  // membership row is visible to this lookup. That assignment is what the
+  // facilitator used when turning a quiz on.
+  const groupRef = String(record?.bvGroupId || record?.bvGroupName || '').trim();
+  const assigned = record?.isBvMember === true || record?.pendingBvGroupAssignmentNotice === true;
+  if (!assigned || !groupRef) return [];
+  return [{
+    id: `profile-${record.id}`,
+    user: record.id,
+    userId: record.userId,
+    group: record.bvGroupId || groupRef,
+    groupId: record.bvGroupId || groupRef,
+  }];
 }
 
 export async function getUserQuizGroups(user: QuizAccessUser, department: 'FOLK' | 'PW'): Promise<any[]> {
-  if (quizUserDepartment(user) !== department) return [];
+  if (await participantQuizDepartment(user) !== department) return [];
   const memberships = await getUserQuizMemberships(user);
   const groups: any[] = [];
   const seen = new Set<string>();
@@ -361,7 +407,13 @@ export async function getUserQuizGroups(user: QuizAccessUser, department: 'FOLK'
   for (const membership of memberships) {
     const group = await findQuizGroup([membership.group, membership.groupId]);
     if (!group || seen.has(group.id) || group.isActive === false) continue;
-    const groupDepartment = resolveGroupDepartment(group, directory, callerAliases, normalizeQuizDepartment(user.segment, department));
+    const explicitSegment = String(group.segment || '').trim();
+    let groupDepartment = resolveGroupDepartment(group, directory, callerAliases, normalizeQuizDepartment(user.segment, department));
+    // Legacy groups such as VDN have no department. The facilitator can still
+    // turn a quiz on, because ownership resolves the group to their own
+    // department. A member is not the owner, so the same group was dropped
+    // and the quiz never appeared.
+    if (!explicitSegment && groupDepartment === 'OTHER') groupDepartment = department;
     if (groupDepartment !== department) continue;
     seen.add(group.id);
     groups.push(group);

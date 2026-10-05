@@ -18,6 +18,7 @@ import type { GetUserBvStatusOutputType, GetBvAttendanceOutputType } from '@/lib
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import BvLeaderboard from '@/components/dashboard/BvLeaderboard';
 import BvQuizSection from '@/components/bv/BvQuizSection';
+import BvCalendarView from '@/components/bv/BvCalendarView';
 import BvRegistrationModal from '@/components/bv/BvRegistrationModal';
 
 interface Props { userId: string; segment?: 'PW' | 'FOLK'; }
@@ -257,6 +258,10 @@ export default function BvTab({ userId, segment }: Props) {
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {status?.myGroup && (
+        <BvCalendarView history={attendance?.userHistory || []} />
       )}
 
       {/* Leaderboard (only if in a group) */}
