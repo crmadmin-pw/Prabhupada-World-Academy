@@ -17,7 +17,7 @@ type BvDirectoryUser = {
  * membership. Role, parent, and group are shown only after the person has an
  * approved registration, a reading-group placement, or an assigned BV role.
  */
-export function isBhaktiVrikshaDirectoryMember(user: BvDirectoryUser | null | undefined): boolean {
+export function isBhaktiVrikshaDirectoryMember(user: BvDirectoryUser | Record<string, any> | null | undefined): boolean {
   if (!user) return false;
   if (user.isBvMember === true) return true;
   if (String(user.bvRegistrationStatus || '').trim() === 'Approved') return true;

@@ -37,8 +37,8 @@ test('detailed, missing and member reports use identical residency scope despite
   const m = await missing.execute({ input: { guideId: 'guide-b', residencyId: 'vashi', startDate: '2026-10-02', endDate: '2026-10-02', segment: 'FOLK' }, context } as any);
   const list = await members.execute({ input: {}, context } as any);
   assert.deepEqual(d.users.map((r: any) => r.id).sort(), ['legacy-residency', 'mentor', 'other-guide', 'vashi']);
-  assert.equal(d.users.find((r: any) => r.id === 'vashi').residencyName, 'FOLK Vashi');
-  assert.equal(d.users.find((r: any) => r.id === 'other-guide').residencyName, 'FOLK Powai');
+  assert.equal(d.users.find((r: any) => r.id === 'vashi')?.residencyName, 'FOLK Vashi');
+  assert.equal(d.users.find((r: any) => r.id === 'other-guide')?.residencyName, 'FOLK Powai');
   assert.deepEqual(m.users.map((r: any) => r.id).sort(), ['legacy-residency', 'mentor', 'other-guide', 'vashi']);
   assert.deepEqual(list.members.map((r: any) => r.userId).sort(), ['USER-legacy-residency', 'USER-other-guide', 'USER-vashi']);
   assert.equal(m.stats.totalUsers, 4);

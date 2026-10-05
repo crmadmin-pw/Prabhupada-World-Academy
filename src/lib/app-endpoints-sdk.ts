@@ -1245,15 +1245,20 @@ export type GetGuideRequestsInputType = getGuideRequests_Input;
 
 import type getGuideUsers_Type from '../api/getGuideUsers';
 type getGuideUsers_Input = z.input<typeof getGuideUsers_Type.inputSchema>;
-type getGuideUsers_Output = ReturnType<typeof getGuideUsers_Type.execute> extends Promise<infer R> ? R : ReturnType<typeof getGuideUsers_Type.execute>;
+// The handler return is a very large union. Inferring it here makes the
+// member row type collapse to never and fails the production type check.
+type GuideDirectoryUser = {
+  userId: string;
+  fullName: string;
+  status: string;
+  latestScore?: number | null;
+  selectedGuideId?: string | null;
+} & Record<string, any>;
 export type GetGuideUsersOutputType = {
-  users: Extract<getGuideUsers_Output['users'][number], { selectedGuideId: unknown }>[];
+  users: GuideDirectoryUser[];
 };
-export function getGuideUsers(input: getGuideUsers_Input & { minimal?: false }): Promise<GetGuideUsersOutputType>;
-export function getGuideUsers(input: getGuideUsers_Input): Promise<getGuideUsers_Output>;
-export function getGuideUsers(input: getGuideUsers_Input): Promise<getGuideUsers_Output> {
-  return invokeEndpoint('getGuideUsers', input);
-}
+type getGuideUsers_Output = GetGuideUsersOutputType;
+export const getGuideUsers = (input: getGuideUsers_Input): Promise<getGuideUsers_Output> => invokeEndpoint('getGuideUsers', input);
 export type GetGuideUsersInputType = getGuideUsers_Input;
 
 import type getGuides_Type from '../api/getGuides';
