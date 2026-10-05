@@ -2,7 +2,8 @@ import { z } from 'zod';
 import { createEndpoint, Users, Guides, FolkResidencies, SadhanaEntries, BvGroups, BvGroupMembers } from '@/lib/backend-sdk';
 import { getTodayIST, daysAgo } from '../lib/streakUtils';
 import { normalizeRole, normalizeStatus } from './resolveUserLogin';
-import { getDashboardHierarchyScope, HIERARCHY_IDENTITY_FIELDS, hierarchyRefs, isHierarchySuperAdmin, isPwDepartmentAdmin } from '../lib/hierarchyUtils';
+import { folkGuideIdentityRefs, isPrabhupadaWorldDirectoryMember, normalizeDepartmentToken } from '../lib/directoryDepartment';
+import { callerDirectoryDepartment, getDashboardHierarchyScope, HIERARCHY_IDENTITY_FIELDS, hierarchyRefs, isHierarchySuperAdmin, isPwDepartmentAdmin, memberDirectoryDepartment } from '../lib/hierarchyUtils';
 import { getGuideScope } from '../lib/guideScope';
 import { getReportReferenceData } from '../lib/reportReferenceData';
 
@@ -10,7 +11,7 @@ import { getReportReferenceData } from '../lib/reportReferenceData';
 const GUIDE_FIELDS = ['id', 'email', 'isActive', 'role', 'folkResidencies'];
 // Minimal fields for user listing — avoids fetching large linked-record arrays
 const USER_FIELDS = ['id', 'userId', 'fullName', 'phone', 'email', 'role', 'roles', 'status', 'segment',
-  'isPrabhupadaWorldUser',
+  'isPrabhupadaWorldUser', 'isFolkUser',
   'ashrayLevel', 'residency', 'residencyApproved', 'residencyClaimed', 'residencyGuideVerified',
   'guide', 'isBvsl', 'isBvMember', 'isSadhanaMentor', 'isServiceAllocator', 'isBvMentor',
   'isFolkLead', 'isTripCoordinator', 'isOtherCenter', 'isCleanlinessManager', 'createdAt',
@@ -44,6 +45,7 @@ export default createEndpoint({
     residencyId: z.string().optional(),
     residencyFilter: z.string().optional(),
     minimal: z.boolean().optional(),
+    segment: z.enum(['PW', 'FOLK']).optional(),
     // Meeting organizers need role-bearing records within their authorized
     // hierarchy. This flag must never bypass member-reporting scope.
     forMeetingInvitees: z.boolean().optional(),
@@ -63,7 +65,7 @@ export default createEndpoint({
       !!context.user.isBvAdmin;
     const isBvMentor = !!(context.user as any).isBvMentor;
     // Meeting invitees stay inside the caller's reporting hierarchy. The member
-    // directory does not: a Prabhupada World admin sees every user.
+    // directory does not: a Prabhupada World admin sees every Prabhupada World user.
     const seesEntireDirectory = isPwDepartmentAdmin(context.user) && !forMeetingInvitees;
     const statusKey = input.statusFilter || input.status || 'all';
 
@@ -186,6 +188,46 @@ export default createEndpoint({
         const emailStr = String(u.email || '').toLowerCase();
         return (uId && scopedUserIds.has(uId)) || (userIdStr && scopedUserIds.has(userIdStr)) || (emailStr && scopedUserIds.has(emailStr));
       });
+    }
+
+    // Full directories stay inside one department. A Prabhupada World admin sees
+    // every Prabhupada World member. Assignment to a FOLK guide keeps a member
+    // on the FOLK dashboard even when a PW flag was stored on the same row.
+    const callerDepartment = callerDirectoryDepartment(context.user);
+    const requestedDepartment = input.segment === 'PW' || input.segment === 'FOLK' ? input.segment : null;
+    if (requestedDepartment && callerDepartment && requestedDepartment !== callerDepartment) {
+      throw new Error('You cannot view users from another department');
+    }
+    const directoryDepartment = !forMeetingInvitees
+      ? requestedDepartment || ((seesEntireDirectory || isHierarchySuperAdmin(context.user)) ? callerDepartment : null)
+      : null;
+    if (directoryDepartment === 'PW') {
+      const folkGuideRefs = folkGuideIdentityRefs(users);
+      const { records: guideRecords } = await Guides.findAll({
+        fields: ['id', 'guideId', 'email', 'fullName', 'name', 'segment'],
+        limit: 500,
+      }).catch(() => ({ records: [] as any[] }));
+      const folkGuideEmails = new Set<string>();
+      for (const user of users) {
+        const role = normalizeDepartmentToken(user?.role);
+        if (role === 'GUIDE' || role === 'SUPERGUIDE') {
+          const email = String(user?.email || '').trim().toLowerCase();
+          if (email) folkGuideEmails.add(email);
+        }
+      }
+      for (const guide of guideRecords || []) {
+        const guideSegment = normalizeDepartmentToken(guide?.segment);
+        if (guideSegment === 'PW' || guideSegment === 'PRABHUPADAWORLD') continue;
+        const email = String(guide?.email || '').trim().toLowerCase();
+        if (guideSegment !== 'FOLK' && !(email && folkGuideEmails.has(email))) continue;
+        for (const ref of [guide.id, guide.guideId, guide.email, guide.fullName, guide.name]) {
+          const text = String(ref || '').trim().toLowerCase();
+          if (text) folkGuideRefs.add(text);
+        }
+      }
+      users = users.filter(user => isPrabhupadaWorldDirectoryMember(user, folkGuideRefs));
+    } else if (directoryDepartment === 'FOLK') {
+      users = users.filter(user => memberDirectoryDepartment(user) === 'FOLK');
     }
 
     const historyPromise = (async () => {
@@ -390,6 +432,7 @@ export default createEndpoint({
           status: normalizeStatus(u.status || 'Pending Approval'),
           segment: u.segment || null,
           isPrabhupadaWorldUser: u.isPrabhupadaWorldUser === true,
+          isFolkUser: u.isFolkUser === true,
           isBvsl: u.isBvsl || false,
           isBvMember: u.isBvMember === true || !!u.bvGroupId,
           bvRegistrationStatus: u.bvRegistrationStatus || null,
@@ -439,6 +482,8 @@ export default createEndpoint({
           roles: Array.isArray(u.roles) ? u.roles : (u.roles ? [u.roles] : []),
           status: normalizeStatus(u.status || 'Pending Approval'),
           segment: u.segment || null,
+          isPrabhupadaWorldUser: u.isPrabhupadaWorldUser === true,
+          isFolkUser: u.isFolkUser === true,
           ashrayLevel: u.ashrayLevel || null,
           residencyApproved: u.residencyApproved || false,
           residencyClaimed: u.residencyClaimed || false,

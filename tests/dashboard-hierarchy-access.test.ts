@@ -192,23 +192,44 @@ test('PW admin sees the full member directory while reports stay in their hierar
   assert.ok(directoryIds.includes('member-b'));
   assert.ok(directoryIds.includes('unassigned'));
   assert.ok(directoryIds.includes('admin-b'));
-  assert.ok(directoryIds.includes('folk-outsider'));
+  assert.ok(!directoryIds.includes('folk-outsider'));
   const superDirectory = await call(getGuideUsers, { guideId: 'ALL', statusFilter: 'all', minimal: true }, superAdmin);
   assert.deepEqual(sorted(directoryIds), sorted(superDirectory.users.map((user: any) => user.userId)));
   const detail = await call(getUserDetailForGuide, { userId: 'member-b' });
   assert.equal(detail.user.dbId, 'member-b');
+  await assert.rejects(call(getUserDetailForGuide, { userId: 'folk-outsider' }), /another department/);
   await assert.rejects(call(getOneToOneContext, { userId: 'member-b' }), /not assigned/);
+});
+
+test('PW admin directory excludes FOLK guides and members assigned to them', async t => {
+  const folkGuide = member('folk-guide', { role: 'GUIDE', segment: 'FOLK' });
+  const mislabeled = member('mislabeled-folk', { segment: 'PW', isPrabhupadaWorldUser: true, guide: folkGuide.id });
+  const flaggedFolk = member('flagged-folk', { segment: 'PW', isFolkUser: true });
+  const previousUsers = fixture.Users;
+  fixture.Users = [...users, folkGuide, mislabeled, flaggedFolk];
+  t.after(() => { fixture.Users = previousUsers; });
+  mockDatabase(t);
+  const directory = await call(getGuideUsers, { guideId: 'ALL', statusFilter: 'all', segment: 'PW', minimal: true });
+  const ids = directory.users.map((user: any) => user.userId);
+  assert.ok(ids.includes('member-b'));
+  assert.ok(ids.includes('unassigned'));
+  assert.ok(!ids.includes('folk-guide'));
+  assert.ok(!ids.includes('mislabeled-folk'));
+  assert.ok(!ids.includes('flagged-folk'));
+  assert.ok(!ids.includes('folk-outsider'));
 });
 
 test('PW admin directory reads every page even when the admin also has a mentor role', async t => {
   const previousUsers = fixture.Users;
   fixture.Users = [...users, ...Array.from({ length: 2005 }, (_, index) =>
-    member(`outside-${index}`, { segment: index % 2 ? 'FOLK' : null, guide: otherAdmin.id }))];
+    member(`outside-${index}`, { segment: index % 2 ? 'FOLK' : 'PW', guide: otherAdmin.id }))];
   try {
     mockDatabase(t);
     const directory = await call(getGuideUsers, { guideId: otherAdmin.id, minimal: true }, { ...admin, isBvMentor: true });
-    assert.equal(directory.users.length, fixture.Users.length);
+    const prabhupadaWorldUsers = fixture.Users.filter(user => user.segment !== 'FOLK');
+    assert.equal(directory.users.length, prabhupadaWorldUsers.length);
     assert.ok(directory.users.some((user: any) => user.userId === 'outside-2004'));
+    assert.ok(!directory.users.some((user: any) => user.segment === 'FOLK' || user.userId === 'folk-outsider'));
   } finally {
     fixture.Users = previousUsers;
   }

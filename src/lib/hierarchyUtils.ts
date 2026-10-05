@@ -23,7 +23,23 @@ export function isHierarchyAdmin(user: any): boolean {
     ['ADMIN', 'PW_ADMIN', 'GUIDE'].includes(role));
 }
 
-/** A Prabhupada World admin reads the full member directory, the same as a super admin. */
+export type DirectoryDepartment = 'PW' | 'FOLK';
+
+/** Explicit department of a member. An explicit FOLK segment stays FOLK. */
+export function memberDirectoryDepartment(user: any): DirectoryDepartment | null {
+  const segment = String(user?.segment || '').trim().toUpperCase().replace(/[\s_-]+/g, '');
+  if (segment === 'FOLK') return 'FOLK';
+  if (segment === 'PW' || segment === 'PRABHUPADAWORLD') return 'PW';
+  if (user?.isPrabhupadaWorldUser === true) return 'PW';
+  return null;
+}
+
+/** Department used when an administrator reads the member directory. */
+export function callerDirectoryDepartment(user: any): DirectoryDepartment | null {
+  return memberDirectoryDepartment(user) || (isPwDepartmentAdmin(user) ? 'PW' : null);
+}
+
+/** A Prabhupada World admin reads every Prabhupada World member, the same as a super admin. */
 export function isPwDepartmentAdmin(user: any): boolean {
   if (!user) return false;
   const role = String(user.role || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
