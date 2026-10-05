@@ -25,7 +25,7 @@ isActive: true | false
 updatedAt: ISO timestamp
 ```
 
-`isActive` is the central publish/unpublish state. `activeGroupIds` is the per-reading-group ON/OFF state. A participant can attempt a PW quiz only when both states allow it and the participant has a current membership in an activated group.
+Saving a quiz stores it for facilitators. `activeGroupIds` is the per-reading-group on/off state, and only the reading group facilitator can change it. A participant can attempt a PW quiz only when it is saved, turned on for their group, and they have a current membership in that group.
 
 New `BvQuizSubmissions` documents additionally store:
 
@@ -44,8 +44,8 @@ No new Firestore collections or composite indexes are required.
 
 | Action | PW Admin / Super Admin | PW RGF | PW RGSF | Participant |
 | --- | --- | --- | --- | --- |
-| Create/edit/delete/publish quiz content | Yes | No | No | No |
-| Activate quiz for a group | Any PW group | Assigned groups only | No | No |
+| Create, edit, delete, and save quiz content | Yes | No | No | No |
+| Turn a quiz on or off for a group | No | Assigned groups only | No | No |
 | View quiz results | All PW groups | Assigned groups only | Read-only assigned hierarchy | Own result only |
 | Attempt a quiz | No management bypass | As a member only | As a member only | Activated current group only |
 
@@ -55,7 +55,7 @@ Authorization is enforced inside the server endpoints. The UI visibility rules a
 
 ### Admin and Super Admin
 
-Open `Prabhupada World Admin Dashboard -> Quizzes` to create, edit, publish, unpublish, delete, export results, view all-group results, filter results by reading group, and view question-wise analysis.
+Open `Prabhupada World Admin Dashboard -> Quizzes` to create, edit, save, delete, export results, view all-group results, filter results by reading group, and view question-wise analysis. Saving stores the quiz. It does not turn the quiz on for a group.
 
 ### Reading Group Facilitator
 
@@ -63,7 +63,7 @@ Open `RGF Dashboard -> Quizzes`, choose an assigned reading group, and use the O
 
 ### Participant
 
-Open the existing `Bhakti Vriksha` tab. Published quizzes activated for the participant's current PW reading group appear in the existing quiz window. Submission returns the score immediately; answer review continues to show selected answers, correct answers, and explanations.
+Open the existing `Bhakti Vriksha` tab. Quizzes that a facilitator has turned on for the participant's current PW reading group appear in the existing quiz window. Submission returns the score immediately; answer review continues to show selected answers, correct answers, and explanations.
 
 ## Security rules
 
@@ -84,7 +84,7 @@ npx -y firebase-tools@latest deploy --only firestore:rules --project bvpw108 --d
 
 Manual role checks:
 
-1. Sign in as a PW Admin and create a published quiz from the new Quizzes tab.
+1. Sign in as a PW Admin and save a quiz from the Quizzes tab.
 2. Confirm a PW RGF cannot see create/edit/delete controls and receives `403` for direct mutation calls.
 3. As that RGF, turn the quiz ON for one assigned group.
 4. Confirm a member of that group sees and can submit the quiz, with the score shown immediately.

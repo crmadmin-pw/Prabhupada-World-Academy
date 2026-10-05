@@ -80,7 +80,7 @@ export default createEndpoint({
         quizTitle: input.title.trim(),
         description: input.description || '',
         questionsJson,
-        isActive: input.isActive === true,
+        isActive: true,
         quizDate: input.quizDate,
         department: 'PW',
         group: null,

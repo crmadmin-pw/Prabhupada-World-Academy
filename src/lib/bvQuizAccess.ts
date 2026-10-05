@@ -64,7 +64,7 @@ export function isPwQuizContentManager(user: QuizAccessUser | null | undefined):
     role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'PW_ADMIN';
 }
 
-/** PW reading-group facilitators (RGF). Sub-facilitators cannot publish a quiz to a group. */
+/** PW reading-group facilitators (RGF). Sub-facilitators cannot turn a quiz on for a group. */
 export function isPwQuizFacilitator(user: QuizAccessUser | null | undefined): boolean {
   if (!isActiveUser(user) || !user || quizUserDepartment(user) !== 'PW') return false;
   const role = normalizeQuizRole(user.normalizedRole || user.role);
@@ -388,7 +388,7 @@ export async function assertQuizParticipantAccess(
     throw new AppError({ code: 'FORBIDDEN', message: 'This quiz belongs to another department' });
   }
   if (quiz.isActive === false || (department === 'FOLK' && quiz.isActive !== true)) {
-    throw new AppError({ code: 'FORBIDDEN', message: 'This quiz is not currently published' });
+    throw new AppError({ code: 'FORBIDDEN', message: 'This quiz is not available' });
   }
 
   const groups = await getUserQuizGroups(user, department);

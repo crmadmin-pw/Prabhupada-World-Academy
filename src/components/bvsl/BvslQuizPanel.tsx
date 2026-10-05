@@ -108,7 +108,6 @@ export function QuizEditor({
     return [emptyQuestion()];
   });
   const [saving, setSaving] = useState(false);
-  const [saveMode, setSaveMode] = useState<'draft' | 'publish' | null>(null);
   const [loadingQuiz, setLoadingQuiz] = useState(!!editingQuiz);
   const [loadError, setLoadError] = useState('');
   const [expandedQ, setExpandedQ] = useState<string>(questions[0]?.id || '');
@@ -209,7 +208,7 @@ export function QuizEditor({
     toast.error(`Quiz was not saved. ${message}`, { duration: VALIDATION_TOAST_MS });
   };
 
-  const handleSave = async (publish = isActive) => {
+  const handleSave = async () => {
     if (!title.trim()) return rejectSave('A quiz title is required');
     const questionsToSave = questions.filter(question => !isBlankQuestion(question));
     if (!questionsToSave.length) return rejectSave('Add at least one question');
@@ -232,7 +231,6 @@ export function QuizEditor({
       }
     }
     setSaveError(null);
-    setSaveMode(department === 'PW' ? (publish ? 'publish' : 'draft') : null);
     setSaving(true);
     try {
       await createBvQuiz({
@@ -242,10 +240,10 @@ export function QuizEditor({
         description,
         groupId: department === 'PW' ? undefined : (groupId || undefined),
         questions: questionsToSave,
-        isActive: department === 'PW' ? publish : isActive,
+        isActive: department === 'PW' ? true : isActive,
         quizDate,
       });
-      toast.success(department === 'PW' ? (publish ? 'Quiz saved' : 'Quiz saved as draft') : (editingQuiz ? 'Quiz updated!' : 'Quiz created!'));
+      toast.success('Quiz saved');
       onSaved();
     } catch (e: any) {
       const message = e.message || 'Failed to save quiz';
@@ -253,7 +251,6 @@ export function QuizEditor({
       toast.error(`Quiz was not saved. ${message}`, { duration: VALIDATION_TOAST_MS });
     } finally {
       setSaving(false);
-      setSaveMode(null);
     }
   };
 
@@ -279,29 +276,16 @@ export function QuizEditor({
           <ArrowLeft className="w-4 h-4 mr-1" /> Back
         </Button>
         <div className="flex items-center gap-3">
-          {department === 'PW' ? (
-            <>
-              <Button variant="outline" onClick={() => handleSave(false)} disabled={saving} size="sm">
-                {saveMode === 'draft' && <Loader2 className="w-4 h-4 animate-spin mr-1" />}
-                Save as draft
-              </Button>
-              <Button onClick={() => handleSave(true)} disabled={saving} size="sm">
-                {saveMode === 'publish' && <Loader2 className="w-4 h-4 animate-spin mr-1" />}
-                Publish
-              </Button>
-            </>
-          ) : (
-            <>
-              <div className="flex items-center gap-2">
-                <Switch id="quiz-active" checked={isActive} onCheckedChange={setIsActive} />
-                <Label htmlFor="quiz-active" className="text-sm">Active</Label>
-              </div>
-              <Button onClick={() => handleSave()} disabled={saving} size="sm">
-                {saving && <Loader2 className="w-4 h-4 animate-spin mr-1" />}
-                {editingQuiz ? 'Update Quiz' : 'Publish Quiz'}
-              </Button>
-            </>
+          {department !== 'PW' && (
+            <div className="flex items-center gap-2">
+              <Switch id="quiz-active" checked={isActive} onCheckedChange={setIsActive} />
+              <Label htmlFor="quiz-active" className="text-sm">Active</Label>
+            </div>
           )}
+          <Button onClick={() => handleSave()} disabled={saving} size="sm">
+            {saving && <Loader2 className="w-4 h-4 animate-spin mr-1" />}
+            Save
+          </Button>
         </div>
       </div>
 
@@ -770,7 +754,7 @@ export default function BvslQuizPanel({
           <BookOpen className="w-10 h-10 mx-auto mb-3 opacity-30" />
           <p className="font-medium">No quizzes yet</p>
           <p className="text-sm mt-1">
-            {effectiveCanManage ? 'Create your first quiz' : 'An Admin has not published any quizzes yet'}
+            {effectiveCanManage ? 'Create your first quiz' : 'An admin has not created any quizzes yet'}
           </p>
         </div>
       ) : (

@@ -34,7 +34,7 @@ export default createEndpoint({
       throw new AppError({ code: 'FORBIDDEN', message: 'Only Prabhupada World quizzes can be assigned to a group this way' });
     }
     if (quiz.isActive === false) {
-      throw new AppError({ code: 'FORBIDDEN', message: 'This quiz is not published' });
+      throw new AppError({ code: 'FORBIDDEN', message: 'Save the quiz before turning it on for a group' });
     }
 
     const groups = await getQuizGroupsForUser(context.user, 'PW');
