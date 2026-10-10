@@ -8,10 +8,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { Check, ChevronDown, Loader2, Leaf, HeartHandshake, BookOpen, Clock, Building2 } from 'lucide-react';
-import { registerBvMember } from '@/lib/app-endpoints-sdk';
+import { getBvRunningTimeSlots, registerBvMember } from '@/lib/app-endpoints-sdk';
 import { sendOrQueue } from '@/lib/offlineQueue';
 import { useUserProfile } from '@/contexts/UserProfileContext';
-import { BULK_USER_ASHRAY_LEVELS, BULK_USER_TIME_PREFERENCES } from '@/config/bulkUserCsv';
+import { BULK_USER_ASHRAY_LEVELS } from '@/config/bulkUserCsv';
+import { normalizeBvDepartment, type BvDepartment } from '@/lib/bvRunningTimeSlots';
 
 interface Props {
   open: boolean;
@@ -53,8 +54,6 @@ const PW_CLASSES = [
   { value: 'None', label: 'None / Not attending currently' },
 ];
 
-const TIME_PREFERENCES = BULK_USER_TIME_PREFERENCES;
-
 const parsePhone = (p?: string) => {
   if (!p) return { cc: '+91', num: '' };
   if (p.startsWith('+') && p.length > 10) {
@@ -92,8 +91,11 @@ export default function BvRegistrationModal({ open, onOpenChange, onSuccess, seg
   const [templeName, setTempleName] = useState('');
   const [devoteeName, setDevoteeName] = useState('');
 
-  const [timePreference, setTimePreference] = useState('7:45 PM – 8:15 PM (Everyday)');
+  const [timePreference, setTimePreference] = useState('');
+  const [timeSlots, setTimeSlots] = useState<string[]>([]);
+  const [timeSlotsLoading, setTimeSlotsLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const registrationSegment: BvDepartment = normalizeBvDepartment(segment || profile?.segment) || 'PW';
 
   useEffect(() => {
     if (profile?.fullName) {
@@ -107,6 +109,31 @@ export default function BvRegistrationModal({ open, onOpenChange, onSuccess, seg
       setWhatsappNumber(parts.num);
     }
   }, [profile?.fullName, profile?.phone]);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setTimeSlots([]);
+    setTimePreference('');
+    setTimeSlotsLoading(true);
+    getBvRunningTimeSlots({ segment: registrationSegment, bypassCache: true })
+      .then(data => {
+        if (cancelled) return;
+        const slots = data.timeSlots;
+        setTimeSlots(slots);
+        setTimePreference(current => (current && slots.includes(current) ? current : slots.length === 1 ? slots[0] : ''));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setTimeSlots([]);
+        setTimePreference('');
+        toast.error('Could not load reading group time slots');
+      })
+      .finally(() => {
+        if (!cancelled) setTimeSlotsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [open, registrationSegment]);
 
   const handleDobChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let val = e.target.value.replace(/\D/g, '');
@@ -195,6 +222,10 @@ export default function BvRegistrationModal({ open, onOpenChange, onSuccess, seg
     if (inTouchWithTemple) {
       if (!templeName.trim()) { toast.error('Please enter the temple name'); return; }
       if (!devoteeName.trim()) { toast.error('Please enter the devotee name'); return; }
+    }
+    if (!timeSlots.includes(timePreference)) {
+      toast.error(timeSlots.length ? 'Please choose a reading group time slot' : 'No reading groups are running right now');
+      return;
     }
 
     setSubmitting(true);
@@ -539,23 +570,36 @@ export default function BvRegistrationModal({ open, onOpenChange, onSuccess, seg
               <Clock className="w-4 h-4" /> Preferred Reading Group Time Slot *
             </h4>
 
-            <Select value={timePreference} onValueChange={(val) => val && setTimePreference(val)}>
-              <SelectTrigger>
-                <SelectValue />
+            <Select
+              value={timePreference}
+              onValueChange={(val) => val && setTimePreference(val)}
+              disabled={timeSlotsLoading || timeSlots.length === 0}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder={
+                  timeSlotsLoading
+                    ? 'Loading time slots…'
+                    : timeSlots.length === 0
+                      ? 'No reading groups are running'
+                      : 'Select a time slot'
+                } />
               </SelectTrigger>
               <SelectContent className="max-h-60 overflow-y-auto min-w-[320px]">
-                {TIME_PREFERENCES.map(tp => (
+                {timeSlots.map(tp => (
                   <SelectItem key={tp} value={tp}>{tp}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-xs text-muted-foreground">
+              Only times when a reading group is currently meeting. A group created with a new time appears here.
+            </p>
           </div>
 
           <DialogFooter className="pt-4 border-t">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={submitting}>
+            <Button type="submit" disabled={submitting || timeSlotsLoading || !timePreference}>
               {submitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
               Submit Registration
             </Button>

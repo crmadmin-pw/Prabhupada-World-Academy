@@ -1017,6 +1017,13 @@ export const getBvQuizzes = (input: getBvQuizzes_Input): Promise<getBvQuizzes_Ou
 export type GetBvQuizzesOutputType = getBvQuizzes_Output;
 export type GetBvQuizzesInputType = getBvQuizzes_Input;
 
+import type getBvRunningTimeSlots_Type from '../api/getBvRunningTimeSlots';
+type getBvRunningTimeSlots_Input = z.input<typeof getBvRunningTimeSlots_Type.inputSchema>;
+type getBvRunningTimeSlots_Output = ReturnType<typeof getBvRunningTimeSlots_Type.execute> extends Promise<infer R> ? R : ReturnType<typeof getBvRunningTimeSlots_Type.execute>;
+export const getBvRunningTimeSlots = (input: getBvRunningTimeSlots_Input): Promise<getBvRunningTimeSlots_Output> => invokeEndpoint('getBvRunningTimeSlots', input);
+export type GetBvRunningTimeSlotsOutputType = getBvRunningTimeSlots_Output;
+export type GetBvRunningTimeSlotsInputType = getBvRunningTimeSlots_Input;
+
 import type getBvSessionMatrix_Type from '../api/getBvSessionMatrix';
 type getBvSessionMatrix_Input = z.input<typeof getBvSessionMatrix_Type.inputSchema>;
 type getBvSessionMatrix_Output = ReturnType<typeof getBvSessionMatrix_Type.execute> extends Promise<infer R> ? R : ReturnType<typeof getBvSessionMatrix_Type.execute>;

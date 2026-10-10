@@ -81,7 +81,10 @@ export default function OneToOneLogDialog({ open, onClose, onSaved, memberId, me
       });
       toast.success('Meeting logged!');
       onSaved();
-    } catch { toast.error('Failed to save meeting'); }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message.trim() : '';
+      toast.error(message && !/internal server error/i.test(message) ? message : 'Failed to save meeting');
+    }
     finally { setSaving(false); }
   };
 

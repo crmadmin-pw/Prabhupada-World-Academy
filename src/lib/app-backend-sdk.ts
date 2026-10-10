@@ -579,8 +579,8 @@ export class Table {
     const id = record.id || `rec_${Math.random().toString(36).substring(2, 15)}`;
     const fullRecord = { ...record, id };
 
-    const db = getFirestoreDb();
-    if (db && hasWorkingFirestore()) {
+    const db = activeDb();
+    if (db) {
       try {
         await db.collection(this.tableName).doc(id).set(fullRecord);
       } catch (e: any) {
@@ -616,8 +616,8 @@ export class Table {
       }
     }
 
-    const db = getFirestoreDb();
-    if (db && hasWorkingFirestore()) {
+    const db = activeDb();
+    if (db) {
       try {
         await db.collection(this.tableName).doc(id).set(data, { merge: true });
       } catch (e: any) {

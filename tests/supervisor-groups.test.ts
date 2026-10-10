@@ -746,3 +746,66 @@ test('BV group cards count only current active members and update after a remova
     await Users.delete({ id: removedMember.id }).catch(() => undefined);
   }
 });
+
+test('a supervisor who also facilitates a reading group sees that group', async () => {
+  const supervisorRgf = {
+    id: 'DUAL-ROLE-SUPERVISOR-DB',
+    userId: 'DUAL-ROLE-SUPERVISOR',
+    email: 'dual-role-supervisor@example.invalid',
+    fullName: 'Richa Pathak',
+    role: 'User',
+    status: 'Active',
+    isPrabhupadaWorldUser: true,
+    isBvSupervisor: true,
+    isBvFacilitator: true,
+    isBvsl: true,
+    bvReportingAdminId: 'PW-ADMIN',
+    bvGroupId: 'TEMPLE-SF-1-DB',
+    bvGroupName: 'Temple SF 1',
+  };
+  const ownGroup = {
+    id: 'TEMPLE-SF-1-DB',
+    groupId: 'TEMPLE-SF-1',
+    groupName: 'Temple SF 1',
+    bvslId: supervisorRgf.userId,
+    bvslName: supervisorRgf.fullName,
+    segment: 'PW',
+    isActive: true,
+  };
+  const unsegmentedGroup = {
+    id: 'TEMPLE-SF-1-LEGACY-DB',
+    groupId: 'TEMPLE-SF-1-LEGACY',
+    groupName: 'Temple SF 1 Legacy',
+    bvslLeader: supervisorRgf.fullName,
+    isActive: true,
+  };
+  const otherGroup = {
+    id: 'OTHER-PW-GROUP-DB',
+    groupId: 'OTHER-PW-GROUP',
+    groupName: 'Someone Else',
+    bvslId: 'SOME-OTHER-RGF',
+    segment: 'PW',
+    isActive: true,
+  };
+
+  await Users.create({ record: supervisorRgf });
+  await BvGroups.create({ record: ownGroup });
+  await BvGroups.create({ record: unsegmentedGroup });
+  await BvGroups.create({ record: otherGroup });
+
+  try {
+    const result = await getBvSupervisorOverview.execute({
+      input: {},
+      context: { user: { ...supervisorRgf, segment: undefined } },
+    } as never);
+    assert.deepEqual(result.groups.map((group: any) => group.groupId).sort(), [
+      ownGroup.groupId,
+      unsegmentedGroup.groupId,
+    ]);
+  } finally {
+    await BvGroups.delete({ id: ownGroup.id }).catch(() => undefined);
+    await BvGroups.delete({ id: unsegmentedGroup.id }).catch(() => undefined);
+    await BvGroups.delete({ id: otherGroup.id }).catch(() => undefined);
+    await Users.delete({ id: supervisorRgf.id }).catch(() => undefined);
+  }
+});

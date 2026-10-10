@@ -1,6 +1,39 @@
 import { z } from 'zod';
 import { createEndpoint, OneToOneMeetings, Guides, Users, AppError } from '@/lib/backend-sdk';
 
+function referenceValues(value: unknown): string[] {
+  if (Array.isArray(value)) return value.flatMap(referenceValues);
+  if (value == null) return [];
+  const text = String(value).trim();
+  return text ? [text] : [];
+}
+
+function sameWeek(stored: unknown, weekDate: string): boolean {
+  return String(stored || '').split('T')[0] === weekDate.split('T')[0];
+}
+
+/** guide + member + weekDate is a compound query and fails without a composite
+ * index. Look up by the member alone, then match the week and guide here. */
+async function findMeetingForWeek(guideId: string, memberId: string, weekDate: string) {
+  const guideKey = guideId.trim().toLowerCase();
+  const matches = (meeting: any) =>
+    sameWeek(meeting?.weekDate, weekDate) &&
+    referenceValues(meeting?.guide).some(ref => ref.toLowerCase() === guideKey);
+
+  const { records } = await OneToOneMeetings.findAll({
+    filters: { member: memberId },
+    limit: 200,
+  });
+  const direct = (records || []).find(matches);
+  if (direct) return direct;
+
+  const { records: linked } = await OneToOneMeetings.findAll({
+    filters: { member: { arrayContains: memberId } } as any,
+    limit: 200,
+  });
+  return (linked || []).find(matches);
+}
+
 export default createEndpoint({
   description: 'Log or update a one-to-one meeting (upserts by guide×member×week)',
   authenticated: true,
@@ -67,9 +100,7 @@ export default createEndpoint({
       nextCallAgenda: input.nextCallAgenda || '',
     };
 
-    const existing = await OneToOneMeetings.findOne({
-      filters: { guide: guideId, member: input.memberId, weekDate: input.weekDate } as any,
-    });
+    const existing = await findMeetingForWeek(guideId, input.memberId, input.weekDate);
 
     if (existing) {
       await OneToOneMeetings.update({ id: existing.id, record });

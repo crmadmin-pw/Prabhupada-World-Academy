@@ -32,6 +32,10 @@ import { EmptyState, ConfirmDialog } from '@/shared';
 import MultiRoleAssignModal from './MultiRoleAssignModal';
 import BulkUserManagement from '@/components/guide/BulkUserManagement';
 
+function NaLabel() {
+  return <span className="text-muted-foreground/60 text-xs font-normal">NA</span>;
+}
+
 type User = GetGuideUsersOutputType['users'][0] & { id?: string; _guideId: string; _guideName: string };
 type PendingGroupAssignment = {
   groupId: string;
@@ -813,11 +817,12 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
   if (loading && users.length === 0) return <div className="space-y-2">{[...Array(8)].map((_, i) => <Skeleton key={i} className="h-10" />)}</div>;
 
   const Th = ({ col, label }: { col: SortKey; label: string }) => (
-    <th className="text-left px-3 py-2 font-medium text-xs cursor-pointer select-none whitespace-nowrap hover:text-foreground bg-muted"
+    <th className="text-center align-middle px-3 py-2 font-medium text-xs cursor-pointer select-none whitespace-nowrap hover:text-foreground bg-muted"
       onClick={() => handleSort(col)}>
       {label}<SortIcon col={col} sortKey={sortKey} sortDir={sortDir} />
     </th>
   );
+  const headerCell = 'text-center align-middle px-3 py-2 font-medium text-xs bg-muted';
 
   return (
     <>
@@ -901,13 +906,13 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
               <thead className="sticky top-0 z-10">
                 <tr className="border-b">
                   <Th col="fullName" label="Name" />
-                  <th className="text-left px-3 py-2 font-medium text-xs bg-muted">Bhakti Vriksha Role</th>
-                  <th className="text-left px-3 py-2 font-medium text-xs bg-muted">Parent</th>
-                  <th className="text-left px-3 py-2 font-medium text-xs bg-muted">Bhakti Vriksha Group</th>
+                  <th className={headerCell}>Bhakti Vriksha Role</th>
+                  <th className={headerCell}>Parent</th>
+                  <th className={headerCell}>Bhakti Vriksha Group</th>
                   {isPwAdmin ? (
                     <>
-                      <th className="text-left px-3 py-2 font-medium text-xs bg-muted">Sadhana Mentor</th>
-                      <th className="text-left px-3 py-2 font-medium text-xs bg-muted">Assign Sadhana Mentor Role</th>
+                      <th className={headerCell}>Sadhana Mentor</th>
+                      <th className={headerCell}>Assign Sadhana Mentor Role</th>
                     </>
                   ) : (
                     <>
@@ -920,9 +925,9 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                   {!isPwAdmin && (
                     <>
                       <Th col="isResident" label="Resident" />
-                      <th className="text-left px-3 py-2 font-medium text-xs bg-muted">Sadhana Mentor</th>
-                      <th className="text-left px-3 py-2 font-medium text-xs bg-muted">FOLK Lead</th>
-                      <th className="text-left px-3 py-2 font-medium text-xs bg-muted">Trip Coord.</th>
+                      <th className={headerCell}>Sadhana Mentor</th>
+                      <th className={headerCell}>FOLK Lead</th>
+                      <th className={headerCell}>Trip Coord.</th>
                     </>
                   )}
                 </tr>
@@ -981,16 +986,20 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                         identity.includes(String(ref).toLowerCase())
                       ))
                     : currentBvGroup;
-                  const isRoleGroupLocked = isRgf || isSupervisor || isRgsf;
+                  // Leadership roles stay tied to the group they already lead or
+                  // belong to. With no group, the same assignment dropdown used
+                  // for members must stay available.
+                  const assignedGroupLabel = String(roleGroup?.groupName || (u as any).bvGroupName || '').trim();
+                  const isRoleGroupLocked = (isRgf || isSupervisor || isRgsf) && assignedGroupLabel.length > 0;
                   const groupSelectValue = currentBvGroup?.id || (u as any).bvGroupId || '__unassigned__';
 
                   return (
                     <tr key={u.userId} data-expanded={expandedRows.has(u.userId)} className="border-b hover:bg-accent/40 cursor-pointer"
                       onClick={() => navigate(`/guide/users/${u.userId}`)}>
                       {/* 1. Name */}
-                      <td data-label="Name" data-summary="true" className="px-3 py-2 font-medium sticky left-0 bg-background z-1 border-r border-border/40 shadow-sm">
-                        <div className="flex items-center justify-between gap-2">
-                          <button type="button" className="min-h-11 min-w-0 text-left font-semibold md:min-h-0" onClick={e => { e.stopPropagation(); navigate(`/guide/users/${u.userId}`); }}>{u.fullName}</button>
+                      <td data-label="Name" data-summary="true" className="px-3 py-2 text-center align-middle font-medium sticky left-0 bg-background z-1 border-r border-border/40 shadow-sm">
+                        <div className="flex items-center justify-between gap-2 md:justify-center">
+                          <button type="button" className="min-h-11 min-w-0 text-center font-semibold md:min-h-0" onClick={e => { e.stopPropagation(); navigate(`/guide/users/${u.userId}`); }}>{u.fullName}</button>
                           <Button variant="ghost" size="sm" className="md:hidden shrink-0 text-primary" aria-expanded={expandedRows.has(u.userId)} aria-label={`Details for ${u.fullName}`}
                             onClick={e => { e.stopPropagation(); setExpandedRows(current => { const next = new Set(current); if (next.has(u.userId)) next.delete(u.userId); else next.add(u.userId); return next; }); }}>
                             {expandedRows.has(u.userId) ? 'Less' : 'Details'}
@@ -998,19 +1007,17 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                         </div>
                       </td>
                       {/* 2. Bhakti Vriksha Role */}
-                      <td data-label="Roles" data-summary="true" className="px-3 py-2" onClick={e => e.stopPropagation()}>
-                        {currentBvRole === 'NA' ? (
-                          <span className="text-muted-foreground/60 text-xs font-normal px-2.5 py-1 bg-muted/30 border border-border/50 rounded inline-block">NA</span>
-                        ) : (
+                      <td data-label="Roles" data-summary="true" className="px-3 py-2 text-center align-middle" onClick={e => e.stopPropagation()}>
+                        {currentBvRole === 'NA' ? <NaLabel /> : (
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-auto min-h-[30px] py-1 px-2 text-xs flex items-center justify-between gap-1.5 border-dashed border-primary/60 hover:border-primary hover:bg-primary/10 min-w-[150px] cursor-pointer inline-flex w-full"
+                            className="h-auto min-h-[30px] py-1 px-2 text-xs flex items-center justify-center gap-1.5 border-dashed border-primary/60 hover:border-primary hover:bg-primary/10 min-w-[150px] cursor-pointer inline-flex mx-auto"
                             disabled={!canEditRole}
                             onClick={() => setMultiRoleUser(u)}
                             title="Click to assign or edit Bhakti Vriksha roles and parent reporting hierarchy"
                           >
-                            <div className="flex items-center gap-1 flex-wrap max-w-[220px]">
+                            <div className="flex items-center justify-center gap-1 flex-wrap max-w-[220px]">
                               {bvRoleLabels.map(({ key, label, className }) => (
                                 <span key={key} className={`text-[10px] px-1.5 py-0.5 ${className} font-semibold rounded shrink-0`}>
                                   {label}
@@ -1055,15 +1062,13 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                         };
                         const superAdminDisplayName = formatName((u as any).bvReportingAdminName) || 'Unassigned';
                         return (
-                          <td data-label="Parent" className="px-3 py-2 text-xs" onClick={e => { e.stopPropagation(); if (canEditRole && !isUserAdmin && currentBvRole !== 'NA') openParentDialog(u); }}>
+                          <td data-label="Parent" className="px-3 py-2 text-center align-middle text-xs" onClick={e => { e.stopPropagation(); if (canEditRole && !isUserAdmin && currentBvRole !== 'NA') openParentDialog(u); }}>
                             {isUserAdmin ? (
                               <span className="text-muted-foreground font-medium cursor-default">{superAdminDisplayName}</span>
-                            ) : currentBvRole === 'NA' ? (
-                              <span className="text-muted-foreground/60 text-xs font-normal px-2.5 py-1 bg-muted/30 border border-border/50 rounded inline-block">NA</span>
-                            ) : (
+                            ) : currentBvRole === 'NA' ? <NaLabel /> : (
                               <button
                                 type="button"
-                                className="text-left hover:underline focus:outline-none cursor-pointer flex items-center gap-1 group"
+                                className="text-center hover:underline focus:outline-none cursor-pointer inline-flex items-center justify-center gap-1 group mx-auto"
                                 title="Click to change reporting parent hierarchy"
                               >
                                 <span className="text-muted-foreground font-medium group-hover:text-primary">
@@ -1105,10 +1110,10 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                           </td>
                         );
                       })()}
-                      <td data-label="Bhakti Vriksha Group" data-summary="true" className="px-3 py-2 text-xs" onClick={e => e.stopPropagation()}>
+                      <td data-label="Bhakti Vriksha Group" data-summary="true" className="px-3 py-2 text-center align-middle text-xs" onClick={e => e.stopPropagation()}>
                         {isBvUser ? isRoleGroupLocked ? (
                           <span className="text-muted-foreground font-medium" title="This role is tied to its assigned Reading Group">
-                            {roleGroup?.groupName || (u as any).bvGroupName || 'Unassigned'}
+                            {assignedGroupLabel}
                           </span>
                         ) : (
                           <Select
@@ -1124,7 +1129,7 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                             }}
                             disabled={!canEditRole}
                           >
-                            <SelectTrigger className="h-7 text-xs w-48" aria-label={`Bhakti Vriksha Group for ${u.fullName}`}>
+                            <SelectTrigger className="h-7 text-xs w-48 mx-auto justify-center" aria-label={`Bhakti Vriksha Group for ${u.fullName}`}>
                               <span className="truncate">{currentBvGroup?.groupName || (u as any).bvGroupName || ((u as any).bvGroupId ? 'Group name unavailable' : 'Unassigned')}</span>
                             </SelectTrigger>
                             <SelectContent>
@@ -1140,13 +1145,13 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                             </SelectContent>
                           </Select>
                         ) : (
-                          <span className="text-muted-foreground/60 text-xs font-normal px-2.5 py-1 bg-muted/30 border border-border/50 rounded inline-block">NA</span>
+                          <NaLabel />
                         )}
                       </td>
                       {/* The Guide dropdown belongs only to FOLK. PW BV ownership
                           is derived from the selected RGF/group hierarchy. */}
                       {!isPwAdmin && (
-                        <td data-label="FOLK Guide" className="px-3 py-2" onClick={e => e.stopPropagation()}>
+                        <td data-label="FOLK Guide" className="px-3 py-2 text-center align-middle" onClick={e => e.stopPropagation()}>
                           {(() => {
                             const currentGid = u.selectedGuideId || u._guideId || '';
                             const matchedGuide = guides.find(g =>
@@ -1160,7 +1165,7 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
 
                             return (
                               <Select value={matchedGuide?.guideId || currentGid || ''} onValueChange={gid => gid && handleAssignGuide(u.userId, gid)} disabled={assigningGuide === u.userId || isSelf || (!isSuperAdmin && currentBvRole === 'ADMIN')}>
-                                <SelectTrigger className="h-7 text-xs w-44">
+                                <SelectTrigger className="h-7 text-xs w-44 mx-auto justify-center">
                                   <span className="truncate">{displayName}</span>
                                 </SelectTrigger>
                                 <SelectContent>
@@ -1173,16 +1178,14 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                       )}
                       {isPwAdmin && (
                         <>
-                          <td data-label="Sadhana Mentor" className="px-3 py-2 text-xs" onClick={e => e.stopPropagation()}>
-                            {isBvUser ? (
-                              <span className="text-muted-foreground/60 font-normal">NA</span>
-                            ) : (
+                          <td data-label="Sadhana Mentor" className="px-3 py-2 text-center align-middle text-xs" onClick={e => e.stopPropagation()}>
+                            {isBvUser ? <NaLabel /> : (
                               <Select
                                 value={u.sadhanaMentor || '__unassigned__'}
                                 onValueChange={mentorId => handleAssignSadhanaMentor(u.userId, mentorId === '__unassigned__' ? '' : mentorId)}
                                 disabled={isSelf}
                               >
-                                <SelectTrigger className="h-7 text-xs w-44">
+                                <SelectTrigger className="h-7 text-xs w-44 mx-auto justify-center">
                                   <span className="truncate">
                                     {sadhanaMentors.find(m => m.userId === u.sadhanaMentor)?.fullName || 'Unassigned'}
                                   </span>
@@ -1197,9 +1200,9 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                             )}
                           </td>
 
-                          <td data-label="Assign Sadhana Mentor Role" className="px-3 py-2" onClick={e => e.stopPropagation()}>
+                          <td data-label="Assign Sadhana Mentor Role" className="px-3 py-2 text-center align-middle" onClick={e => e.stopPropagation()}>
                             <button
-                              className={`inline-flex items-center text-xs px-2 py-1 rounded border transition-colors ${(u.isSadhanaMentor || u.role === 'SADHANA_MENTOR') ? 'border-border text-foreground hover:bg-muted' : 'border-transparent text-muted-foreground hover:bg-muted'}`}
+                              className={`inline-flex items-center justify-center text-xs px-2 py-1 rounded border transition-colors ${(u.isSadhanaMentor || u.role === 'SADHANA_MENTOR') ? 'border-border text-foreground hover:bg-muted' : 'border-transparent text-muted-foreground hover:bg-muted'}`}
                               onClick={() => setSadhanaMentorDialog({ user: u, action: (u.isSadhanaMentor || u.role === 'SADHANA_MENTOR') ? 'untag' : 'tag' })}
                             >
                               {(u.isSadhanaMentor || u.role === 'SADHANA_MENTOR') ? <><StarOff className="w-3 h-3 mr-1" />Remove</> : <><Star className="w-3 h-3 mr-1" />Assign</>}
@@ -1208,18 +1211,18 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                         </>
                       )}
                       {/* 5. Ashraya Level */}
-                      <td data-label="Ashraya Level" className="px-3 py-2 text-xs">{u.ashrayLevel || '—'}</td>
+                      <td data-label="Ashraya Level" className="px-3 py-2 text-center align-middle text-xs">{u.ashrayLevel || '—'}</td>
                       {/* 6. Weekly Score */}
-                      <td data-label="Weekly Score" data-summary="true" className="px-3 py-2">
+                      <td data-label="Weekly Score" data-summary="true" className="px-3 py-2 text-center align-middle">
                         {u.latestScore != null
                           ? <span className={`font-semibold ${scoreColor(u.latestScore, isResident)}`}>{u.latestScore}%</span>
                           : <span className="text-muted-foreground">—</span>}
                       </td>
                       {/* 7. Latest Entry */}
-                      <td data-label="Latest Entry" className="px-3 py-2 text-xs text-muted-foreground">{fmt.date(u.latestEntryDate)}</td>
+                      <td data-label="Latest Entry" className="px-3 py-2 text-center align-middle text-xs text-muted-foreground">{fmt.date(u.latestEntryDate)}</td>
                       {!isPwAdmin && (
                         <>
-                          <td data-label="Residency" className="px-3 py-2">
+                          <td data-label="Residency" className="px-3 py-2 text-center align-middle">
                             {isResident ? (
                               <span className="inline-flex max-w-[160px] items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary">
                                 <Home className="h-3.5 w-3.5 shrink-0" />
@@ -1234,25 +1237,25 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                             )}
                           </td>
                           {/* 1. Sadhana Mentor */}
-                          <td data-label="Sadhana Mentor Role" className="px-3 py-2" onClick={e => e.stopPropagation()}>
+                          <td data-label="Sadhana Mentor Role" className="px-3 py-2 text-center align-middle" onClick={e => e.stopPropagation()}>
                             <button
-                              className={`inline-flex items-center text-xs px-2 py-1 rounded border transition-colors ${(u.isSadhanaMentor || u.role === 'SADHANA_MENTOR') ? 'border-border text-foreground hover:bg-muted' : 'border-transparent text-muted-foreground hover:bg-muted'}`}
+                              className={`inline-flex items-center justify-center text-xs px-2 py-1 rounded border transition-colors ${(u.isSadhanaMentor || u.role === 'SADHANA_MENTOR') ? 'border-border text-foreground hover:bg-muted' : 'border-transparent text-muted-foreground hover:bg-muted'}`}
                               onClick={() => setSadhanaMentorDialog({ user: u, action: (u.isSadhanaMentor || u.role === 'SADHANA_MENTOR') ? 'untag' : 'tag' })}>
                               {(u.isSadhanaMentor || u.role === 'SADHANA_MENTOR') ? <><StarOff className="w-3 h-3 mr-1" />Remove</> : <><Star className="w-3 h-3 mr-1" />Assign</>}
                             </button>
                           </td>
                           {/* 2. FOLK Lead */}
-                          <td data-label="FOLK Lead" className="px-3 py-2" onClick={e => e.stopPropagation()}>
+                          <td data-label="FOLK Lead" className="px-3 py-2 text-center align-middle" onClick={e => e.stopPropagation()}>
                             <button
-                              className={`inline-flex items-center text-xs px-2 py-1 rounded border transition-colors ${(u as any).isFolkLead ? 'border-border text-foreground hover:bg-muted' : 'border-transparent text-muted-foreground hover:bg-muted'}`}
+                              className={`inline-flex items-center justify-center text-xs px-2 py-1 rounded border transition-colors ${(u as any).isFolkLead ? 'border-border text-foreground hover:bg-muted' : 'border-transparent text-muted-foreground hover:bg-muted'}`}
                               onClick={() => setFolkLeadDialog({ user: u, action: (u as any).isFolkLead ? 'untag' : 'tag' })}>
                               {(u as any).isFolkLead ? <><StarOff className="w-3 h-3 mr-1" />Remove</> : <><Star className="w-3 h-3 mr-1" />Assign</>}
                             </button>
                           </td>
                           {/* 3. Trip Coord. */}
-                          <td data-label="Trip Coordinator" className="px-3 py-2" onClick={e => e.stopPropagation()}>
+                          <td data-label="Trip Coordinator" className="px-3 py-2 text-center align-middle" onClick={e => e.stopPropagation()}>
                             <button
-                              className={`inline-flex items-center text-xs px-2 py-1 rounded border transition-colors ${(u as any).isTripCoordinator ? 'border-border text-foreground hover:bg-muted' : 'border-transparent text-muted-foreground hover:bg-muted'}`}
+                              className={`inline-flex items-center justify-center text-xs px-2 py-1 rounded border transition-colors ${(u as any).isTripCoordinator ? 'border-border text-foreground hover:bg-muted' : 'border-transparent text-muted-foreground hover:bg-muted'}`}
                               onClick={() => setTripCoordDialog({ user: u, action: (u as any).isTripCoordinator ? 'untag' : 'tag' })}>
                               {(u as any).isTripCoordinator ? <><StarOff className="w-3 h-3 mr-1" />Remove</> : <><Star className="w-3 h-3 mr-1" />Assign</>}
                             </button>

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { createEndpoint, BvGroups, BvGroupMembers, BvMemberRegistrations, BvAttendance, AppError } from '@/lib/backend-sdk';
+import { createEndpoint, BvGroups, BvGroupMembers, BvMemberRegistrations, BvAttendance, Users, AppError } from '@/lib/backend-sdk';
 import { getScopedHierarchyUserIds } from '../lib/hierarchyUtils';
 import { getTodayIST } from '../lib/streakUtils';
 
@@ -8,6 +8,19 @@ function normalizedRefs(value: unknown): string[] {
   return value == null
     ? []
     : String(value).split(',').map(item => item.trim().toLowerCase()).filter(Boolean);
+}
+
+function departmentOf(value: unknown): 'PW' | 'FOLK' | null {
+  const segment = String(value || '').trim().toUpperCase().replace(/[\s_-]+/g, '');
+  if (segment === 'FOLK') return 'FOLK';
+  if (segment === 'PW' || segment === 'PRABHUPADAWORLD') return 'PW';
+  return null;
+}
+
+/** Missing segment stays FOLK for older FOLK supervisors. An explicit Prabhupada
+ * World account is PW even when the segment field was never stored. */
+function supervisorDepartment(user: any): 'PW' | 'FOLK' {
+  return departmentOf(user?.segment) || (user?.isPrabhupadaWorldUser ? 'PW' : 'FOLK');
 }
 
 export default createEndpoint({
@@ -50,25 +63,39 @@ export default createEndpoint({
       throw new AppError({ code: 'FORBIDDEN', message: 'Supervisor access required' });
     }
 
+    const callerFields = ['id', 'userId', 'email', 'fullName', 'segment', 'isPrabhupadaWorldUser', 'isBvFacilitator', 'isBvsl', 'bvGroupId', 'bvGroupName'];
+    const storedCaller = await Users.findOne({ id: context.user.id, fields: callerFields })
+      || (context.user.userId ? (await Users.findAll({ filters: { userId: context.user.userId }, fields: callerFields, limit: 1 })).records[0] : null)
+      || (context.user.email ? (await Users.findAll({ filters: { email: context.user.email }, fields: callerFields, limit: 5 })).records
+        .find((row: any) => normalizedRefs(row.email).includes(String(context.user.email).toLowerCase())) : null);
+    const caller = { ...context.user, ...storedCaller };
     const scopedUserIds = await getScopedHierarchyUserIds(context.user);
+    const userSegment = supervisorDepartment(caller);
+    const callerAliases = new Set(normalizedRefs([
+      caller.id, caller.userId, caller.uid, caller.email, caller.fullName,
+    ]));
+    const callerIsRgf = !!(caller.isBvFacilitator || caller.isBvsl);
+    const assignedGroupRefs = new Set(normalizedRefs(caller.bvGroupId));
 
-    // This endpoint powers the FOLK Supervisor dashboard. Older supervisor
-    // profiles can predate the segment field; treating those as PW hides all
-    // correctly linked FOLK RGFs and groups.
-    const userSegment = String(context.user.segment || 'FOLK').toUpperCase();
-    const { records: rawGroups } = await BvGroups.findAll({ filters: { isActive: true }, limit: 500 });
-    let groups = rawGroups.filter((g: any) => String(g.segment || 'PW').toUpperCase() === userSegment);
-
-    // Apply hierarchy scoping if not Super Admin
-    if (scopedUserIds !== null) {
-      groups = groups.filter((g: any) => {
-        const ownerRefs = normalizedRefs([g.bvslId, g.bvslLeader]);
-        if (ownerRefs.length > 0) return ownerRefs.some(owner => scopedUserIds.has(owner));
-
-        // Legacy groups may have no facilitator owner and only a guide link.
-        return normalizedRefs(g.guide).some(guide => scopedUserIds.has(guide));
-      });
-    }
+    // Groups without an isActive flag are still running. A Firestore equality
+    // filter on true would hide them from the supervisor who facilitates them.
+    const { records: rawGroups } = await BvGroups.findAll({ limit: 1000 });
+    let groups = rawGroups.filter((g: any) => g.isActive !== false).filter((g: any) => {
+      const ownerRefs = normalizedRefs([g.bvslId, g.bvslLeader, g.bvslName]);
+      const ledByCaller = ownerRefs.some(owner => callerAliases.has(owner));
+      const assignedToCaller = callerIsRgf && (
+        normalizedRefs([g.id, g.groupId]).some(ref => assignedGroupRefs.has(ref))
+      );
+      const groupSegment = departmentOf(g.segment) || (ledByCaller || assignedToCaller ? userSegment : 'PW');
+      // A group this supervisor personally facilitates belongs on their
+      // dashboard even when its stored segment is missing or was saved earlier
+      // under the other department.
+      if (!ledByCaller && !assignedToCaller && groupSegment !== userSegment) return false;
+      if (ledByCaller || assignedToCaller) return true;
+      if (scopedUserIds === null) return true;
+      if (ownerRefs.length > 0) return ownerRefs.some(owner => scopedUserIds.has(owner));
+      return normalizedRefs(g.guide).some(guide => scopedUserIds.has(guide));
+    });
 
     const { records: rawMembers } = await BvGroupMembers.findAll({ limit: 2000 });
     const groupByAlias = new Map<string, any>();
