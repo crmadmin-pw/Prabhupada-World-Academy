@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createEndpoint, Users, BvGroups, BvGroupMembers, AppError } from '@/lib/backend-sdk';
 import { serverCacheInvalidate } from '../lib/serverCache';
+import { publishUsersRevision } from '../lib/publishUsersRevision';
 
 const referenceValues = (value: unknown): string[] => {
   if (Array.isArray(value)) return value.flatMap(referenceValues);
@@ -379,8 +380,11 @@ export default createEndpoint({
     }
 
     await Users.update({ id: dbId, record: updates });
-    
+
     serverCacheInvalidate();
+    // The admin's next role dropdown and the member's open session both read
+    // this profile. Publish the revision here so neither side waits for a reload.
+    await publishUsersRevision(dbId, targetUser);
 
     return {
       success: true,

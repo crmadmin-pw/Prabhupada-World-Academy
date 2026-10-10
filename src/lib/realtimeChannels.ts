@@ -129,14 +129,38 @@ const MEMBERSHIP_COUNT_READS = [
   'getUserBvStatus',
 ] as const;
 
-/** Approval and Reading Group assignment change the member directory.
+/** Approval, role, and Reading Group assignment change the member directory.
  * Invalidate that exact cached read when the mutation commits. Firestore
  * revisions still reconcile it; this does not poll. */
-const DIRECTORY_MUTATIONS = new Set(['approveUser', 'transferBvGroupMember', 'updateBvGroup']);
+const DIRECTORY_MUTATIONS = new Set([
+  'approveAndAssignBvMember',
+  'approveUser',
+  'assignBvRole',
+  'assignGuide',
+  'assignSadhanaMentor',
+  'registerBvMember',
+  'tagUserAsBvAdmin',
+  'tagUserAsBvFacilitator',
+  'tagUserAsBvMentor',
+  'tagUserAsBvSubFacilitator',
+  'tagUserAsBvSupervisor',
+  'tagUserAsBvsl',
+  'tagUserAsFolkLead',
+  'tagUserAsSadhanaMentor',
+  'tagUserAsServiceAllocator',
+  'tagUserAsTripCoordinator',
+  'transferBvGroupMember',
+  'updateBvGroup',
+]);
 const DIRECTORY_READS = ['getGuideUsers'] as const;
+const MENTOR_LIST_MUTATIONS = new Set(['assignSadhanaMentor', 'tagUserAsSadhanaMentor']);
+const MENTOR_LIST_READS = ['getActiveSadhanaMentors'] as const;
 
 export function directoryReads(endpoint: string): readonly string[] {
-  return DIRECTORY_MUTATIONS.has(endpoint) ? DIRECTORY_READS : [];
+  const reads: string[] = [];
+  if (DIRECTORY_MUTATIONS.has(endpoint)) reads.push(...DIRECTORY_READS);
+  if (MENTOR_LIST_MUTATIONS.has(endpoint)) reads.push(...MENTOR_LIST_READS);
+  return reads;
 }
 
 const ACCOUNT_LINK_MUTATIONS = new Set(['reviewAccountLink']);

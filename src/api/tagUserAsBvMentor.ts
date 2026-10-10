@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createEndpoint, Users, AppError } from '@/lib/backend-sdk';
 import { serverCacheInvalidate } from '../lib/serverCache';
+import { publishUsersRevision } from '../lib/publishUsersRevision';
 import { profileCacheKey } from './getUserProfile';
 
 export default createEndpoint({
@@ -48,7 +49,7 @@ export default createEndpoint({
 
     // Bust the profile cache so the user sees their new role on next load
     serverCacheInvalidate(profileCacheKey(input.userId));
-
+    await publishUsersRevision(userRecord.id);
     return { success: true };
   },
 });

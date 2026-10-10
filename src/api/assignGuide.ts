@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createEndpoint, Users, AppError } from '@/lib/backend-sdk';
 import { getGuideScope, isUserInGuideScope } from '../lib/guideScope';
 import { serverCacheInvalidate } from '../lib/serverCache';
+import { publishUsersRevision } from '../lib/publishUsersRevision';
 import { resolveGuideReference } from '../lib/guideResolution';
 
 export default createEndpoint({
@@ -62,6 +63,7 @@ export default createEndpoint({
     if (targetUserRecord.userId) {
       serverCacheInvalidate('user_profile:' + targetUserRecord.userId);
     }
+    await publishUsersRevision(targetUserRecord.id, targetUserRecord);
     return { success: true };
   },
 });

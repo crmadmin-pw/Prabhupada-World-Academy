@@ -8,6 +8,7 @@ import { Shield, ShieldAlert, Network, UserCheck, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { assignBvRole } from '@/lib/endpoints-sdk';
 import { sendOrQueue } from '@/lib/offlineQueue';
+import { bvRolePatch, type PendingDirectoryPatch } from '@/lib/pendingDirectoryPatch';
 
 interface OptionItem {
   id: string;
@@ -23,7 +24,7 @@ interface Props {
   supervisorsList: OptionItem[];
   facilitatorsList: OptionItem[];
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (update: { user: any; patch: PendingDirectoryPatch }) => void;
 }
 
 function resolveInitialParentId(val: string | undefined, list: OptionItem[]): string {
@@ -123,7 +124,18 @@ export default function MultiRoleAssignModal({
       if (outcome.status === 'queued') return;
 
       toast.success(`Updated roles for ${user.fullName}`);
-      onSaved();
+      onSaved({
+        user,
+        patch: bvRolePatch({
+          isAdmin,
+          isSupervisor,
+          isFacilitator,
+          isSubFacilitator,
+          primaryRole,
+          parentId,
+          parentName,
+        }),
+      });
       onClose();
     } catch (err: any) {
       toast.error(err?.message || 'Failed to update roles');

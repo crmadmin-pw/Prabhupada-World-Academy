@@ -27,6 +27,7 @@ import { isActiveDirectoryMember } from '@/lib/memberDirectoryStatus';
 import { folkGuideIdentityRefs, isPrabhupadaWorldDirectoryMember } from '@/lib/directoryDepartment';
 import { isBhaktiVrikshaDirectoryMember } from '@/lib/bvDirectoryMembership';
 import { MEMBER_DIRECTORY_CHANGED_EVENT, mergeApprovedDirectoryMembers, type ApprovedDirectoryMember } from '@/lib/memberDirectorySync';
+import { bvRolePatch, mergePendingDirectoryPatches, mergePendingMentors, type PendingDirectoryPatch, type PendingMentor } from '@/lib/pendingDirectoryPatch';
 import { EmptyState, ConfirmDialog } from '@/shared';
 
 import MultiRoleAssignModal from './MultiRoleAssignModal';
@@ -215,6 +216,8 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
   const [users, setUsers] = useState<User[]>(() => mergeApprovedDirectoryMembers([], directoryRowFromApproval));
   const revealMemberId = useRef<string | null>(null);
   const pendingGroupAssignments = useRef(new Map<string, PendingGroupAssignment>());
+  const pendingDirectoryPatches = useRef(new Map<string, PendingDirectoryPatch>());
+  const pendingMentors = useRef(new Map<string, PendingMentor>());
   const [guides, setGuides] = useState<GuideEntry[]>([]);
   const [bvGroups, setBvGroups] = useState<BvGroupOption[]>([]);
 
@@ -272,6 +275,21 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
   const [assigningGuide, setAssigningGuide] = useState<string | null>(null);
   const [sadhanaMentors, setSadhanaMentors] = useState<any[]>([]);
 
+  const projectUsers = (list: User[]) => mergePendingDirectoryPatches(
+    mergePendingGroupAssignments(list, pendingGroupAssignments.current),
+    pendingDirectoryPatches.current,
+    memberIdentityKeys,
+  );
+  const rememberDirectoryPatch = (
+    user: { id?: string; userId?: string; email?: string; userDbId?: string } | null | undefined,
+    patch: PendingDirectoryPatch,
+    extraIds: Array<string | null | undefined> = [],
+  ) => {
+    const keys = new Set([...memberIdentityKeys(user), ...extraIds.filter(Boolean).map(id => String(id).toLowerCase())]);
+    for (const key of keys) pendingDirectoryPatches.current.set(key, patch);
+    setUsers(current => projectUsers(current));
+  };
+
   const loadData = useReactiveLoader(async (read, silent = false) => {
     if (!silent) !read.background && setLoading(true);
     try {
@@ -296,9 +314,8 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
             _guideName: u.selectedGuideName || u.guideName || u.mentorName || u.selectedMentorName || '',
           }));
           const merged = mergeApprovedDirectoryMembers(listed, directoryRowFromApproval);
-          setUsers(mergePendingGroupAssignments(
+          setUsers(projectUsers(
             isPwMode ? restrictToPrabhupadaWorld(merged) : merged,
-            pendingGroupAssignments.current,
           ));
           setLoading(false);
           return result;
@@ -314,7 +331,7 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
         facilitatorIds: group.facilitatorIds || (group.bvslLeaderId ? [group.bvslLeaderId] : []),
       })));
 
-      setSadhanaMentors(mentorsList || []);
+      setSadhanaMentors(mergePendingMentors(mentorsList || [], pendingMentors.current));
 
       // Fetch all registered members (active, pending, unassigned, newly registered)
       const rawUsers: any[] = allUsersRes.users || [];
@@ -351,7 +368,7 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
 
       const merged = mergeApprovedDirectoryMembers(all, directoryRowFromApproval);
       const departmentUsers = isPwMode ? restrictToPrabhupadaWorld(merged) : merged;
-      if (!read.cancelled) setUsers(mergePendingGroupAssignments(departmentUsers, pendingGroupAssignments.current));
+      if (!read.cancelled) setUsers(projectUsers(departmentUsers));
     } catch {
       if (read.cancelled) return;
       toast.error('Failed to load users');
@@ -366,7 +383,7 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
     const refreshDirectory = (event: Event) => {
       const member = (event as CustomEvent<{ member?: ApprovedDirectoryMember }>).detail?.member;
       if (member?.userId) revealMemberId.current = member.userId;
-      setUsers(current => mergePendingGroupAssignments(mergeApprovedDirectoryMembers(current, directoryRowFromApproval), pendingGroupAssignments.current));
+      setUsers(current => projectUsers(mergeApprovedDirectoryMembers(current, directoryRowFromApproval)));
       void loadData(true);
     };
     window.addEventListener(MEMBER_DIRECTORY_CHANGED_EVENT, refreshDirectory);
@@ -408,7 +425,7 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
     for (const key of memberIdentityKeys(user)) pendingGroupAssignments.current.set(key, assignment);
     // Show the selected group before the directory reload returns. A reload
     // that still has the previous response cannot put "Unassigned" back.
-    setUsers(current => mergePendingGroupAssignments(current, pendingGroupAssignments.current));
+    setUsers(current => projectUsers(current));
     try {
       const result = await transferBvGroupMember({
         userId: user.id || user.userId,
@@ -416,7 +433,7 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
       });
       if (result.groupId && !assignment.groupIds.includes(result.groupId)) assignment.groupIds.push(result.groupId);
       if (result.groupName) assignment.groupName = result.groupName;
-      setUsers(current => mergePendingGroupAssignments(current, pendingGroupAssignments.current));
+      setUsers(current => projectUsers(current));
       toast.success(assigned
         ? `${user.fullName} is now a member of ${result.groupName || group.groupName}`
         : `${user.fullName} is now unassigned from all Reading Groups`);
@@ -427,11 +444,11 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
       for (const key of memberIdentityKeys(user)) {
         if (pendingGroupAssignments.current.get(key) === assignment) pendingGroupAssignments.current.delete(key);
       }
-      setUsers(current => mergePendingGroupAssignments(current.map(candidate =>
+      setUsers(current => projectUsers(current.map(candidate =>
         snapshot && memberIdentityKeys(user).some(key => memberIdentityKeys(candidate).includes(key))
           ? snapshot
           : candidate
-      ), pendingGroupAssignments.current));
+      )));
       toast.error(error?.message || 'Failed to change the Reading Group');
       throw error;
     }
@@ -441,8 +458,10 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
     if (!bvslDialog) return;
     try {
       await tagUserAsBvsl({ userId: bvslDialog.user.userId, action: bvslDialog.action });
-      toast.success(bvslDialog.action === 'tag' ? 'RGF role assigned' : 'RGF role removed');
-      loadData();
+      const tagged = bvslDialog.action === 'tag';
+      rememberDirectoryPatch(bvslDialog.user, { isBvFacilitator: tagged, isBvsl: tagged, isBvMember: true });
+      toast.success(tagged ? 'RGF role assigned' : 'RGF role removed');
+      void loadData(true);
     } catch (err: any) {
       toast.error(err?.message || 'Failed to update RGF role');
     }
@@ -452,8 +471,9 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
     if (!folkLeadDialog) return;
     try {
       await tagUserAsFolkLead({ userId: folkLeadDialog.user.userId, action: folkLeadDialog.action });
+      rememberDirectoryPatch(folkLeadDialog.user, { isFolkLead: folkLeadDialog.action === 'tag' });
       toast.success(folkLeadDialog.action === 'tag' ? 'FOLK Lead assigned' : 'FOLK Lead removed');
-      loadData();
+      void loadData(true);
     } catch (err: any) {
       toast.error(err?.message || 'Failed to update FOLK Lead role');
     }
@@ -463,8 +483,9 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
     if (!tripCoordDialog) return;
     try {
       await tagUserAsTripCoordinator({ userId: tripCoordDialog.user.userId, action: tripCoordDialog.action });
+      rememberDirectoryPatch(tripCoordDialog.user, { isTripCoordinator: tripCoordDialog.action === 'tag' });
       toast.success(tripCoordDialog.action === 'tag' ? 'Trip Coordinator assigned' : 'Trip Coordinator removed');
-      loadData();
+      void loadData(true);
     } catch (err: any) {
       toast.error(err?.message || 'Failed to update Trip Coordinator role');
     }
@@ -474,8 +495,20 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
     if (!sadhanaMentorDialog) return;
     try {
       await tagUserAsSadhanaMentor({ userId: sadhanaMentorDialog.user.userId, action: sadhanaMentorDialog.action });
-      toast.success(sadhanaMentorDialog.action === 'tag' ? 'Sadhana Mentor assigned' : 'Sadhana Mentor removed');
-      loadData();
+      const tagged = sadhanaMentorDialog.action === 'tag';
+      rememberDirectoryPatch(sadhanaMentorDialog.user, { isSadhanaMentor: tagged });
+      const mentorId = String(sadhanaMentorDialog.user.userId || sadhanaMentorDialog.user.id || '');
+      if (mentorId) {
+        pendingMentors.current.set(mentorId, {
+          userId: mentorId,
+          fullName: sadhanaMentorDialog.user.fullName || '',
+          email: (sadhanaMentorDialog.user as any).email || '',
+          tagged,
+        });
+        setSadhanaMentors(current => mergePendingMentors(current, pendingMentors.current));
+      }
+      toast.success(tagged ? 'Sadhana Mentor assigned' : 'Sadhana Mentor removed');
+      void loadData(true);
     } catch (err: any) {
       toast.error(err?.message || 'Failed to update Sadhana Mentor role');
     }
@@ -484,10 +517,11 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
   const handleAssignSadhanaMentor = async (userId: string, mentorId: string) => {
     try {
       await assignSadhanaMentor({ userId, sadhanaMentorId: mentorId });
-      setUsers(prev => prev.map(u => {
-        const matches = u.userId === userId || (u as any).userDbId === userId || u.id === userId;
-        return matches ? { ...u, sadhanaMentor: mentorId } : u;
-      }));
+      rememberDirectoryPatch(
+        users.find(u => u.userId === userId || (u as any).userDbId === userId || u.id === userId),
+        { sadhanaMentor: mentorId || null },
+        [userId],
+      );
       toast.success('Sadhana Mentor assigned');
     } catch {
       toast.error('Failed to assign Sadhana Mentor');
@@ -507,9 +541,10 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
         ...(bvMentorDialog.action === 'tag' ? { guideId: bvMentorGuideId } : {}),
       });
       toast.success(bvMentorDialog.action === 'tag' ? 'BV Mentor role assigned' : 'BV Mentor role removed');
+      rememberDirectoryPatch(bvMentorDialog.user, { isBvMentor: bvMentorDialog.action === 'tag' });
       setBvMentorDialog(null);
       setBvMentorGuideId('');
-      loadData();
+      void loadData(true);
     } catch (err: any) {
       toast.error(err?.message || 'Failed to update BV Mentor role');
     }
@@ -525,35 +560,25 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
         send: () => assignBvRole(submission),
       });
       if (outcome.status === 'queued') return;
-      const res = outcome.result;
+      const isSup = role === 'SUPERVISOR';
+      const isFac = role === 'FACILITATOR';
+      const isSub = role === 'SUB_FACILITATOR';
+      const isAdmin = role === 'ADMIN';
+      rememberDirectoryPatch(
+        users.find(u => u.userId === userId || (u as any).userDbId === userId || u.id === userId),
+        bvRolePatch({
+          isAdmin,
+          isSupervisor: isSup,
+          isFacilitator: isFac,
+          isSubFacilitator: isSub,
+          primaryRole: role,
+          parentId,
+          parentName,
+        }),
+        [userId],
+      );
       toast.success('Bhakti Vriksha role updated');
-      setUsers(prev => prev.map(u => {
-        const matches = u.userId === userId || (u as any).userDbId === userId || u.id === userId;
-        if (matches) {
-          const isSup = role === 'SUPERVISOR';
-          const isFac = role === 'FACILITATOR';
-          const isSub = role === 'SUB_FACILITATOR';
-          const isAdmin = role === 'ADMIN';
-          return {
-            ...u,
-            role: isAdmin ? 'Admin' : isSup ? 'Guide' : isFac ? 'RGF' : 'User',
-            isBvAdmin: isAdmin,
-            isBvSupervisor: isSup,
-            isBvFacilitator: isFac,
-            isBvSubFacilitator: isSub,
-            isBvsl: isFac,
-            isBvMentor: isSup,
-            bvReportingAdminId: isSup ? parentId : (res as any)?.bvReportingAdminId || null,
-            bvReportingAdminName: isSup ? parentName : (res as any)?.bvReportingAdminName || null,
-            bvReportingSupervisorId: isFac ? parentId : (res as any)?.bvReportingSupervisorId || null,
-            bvReportingSupervisorName: isFac ? parentName : (res as any)?.bvReportingSupervisorName || null,
-            bvReportingFacilitatorId: isSub ? parentId : (res as any)?.bvReportingFacilitatorId || null,
-            bvReportingFacilitatorName: isSub ? parentName : (res as any)?.bvReportingFacilitatorName || null,
-          };
-        }
-        return u;
-      }));
-      await loadData();
+      void loadData(true);
     } catch (err: any) {
       toast.error(err?.message || 'Failed to update role');
     }
@@ -976,22 +1001,21 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                   );
                   const userRole = String((u as any).role || '').trim().replace(/[\s-]+/g, '_').toUpperCase();
                   const isRgf = !!((u as any).isBvFacilitator || (u as any).isBvsl || ['RGF', 'BVSL', 'FACILITATOR'].includes(userRole));
-                  const isSupervisor = !!((u as any).isBvSupervisor || (u as any).isBvMentor || ['SUPERVISOR', 'BV_SUPERVISOR', 'MENTOR'].includes(userRole));
-                  const isRgsf = !!((u as any).isBvSubFacilitator || ['RGSF', 'SUB_FACILITATOR'].includes(userRole));
                   const identity = [u.id, u.userId, (u as any).userDbId, (u as any).email]
                     .filter(Boolean)
                     .map(value => String(value).toLowerCase());
-                  const roleGroup = isRgf
+                  const facilitatorGroup = isRgf
                     ? availableBvGroups.find(group => (group.facilitatorIds || []).some(ref =>
                         identity.includes(String(ref).toLowerCase())
                       ))
-                    : currentBvGroup;
-                  // Leadership roles stay tied to the group they already lead or
-                  // belong to. With no group, the same assignment dropdown used
-                  // for members must stay available.
-                  const assignedGroupLabel = String(roleGroup?.groupName || (u as any).bvGroupName || '').trim();
-                  const isRoleGroupLocked = (isRgf || isSupervisor || isRgsf) && assignedGroupLabel.length > 0;
-                  const groupSelectValue = currentBvGroup?.id || (u as any).bvGroupId || '__unassigned__';
+                    : undefined;
+                  const storedGroupName = String((u as any).bvGroupName || '').trim();
+                  const hasStoredGroup = !!storedGroupName && !/^(unassigned|n\/a|na|none|—|-)$/i.test(storedGroupName);
+                  const displayedGroup = currentBvGroup || facilitatorGroup;
+                  const groupSelectValue = displayedGroup?.id
+                    || ((u as any).bvGroupId && hasStoredGroup ? (u as any).bvGroupId : '')
+                    || '__unassigned__';
+                  const groupLabel = displayedGroup?.groupName || (hasStoredGroup ? storedGroupName : '') || ((u as any).bvGroupId && hasStoredGroup ? 'Group name unavailable' : 'Unassigned');
 
                   return (
                     <tr key={u.userId} data-expanded={expandedRows.has(u.userId)} className="border-b hover:bg-accent/40 cursor-pointer"
@@ -1111,11 +1135,7 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                         );
                       })()}
                       <td data-label="Bhakti Vriksha Group" data-summary="true" className="px-3 py-2 text-center align-middle text-xs" onClick={e => e.stopPropagation()}>
-                        {isBvUser ? isRoleGroupLocked ? (
-                          <span className="text-muted-foreground font-medium" title="This role is tied to its assigned Reading Group">
-                            {assignedGroupLabel}
-                          </span>
-                        ) : (
+                        {isBvUser ? (
                           <Select
                             value={groupSelectValue}
                             onValueChange={(value) => {
@@ -1124,19 +1144,19 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                                 return;
                               }
                               const selectedGroup = availableBvGroups.find(group => group.id === value || group.groupId === value);
-                              if (!selectedGroup || selectedGroup.id === currentBvGroup?.id) return;
+                              if (!selectedGroup || selectedGroup.id === displayedGroup?.id) return;
                               setGroupTransferDialog({ user: u, group: selectedGroup });
                             }}
                             disabled={!canEditRole}
                           >
                             <SelectTrigger className="h-7 text-xs w-48 mx-auto justify-center" aria-label={`Bhakti Vriksha Group for ${u.fullName}`}>
-                              <span className="truncate">{currentBvGroup?.groupName || (u as any).bvGroupName || ((u as any).bvGroupId ? 'Group name unavailable' : 'Unassigned')}</span>
+                              <span className="truncate">{groupLabel}</span>
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="__unassigned__">Unassigned</SelectItem>
-                              {!currentBvGroup && (u as any).bvGroupId && (
+                              {!displayedGroup && groupSelectValue !== '__unassigned__' && (
                                 <SelectItem value={groupSelectValue}>
-                                  {(u as any).bvGroupName || 'Current group unavailable'}
+                                  {groupLabel}
                                 </SelectItem>
                               )}
                               {availableBvGroups.map(group => (
@@ -1471,7 +1491,10 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
           supervisorsList={bvSupervisorsList}
           facilitatorsList={bvFacilitatorsList}
           onClose={() => setMultiRoleUser(null)}
-          onSaved={() => loadData()}
+          onSaved={(update) => {
+            rememberDirectoryPatch(update.user, update.patch);
+            void loadData(true);
+          }}
         />
       )}
     </>

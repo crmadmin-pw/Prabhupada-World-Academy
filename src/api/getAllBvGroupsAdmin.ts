@@ -4,6 +4,38 @@ import { serverCacheGetOrFetch, serverCacheInvalidate } from '../lib/serverCache
 import { isBvSuperAdminUser } from '../lib/bvGroupMemberScope';
 import { getScopedHierarchyUserIds, isUserInHierarchy, hierarchyRefs, readScopedUsers } from '../lib/hierarchyUtils';
 
+export function groupFacilitatorRefs(group: { bvslLeader?: unknown; bvslId?: unknown }): string[] {
+  return [group.bvslLeader, group.bvslId]
+    .flatMap(value => Array.isArray(value) ? value : [value])
+    .map(value => String(value || '').trim())
+    .filter(Boolean);
+}
+
+function aliasKey(value: unknown): string {
+  return String(value || '').trim().toLowerCase();
+}
+
+export function indexFacilitatorUsers(users: readonly any[], into = new Map<string, any>()) {
+  for (const user of users) {
+    for (const ref of [user?.id, user?.userId, user?.email]) {
+      const key = aliasKey(ref);
+      if (key && !into.has(key)) into.set(key, user);
+    }
+  }
+  return into;
+}
+
+/** The reading-group RGF may be stored as a document id, public user id, or email. */
+export function facilitatorDisplayName(group: { bvslLeader?: unknown; bvslId?: unknown; bvslName?: unknown }, usersByAlias: Map<string, any>): string | null {
+  const user = groupFacilitatorRefs(group)
+    .map(ref => usersByAlias.get(aliasKey(ref)))
+    .find(match => String(match?.fullName || '').trim());
+  const resolved = String(user?.fullName || '').trim();
+  if (resolved) return resolved;
+  const stored = String(group.bvslName || '').trim();
+  return stored || null;
+}
+
 export default createEndpoint({
   description: 'Get all BV groups and BVSLs under a guide (admin view — for Guide/Super Guide)',
   authenticated: true,
@@ -182,8 +214,24 @@ async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<strin
       }
     }
 
+    const usersByAlias = indexFacilitatorUsers(allBvslUsers);
+    const missingFacilitators = [...new Set(groupRecords.flatMap(groupFacilitatorRefs))]
+      .filter(ref => !usersByAlias.has(aliasKey(ref)));
+    if (missingFacilitators.length > 0) {
+      const facilitatorFields = ['id', 'userId', 'fullName', 'email'];
+      for (let index = 0; index < missingFacilitators.length; index += 30) {
+        const batch = missingFacilitators.slice(index, index + 30);
+        const [byId, byUserId, byEmail] = await Promise.all([
+          Users.findAll({ filters: { id: { in: batch } }, fields: facilitatorFields, limit: 30 }),
+          Users.findAll({ filters: { userId: { in: batch } }, fields: facilitatorFields, limit: 30 }),
+          Users.findAll({ filters: { email: { in: batch.map(ref => ref.toLowerCase()) } }, fields: facilitatorFields, limit: 30 }),
+        ]);
+        indexFacilitatorUsers([...(byId.records || []), ...(byUserId.records || []), ...(byEmail.records || [])], usersByAlias);
+      }
+    }
+
     const groups = groupRecords.map((g: any) => {
-      const bvslDbId = Array.isArray(g.bvslLeader) ? g.bvslLeader[0] : g.bvslLeader as string | undefined;
+      const bvslDbId = Array.isArray(g.bvslLeader) ? g.bvslLeader[0] : (g.bvslLeader || g.bvslId) as string | undefined;
 
       const memberCount = memberCountByGroup.get(g.id) ?? 0;
       const attRecords = attByGroup.get(g.id) ?? [];
@@ -199,8 +247,8 @@ async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<strin
         ? Math.round((totalPresent / totalPossible) * 100)
         : 0;
 
-      const bvslUser = bvslDbId ? bvslUserRecords.find((u: any) => u.id === bvslDbId) : undefined;
-      const bvslName = bvslUser?.fullName || null;
+      const bvslUser = groupFacilitatorRefs(g).map(ref => usersByAlias.get(aliasKey(ref))).find(Boolean);
+      const bvslName = facilitatorDisplayName(g, usersByAlias);
 
       return {
         groupId: g.groupId || g.id,

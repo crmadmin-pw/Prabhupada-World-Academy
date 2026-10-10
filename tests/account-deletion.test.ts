@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
-import deleteAccount from '../src/api/deleteAccount';
 import {
   cancelAccountDeletion,
+  deleteAccountImmediately,
   ownedAccountTableNames,
   purgeDueAccountDeletions,
   scheduleAccountDeletion,
@@ -12,7 +12,6 @@ import {
 import {
   ACCOUNT_DELETION_GRACE_MS,
   collectStoragePaths,
-  deletionAuthorizationFailure,
   storageObjectPath,
 } from '../src/lib/accountDeletionPolicy';
 
@@ -101,14 +100,26 @@ const request = {
   email: 'member@example.test',
 };
 
-test('a confirm flag is not accepted and a fresh sign-in is required', () => {
-  const nowMs = Date.parse('2026-10-05T12:00:00Z');
-  const fresh = Math.floor(nowMs / 1000);
-  assert.equal(deletionAuthorizationFailure({ confirmText: undefined, authTimeSeconds: fresh, nowMs })?.code, 'BAD_REQUEST');
-  assert.equal(deletionAuthorizationFailure({ confirmText: 'delete', authTimeSeconds: fresh, nowMs })?.code, 'BAD_REQUEST');
-  assert.equal(deletionAuthorizationFailure({ confirmText: 'DELETE', authTimeSeconds: fresh - 301, nowMs })?.code, 'UNAUTHORIZED');
-  assert.equal(deletionAuthorizationFailure({ confirmText: 'DELETE', authTimeSeconds: null, nowMs })?.code, 'UNAUTHORIZED');
-  assert.equal(deletionAuthorizationFailure({ confirmText: ' DELETE ', authTimeSeconds: fresh, nowMs }), null);
+test('deletion removes the account immediately without a fresh sign-in', async () => {
+  const data = world();
+  const removed: { paths: string[]; uids: string[] }[] = [];
+  const authDeleted: string[] = [];
+  const result = await deleteAccountImmediately({
+    ...request,
+    users: data.users,
+    ownedTables: data.ownedTables,
+    nowMs: Date.parse('2026-10-05T12:00:00Z'),
+    deleteFiles: async (paths, uids) => { removed.push({ paths, uids }); },
+    deleteAuthUser: async uid => { authDeleted.push(uid); },
+  });
+  assert.equal(result.status, 'deleted');
+  assert.equal(result.purgeAt, null);
+  assert.equal(data.users.rows.has('profile-1'), false);
+  assert.equal(data.rent.rows.has('rent-1'), false);
+  assert.equal(data.rent.rows.has('rent-2'), true);
+  assert.equal(data.holds.rows.size, 0);
+  assert.ok(removed[0].paths.includes(PHOTO_PATH));
+  assert.ok(authDeleted.includes('auth-1'));
 });
 
 test('storage paths are limited to this app\'s upload objects', () => {
@@ -221,22 +232,3 @@ test('account deletion covers the records that used to be left behind', () => {
   }
 });
 
-test('the endpoint rejects a confirm flag and a stale sign-in before touching records', async () => {
-  const user = {
-    id: 'profile-1',
-    uid: 'auth-1',
-    email: 'member@example.test',
-    authTime: Math.floor(Date.now() / 1000),
-  };
-  await assert.rejects(
-    () => deleteAccount.execute({ input: { confirm: true }, context: { user } } as never),
-    /Type DELETE/,
-  );
-  await assert.rejects(
-    () => deleteAccount.execute({
-      input: { confirmText: 'DELETE' },
-      context: { user: { ...user, authTime: Math.floor(Date.now() / 1000) - 600 } },
-    } as never),
-    /Sign in again/,
-  );
-});

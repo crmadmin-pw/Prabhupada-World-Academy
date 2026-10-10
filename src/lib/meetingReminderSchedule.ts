@@ -15,6 +15,14 @@ export function meetingStartMs(value: string): number {
   return new Date(value.includes('T') && !hasZone ? `${value}+05:30` : value).getTime();
 }
 
+/** A meeting can be scheduled only for a start that is still ahead. */
+export function pastMeetingTimeMessage(scheduledAt: string, nowMs = Date.now()): string | null {
+  const start = meetingStartMs(String(scheduledAt || '').trim());
+  if (!Number.isFinite(start)) return 'Please choose a valid meeting date and time';
+  if (start <= nowMs) return 'Meeting time has already passed. Choose a future time.';
+  return null;
+}
+
 export function reminderWindow(start: number, type: MeetingReminderType) {
   const reminder = MEETING_REMINDERS.find(item => item.type === type)!;
   return { from: start - reminder.minutes * 60_000, until: start - reminder.untilMinutes * 60_000 };

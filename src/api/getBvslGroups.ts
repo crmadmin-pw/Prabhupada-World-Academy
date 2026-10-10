@@ -178,12 +178,12 @@ export default createEndpoint({
           const [byUserId, byId] = await Promise.all([
             Users.findAll({
               filters: { userId: { in: batch } } as any,
-              fields: ['id', 'userId', 'segment', 'fullName'],
+              fields: ['id', 'userId', 'email', 'segment', 'fullName'],
               limit: 100,
             }),
             Users.findAll({
               filters: { id: { in: batch } } as any,
-              fields: ['id', 'userId', 'segment', 'fullName'],
+              fields: ['id', 'userId', 'email', 'segment', 'fullName'],
               limit: 100,
             }),
           ]);
@@ -196,7 +196,12 @@ export default createEndpoint({
             if (!seen.has(u.id)) {
               seen.add(u.id);
               facilitatorMap.set(u.id, u);
-              if (u.userId) facilitatorMap.set(u.userId, u);
+              facilitatorMap.set(String(u.id).toLowerCase(), u);
+              if (u.userId) {
+                facilitatorMap.set(u.userId, u);
+                facilitatorMap.set(String(u.userId).toLowerCase(), u);
+              }
+              if (u.email) facilitatorMap.set(String(u.email).toLowerCase(), u);
             }
           }
         }
@@ -378,7 +383,14 @@ export default createEndpoint({
     ]);
 
     const groups = await Promise.all(groupRecords.map(async (g) => {
-      const facilitatorUser = facilitatorMap.get(g.bvslId || g.bvslLeader);
+      const facilitatorRefs = [g.bvslId, g.bvslLeader]
+        .flatMap((value: unknown) => Array.isArray(value) ? value : [value])
+        .filter(Boolean)
+        .map((value: unknown) => String(value));
+      const facilitatorUser = facilitatorRefs
+        .flatMap(ref => [facilitatorMap.get(ref), facilitatorMap.get(ref.toLowerCase())])
+        .find(user => user?.fullName)
+        || facilitatorRefs.flatMap(ref => [facilitatorMap.get(ref), facilitatorMap.get(ref.toLowerCase())]).find(Boolean);
       const guideRes = guideMap.get(Array.isArray(g.guide) ? g.guide[0] : g.guide);
       
       let totalSessions = 0;

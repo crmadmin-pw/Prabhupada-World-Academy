@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createEndpoint, Users, AppError } from '@/lib/backend-sdk';
 import { getGuideScope, isUserInGuideScope } from '../lib/guideScope';
 import { serverCacheInvalidate } from '../lib/serverCache';
+import { publishUsersRevision } from '../lib/publishUsersRevision';
 
 export default createEndpoint({
   description: 'Tag/untag a user as BVSL — center-based access',
@@ -64,6 +65,7 @@ export default createEndpoint({
     });
 
     serverCacheInvalidate('user_profile:');
+    await publishUsersRevision(userRecord.id);
     return { success: true };
   },
 });

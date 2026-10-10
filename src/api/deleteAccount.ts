@@ -1,16 +1,33 @@
 import { z } from 'zod';
+import { getApps } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
 import { createEndpoint, AppError, AccountDeletionHolds, Users } from '@/lib/backend-sdk';
 import * as backend from '@/lib/backend-sdk';
-import { deletionAuthorizationFailure } from '@/lib/accountDeletionPolicy';
 import {
   cancelAccountDeletion,
+  deleteAccountImmediately,
   loadOwnedAccountTables,
-  scheduleAccountDeletion,
   type DeletionTable,
 } from '@/lib/accountDeletion';
+import { deleteAccountFiles } from '@/lib/accountDeletionStorage';
 import { serverCacheInvalidate } from '../lib/serverCache';
 import { publishUsersRevision } from '../lib/publishUsersRevision';
 import { profileCacheKey } from './getUserProfile';
+
+async function deleteAuthUser(uid: string) {
+  if (!uid) return;
+  if (getApps().length === 0) {
+    throw new AppError({ code: 'BAD_REQUEST', message: 'Sign-in could not be removed, so account deletion did not finish.' });
+  }
+  try {
+    await getAuth().deleteUser(uid);
+  } catch (error) {
+    const code = String((error as { code?: string })?.code || '');
+    const message = error instanceof Error ? error.message : '';
+    if (code === 'auth/user-not-found' || message.includes('no user record')) return;
+    throw error;
+  }
+}
 
 const registry = backend as unknown as Record<string, DeletionTable | undefined>;
 const ownedTables = loadOwnedAccountTables(registry);
@@ -27,21 +44,20 @@ async function publishProfiles(ids: string[]) {
 }
 
 export default createEndpoint({
-  description: 'Schedule reversible account deletion after typed confirmation and a fresh sign-in',
+  description: 'Permanently delete the signed-in account immediately',
   authenticated: true,
   inputSchema: z.object({
-    action: z.enum(['schedule', 'cancel']).optional(),
-    confirmText: z.string().max(32).optional(),
+    action: z.enum(['delete', 'cancel']).optional(),
     email: z.string().max(320).optional(),
   }),
   outputSchema: z.object({
     success: z.boolean(),
-    status: z.enum(['scheduled', 'cancelled']),
+    status: z.enum(['deleted', 'cancelled']),
     purgeAt: z.string().nullable(),
   }),
   execute: async ({ input, context }) => {
     if (!context.user?.uid || !context.user.email) {
-      throw new AppError({ code: 'UNAUTHORIZED', message: 'Sign in again before deleting your account.' });
+      throw new AppError({ code: 'UNAUTHORIZED', message: 'You can only delete the account you are using.' });
     }
     if (input.email && input.email.toLowerCase() !== context.user.email.toLowerCase()) {
       throw new AppError({ code: 'FORBIDDEN', message: 'You can only delete your own account.' });
@@ -62,16 +78,12 @@ export default createEndpoint({
       return { success: true, status: result.status, purgeAt: result.purgeAt };
     }
 
-    // `confirm: true` is intentionally ignored. Deletion requires the word DELETE
-    // and a sign-in from the last few minutes.
-    const failure = deletionAuthorizationFailure({
-      confirmText: input.confirmText,
-      authTimeSeconds: context.user.authTime,
+    const result = await deleteAccountImmediately({
+      ...target,
       nowMs: Date.now(),
+      deleteFiles: deleteAccountFiles,
+      deleteAuthUser,
     });
-    if (failure) throw new AppError(failure);
-
-    const result = await scheduleAccountDeletion({ ...target, nowMs: Date.now() });
     await publishProfiles(result.profileIds);
     return { success: true, status: result.status, purgeAt: result.purgeAt };
   },

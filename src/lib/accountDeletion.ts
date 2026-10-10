@@ -384,6 +384,43 @@ function storageAndAuthIds(profiles: any[]): string[] {
   ])).filter(value => !value.includes('@') && !value.includes('/') && !/^USER-\d+$/i.test(value));
 }
 
+export async function deleteAccountImmediately(options: {
+  authId: string;
+  profileId: string;
+  email: string;
+  nowMs: number;
+  users: DeletionTable;
+  ownedTables: DeletionTable[];
+  deleteFiles: (paths: string[], uids: string[]) => Promise<void>;
+  deleteAuthUser: (uid: string) => Promise<void>;
+}): Promise<{ success: true; status: 'deleted'; purgeAt: null; profileIds: string[] }> {
+  const email = options.email.toLowerCase();
+  const profiles = await resolveProfiles(options.users, options.authId, options.profileId, email);
+  const identities = identityValues(profiles, options.authId, email);
+  const owned: { table: DeletionTable; record: any }[] = [];
+  for (const table of options.ownedTables) {
+    for (const record of await collectOwned(table, identities)) owned.push({ table, record });
+  }
+
+  const paths = new Set<string>();
+  for (const item of owned) collectStoragePaths(item.record, paths);
+  for (const profile of profiles) collectStoragePaths(profile, paths);
+  const authIds = storageAndAuthIds(profiles.length ? profiles : [{ id: options.authId, deletionAuthUid: options.authId }]);
+  if (!authIds.includes(options.authId)) authIds.push(options.authId);
+
+  await options.deleteFiles([...paths], authIds);
+  for (const item of owned) await item.table.delete({ id: item.record.id });
+  for (const uid of authIds) await options.deleteAuthUser(uid);
+  for (const profile of profiles) await options.users.delete({ id: profile.id });
+
+  return {
+    success: true,
+    status: 'deleted',
+    purgeAt: null,
+    profileIds: profiles.map(profile => String(profile.id)).filter(Boolean),
+  };
+}
+
 export async function purgeDueAccountDeletions(options: {
   nowMs: number;
   users: DeletionTable;

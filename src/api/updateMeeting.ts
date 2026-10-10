@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createEndpoint, Meetings, Users, AppError } from '@/lib/backend-sdk';
+import { pastMeetingTimeMessage } from '@/lib/meetingReminderSchedule';
 
 export default createEndpoint({
   description: 'Update a meeting or trigger instant reminder notification',
@@ -64,6 +65,8 @@ export default createEndpoint({
     if (input.title !== undefined) updateFields.title = input.title;
     if (input.durationMinutes !== undefined) updateFields.durationMinutes = input.durationMinutes;
     if (input.scheduledAt !== undefined && input.scheduledAt !== existing.scheduledAt) {
+      const pastTime = pastMeetingTimeMessage(input.scheduledAt);
+      if (pastTime) throw new AppError({ code: 'BAD_REQUEST', message: pastTime });
       updateFields.scheduledAt = input.scheduledAt;
       updateFields.notification10mSent = false;
       updateFields.notification1mSent = false;

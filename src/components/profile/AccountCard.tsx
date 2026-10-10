@@ -1,10 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/lib/auth-sdk';
-import { useUserProfile } from '@/contexts/UserProfileContext';
-import { ACCOUNT_DELETE_CONFIRM_TEXT, ACCOUNT_DELETION_GRACE_DAYS } from '@/lib/accountDeletionPolicy';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
@@ -26,31 +23,18 @@ function safeDate(val: unknown, includeTime = false): string {
 }
 
 export default function AccountCard({ createdAt, lastLoginAt }: Props) {
-  const { user, reauthenticate } = useAuth();
-  const { refreshProfile } = useUserProfile();
-  const [deleteConfirm, setDeleteConfirm] = useState('');
+  const { logout } = useAuth();
   const [deleting, setDeleting] = useState(false);
-  const confirmed = deleteConfirm.trim() === ACCOUNT_DELETE_CONFIRM_TEXT;
 
   const handleDelete = () => {
-    if (!user?.email || !confirmed) return;
-    const email = user.email;
     setDeleting(true);
-    void reauthenticate()
-      .then(() => deleteAccount({ action: 'schedule', email, confirmText: ACCOUNT_DELETE_CONFIRM_TEXT }))
-      .then(async result => {
-        const purgeDate = result.purgeAt ? safeDate(result.purgeAt) : null;
-        toast.success(purgeDate
-          ? `Account scheduled for deletion on ${purgeDate}. You can cancel until then.`
-          : 'Account scheduled for deletion. You can cancel during the recovery period.');
-        await refreshProfile();
+    void deleteAccount({})
+      .then(async () => {
+        toast.success('Your account has been deleted.');
+        await logout({ returnTo: '/' });
       })
       .catch((err: any) => {
-        const code = String(err?.code || '');
-        const message = String(err?.message || '');
-        toast.error(code.includes('popup-closed') || message.toLowerCase().includes('popup-closed')
-          ? 'Sign-in was cancelled. Your account was not deleted.'
-          : (message || 'Failed to schedule account deletion'));
+        toast.error(err?.message || 'Failed to delete your account');
         setDeleting(false);
       });
   };
@@ -82,16 +66,15 @@ export default function AccountCard({ createdAt, lastLoginAt }: Props) {
               <AlertDialogHeader>
                 <AlertDialogTitle>Delete Your Account</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Your account is deactivated now and permanently deleted after {ACCOUNT_DELETION_GRACE_DAYS} days. Rent, trip, service, attendance, challenge, and file records leave reports immediately and can be restored if you cancel during that time. Type <strong>DELETE</strong>, then sign in again.
+                  This permanently deletes your account and its records now. This cannot be undone.
                 </AlertDialogDescription>
               </AlertDialogHeader>
-              <Input value={deleteConfirm} onChange={e => setDeleteConfirm(e.target.value)} placeholder="Type DELETE to confirm" className="mt-2" />
               <AlertDialogFooter>
-                <AlertDialogCancel onClick={() => setDeleteConfirm('')}>Cancel</AlertDialogCancel>
-                <AlertDialogAction type="button" onClick={handleDelete} disabled={!confirmed || deleting}
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction type="button" onClick={handleDelete} disabled={deleting}
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
                   {deleting && <Loader2 className="w-4 h-4 animate-spin mr-1" />}
-                  Sign in again and schedule deletion
+                  Delete account
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>

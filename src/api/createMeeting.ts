@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createEndpoint, Meetings, Users, AppError } from '@/lib/backend-sdk';
+import { pastMeetingTimeMessage } from '@/lib/meetingReminderSchedule';
 
 export default createEndpoint({
   description: 'Create a new Prabhupada World meeting (Facilitators, Executive, or Other)',
@@ -42,6 +43,9 @@ export default createEndpoint({
     if (!isAuthorized || isReadOnlySadhanaMentor || normalizedSegment === 'FOLK') {
       throw new AppError({ code: 'FORBIDDEN', message: 'Meetings and MoMs are available only in Prabhupada World' });
     }
+
+    const pastTime = pastMeetingTimeMessage(input.scheduledAt);
+    if (pastTime) throw new AppError({ code: 'BAD_REQUEST', message: pastTime });
 
     const inviteeIdsArray = Array.from(new Set<string>(input.additionalInviteeIds || []));
 

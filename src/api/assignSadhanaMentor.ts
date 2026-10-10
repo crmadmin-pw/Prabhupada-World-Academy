@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createEndpoint, Users, AppError } from '@/lib/backend-sdk';
 import { serverCacheInvalidate } from '../lib/serverCache';
+import { publishUsersRevision } from '../lib/publishUsersRevision';
 
 export default createEndpoint({
   description: 'Assign a Sadhana Mentor to a user',
@@ -42,6 +43,7 @@ export default createEndpoint({
     }
     
     serverCacheInvalidate('user_profile:' + input.userId);
+    await publishUsersRevision(input.userId);
     return { success: true };
   },
 });

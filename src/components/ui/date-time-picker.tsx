@@ -171,8 +171,40 @@ export function DateTimePicker({
     return `${year}-${month}-${day}T${hrs}:${mns}`;
   };
 
+  const slotTime = (dateObj: Date, hourStr: string, minuteStr: string, period: 'AM' | 'PM') => {
+    let hour = parseInt(hourStr, 10);
+    if (period === 'PM' && hour < 12) hour += 12;
+    if (period === 'AM' && hour === 12) hour = 0;
+    return new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate(), hour, parseInt(minuteStr, 10), 0, 0).getTime();
+  };
+
+  const earliestMs = React.useMemo(() => {
+    if (!min || type !== 'datetime') return null;
+    const earliest = new Date(min);
+    return Number.isNaN(earliest.getTime()) ? null : earliest.getTime();
+  }, [min, type]);
+
+  const isSlotBeforeMin = (hour: string, minute: string, period: 'AM' | 'PM', dateObj?: Date) => {
+    if (earliestMs == null) return false;
+    return slotTime(dateObj || parsedDate || new Date(), hour, minute, period) < earliestMs;
+  };
+
   const handleSelectDate = (cellDate: Date) => {
-    const iso = constructISOString(cellDate, selectedHour, selectedMinute, selectedPeriod);
+    let hour = selectedHour;
+    let minute = selectedMinute;
+    let period = selectedPeriod;
+    if (isSlotBeforeMin(hour, minute, period, cellDate) && earliestMs != null) {
+      const earliest = new Date(earliestMs);
+      let hours = earliest.getHours();
+      period = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12 || 12;
+      hour = hours.toString().padStart(2, '0');
+      minute = earliest.getMinutes().toString().padStart(2, '0');
+      setSelectedHour(hour);
+      setSelectedMinute(minute);
+      setSelectedPeriod(period);
+    }
+    const iso = constructISOString(cellDate, hour, minute, period);
     onChange(iso);
     if (type === 'date') {
       setIsOpen(false);
@@ -180,10 +212,11 @@ export function DateTimePicker({
   };
 
   const handleTimeChange = (hour: string, minute: string, period: 'AM' | 'PM') => {
+    if (isSlotBeforeMin(hour, minute, period)) return;
     setSelectedHour(hour);
     setSelectedMinute(minute);
     setSelectedPeriod(period);
-    
+
     const baseDate = parsedDate || new Date();
     const iso = constructISOString(baseDate, hour, minute, period);
     onChange(iso);
@@ -195,9 +228,7 @@ export function DateTimePicker({
   };
 
   const handleToday = () => {
-    const today = new Date();
-    const iso = constructISOString(today, selectedHour, selectedMinute, selectedPeriod);
-    onChange(iso);
+    handleSelectDate(new Date());
   };
 
   // Human-readable trigger text
@@ -405,13 +436,15 @@ export function DateTimePicker({
               <div className="flex bg-muted/60 p-0.5 rounded-lg border border-border/40">
                 {(['AM', 'PM'] as const).map(p => {
                   const isSelected = selectedPeriod === p;
+                  const isPast = isSlotBeforeMin('11', '59', p);
                   return (
                     <button
                       key={p}
                       type="button"
+                      disabled={isPast}
                       onClick={() => handleTimeChange(selectedHour, selectedMinute, p)}
                       className={cn(
-                        "px-2 py-0.5 text-[10px] font-bold rounded-md transition-all cursor-pointer focus:outline-none",
+                        "px-2 py-0.5 text-[10px] font-bold rounded-md transition-all cursor-pointer focus:outline-none disabled:cursor-not-allowed disabled:opacity-40",
                         isSelected
                           ? "bg-primary text-primary-foreground shadow-xs"
                           : "text-muted-foreground hover:text-foreground"
@@ -435,14 +468,16 @@ export function DateTimePicker({
                 >
                   {Array.from({ length: 12 }, (_, i) => (i + 1).toString().padStart(2, '0')).map(h => {
                     const isSelected = selectedHour === h;
+                    const isPast = isSlotBeforeMin(h, '59', selectedPeriod);
                     return (
                       <button
                         key={h}
                         type="button"
+                        disabled={isPast}
                         data-selected={isSelected}
                         onClick={() => handleTimeChange(h, selectedMinute, selectedPeriod)}
                         className={cn(
-                          "h-7 w-full text-xs rounded-lg font-medium transition-all cursor-pointer shrink-0 focus:outline-none flex items-center justify-center",
+                          "h-7 w-full text-xs rounded-lg font-medium transition-all cursor-pointer shrink-0 focus:outline-none flex items-center justify-center disabled:cursor-not-allowed disabled:opacity-40",
                           isSelected 
                             ? "bg-primary text-primary-foreground font-bold shadow-xs scale-[0.98]" 
                             : "text-muted-foreground hover:bg-muted/80 hover:text-foreground"
@@ -464,14 +499,16 @@ export function DateTimePicker({
                 >
                   {Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0')).map(m => {
                     const isSelected = selectedMinute === m;
+                    const isPast = isSlotBeforeMin(selectedHour, m, selectedPeriod);
                     return (
                       <button
                         key={m}
                         type="button"
+                        disabled={isPast}
                         data-selected={isSelected}
                         onClick={() => handleTimeChange(selectedHour, m, selectedPeriod)}
                         className={cn(
-                          "h-7 w-full text-xs rounded-lg font-medium transition-all cursor-pointer shrink-0 focus:outline-none flex items-center justify-center",
+                          "h-7 w-full text-xs rounded-lg font-medium transition-all cursor-pointer shrink-0 focus:outline-none flex items-center justify-center disabled:cursor-not-allowed disabled:opacity-40",
                           isSelected 
                             ? "bg-primary text-primary-foreground font-bold shadow-xs scale-[0.98]" 
                             : "text-muted-foreground hover:bg-muted/80 hover:text-foreground"

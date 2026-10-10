@@ -16,6 +16,7 @@ import { useUserProfile } from '@/contexts/UserProfileContext';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { DateTimePicker } from '@/components/ui/date-time-picker';
+import { pastMeetingTimeMessage } from '@/lib/meetingReminderSchedule';
 import { useEndpointQuery } from '@/hooks/useEndpointQuery';
 
 interface ProposedByDropdownProps {
@@ -637,7 +638,7 @@ export default function MeetingsAndMomTab({ allowSchedule = false, department: r
   const openNewMeetingModal = () => {
     setEditingMeeting(null);
     const now = new Date();
-    now.setMinutes(0, 0, 0);
+    now.setHours(now.getHours() + 1, 0, 0, 0);
     // Format YYYY-MM-DDTHH:mm
     const localIso = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
     setMeetingForm({
@@ -702,6 +703,16 @@ export default function MeetingsAndMomTab({ allowSchedule = false, department: r
     if (!meetingForm.title || !meetingForm.scheduled_at) {
       alert('Please fill in title and scheduled date/time.');
       return;
+    }
+    const scheduledTime = meetingForm.scheduled_at.slice(0, 16);
+    const originalTime = editingMeeting?.scheduled_at ? editingMeeting.scheduled_at.slice(0, 16) : '';
+    const timeChanged = !editingMeeting || scheduledTime !== originalTime;
+    if (timeChanged) {
+      const pastTime = pastMeetingTimeMessage(scheduledTime);
+      if (pastTime) {
+        alert(pastTime);
+        return;
+      }
     }
 
     try {
@@ -1616,6 +1627,7 @@ export default function MeetingsAndMomTab({ allowSchedule = false, department: r
                     <label className="font-bold text-foreground block mb-1">Scheduled Date & Time *</label>
                     <DateTimePicker
                       value={meetingForm.scheduled_at}
+                      min={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
                       onChange={val => setMeetingForm({ ...meetingForm, scheduled_at: val })}
                       type="datetime"
                       placeholder="Select scheduled date & time"

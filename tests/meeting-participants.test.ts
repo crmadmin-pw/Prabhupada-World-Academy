@@ -36,7 +36,7 @@ test('facilitator meeting creation saves only the selected participants', async 
     input: {
       title: 'Facilitators Meeting',
       type: 'FACILITATOR',
-      scheduledAt: '2026-09-09T10:00:00.000Z',
+      scheduledAt: '2099-09-09T10:00:00.000Z',
       durationMinutes: 60,
       locationOrLink: 'https://meet.google.com/example',
       description: '',
@@ -48,6 +48,22 @@ test('facilitator meeting creation saves only the selected participants', async 
 
   assert.deepEqual(savedRecord.inviteeUserIds, ['rgf-1', 'supervisor-1']);
   assert.deepEqual(savedRecord.invitees.map((person: any) => person.userId), ['rgf-1', 'supervisor-1']);
+});
+
+test('creating a meeting rejects a start time that has already passed', async () => {
+  await assert.rejects(() => createMeeting.execute({
+    input: {
+      title: 'Too late',
+      type: 'OTHER',
+      scheduledAt: '2026-10-10T16:00',
+      durationMinutes: 60,
+      locationOrLink: '',
+      description: '',
+      notificationLeadMinutes: 10,
+      additionalInviteeIds: [],
+    },
+    context: adminContext,
+  }), /already passed/);
 });
 
 test('editing a facilitator meeting replaces participants with the selected list', async t => {

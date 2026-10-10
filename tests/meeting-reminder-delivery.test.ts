@@ -6,7 +6,7 @@ import test from 'node:test';
 import sendDueMeetingReminders from '../src/api/sendDueMeetingReminders';
 import sendMeetingReminder, { encryptPayload, executeMeetingReminder } from '../src/api/sendMeetingReminder';
 import { Meetings, PushSubscriptions, Users } from '../src/lib/app-backend-sdk';
-import { meetingStartMs } from '../src/lib/meetingReminderSchedule';
+import { meetingStartMs, pastMeetingTimeMessage } from '../src/lib/meetingReminderSchedule';
 import { meetingSubscriptionTargets } from '../src/lib/meetingReminderRecipients';
 
 test('meeting Web Push payload uses browser-compatible RFC 8291 encryption', async () => {
@@ -179,4 +179,10 @@ test('meeting times default to IST and preserve explicit positive and negative o
   assert.equal(meetingStartMs('2026-09-09T15:00'), Date.parse('2026-09-09T09:30:00Z'));
   assert.equal(meetingStartMs('2026-09-09T15:00+05:30'), Date.parse('2026-09-09T09:30:00Z'));
   assert.equal(meetingStartMs('2026-09-09T15:00-04:00'), Date.parse('2026-09-09T19:00:00Z'));
+});
+
+test('a 4 PM meeting is rejected when the current time is 4:45 PM IST', () => {
+  const now = Date.parse('2026-10-10T11:15:00Z');
+  assert.match(pastMeetingTimeMessage('2026-10-10T16:00', now) || '', /already passed/);
+  assert.equal(pastMeetingTimeMessage('2026-10-10T17:00', now), null);
 });
