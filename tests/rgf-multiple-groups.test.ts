@@ -66,6 +66,10 @@ test('facilitator identity keeps every stored id, and a name only when no id exi
   assert.deepEqual(facilitatorIdentityRefs({ bvslLeader: rgf.id, bvslId: rgf.userId }).sort(), [rgf.id, rgf.userId].sort());
   assert.deepEqual(facilitatorIdentityRefs({ bvslId: rgf.userId }), [rgf.userId]);
   assert.deepEqual(facilitatorIdentityRefs({ bvslName: rgf.fullName }), [rgf.fullName]);
+  assert.deepEqual(
+    facilitatorIdentityRefs({ bvslLeader: rgf.id, bvslName: rgf.fullName }).sort(),
+    [rgf.id, rgf.fullName].sort(),
+  );
 });
 
 test('one RGF can facilitate more than one reading group', async () => {

@@ -5,10 +5,8 @@ import { isBvDepartmentAdmin, isBvSuperAdminUser, resolveBvDepartmentGroups } fr
 import { callerDirectoryDepartment, getScopedHierarchyUserIds, isUserInHierarchy, hierarchyRefs, readScopedUsers } from '../lib/hierarchyUtils';
 
 export function facilitatorIdentityRefs(group: { bvslLeader?: unknown; bvslId?: unknown; bvslName?: unknown }): string[] {
-  const ids = groupFacilitatorRefs(group);
-  if (ids.length > 0) return ids;
   const storedName = String(group.bvslName || '').trim();
-  return storedName ? [storedName] : [];
+  return [...new Set([...groupFacilitatorRefs(group), ...(storedName ? [storedName] : [])])];
 }
 
 export function groupFacilitatorRefs(group: { bvslLeader?: unknown; bvslId?: unknown }): string[] {

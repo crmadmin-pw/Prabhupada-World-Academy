@@ -93,3 +93,41 @@ test('a super admin can rename a reading group and a member cannot', async t => 
   assert.equal(stores.Users[0].bvGroupName, 'Second Group');
   assert.equal(updateBvGroup.inputSchema.safeParse({ groupId: 'group-doc', groupName: '   ' }).success, false);
 });
+
+test('an admin can give an RGF another group and remove one', async t => {
+  const stores = installMemory(t, {
+    BvGroups: [
+      { id: 'krishna-doc', groupId: 'krishna', groupName: 'Krishna', bvslLeader: 'rachna-doc', bvslId: 'rachna', bvslName: 'Rachna Sharma' },
+      { id: 'temple-doc', groupId: 'temple', groupName: 'Temple SF 1', bvslLeader: 'punya-doc', bvslId: 'punya', bvslName: 'Punya' },
+    ],
+    Users: [
+      { id: 'rachna-doc', userId: 'rachna', fullName: 'Rachna Sharma', email: 'rachna@example.invalid', role: 'User', isBvFacilitator: true },
+      { id: 'punya-doc', userId: 'punya', fullName: 'Punya', email: 'punya@example.invalid', role: 'User', isBvFacilitator: true },
+    ],
+    BvGroupMembers: [],
+  });
+
+  await updateBvGroup.execute({
+    input: { groupId: 'temple', bvslId: 'rachna-doc' },
+    context: { user: admin },
+  } as never);
+  assert.equal(stores.BvGroups[1].bvslLeader, 'rachna-doc');
+  assert.equal(stores.BvGroups[1].bvslId, 'rachna');
+  assert.equal(stores.BvGroups[1].bvslName, 'Rachna Sharma');
+  assert.equal(stores.BvGroups[0].bvslLeader, 'rachna-doc');
+
+  await updateBvGroup.execute({
+    input: { groupId: 'krishna', bvslId: '' },
+    context: { user: admin },
+  } as never);
+  assert.equal(stores.BvGroups[0].bvslLeader, '');
+  assert.equal(stores.BvGroups[0].bvslId, '');
+  assert.equal(stores.BvGroups[0].bvslName, '');
+  assert.equal(stores.BvGroups[1].bvslName, 'Rachna Sharma');
+
+  await assert.rejects(
+    () => updateBvGroup.execute({ input: { groupId: 'temple', bvslId: '' }, context: { user: member } } as never),
+    (error: any) => error?.code === 'FORBIDDEN',
+  );
+  assert.equal(stores.BvGroups[1].bvslLeader, 'rachna-doc');
+});

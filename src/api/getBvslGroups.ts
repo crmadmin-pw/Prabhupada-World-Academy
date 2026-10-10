@@ -452,10 +452,12 @@ export default createEndpoint({
         // display of groups created before createBvGroup resolved custom IDs.
         segment: String(facilitatorUser?.segment || g.segment || 'PW').toUpperCase() === 'FOLK' ? 'FOLK' : 'PW',
         isActive: g.isActive ?? true,
-        facilitatorIds: [g.bvslLeader, g.bvslId]
-          .flatMap((value: unknown) => Array.isArray(value) ? value : [value])
-          .filter(Boolean)
-          .map((value: unknown) => String(value)),
+        facilitatorIds: [...new Set(
+          [g.bvslLeader, g.bvslId, g.bvslName, facilitatorUser?.id, facilitatorUser?.userId, facilitatorUser?.email, facilitatorUser?.fullName]
+            .flatMap((value: unknown) => Array.isArray(value) ? value : [value])
+            .map((value: unknown) => String(value || '').trim())
+            .filter(Boolean),
+        )],
       };
     }));
 

@@ -16,6 +16,7 @@ import {
   getGuideUsers, getGuides, tagUserAsBvsl, assignGuide, tagUserAsFolkLead,
   tagUserAsTripCoordinator, tagUserAsBvMentor, tagUserAsSadhanaMentor, assignBvRole,
   getActiveSadhanaMentors, assignSadhanaMentor, getBvslGroups, getAllBvGroupsAdmin, transferBvGroupMember,
+  updateBvGroup,
 } from '@/lib/endpoints-sdk';
 import { sendOrQueue } from '@/lib/offlineQueue';
 import type { GetGuideUsersOutputType, GetGuidesOutputType } from '@/lib/endpoints-sdk';
@@ -99,16 +100,118 @@ function groupsLedBy(
   );
 }
 
-function facilitatedReadingGroupNames(
-  ledGroups: Array<{ groupName?: string | null }>,
-  storedNames: unknown,
-): string[] {
-  const stored = Array.isArray(storedNames) ? storedNames : [];
-  return [...new Set(
-    [...ledGroups.map(group => group.groupName), ...stored]
-      .map(name => String(name || '').trim())
+function samePerson(
+  left: { id?: string; userId?: string; userDbId?: string; email?: string; fullName?: string },
+  right: { id?: string; userId?: string; userDbId?: string; email?: string; fullName?: string },
+) {
+  const refs = new Set(
+    [left.id, left.userId, left.userDbId, left.email, left.fullName]
+      .map(value => String(value || '').trim().toLowerCase())
       .filter(Boolean),
-  )];
+  );
+  return [right.id, right.userId, right.userDbId, right.email, right.fullName]
+    .some(value => refs.has(String(value || '').trim().toLowerCase()));
+}
+
+function facilitatorRefsOf(user: { id?: string; userId?: string; userDbId?: string; email?: string; fullName?: string }) {
+  return new Set(
+    [user.id, user.userId, user.userDbId, user.email, user.fullName]
+      .map(value => String(value || '').trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
+function groupsFacilitatedBy(
+  user: { id?: string; userId?: string; userDbId?: string; email?: string; fullName?: string; facilitatedGroupIds?: unknown; facilitatedGroupNames?: unknown },
+  groups: BvGroupOption[],
+) {
+  const refs = facilitatorRefsOf(user);
+  const storedIds = new Set(
+    (Array.isArray(user.facilitatedGroupIds) ? user.facilitatedGroupIds : [])
+      .map(value => String(value || '').trim().toLowerCase())
+      .filter(Boolean),
+  );
+  const storedNames = new Set(
+    (Array.isArray(user.facilitatedGroupNames) ? user.facilitatedGroupNames : [])
+      .map(value => String(value || '').trim().toLowerCase())
+      .filter(Boolean),
+  );
+  return groups.filter(group => {
+    const facilitatorIds = (group.facilitatorIds || []).map(ref => String(ref).trim().toLowerCase()).filter(Boolean);
+    if (facilitatorIds.length > 0) return facilitatorIds.some(ref => refs.has(ref));
+    const ids = [group.id, group.groupId].map(value => String(value || '').trim().toLowerCase());
+    return ids.some(id => storedIds.has(id)) || storedNames.has(String(group.groupName || '').trim().toLowerCase());
+  });
+}
+
+function RgfGroupCell({
+  user,
+  groups,
+  addableGroups,
+  people,
+  canEdit,
+  onAdd,
+  onRemove,
+}: {
+  user: User;
+  groups: BvGroupOption[];
+  addableGroups: BvGroupOption[];
+  people: User[];
+  canEdit: boolean;
+  onAdd: (group: BvGroupOption) => void;
+  onRemove: (group: BvGroupOption) => void;
+}) {
+  const [pickerKey, setPickerKey] = useState(0);
+  const led = groupsFacilitatedBy(user as any, groups);
+  const ledKeys = new Set(led.flatMap(group => [group.id, group.groupId].filter(Boolean)));
+  const available = addableGroups.filter(group => !ledKeys.has(group.id) && !ledKeys.has(group.groupId));
+  return (
+    <div className="mx-auto flex w-full max-w-56 flex-col items-stretch gap-1">
+      {led.length === 0 && <span className="text-xs text-muted-foreground">No groups yet</span>}
+      {led.map(group => (
+        <div key={group.id || group.groupName} className="flex items-center gap-1 rounded-md bg-secondary px-2 py-1">
+          <span className="min-w-0 flex-1 break-words text-left text-[11px] leading-snug text-secondary-foreground">{group.groupName}</span>
+          {canEdit && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 shrink-0 px-2 text-[11px] text-destructive hover:text-destructive"
+              aria-label={`Remove ${group.groupName} from ${user.fullName}`}
+              onClick={() => onRemove(group)}
+            >
+              Remove
+            </Button>
+          )}
+        </div>
+      ))}
+      {canEdit && available.length > 0 && (
+        <Select
+          key={pickerKey}
+          onValueChange={(id: string) => {
+            const group = available.find(item => item.id === id || item.groupId === id);
+            if (!group) return;
+            setPickerKey(key => key + 1);
+            onAdd(group);
+          }}
+        >
+          <SelectTrigger className="h-7 text-xs" aria-label={`Add a reading group for ${user.fullName}`}>
+            <span className="truncate">Add group</span>
+          </SelectTrigger>
+          <SelectContent>
+            {available.map(group => {
+              const leader = people.find(person => groupsFacilitatedBy(person as any, [group]).length > 0 && !samePerson(person, user));
+              return (
+                <SelectItem key={group.id} value={group.id}>
+                  {leader ? `${group.groupName} (${leader.fullName})` : group.groupName}
+                </SelectItem>
+              );
+            })}
+          </SelectContent>
+        </Select>
+      )}
+    </div>
+  );
 }
 
 type SortKey = 'fullName' | 'guideName' | 'ashrayLevel' | 'latestScore' | 'latestEntryDate' | 'isResident';
@@ -286,6 +389,7 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
   const [bvRoleDialog, setBvRoleDialog] = useState<{ user: User; newRole: string; roleLabel: string } | null>(null);
   const [multiRoleUser, setMultiRoleUser] = useState<User | null>(null);
   const [groupTransferDialog, setGroupTransferDialog] = useState<{ user: User; group: BvGroupOption } | null>(null);
+  const [rgfGroupDialog, setRgfGroupDialog] = useState<{ user: User; group: BvGroupOption; action: 'add' | 'remove' } | null>(null);
   // Hierarchy parent-picker dialog — shown when assigning Supervisor/RGF/RGSF
   const [hierarchyDialog, setHierarchyDialog] = useState<{
     user: User;
@@ -367,9 +471,12 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
         groupName: group.groupName || 'Unnamed Reading Group',
         segment: group.segment || effectiveSegment,
         isActive: group.isActive,
-        facilitatorIds: Array.isArray(group.facilitatorIds) && group.facilitatorIds.length > 0
-          ? group.facilitatorIds
-          : (group.bvslLeaderId ? [group.bvslLeaderId] : []),
+        facilitatorIds: [...new Set([
+          ...(Array.isArray(group.facilitatorIds) ? group.facilitatorIds : []),
+          group.bvslLeaderId,
+          group.bvslName,
+          group.bvslLeaderName,
+        ].map((value: unknown) => String(value || '').trim()).filter(Boolean))],
       })));
 
       setSadhanaMentors(mergePendingMentors(mentorsList || [], pendingMentors.current));
@@ -493,6 +600,43 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
       toast.error(error?.message || 'Failed to change the Reading Group');
       throw error;
     }
+  };
+
+  const handleRgfGroupChange = async () => {
+    if (!rgfGroupDialog) return;
+    const { user, group, action } = rgfGroupDialog;
+    const facilitatorId = action === 'remove'
+      ? ''
+      : String(user.userId || (user as any).userDbId || user.id || user.email || '');
+    try {
+      await updateBvGroup({ groupId: group.groupId || group.id, bvslId: facilitatorId });
+    } catch (error: any) {
+      toast.error(error?.message || 'Could not update the reading group');
+      throw error;
+    }
+    const aliases = [user.userId, user.id, (user as any).userDbId, user.email, user.fullName].filter(Boolean).map(String);
+    setBvGroups(current => current.map(item => {
+      if (item.id !== group.id && item.groupId !== group.groupId) return item;
+      return { ...item, facilitatorIds: action === 'add' ? aliases : [] };
+    }));
+    setUsers(current => current.map(row => {
+      const names = (Array.isArray((row as any).facilitatedGroupNames) ? (row as any).facilitatedGroupNames : [])
+        .filter((name: string) => name !== group.groupName);
+      const ids = (Array.isArray((row as any).facilitatedGroupIds) ? (row as any).facilitatedGroupIds : [])
+        .filter((id: string) => id !== group.id && id !== group.groupId);
+      if (action === 'add' && samePerson(row, user)) {
+        return {
+          ...row,
+          facilitatedGroupNames: [...names, group.groupName],
+          facilitatedGroupIds: [...ids, group.id, group.groupId].filter(Boolean),
+        };
+      }
+      return { ...row, facilitatedGroupNames: names, facilitatedGroupIds: ids };
+    }));
+    toast.success(action === 'add'
+      ? `${group.groupName} added to ${user.fullName}`
+      : `${group.groupName} removed from ${user.fullName}`);
+    void loadData(true);
   };
 
   const handleBvslAction = async () => {
@@ -1045,10 +1189,6 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                   );
                   const userRole = String((u as any).role || '').trim().replace(/[\s-]+/g, '_').toUpperCase();
                   const isRgf = !!((u as any).isBvFacilitator || (u as any).isBvsl || ['RGF', 'BVSL', 'FACILITATOR'].includes(userRole));
-                  const facilitatorGroups = isRgf ? groupsLedBy(u.userId || u.id || '', availableBvGroups, [u]) : [];
-                  const facilitatedNames = isRgf
-                    ? facilitatedReadingGroupNames(facilitatorGroups, (u as any).facilitatedGroupNames)
-                    : [];
                   const storedGroupName = String((u as any).bvGroupName || '').trim();
                   const hasStoredGroup = !!storedGroupName && !/^(unassigned|n\/a|na|none|—|-)$/i.test(storedGroupName);
                   const displayedGroup = currentBvGroup;
@@ -1179,21 +1319,16 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                         );
                       })()}
                       <td data-label="Bhakti Vriksha Group" data-summary="true" className="px-3 py-2 text-center align-middle text-xs" onClick={e => e.stopPropagation()}>
-                        {isRgf && facilitatedNames.length > 0 ? (
-                          <div
-                            className="mx-auto flex w-full max-w-72 flex-col items-stretch gap-1"
-                            aria-label={`Reading groups facilitated by ${u.fullName}: ${facilitatedNames.join(', ')}`}
-                          >
-                            {facilitatedNames.map(name => (
-                              <span
-                                key={name}
-                                className="rounded-md bg-secondary px-2 py-1 text-center text-[11px] leading-snug break-words text-secondary-foreground"
-                                title={name}
-                              >
-                                {name}
-                              </span>
-                            ))}
-                          </div>
+                        {isRgf ? (
+                          <RgfGroupCell
+                            user={u}
+                            groups={bvGroups}
+                            addableGroups={availableBvGroups}
+                            people={users}
+                            canEdit={canEditRole}
+                            onAdd={group => setRgfGroupDialog({ user: u, group, action: 'add' })}
+                            onRemove={group => setRgfGroupDialog({ user: u, group, action: 'remove' })}
+                          />
                         ) : isBvUser ? (
                           <Select
                             value={groupSelectValue}
@@ -1406,6 +1541,25 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
           await handleTransferBvGroup();
           setGroupTransferDialog(null);
         }}
+      />
+      <ConfirmDialog
+        open={!!rgfGroupDialog}
+        onOpenChange={open => !open && setRgfGroupDialog(null)}
+        title={rgfGroupDialog?.action === 'remove' ? 'Remove reading group?' : 'Add reading group?'}
+        description={rgfGroupDialog ? (
+          rgfGroupDialog.action === 'remove'
+            ? `Remove ${rgfGroupDialog.group.groupName} from ${rgfGroupDialog.user.fullName}? They will no longer facilitate that group. Its members stay in the group.`
+            : (() => {
+              const leader = users.find(person =>
+                groupsFacilitatedBy(person as any, [rgfGroupDialog.group]).length > 0 && !samePerson(person, rgfGroupDialog.user));
+              return leader
+                ? `Add ${rgfGroupDialog.group.groupName} to ${rgfGroupDialog.user.fullName}? ${leader.fullName} currently facilitates it and will no longer do so. The groups ${rgfGroupDialog.user.fullName} already facilitates stay with them.`
+                : `Add ${rgfGroupDialog.group.groupName} to ${rgfGroupDialog.user.fullName}? This is in addition to any reading groups they already facilitate.`;
+            })()
+        ) : ''}
+        confirmLabel={rgfGroupDialog?.action === 'remove' ? 'Remove group' : 'Add group'}
+        variant={rgfGroupDialog?.action === 'remove' ? 'destructive' : 'default'}
+        onConfirm={handleRgfGroupChange}
       />
 
       {/* BV Mentor Dialog */}

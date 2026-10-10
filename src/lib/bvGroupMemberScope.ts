@@ -152,7 +152,7 @@ export async function resolveBvDepartmentGroups(
   groupId?: string,
 ): Promise<BvScopedGroup[]> {
   const { records: allGroups } = await BvGroups.findAll({
-      fields: ['id', 'groupId', 'groupName', 'description', 'segment', 'guide', 'isActive', 'bvslLeader', 'bvslId', 'subFacilitatorId', 'rgsfId', 'subFacilitator'],
+      fields: ['id', 'groupId', 'groupName', 'description', 'segment', 'guide', 'isActive', 'bvslLeader', 'bvslId', 'bvslName', 'subFacilitatorId', 'rgsfId', 'subFacilitator'],
       limit: 1000,
   });
   const requestedGroup = groupId ? new Set(refs(groupId)) : null;

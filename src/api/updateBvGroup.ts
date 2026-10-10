@@ -86,6 +86,9 @@ export default createEndpoint({
     subFacilitatorId: z.string().optional(),
     isActive: z.boolean().optional(),
     ensureJoinToken: z.boolean().optional(),
+    // A user id, public user id, or email assigns that RGF. An empty string
+    // removes the facilitator and leaves the group's members in place.
+    bvslId: z.string().max(200).optional(),
   }),
   outputSchema: z.any(),
   execute: async ({ input, context }: any) => {
@@ -113,6 +116,29 @@ export default createEndpoint({
       if (nextLink) updates.whatsAppLink = nextLink;
     }
     if (input.isActive !== undefined) updates.isActive = input.isActive;
+    if (input.bvslId !== undefined) {
+      if (!canRenameReadingGroup(context?.user)) {
+        throw new AppError({ code: 'FORBIDDEN', message: 'Only an Admin can change who facilitates a reading group.' });
+      }
+      const nextFacilitatorId = String(input.bvslId || '').trim();
+      if (!nextFacilitatorId) {
+        updates.bvslLeader = '';
+        updates.bvslId = '';
+        updates.bvslName = '';
+      } else {
+        const facilitatorFields = ['id', 'userId', 'fullName', 'email', 'role', 'isBvFacilitator', 'isBvsl'];
+        const facilitator = await Users.findOne({ id: nextFacilitatorId, fields: facilitatorFields })
+          || await Users.findOne({ filters: { userId: nextFacilitatorId }, fields: facilitatorFields })
+          || await Users.findOne({ filters: { email: nextFacilitatorId.toLowerCase() }, fields: facilitatorFields });
+        if (!facilitator) throw new AppError({ code: 'NOT_FOUND', message: 'Selected RGF was not found' });
+        const facilitatorRole = String(facilitator.role || '').trim().replace(/[\s-]+/g, '_').toUpperCase();
+        const isRgf = facilitator.isBvFacilitator === true || facilitator.isBvsl === true || ['RGF', 'BVSL', 'FACILITATOR'].includes(facilitatorRole);
+        if (!isRgf) throw new AppError({ code: 'BAD_REQUEST', message: 'Choose someone who is already an RGF' });
+        updates.bvslLeader = facilitator.id;
+        updates.bvslId = facilitator.userId || facilitator.id;
+        updates.bvslName = facilitator.fullName || facilitator.email || '';
+      }
+    }
     if (input.subFacilitatorId !== undefined) {
       updates.subFacilitatorId = input.subFacilitatorId;
       updates.rgsfId = input.subFacilitatorId;
@@ -140,6 +166,10 @@ export default createEndpoint({
 
     if (Object.keys(updates).length > 0) {
       await BvGroups.update({ id: group.id, record: updates });
+    }
+    if (input.bvslId !== undefined) {
+      serverCacheInvalidate('allBvGroupsAdmin:');
+      serverCacheInvalidate('bvslMembers:');
     }
     if (nameChanged) {
       const groupKeys = new Set([group.id, group.groupId].filter(Boolean).map(value => String(value)));
