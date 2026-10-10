@@ -8,6 +8,7 @@ import { AlertCircle, Clock, Info, RefreshCw, User, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-sdk';
 import { getGuides } from '@/lib/endpoints-sdk';
+import { acceptStoredGroupInvite } from '@/lib/bvJoinInvite';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { motion } from 'framer-motion';
 
@@ -26,6 +27,11 @@ export default function PendingApprovalPage() {
   const [statusNotice, setStatusNotice] = useState<StatusNotice | null>(null);
 
   const isPw = profile?.segment === 'PW' || !!(profile as any)?.isPrabhupadaWorldUser || localStorage.getItem('pwa_is_pw_flow') === 'true';
+
+  useEffect(() => {
+    if (!user) return;
+    acceptStoredGroupInvite().catch(() => {});
+  }, [user]);
 
   useEffect(() => {
     if (user?.email && !isPw) loadGuideInfo();

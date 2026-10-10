@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, BvAttendance, Users, Guides } from '@/lib/backend-sdk';
 import { serverCacheGetOrFetch, serverCacheInvalidate } from '../lib/serverCache';
-import { isBvSuperAdminUser } from '../lib/bvGroupMemberScope';
-import { getScopedHierarchyUserIds, isUserInHierarchy, hierarchyRefs, readScopedUsers } from '../lib/hierarchyUtils';
+import { isBvDepartmentAdmin, isBvSuperAdminUser, resolveBvDepartmentGroups } from '../lib/bvGroupMemberScope';
+import { callerDirectoryDepartment, getScopedHierarchyUserIds, isUserInHierarchy, hierarchyRefs, readScopedUsers } from '../lib/hierarchyUtils';
 
 export function groupFacilitatorRefs(group: { bvslLeader?: unknown; bvslId?: unknown }): string[] {
   return [group.bvslLeader, group.bvslId]
@@ -42,6 +42,10 @@ export default createEndpoint({
   requiredCapabilities: 'bv.manage',
   inputSchema: z.object({
     guideId: z.string(),
+    // Members directory: a department admin assigns any group in the department,
+    // including groups that report to another admin.
+    departmentWide: z.boolean().optional(),
+    segment: z.enum(['PW', 'FOLK']).optional(),
   }),
   outputSchema: z.object({
     bvsls: z.array(z.object({
@@ -69,7 +73,40 @@ export default createEndpoint({
     })),
     error: z.string().nullable(),
   }),
-  execute: async ({ input, context }: { input: { guideId: string }; context: any }) => {
+  execute: async ({ input, context }: { input: { guideId: string; departmentWide?: boolean; segment?: 'PW' | 'FOLK' }; context: any }) => {
+    if (input.departmentWide && isBvDepartmentAdmin(context?.user)) {
+      const ownDepartment = callerDirectoryDepartment(context.user);
+      const segment = isBvSuperAdminUser(context.user)
+        ? (input.segment || ownDepartment || 'PW')
+        : (ownDepartment || input.segment);
+      if (segment === 'PW' || segment === 'FOLK') {
+        const directory = await resolveBvDepartmentGroups(segment);
+        return {
+          bvsls: [],
+          groups: directory.map(group => {
+            const leader = Array.isArray(group.record.bvslLeader) ? group.record.bvslLeader[0] : (group.record.bvslLeader || group.record.bvslId);
+            const leaderId = String(leader || '').trim();
+            return {
+              groupId: group.groupId,
+              groupDbId: group.id,
+              groupName: group.groupName,
+              description: String(group.record.description || ''),
+              isActive: group.record.isActive !== false,
+              memberCount: 0,
+              sessionCount: 0,
+              totalSessions: 0,
+              avgAttendanceRate: 0,
+              joinToken: null,
+              bvslLeaderId: leaderId || null,
+              bvslLeaderName: null,
+              bvslName: null,
+              meetingTime: null,
+            };
+          }),
+          error: null,
+        };
+      }
+    }
     // A normal admin is always scoped to their own hierarchy, even if a
     // different guide ID is supplied by a modified client. Super admins may
     // intentionally select another guide or department-wide view.

@@ -29,14 +29,15 @@ export default function AccountCard({ createdAt, lastLoginAt }: Props) {
   const handleDelete = () => {
     setDeleting(true);
     void deleteAccount({})
-      .then(async () => {
+      .then(() => {
         toast.success('Your account has been deleted.');
-        await logout({ returnTo: '/' });
+        void logout({ returnTo: '/' });
+        window.setTimeout(() => window.location.replace('/'), 1500);
       })
       .catch((err: any) => {
         toast.error(err?.message || 'Failed to delete your account');
-        setDeleting(false);
-      });
+      })
+      .finally(() => setDeleting(false));
   };
 
   return (

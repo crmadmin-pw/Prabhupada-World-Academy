@@ -1,3 +1,5 @@
+import { formatReadingGroupTimeSlot } from './meetingSchedule';
+
 export type RunningTimeSlotGroup = {
   meetingTime?: string | null;
   preferredTimeSlot?: string | null;
@@ -40,7 +42,8 @@ export function runningTimeSlotsFromGroups(
     if (group.isActive === false) continue;
     const groupSegment = normalizeBvDepartment(group.segment) || 'PW';
     if (groupSegment !== segment) continue;
-    const label = String(group.meetingTime || group.preferredTimeSlot || '').trim();
+    const stored = String(group.meetingTime || group.preferredTimeSlot || '').trim();
+    const label = formatReadingGroupTimeSlot(stored);
     if (!label) continue;
     const key = slotKey(label);
     if (!slots.has(key)) slots.set(key, label);

@@ -18,14 +18,16 @@ export default function RejectedPage() {
     setDeleting(true);
     setError(null);
     void deleteAccount({})
-      .then(async () => {
+      .then(() => {
         localStorage.removeItem('pwa_pending_registration');
-        await logout({ returnTo: isPwUser ? '/pw' : '/' });
+        const returnTo = isPwUser ? '/pw' : '/';
+        void logout({ returnTo });
+        window.setTimeout(() => window.location.replace(returnTo), 1500);
       })
       .catch((err: any) => {
         setError(err?.message || 'We could not delete your account. Please try again.');
-        setDeleting(false);
-      });
+      })
+      .finally(() => setDeleting(false));
   };
 
   return (

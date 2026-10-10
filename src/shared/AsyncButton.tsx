@@ -11,6 +11,7 @@
 import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { withDeadline } from '@/lib/withDeadline';
 import type { ComponentProps } from 'react';
 
 interface AsyncButtonProps extends Omit<ComponentProps<typeof Button>, 'onClick'> {
@@ -33,7 +34,7 @@ export default function AsyncButton({
     if (loading) return;
     setLoading(true);
     try {
-      await onClickAsync();
+      await withDeadline(onClickAsync(), 20_000);
     } finally {
       setLoading(false);
     }

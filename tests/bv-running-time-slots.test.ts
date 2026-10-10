@@ -20,6 +20,29 @@ test('the join form lists only active group times for that department', () => {
   ]);
 });
 
+test('preferred time slots share one clock, hyphen, and day format', () => {
+  const slots = runningTimeSlotsFromGroups([
+    { segment: 'PW', isActive: true, meetingTime: '1:00 PM - 1:30 PM SUNDAY' },
+    { segment: 'PW', isActive: true, meetingTime: '1:00 PM – 1:30 PM (Monday to Friday)' },
+    { segment: 'PW', isActive: true, meetingTime: '1:30PM–2:00pm(Mon-Fri)' },
+    { segment: 'PW', isActive: true, meetingTime: '4:30 PM – 5:00 PM (Monday to Friday)' },
+    { segment: 'PW', isActive: true, meetingTime: '7:15pm - 8:30 pm Mon to fri' },
+    { segment: 'PW', isActive: true, meetingTime: '7:45 PM – 8:15 PM (Everyday)' },
+    { segment: 'PW', isActive: true, meetingTime: '8:30 PM – 9:00 PM (Monday to Friday)' },
+    { segment: 'PW', isActive: true, meetingTime: '1:00 -1:30 pm mon to fri' },
+  ], 'PW');
+
+  assert.deepEqual(slots, [
+    '1:00 PM – 1:30 PM (Monday to Friday)',
+    '1:00 PM – 1:30 PM (Sunday)',
+    '1:30 PM – 2:00 PM (Monday to Friday)',
+    '4:30 PM – 5:00 PM (Monday to Friday)',
+    '7:15 PM – 8:30 PM (Monday to Friday)',
+    '7:45 PM – 8:15 PM (Everyday)',
+    '8:30 PM – 9:00 PM (Monday to Friday)',
+  ]);
+});
+
 test('a newly created group time appears for its department', () => {
   const created = '6:00 PM – 7:00 PM (Monday, Wednesday)';
   const slots = runningTimeSlotsFromGroups([

@@ -69,16 +69,24 @@ export default function SuperBvRegistrationsTab({
   });
   const filteredGroups = getBvGroupAssignmentOptions(allGroupsState, assignmentOptions);
 
+  const targetGroupIdRef = useRef(targetGroupId);
+  targetGroupIdRef.current = targetGroupId;
+
   useEffect(() => {
     if (!selectedReg) return;
-    // A matching group always wins the initial selection. If none match, the
-    // first group in the visible list is selected once all slots are shown.
+    // A group refresh can arrive while this dialog is open, including during
+    // the approval request itself. Keep the group the user already picked so
+    // the summary cannot snap back to the first time-matched group.
+    const currentId = targetGroupIdRef.current;
+    const currentStillListed = !!currentId && filteredGroups.some(group =>
+      (group.id || group.groupId) === currentId,
+    );
+    if (currentStillListed) return;
+
+    // A matching group wins the initial selection. If none match, the first
+    // active group is selected once all slots are shown.
     const preferredGroup = timeMatchedGroups[0] || filteredGroups.find(isBvGroupActive);
-    if (preferredGroup) {
-      setTargetGroupId(preferredGroup.id || preferredGroup.groupId || '');
-    } else {
-      setTargetGroupId('');
-    }
+    setTargetGroupId(preferredGroup?.id || preferredGroup?.groupId || '');
   // Re-evaluate only as modal data, group data, or the all-slots toggle changes.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedReg?.id, selectedReg?.timePreference, selectedReg?.segment, segment, showAllGroups, allGroupsState]);
@@ -238,7 +246,11 @@ export default function SuperBvRegistrationsTab({
     );
   }
 
-  const selectedGroup = allGroupsState.find(g => g.id === targetGroupId || g.groupId === targetGroupId);
+  // Match the document id first. A later group's public groupId can collide
+  // with an earlier group's id, and a single find() would then label the
+  // selection as the default group while the approval still used the right id.
+  const selectedGroup = allGroupsState.find(g => g.id === targetGroupId)
+    || allGroupsState.find(g => g.groupId === targetGroupId);
 
   return (
     <div className="space-y-4">

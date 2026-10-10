@@ -12,6 +12,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'sonner';
 import { ArrowLeft, AlertCircle, Loader2, Link as LinkIcon, CheckCircle2 } from 'lucide-react';
 import { getGuides, registerUser, checkGuideEmail, getAllResidencies, GetGuidesOutputType, GetAllResidenciesOutputType } from '@/lib/endpoints-sdk';
+import { acceptStoredGroupInvite } from '@/lib/bvJoinInvite';
 import { Link } from 'react-router-dom';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { useAuth } from '@/lib/auth-sdk';
@@ -164,6 +165,7 @@ export default function RegistrationPage() {
       });
 
       if (result.success) {
+        try { await acceptStoredGroupInvite(); } catch { /* The invite can be retried from the pending page. */ }
         const normalizedStatus = String(result.status || '').toUpperCase().replace(/[\s_-]+/g, '_');
         if (normalizedStatus === 'ACTIVE') {
           try { localStorage.removeItem('pwa_pending_registration'); } catch {}

@@ -94,7 +94,8 @@ export default createEndpoint({
       serverCacheInvalidate();
       // The member's browser is already open. Publish the profile revision here
       // so their one-time notice appears without waiting for a page reload.
-      await publishUsersRevision(user.id, user);
+      // Fan-out can take a minute; the confirm button must not wait for it.
+      void publishUsersRevision(user.id, user);
       return { success: true, groupId: '', groupName: '' };
     }
 
@@ -167,9 +168,12 @@ export default createEndpoint({
     });
 
     // Group cards, detail pages, and dashboard caches all depend on this.
+    // The membership and profile are already saved. Notifying other open
+    // dashboards fans out one transaction per subscriber and was holding this
+    // response for about a minute, so the confirm button never left its spinner.
     serverCacheInvalidate();
-    await publishCollectionRevision('BvGroupMembers', retainedId);
-    await publishUsersRevision(user.id, user);
+    void publishCollectionRevision('BvGroupMembers', retainedId);
+    void publishUsersRevision(user.id, user);
     return { success: true, groupId: group.id, groupName: group.groupName || 'Reading Group' };
   },
 });

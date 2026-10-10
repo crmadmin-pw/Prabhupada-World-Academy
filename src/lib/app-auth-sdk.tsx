@@ -13,6 +13,7 @@ import {
   User as FirebaseUser
 } from 'firebase/auth';
 import { getDepartmentLandingUrl } from '@/lib/userDashboardRoutes';
+import { withDeadline } from '@/lib/withDeadline';
 
 // ══════════════════════════════════════════════════════════════════════════════
 // app-auth-sdk.tsx — Firebase Auth integration with Google sign-in.
@@ -99,7 +100,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const provider = new GoogleAuthProvider();
       // Use signInWithPopup in both Emulator and Production.
       // This works reliably across different hosting domains.
-      await signInWithPopup(auth, provider);
+      await withDeadline(signInWithPopup(auth, provider), 90_000, 'Sign-in is taking too long. Please try again.');
       if (options?.redirectUrl) {
         window.location.href = options.redirectUrl;
       }
@@ -113,8 +114,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error('Sign in again before deleting your account.');
     }
     const provider = new GoogleAuthProvider();
-    await reauthenticateWithPopup(auth.currentUser, provider);
-    const token = await auth.currentUser.getIdToken(true);
+    await withDeadline(reauthenticateWithPopup(auth.currentUser, provider), 90_000, 'Sign-in is taking too long. Please try again.');
+    const token = await withDeadline(auth.currentUser.getIdToken(true), 20_000);
     if (typeof window !== 'undefined') {
       (window as any).__firebase_id_token = token;
     }
@@ -122,7 +123,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async (options?: { returnTo?: string }) => {
     if (isFirebaseEnabled && auth) {
-      await signOut(auth);
+      await withDeadline(signOut(auth), 8_000).catch(() => undefined);
     }
     if (typeof window !== 'undefined') {
       localStorage.removeItem('auth_email');

@@ -4,6 +4,7 @@
 // ══════════════════════════════════════════════════════════════════════════════
 import { auth } from './app-auth-sdk';
 import type { UploadPurpose } from './uploadPolicy';
+import { withDeadline } from './withDeadline';
 
 export async function uploadFile({
   data,
@@ -20,13 +21,21 @@ export async function uploadFile({
   const formData = new FormData();
   formData.append('file', data, filename);
   formData.append('purpose', purpose);
-  const idToken = await currentUser.getIdToken();
+  const idToken = await withDeadline(currentUser.getIdToken(), 20_000);
 
-  const res = await fetch('/api/upload', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${idToken}` },
-    body: formData,
-  });
+  let res: Response;
+  try {
+    res = await fetch('/api/upload', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${idToken}` },
+      body: formData,
+      signal: AbortSignal.timeout(60_000),
+    });
+  } catch (error) {
+    const timedOut = error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
+    if (timedOut) throw new Error('This is taking too long. Please try again.');
+    throw error;
+  }
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));

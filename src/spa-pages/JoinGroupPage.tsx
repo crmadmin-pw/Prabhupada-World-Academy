@@ -1,19 +1,22 @@
 import { useEffect, useState } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-sdk';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { getUserDashboardPath } from '@/lib/userDashboardRoutes';
 import { joinGroupByToken } from '@/lib/endpoints-sdk';
+import { clearBvJoinToken, rememberBvJoinToken } from '@/lib/bvJoinInvite';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Leaf, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
 
 export default function JoinGroupPage() {
   const [searchParams] = useSearchParams();
+  const { token: pathToken = '' } = useParams();
   const navigate = useNavigate();
   const { profile } = useUserProfile();
   const { user, isLoading: authLoading, loginWithRedirect } = useAuth();
-  const token = searchParams.get('token') || '';
+  const token = decodeURIComponent(pathToken || searchParams.get('token') || searchParams.get('join') || '');
+  const isPwInvite = typeof window !== 'undefined' && window.location.pathname.endsWith('/pw');
 
   const [status, setStatus] = useState<'idle' | 'joining' | 'success' | 'error'>('idle');
   const [message, setMessage] = useState('');
@@ -21,19 +24,30 @@ export default function JoinGroupPage() {
 
   useEffect(() => {
     if (authLoading) return;
+    if (token) rememberBvJoinToken(token, isPwInvite);
     if (!user) {
       loginWithRedirect({ redirectUrl: window.location.href });
       return;
     }
     if (!token) return;
     if (status === 'idle') joinGroup();
-  }, [authLoading, user, token]);
+  }, [authLoading, user, token, isPwInvite]);
 
   const joinGroup = async () => {
     if (!user || !token) return;
     setStatus('joining');
     try {
       const res = await joinGroupByToken({ token });
+      if (res?.needsRegistration) {
+        navigate('/register', { replace: true });
+        return;
+      }
+      if (!res?.success) {
+        setMessage(res?.message || 'Failed to join group. Please try again.');
+        setStatus('error');
+        return;
+      }
+      clearBvJoinToken();
       setGroupName(res.groupName);
       setMessage(res.message);
       setStatus('success');

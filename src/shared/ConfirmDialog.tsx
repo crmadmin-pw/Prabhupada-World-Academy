@@ -27,6 +27,8 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
+import { withDeadline } from '@/lib/withDeadline';
+import { toast } from 'sonner';
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -57,8 +59,10 @@ export default function ConfirmDialog({
     e.preventDefault();
     setLoading(true);
     try {
-      await onConfirm();
+      await withDeadline(Promise.resolve().then(() => onConfirm()), 20_000);
       onOpenChange(false);
+    } catch (err) {
+      if (err instanceof Error && err.message === 'This is taking too long. Please try again.') toast.error(err.message);
     } finally {
       setLoading(false);
     }

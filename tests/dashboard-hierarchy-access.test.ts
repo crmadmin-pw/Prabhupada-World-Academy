@@ -114,10 +114,20 @@ test('admin dropdowns, member directory and meeting invitees are scoped after ca
     const result = await call(getGuideUsers, { guideId, minimal: true, forMeetingInvitees: true });
     assert.deepEqual(sorted(result.users.map((u: any) => u.userId)), sorted(ownIds));
   }
-  const mentors = await call(getActiveSadhanaMentors, { segment: 'PW' });
-  assert.deepEqual(mentors.map((u: any) => u.fullName), ['mentor-a']);
-  const allMentors = await call(getActiveSadhanaMentors, { segment: 'PW' }, superAdmin);
-  assert.deepEqual(sorted(allMentors.map((u: any) => u.fullName)), ['mentor-a', 'mentor-b']);
+  const extraMentors = [
+    member('ramya', { fullName: 'Ramya Devi Dasi', role: 'Sadhana Mentor', segment: 'Prabhupada World', isSadhanaMentor: true, isBvFacilitator: true }),
+    member('folk-mentor', { fullName: 'Folk Mentor', role: 'Sadhana Mentor', segment: 'FOLK', isSadhanaMentor: true }),
+  ];
+  users.push(...extraMentors);
+  try {
+    const expected = ['Ramya Devi Dasi', 'mentor-a', 'mentor-b'];
+    const mentors = await call(getActiveSadhanaMentors, { segment: 'PW' });
+    assert.deepEqual(sorted(mentors.map((u: any) => u.fullName)), expected);
+    const allMentors = await call(getActiveSadhanaMentors, { segment: 'PW' }, superAdmin);
+    assert.deepEqual(sorted(allMentors.map((u: any) => u.fullName)), expected);
+  } finally {
+    users.splice(users.length - extraMentors.length, extraMentors.length);
+  }
 });
 
 test('an RGF group name comes from the group they facilitate', async t => {
@@ -336,6 +346,11 @@ test('preaching analytics aggregate only the current admin hierarchy and super a
   const management = await call(getAllBvGroupsAdmin, { guideId: otherAdmin.id });
   assert.deepEqual(management.groups.map((group: any) => group.groupName), ['Group A']);
   assert.equal(management.groups[0].meetingTime, '7:45 PM – 8:15 PM (Everyday)');
+  const directory = await call(getAllBvGroupsAdmin, { guideId: admin.id, departmentWide: true, segment: 'PW' });
+  assert.deepEqual(sorted(directory.groups.map((group: any) => group.groupName)), ['Group A', 'Group B']);
+  assert.ok(directory.groups.every((group: any) => group.joinToken == null));
+  const ignored = await call(getAllBvGroupsAdmin, { guideId: admin.id, departmentWide: true, segment: 'PW' }, supervisor);
+  assert.ok(!ignored.groups.some((group: any) => group.groupName === 'Group B'));
 });
 
 test('FOLK administrators cannot read another guide users or residency statistics', async t => {

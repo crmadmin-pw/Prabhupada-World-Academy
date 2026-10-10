@@ -55,7 +55,8 @@ function GuideTransferDialog({ email, currentGuideId, guides, onTransferred }: {
       toast.success('Guide transfer requested! Your status is now Pending Approval.');
       setOpen(false);
       onTransferred();
-    } catch { toast.error('Failed to request guide transfer'); setLoading(false); }
+    } catch { toast.error('Failed to request guide transfer'); }
+    finally { setLoading(false); }
   };
 
   return (
@@ -111,7 +112,8 @@ function ResidencyTransferDialog({ email, currentResidencyId, residencies, onTra
       toast.success('Residency request sent! Awaiting guide verification.');
       setOpen(false);
       onTransferred(targetResidency.residencyId);
-    } catch { toast.error('Failed to request residency change'); setLoading(false); }
+    } catch { toast.error('Failed to request residency change'); }
+    finally { setLoading(false); }
   };
 
   return (
@@ -185,6 +187,7 @@ function SetFolkCenterSection({ allResidencies, onSaved }: {
       onSaved();
     } catch {
       toast.error('Failed to save FOLK center');
+    } finally {
       setSaving(false);
     }
   };

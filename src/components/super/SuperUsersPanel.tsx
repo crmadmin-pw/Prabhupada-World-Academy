@@ -297,7 +297,12 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
         read(() => getGuides({ segment: isPwAdmin ? 'PW' : 'FOLK' })),
         (isSuperAdmin
           ? read(() => getBvslGroups({ bvslId: 'ALL' }))
-          : read(() => getAllBvGroupsAdmin({ guideId: profile?.userId || userEmail }))
+          : read(() => getAllBvGroupsAdmin({
+              guideId: profile?.userId || userEmail || 'ALL',
+              // Department admins assign members to any group in the department,
+              // not only the groups in their own reporting chain.
+              ...(isDepartmentAdmin ? { departmentWide: true, segment: effectiveSegment === 'PW' ? 'PW' as const : 'FOLK' as const } : {}),
+            }))
         ).catch(() => ({ groups: [] })),
         isPwAdmin ? read(() => getActiveSadhanaMentors({ segment: 'PW' })).catch(() => []) : Promise.resolve([]),
         read(() => getGuideUsers({
@@ -375,7 +380,7 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
     } finally {
       if (!silent && !read.cancelled) setLoading(false);
     }
-  }, [effectiveSegment, isPwAdmin, isSuperAdmin, profile?.userId, userEmail]);
+  }, [effectiveSegment, isDepartmentAdmin, isPwAdmin, isSuperAdmin, profile?.userId, userEmail]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -1057,7 +1062,12 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                       </td>
                       {/* 3. Parent */}
                       {(() => {
-                        const isUserAdmin = !!((u as any).isBvAdmin || (u as any).isBvSuperAdmin || u.role === 'ADMIN' || u.role === 'SUPER_ADMIN' || u.role === 'PW_ADMIN');
+                        const normalizedRole = String(u.role || '').trim().replace(/[\s-]+/g, '_').toUpperCase();
+                        const isUserAdmin = !!(
+                          (u as any).isBvAdmin ||
+                          (u as any).isBvSuperAdmin ||
+                          ['ADMIN', 'SUPER_ADMIN', 'PW_ADMIN', 'BV_ADMIN', 'SUPER_GUIDE', 'PW_SUPER_ADMIN'].includes(normalizedRole)
+                        );
                         const formatName = (val: string) => {
                           if (!val) return '';
                           if (val.includes('@')) {
@@ -1084,11 +1094,10 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                           if (parent?.isBvAdmin === true || parent?.isBvSuperAdmin === true || ['ADMIN', 'SUPER_ADMIN', 'PW_ADMIN'].includes(role)) return 'Admin';
                           return fallback;
                         };
-                        const superAdminDisplayName = formatName((u as any).bvReportingAdminName) || 'Unassigned';
                         return (
                           <td data-label="Parent" className="px-3 py-2 text-center align-middle text-xs" onClick={e => { e.stopPropagation(); if (canEditRole && !isUserAdmin && currentBvRole !== 'NA') openParentDialog(u); }}>
                             {isUserAdmin ? (
-                              <span className="text-muted-foreground font-medium cursor-default">{superAdminDisplayName}</span>
+                              <span className="text-muted-foreground font-medium cursor-default">—</span>
                             ) : currentBvRole === 'NA' ? <NaLabel /> : (
                               <button
                                 type="button"

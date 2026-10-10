@@ -487,6 +487,7 @@ function CourseWebhooksCard() {
     setRegistering(true);
     const newResults: Record<string, { success: boolean; message: string }> = {};
 
+    try {
     for (const wh of COURSE_WEBHOOKS) {
       const url = urls[wh.event]?.trim();
       if (!url) {
@@ -508,7 +509,9 @@ function CourseWebhooksCard() {
       const failCount = COURSE_WEBHOOKS.filter(w => urls[w.event]?.trim() && !newResults[w.event]?.success).length;
       if (failCount > 0) toast.error(`${failCount} registration(s) failed`);
     }
-    setRegistering(false);
+    } finally {
+      setRegistering(false);
+    }
   };
 
   return (

@@ -186,12 +186,12 @@ async function collectOwned(table: DeletionTable, identities: string[]): Promise
     accept(await eachPage(table));
     return [...found.values()];
   }
-  for (const field of spec.scalar) {
-    for (const group of chunk(identities, 30)) accept(await eachPage(table, { [field]: { in: group } }));
-  }
-  for (const field of spec.array) {
-    for (const group of chunk(identities, 10)) accept(await eachPage(table, { [field]: { arrayContainsAny: group } }));
-  }
+  const lookups = [
+    ...spec.scalar.flatMap(field => chunk(identities, 30).map(group => ({ [field]: { in: group } }))),
+    ...spec.array.flatMap(field => chunk(identities, 10).map(group => ({ [field]: { arrayContainsAny: group } }))),
+  ];
+  const pages = await Promise.all(lookups.map(filters => eachPage(table, filters)));
+  for (const records of pages) accept(records);
   return [...found.values()];
 }
 
@@ -397,10 +397,11 @@ export async function deleteAccountImmediately(options: {
   const email = options.email.toLowerCase();
   const profiles = await resolveProfiles(options.users, options.authId, options.profileId, email);
   const identities = identityValues(profiles, options.authId, email);
-  const owned: { table: DeletionTable; record: any }[] = [];
-  for (const table of options.ownedTables) {
-    for (const record of await collectOwned(table, identities)) owned.push({ table, record });
-  }
+  const ownedGroups = await Promise.all(options.ownedTables.map(async table => {
+    const records = await collectOwned(table, identities);
+    return records.map(record => ({ table, record }));
+  }));
+  const owned = ownedGroups.flat();
 
   const paths = new Set<string>();
   for (const item of owned) collectStoragePaths(item.record, paths);

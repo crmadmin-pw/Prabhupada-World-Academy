@@ -96,6 +96,7 @@ export default function App() {
             <Route path="/account-deletion" element={<AccountDeletionPage />} />
             <Route path="/inactive" element={<InactivePage />} />
             <Route path="/bvsl" element={<BvslEntryPage />} />
+            <Route path="/join/:token/pw" element={<JoinGroupPage />} />
             <Route path="/join-group" element={<JoinGroupPage />} />
             <Route path="/bv/join" element={<BvJoinPage />} />
 

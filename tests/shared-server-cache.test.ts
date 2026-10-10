@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createMemorySharedServerCache, createServerCache } from '../src/lib/serverCache';
+import { createMemorySharedServerCache, createServerCache, type SharedServerCache } from '../src/lib/serverCache';
 
 test('reference lists are shared across servers and dropped together when they change', async () => {
   const shared = createMemorySharedServerCache();
@@ -47,4 +47,15 @@ test('one server reuses an in-flight reference fetch and keeps private caches lo
   await serverA.getOrFetch('user_profile:1', loadProfile, 60_000);
   await serverB.getOrFetch('user_profile:1', loadProfile, 60_000);
   assert.equal(profileBuilds, 2);
+});
+
+test('a stuck shared-cache write does not keep the caller waiting', async () => {
+  const shared: SharedServerCache = {
+    ...createMemorySharedServerCache(),
+    async bumpEpoch() { await new Promise(() => {}); },
+  };
+  const cache = createServerCache(shared);
+  const started = Date.now();
+  await cache.invalidate('ref:guides');
+  assert.ok(Date.now() - started < 2_000);
 });

@@ -287,8 +287,8 @@ export async function POST(
     const endpointDurationMs = Date.now() - endpointStartedAt;
 
     if (context.user) {
-      try { await registerRealtimeIdentity(context.user, resolvedProfile); }
-      catch (error) { console.warn('[Realtime] Notification routing registration unavailable', error); }
+      void registerRealtimeIdentity(context.user, resolvedProfile)
+        .catch(error => console.warn('[Realtime] Notification routing registration unavailable', error));
     }
 
     let realtimeQuery: { token: string; version: string } | undefined;

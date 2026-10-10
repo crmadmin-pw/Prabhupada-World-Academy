@@ -472,6 +472,7 @@ export default function BvGroupDetailPage() {
     } catch (error: any) {
       toast.error(error?.message || 'Failed to delete group.');
       isDeletingRef.current = false;
+    } finally {
       setDeleting(false);
     }
   };

@@ -35,6 +35,7 @@ export default function AccountDeletionPage() {
       navigate('/dashboard');
     } catch (err: any) {
       setError(err?.message || 'Could not cancel account deletion. Please try again.');
+    } finally {
       setCancelling(false);
     }
   };

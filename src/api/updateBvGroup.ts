@@ -1,9 +1,18 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, Users, AppError } from '@/lib/backend-sdk';
+import { bvGroupFacilitatorAliases, bvUserAliases } from '@/lib/bvGroupMemberScope';
+import { isHierarchyAdmin } from '@/lib/hierarchyUtils';
+import { generateBvJoinToken } from '@/lib/bvJoinToken';
 import { serverCacheInvalidate } from '../lib/serverCache';
 
 function firstValue(value: unknown): string {
   return Array.isArray(value) ? String(value[0] || '') : String(value || '');
+}
+
+function canMintJoinToken(user: any, group: any) {
+  if (isHierarchyAdmin(user)) return true;
+  const aliases = new Set(bvUserAliases(user));
+  return bvGroupFacilitatorAliases(group).some(alias => aliases.has(alias));
 }
 
 function canRenameReadingGroup(user: any) {
@@ -76,6 +85,7 @@ export default createEndpoint({
     whatsAppLink: z.string().optional(),
     subFacilitatorId: z.string().optional(),
     isActive: z.boolean().optional(),
+    ensureJoinToken: z.boolean().optional(),
   }),
   outputSchema: z.any(),
   execute: async ({ input, context }: any) => {
@@ -83,7 +93,7 @@ export default createEndpoint({
       throw new AppError({ code: 'FORBIDDEN', message: 'Only an Admin or Super Admin can rename a reading group.' });
     }
 
-    const groupFields = ['id', 'groupId', 'groupName', 'whatsAppLink'];
+    const groupFields = ['id', 'groupId', 'groupName', 'whatsAppLink', 'joinToken', 'isActive', 'bvslLeader', 'bvslId', 'segment', 'subFacilitatorId', 'rgsfId', 'subFacilitator'];
     const group = await BvGroups.findOne({ filters: { groupId: input.groupId }, fields: groupFields })
       ?? await BvGroups.findOne({ id: input.groupId, fields: groupFields });
     if (!group) throw new AppError({ code: 'NOT_FOUND', message: 'Group not found' });
@@ -116,6 +126,18 @@ export default createEndpoint({
       }
     }
 
+    let joinToken: string | null = null;
+    if (input.ensureJoinToken) {
+      if (group.isActive === false) {
+        throw new AppError({ code: 'BAD_REQUEST', message: 'This group is no longer active' });
+      }
+      if (!canMintJoinToken(context?.user, group)) {
+        throw new AppError({ code: 'FORBIDDEN', message: 'Only this group\'s RGF or an admin can create an invite link' });
+      }
+      joinToken = String(group.joinToken || '').trim() || generateBvJoinToken();
+      if (joinToken !== group.joinToken) updates.joinToken = joinToken;
+    }
+
     if (Object.keys(updates).length > 0) {
       await BvGroups.update({ id: group.id, record: updates });
     }
@@ -127,6 +149,10 @@ export default createEndpoint({
       serverCacheInvalidate('getBvGroupDetail:');
     }
 
-    return { success: true, groupName: nameChanged ? nextName : previousName };
+    return {
+      success: true,
+      groupName: nameChanged ? nextName : previousName,
+      ...(input.ensureJoinToken ? { joinToken } : {}),
+    };
   },
 });

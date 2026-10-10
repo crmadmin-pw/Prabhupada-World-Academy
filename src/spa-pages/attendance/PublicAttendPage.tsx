@@ -240,6 +240,7 @@ function RegistrationForm({ session, token, phone, onBack, onSuccess }: {
       onSuccess(res.participantName, res.participantId);
     } catch (e: any) {
       toast.error(e.message || 'Registration failed');
+    } finally {
       setSubmitting(false);
     }
   };

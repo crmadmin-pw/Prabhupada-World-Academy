@@ -106,6 +106,7 @@ export default function LoginPage({ mode = 'signin', isPw = false }: { mode?: 's
                 await loginWithRedirect({ redirectUrl });
               } catch (err: any) {
                 setError(err?.message || 'Failed to sign in with Google');
+              } finally {
                 setLoading(false);
               }
             }}

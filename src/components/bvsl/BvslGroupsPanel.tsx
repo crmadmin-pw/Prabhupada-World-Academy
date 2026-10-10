@@ -14,6 +14,7 @@ import { createBvGroup, updateBvGroup, deleteBvGroup } from '@/lib/endpoints-sdk
 import type { GetBvslGroupsOutputType } from '@/lib/endpoints-sdk';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { nameForWhatsAppInvite } from '@/lib/userUtils';
+import { bvWhatsAppJoinUrl } from '@/lib/bvJoinToken';
 
 type Group = GetBvslGroupsOutputType['groups'][0];
 
@@ -127,6 +128,7 @@ export default function BvslGroupsPanel({
   const [name, setName] = useState('');
   const [desc, setDesc] = useState('');
   const [creating, setCreating] = useState(false);
+  const [invitingId, setInvitingId] = useState<string | null>(null);
 
   const canManageGroups = !readOnly && !!(
     (profile?.role as string) === 'SUPER_GUIDE' ||
@@ -256,23 +258,39 @@ export default function BvslGroupsPanel({
                   <Button
                     size="sm"
                     className="w-full h-8 text-xs font-semibold rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 dark:text-emerald-400 border border-emerald-300/60 dark:border-emerald-800/80 shadow-2xs hover:shadow-xs transition-all flex items-center justify-center gap-1.5 mt-2"
-                    onClick={e => {
+                    disabled={invitingId === g.groupId}
+                    onClick={async e => {
                       e.stopPropagation();
-                      const joinUrl = g.joinToken
-                        ? `${window.location.origin}/join-group?token=${g.joinToken}`
-                        : window.location.origin;
-                      const leaderName = nameForWhatsAppInvite(g.bvslName);
-                      const guideName = nameForWhatsAppInvite(g.guideName);
-                      const lines = [
-                        `Hare Krishna!`,
-                        ``,
-                        `You are invited to join *${g.groupName}* — a Bhakti Vriksha group`,
-                        leaderName ? `led by *${leaderName}*` : '',
-                        guideName ? `under the guidance of *${guideName}*.` : '',
-                        ``,
-                        `Click to join: ${joinUrl}`,
-                      ].filter(Boolean);
-                      window.open(`https://wa.me/?text=${encodeURIComponent(lines.join('\n'))}`, '_blank');
+                      const isPwInvite = String(g.segment || profile?.segment || '').toUpperCase().replace(/[\s_-]+/g, '') !== 'FOLK';
+                      setInvitingId(g.groupId);
+                      try {
+                        let token = g.joinToken || '';
+                        if (!token) {
+                          const minted = await updateBvGroup({ groupId: g.groupId, ensureJoinToken: true });
+                          token = minted.joinToken || '';
+                        }
+                        if (!token) {
+                          toast.error('Could not create a group invite link');
+                          return;
+                        }
+                        const joinUrl = bvWhatsAppJoinUrl(window.location.origin, token, isPwInvite);
+                        const leaderName = nameForWhatsAppInvite(g.bvslName);
+                        const guideName = nameForWhatsAppInvite(g.guideName);
+                        const lines = [
+                          `Hare Krishna!`,
+                          ``,
+                          `You are invited to join *${g.groupName}* — a Bhakti Vriksha group`,
+                          leaderName ? `led by *${leaderName}*` : '',
+                          guideName ? `under the guidance of *${guideName}*.` : '',
+                          ``,
+                          `Click to join: ${joinUrl}`,
+                        ].filter(Boolean);
+                        window.open(`https://wa.me/?text=${encodeURIComponent(lines.join('\n'))}`, '_blank');
+                      } catch (err: any) {
+                        toast.error(err?.message || 'Could not create a group invite link');
+                      } finally {
+                        setInvitingId(null);
+                      }
                     }}
                   >
                     <MessageCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 fill-emerald-500/10" />

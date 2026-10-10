@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, Users, Guides, AppError } from '@/lib/backend-sdk';
+import { generateBvJoinToken } from '@/lib/bvJoinToken';
 import { serverCacheInvalidate } from '../lib/serverCache';
 import { publishCollectionRevision } from '../lib/publishUsersRevision';
 
@@ -77,6 +78,7 @@ export default createEndpoint({
       description: input.description || '',
       isActive: true,
       segment,
+      joinToken: generateBvJoinToken(),
       createdAt: new Date().toISOString(),
     };
 

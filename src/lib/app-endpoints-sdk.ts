@@ -2,6 +2,7 @@
 // app-endpoints-sdk.ts — Auto-generated client-side SDK for calling API routes.
 // ══════════════════════════════════════════════════════════════════════════════
 import { auth } from './app-auth-sdk';
+import { withDeadline } from './withDeadline';
 import { confirmBvGroupDeletion } from './confirmBvGroupDeletion';
 import type { z } from 'zod';
 import {
@@ -371,6 +372,7 @@ async function invokeEndpoint(name: string, input: any): Promise<any> {
   }
 
   const request = (async () => {
+    const timeoutMs = isQuery ? 45_000 : 20_000;
     // Retrieve Firebase ID Token (auth header)
     let idToken = '';
     try {
@@ -378,21 +380,31 @@ async function invokeEndpoint(name: string, input: any): Promise<any> {
       if (!currentUser && !PUBLIC_ENDPOINTS.has(name)) {
         throw new Error('User is not authenticated');
       }
-      if (currentUser) idToken = await currentUser.getIdToken();
+      if (currentUser) idToken = await withDeadline(currentUser.getIdToken(), timeoutMs);
     } catch (error) {
-      console.error('Failed to get Firebase ID token:', error);
+      if (!(error instanceof Error) || error.message !== 'This is taking too long. Please try again.') {
+        console.error('Failed to get Firebase ID token:', error);
+      }
       throw error;
     }
 
-    const res = await fetch(`/api/run/${name}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(isQuery ? { 'X-Realtime-Query': '1' } : {}),
-        ...(idToken ? { 'Authorization': `Bearer ${idToken}` } : {})
-      },
-      body: JSON.stringify(input),
-    });
+    let res: Response;
+    try {
+      res = await fetch(`/api/run/${name}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(isQuery ? { 'X-Realtime-Query': '1' } : {}),
+          ...(idToken ? { 'Authorization': `Bearer ${idToken}` } : {})
+        },
+        body: JSON.stringify(input),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (error) {
+      const timedOut = error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
+      if (timedOut) throw new Error('This is taking too long. Please try again.');
+      throw error;
+    }
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({}));
       if (isQuery && (res.status === 401 || res.status === 403)) {

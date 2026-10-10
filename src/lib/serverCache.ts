@@ -210,7 +210,7 @@ export function createServerCache(shared: SharedServerCache): ServerCache {
       for (const key of Array.from(inFlight.keys())) if (key.startsWith(prefix)) inFlight.delete(key);
     }
     if (options?.publish === false || !invalidationTouchesSharedCache(prefix)) return Promise.resolve();
-    const publishing = shared.bumpEpoch().then(() => undefined, () => undefined);
+    const publishing = withinBudget(shared.bumpEpoch().then(() => undefined, () => undefined));
     trackSharedWrite(publishing);
     return publishing;
   }
@@ -271,15 +271,30 @@ export function createServerCache(shared: SharedServerCache): ServerCache {
   return { get, set, invalidate, getOrFetch, keys };
 }
 
+const SHARED_WRITE_BUDGET_MS = 800;
+
+function withinBudget(work: Promise<void>, ms = SHARED_WRITE_BUDGET_MS): Promise<void> {
+  return new Promise(resolve => {
+    const timer = setTimeout(resolve, ms);
+    work.then(
+      () => { clearTimeout(timer); resolve(); },
+      () => { clearTimeout(timer); resolve(); },
+    );
+  });
+}
+
 let sharedWrites = Promise.resolve();
 
 function trackSharedWrite(work: Promise<void>) {
-  sharedWrites = sharedWrites.then(() => work, () => work);
+  const settled = work.then(() => undefined, () => undefined);
+  const next = sharedWrites.then(() => settled, () => settled);
+  sharedWrites = withinBudget(next);
 }
 
-/** Resolves after this process has stored its shared reference-cache updates. */
+/** Resolves after this process has stored its shared reference-cache updates.
+ * A stuck Firestore write must not keep the button that triggered it spinning. */
 export function whenServerCacheShared(): Promise<void> {
-  return sharedWrites;
+  return withinBudget(sharedWrites.then(() => undefined, () => undefined));
 }
 
 const serverCache = createServerCache(createFirestoreSharedServerCache());

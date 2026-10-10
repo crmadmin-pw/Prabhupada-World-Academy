@@ -133,7 +133,7 @@ function CreateEventDialog({ onCreated }: { onCreated: () => void }) {
       setTitle(''); setDesc(''); setStart(''); setEnd(''); setCustomFields('');
       onCreated();
     } catch (e: any) { toast.error(e.message || 'Failed'); }
-    setSubmitting(false);
+    finally { setSubmitting(false); }
   };
 
   return (
@@ -196,7 +196,7 @@ function CreateSessionDialog({ eventId, onCreated }: { eventId: string; onCreate
       setName(''); setChallengeEnabled(false);
       onCreated();
     } catch (e: any) { toast.error(e.message || 'Failed'); }
-    setSubmitting(false);
+    finally { setSubmitting(false); }
   };
 
   return (
