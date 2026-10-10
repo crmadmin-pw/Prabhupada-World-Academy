@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import assignBvRole from '../src/api/assignBvRole';
+import getAllBvGroupsAdmin, { facilitatorIdentityRefs } from '../src/api/getAllBvGroupsAdmin';
 import getBvslGroups from '../src/api/getBvslGroups';
+import getGuideUsers from '../src/api/getGuideUsers';
 import { AppError, BvGroupMembers, BvGroups, Users } from '../src/lib/app-backend-sdk';
 
 const rgf = {
@@ -60,6 +62,12 @@ const superAdmin = {
   },
 };
 
+test('facilitator identity keeps every stored id, and a name only when no id exists', () => {
+  assert.deepEqual(facilitatorIdentityRefs({ bvslLeader: rgf.id, bvslId: rgf.userId }).sort(), [rgf.id, rgf.userId].sort());
+  assert.deepEqual(facilitatorIdentityRefs({ bvslId: rgf.userId }), [rgf.userId]);
+  assert.deepEqual(facilitatorIdentityRefs({ bvslName: rgf.fullName }), [rgf.fullName]);
+});
+
 test('one RGF can facilitate more than one reading group', async () => {
   await Users.create({ record: rgf });
   await Users.create({ record: member });
@@ -108,6 +116,28 @@ test('one RGF can facilitate more than one reading group', async () => {
       stillLed.groups.map((group: any) => group.groupId).sort(),
       [monday.groupId, thursday.groupId].sort(),
     );
+
+    const directory = await getGuideUsers.execute({
+      input: { guideId: 'ALL', statusFilter: 'all', segment: 'PW' },
+      context: superAdmin,
+    } as never);
+    const listedRgf = directory.users.find((user: any) => user.userDbId === rgf.userId || user.email === rgf.email);
+    assert.deepEqual(
+      [...(listedRgf?.facilitatedGroupNames || [])].sort(),
+      [monday.groupName, thursday.groupName].sort(),
+    );
+
+    const adminGroups = await getAllBvGroupsAdmin.execute({
+      input: { guideId: superAdmin.user.id, departmentWide: true, segment: 'PW' },
+      context: superAdmin,
+    } as never);
+    const ledByAdminList = adminGroups.groups.filter((group: any) =>
+      [monday.groupId, thursday.groupId].includes(group.groupId),
+    );
+    assert.equal(ledByAdminList.length, 2);
+    for (const group of ledByAdminList) {
+      assert.ok(group.facilitatorIds.includes(rgf.id) || group.facilitatorIds.includes(rgf.userId));
+    }
   } finally {
     const { records: memberships } = await BvGroupMembers.findAll({
       filters: { user: member.id },

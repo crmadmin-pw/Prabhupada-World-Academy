@@ -4,6 +4,13 @@ import { serverCacheGetOrFetch, serverCacheInvalidate } from '../lib/serverCache
 import { isBvDepartmentAdmin, isBvSuperAdminUser, resolveBvDepartmentGroups } from '../lib/bvGroupMemberScope';
 import { callerDirectoryDepartment, getScopedHierarchyUserIds, isUserInHierarchy, hierarchyRefs, readScopedUsers } from '../lib/hierarchyUtils';
 
+export function facilitatorIdentityRefs(group: { bvslLeader?: unknown; bvslId?: unknown; bvslName?: unknown }): string[] {
+  const ids = groupFacilitatorRefs(group);
+  if (ids.length > 0) return ids;
+  const storedName = String(group.bvslName || '').trim();
+  return storedName ? [storedName] : [];
+}
+
 export function groupFacilitatorRefs(group: { bvslLeader?: unknown; bvslId?: unknown }): string[] {
   return [group.bvslLeader, group.bvslId]
     .flatMap(value => Array.isArray(value) ? value : [value])
@@ -67,6 +74,7 @@ export default createEndpoint({
       avgAttendanceRate: z.number(),
       joinToken: z.string().nullable(),
       bvslLeaderId: z.string().nullable(),
+      facilitatorIds: z.array(z.string()).optional(),
       bvslLeaderName: z.string().nullable(),
       bvslName: z.string().nullable(),
       meetingTime: z.string().nullable(),
@@ -84,8 +92,7 @@ export default createEndpoint({
         return {
           bvsls: [],
           groups: directory.map(group => {
-            const leader = Array.isArray(group.record.bvslLeader) ? group.record.bvslLeader[0] : (group.record.bvslLeader || group.record.bvslId);
-            const leaderId = String(leader || '').trim();
+            const facilitatorIds = facilitatorIdentityRefs(group.record);
             return {
               groupId: group.groupId,
               groupDbId: group.id,
@@ -97,7 +104,8 @@ export default createEndpoint({
               totalSessions: 0,
               avgAttendanceRate: 0,
               joinToken: null,
-              bvslLeaderId: leaderId || null,
+              bvslLeaderId: facilitatorIds[0] || null,
+              facilitatorIds,
               bvslLeaderName: null,
               bvslName: null,
               meetingTime: null,
@@ -286,6 +294,12 @@ async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<strin
 
       const bvslUser = groupFacilitatorRefs(g).map(ref => usersByAlias.get(aliasKey(ref))).find(Boolean);
       const bvslName = facilitatorDisplayName(g, usersByAlias);
+      const facilitatorIds = [...new Set([
+        ...facilitatorIdentityRefs(g),
+        bvslUser?.id,
+        bvslUser?.userId,
+        bvslUser?.email,
+      ].map(value => String(value || '').trim()).filter(Boolean))];
 
       return {
         groupId: g.groupId || g.id,
@@ -298,7 +312,8 @@ async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<strin
         totalSessions: sessionCount,
         avgAttendanceRate,
         joinToken: g.joinToken || null,
-        bvslLeaderId: bvslUser?.userId || bvslDbId || null,
+        bvslLeaderId: bvslUser?.userId || bvslDbId || facilitatorIds[0] || null,
+        facilitatorIds,
         bvslLeaderName: bvslName,
         bvslName,
         meetingTime: g.meetingTime || g.preferredTimeSlot || null,
@@ -306,7 +321,11 @@ async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<strin
     });
 
     const bvsls = bvslUserRecords.map(u => {
-      const userGroups = groups.filter(g => g.bvslLeaderId === u.userId || g.bvslLeaderId === u.id || g.bvslLeaderName === u.fullName);
+      const identity = new Set([u.userId, u.id, u.email, u.fullName]
+        .map(value => String(value || '').trim().toLowerCase())
+        .filter(Boolean));
+      const userGroups = groups.filter(g => [g.bvslLeaderId, ...(g.facilitatorIds || []), g.bvslLeaderName]
+        .some(value => identity.has(String(value || '').trim().toLowerCase())));
       return {
         userId: u.id, // Always use DB UUID for consistent ID comparison
         fullName: u.fullName || '',

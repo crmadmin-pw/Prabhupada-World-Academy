@@ -288,10 +288,14 @@ export default createEndpoint({
       const groupKey = String(g.id || g.groupId || '');
       if (!groupKey) return;
       const groupName = String(g.groupName || '');
-      const leaderRefs = [g.bvslLeader, g.bvslId]
+      const idRefs = [g.bvslLeader, g.bvslId]
         .flatMap((value: unknown) => Array.isArray(value) ? value : [value])
         .map(value => String(value || '').trim().toLowerCase())
         .filter(Boolean);
+      // Older groups stored only the facilitator's name. Use that when no id exists.
+      const leaderRefs = idRefs.length > 0
+        ? idRefs
+        : [g.bvslName].map(value => String(value || '').trim().toLowerCase()).filter(Boolean);
       for (const ref of leaderRefs) {
         const led = facilitatedByAlias.get(ref) || [];
         if (!led.some(group => group.id === groupKey)) led.push({ id: groupKey, name: groupName });
@@ -466,7 +470,8 @@ export default createEndpoint({
         const uId = String(u.id || '').toLowerCase();
         const uUserId = String(u.userId || '').toLowerCase();
         const uEmail = String(u.email || '').toLowerCase();
-        const facilitatedGroups = [uId, uUserId, uEmail]
+        const uName = String(u.fullName || '').trim().toLowerCase();
+        const facilitatedGroups = [uId, uUserId, uEmail, uName]
           .flatMap(alias => facilitatedByAlias.get(alias) || [])
           .filter((group, index, list) => list.findIndex(item => item.id === group.id) === index);
         const assignedGid = u.bvGroupId || userGroupMap.get(uId) || userGroupMap.get(uUserId);

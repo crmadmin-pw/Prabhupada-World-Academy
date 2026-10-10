@@ -82,22 +82,35 @@ type BvGroupOption = { id: string; groupId: string; groupName: string; segment?:
 function groupsLedBy(
   parentId: string,
   groups: BvGroupOption[],
-  people: Array<{ id?: string; userId?: string; userDbId?: string; email?: string }>,
+  people: Array<{ id?: string; userId?: string; userDbId?: string; email?: string; fullName?: string }>,
 ): BvGroupOption[] {
   const person = people.find(candidate =>
-    [candidate.userId, candidate.id, candidate.userDbId, candidate.email]
-      .some(value => String(value || '').toLowerCase() === parentId.toLowerCase()),
+    [candidate.userId, candidate.id, candidate.userDbId, candidate.email, candidate.fullName]
+      .some(value => String(value || '').trim().toLowerCase() === parentId.trim().toLowerCase()),
   );
   const refs = new Set(
-    [parentId, person?.id, person?.userId, person?.userDbId, person?.email]
+    [parentId, person?.id, person?.userId, person?.userDbId, person?.email, person?.fullName]
       .filter(Boolean)
-      .map(value => String(value).toLowerCase()),
+      .map(value => String(value).trim().toLowerCase()),
   );
   return groups.filter(group =>
     group.isActive !== false &&
-    (group.facilitatorIds || []).some(ref => refs.has(String(ref).toLowerCase())),
+    (group.facilitatorIds || []).some(ref => refs.has(String(ref).trim().toLowerCase())),
   );
 }
+
+function facilitatedReadingGroupNames(
+  ledGroups: Array<{ groupName?: string | null }>,
+  storedNames: unknown,
+): string[] {
+  const stored = Array.isArray(storedNames) ? storedNames : [];
+  return [...new Set(
+    [...ledGroups.map(group => group.groupName), ...stored]
+      .map(name => String(name || '').trim())
+      .filter(Boolean),
+  )];
+}
+
 type SortKey = 'fullName' | 'guideName' | 'ashrayLevel' | 'latestScore' | 'latestEntryDate' | 'isResident';
 type SortDir = 'asc' | 'desc';
 type ResidentLikeUser = Partial<User> & {
@@ -354,7 +367,9 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
         groupName: group.groupName || 'Unnamed Reading Group',
         segment: group.segment || effectiveSegment,
         isActive: group.isActive,
-        facilitatorIds: group.facilitatorIds || (group.bvslLeaderId ? [group.bvslLeaderId] : []),
+        facilitatorIds: Array.isArray(group.facilitatorIds) && group.facilitatorIds.length > 0
+          ? group.facilitatorIds
+          : (group.bvslLeaderId ? [group.bvslLeaderId] : []),
       })));
 
       setSadhanaMentors(mergePendingMentors(mentorsList || [], pendingMentors.current));
@@ -1031,13 +1046,9 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                   const userRole = String((u as any).role || '').trim().replace(/[\s-]+/g, '_').toUpperCase();
                   const isRgf = !!((u as any).isBvFacilitator || (u as any).isBvsl || ['RGF', 'BVSL', 'FACILITATOR'].includes(userRole));
                   const facilitatorGroups = isRgf ? groupsLedBy(u.userId || u.id || '', availableBvGroups, [u]) : [];
-                  const storedFacilitatedNames = Array.isArray((u as any).facilitatedGroupNames)
-                    ? (u as any).facilitatedGroupNames.filter(Boolean)
+                  const facilitatedNames = isRgf
+                    ? facilitatedReadingGroupNames(facilitatorGroups, (u as any).facilitatedGroupNames)
                     : [];
-                  const facilitatedLabel = (facilitatorGroups.length > 0
-                    ? facilitatorGroups.map(group => group.groupName)
-                    : storedFacilitatedNames
-                  ).join(', ');
                   const storedGroupName = String((u as any).bvGroupName || '').trim();
                   const hasStoredGroup = !!storedGroupName && !/^(unassigned|n\/a|na|none|—|-)$/i.test(storedGroupName);
                   const displayedGroup = currentBvGroup;
@@ -1168,10 +1179,21 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                         );
                       })()}
                       <td data-label="Bhakti Vriksha Group" data-summary="true" className="px-3 py-2 text-center align-middle text-xs" onClick={e => e.stopPropagation()}>
-                        {isRgf && facilitatedLabel ? (
-                          <span className="inline-block max-w-48 truncate" title={facilitatedLabel}>
-                            {facilitatedLabel}
-                          </span>
+                        {isRgf && facilitatedNames.length > 0 ? (
+                          <div
+                            className="mx-auto flex w-full max-w-72 flex-col items-stretch gap-1"
+                            aria-label={`Reading groups facilitated by ${u.fullName}: ${facilitatedNames.join(', ')}`}
+                          >
+                            {facilitatedNames.map(name => (
+                              <span
+                                key={name}
+                                className="rounded-md bg-secondary px-2 py-1 text-center text-[11px] leading-snug break-words text-secondary-foreground"
+                                title={name}
+                              >
+                                {name}
+                              </span>
+                            ))}
+                          </div>
                         ) : isBvUser ? (
                           <Select
                             value={groupSelectValue}
