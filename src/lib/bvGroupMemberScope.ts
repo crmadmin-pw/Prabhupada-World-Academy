@@ -227,10 +227,10 @@ export async function resolveBvScopedGroups(
     return selected;
   }
   const callerFields = [
-    'id', 'userId', 'email', 'role', 'segment', 'guide',
+    'id', 'userId', 'email', 'fullName', 'displayName', 'name', 'role', 'segment', 'guide',
     'isBvAdmin', 'isPwAdmin', 'isBvSuperAdmin',
     'isBvSupervisor', 'isBvMentor', 'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator',
-    'bvReportingFacilitatorId',
+    'bvReportingFacilitatorId', 'bvGroupId', 'bvGroupName',
   ];
   const caller = await Users.findOne({ id: contextUser.id, fields: callerFields }) ||
     await Users.findOne({ filters: { userId: contextUser.userId || contextUser.id }, fields: callerFields }) ||
@@ -291,7 +291,36 @@ export async function resolveBvScopedGroups(
     role === 'SUPERVISOR' || role === 'BV_SUPERVISOR' ||
     callerRole === 'SUPERVISOR' || callerRole === 'BV_SUPERVISOR'
   );
-  const isRgsf = !!(contextUser.isBvSubFacilitator || caller?.isBvSubFacilitator || role.includes('RGSF'));
+  const isRgsf = !!(contextUser.isBvSubFacilitator || caller?.isBvSubFacilitator || role.includes('RGSF') || callerRole.includes('RGSF'));
+  const isFacilitator = isRgsf || !!(
+    contextUser.isBvFacilitator || contextUser.isBvsl ||
+    caller?.isBvFacilitator || caller?.isBvsl ||
+    ['RGF', 'BVSL', 'FACILITATOR', 'BV_FACILITATOR'].includes(role) ||
+    ['RGF', 'BVSL', 'FACILITATOR', 'BV_FACILITATOR'].includes(callerRole)
+  );
+  // Personal sadhana shows the group stored on the profile or membership row.
+  // Older groups also stored the facilitator's display name instead of an id.
+  // Those links belong on an RGF/RGSF Groups tab even when bvslId is stale.
+  const callerNameAliases = new Set(refs([
+    contextUser.fullName, contextUser.displayName, contextUser.name,
+    caller?.fullName, caller?.displayName, caller?.name,
+  ]));
+  const assignedGroupRefs = new Set(refs([
+    contextUser.bvGroupId, contextUser.bvGroupName,
+    caller?.bvGroupId, caller?.bvGroupName,
+  ]));
+  const memberGroupRefs = new Set<string>();
+  if (isFacilitator) {
+    const { records: memberships } = await BvGroupMembers.findAll({
+      fields: ['user', 'userId', 'memberId', 'group', 'groupId'],
+      limit: 5000,
+    });
+    for (const membership of memberships) {
+      const memberRefs = refs([membership.user, membership.userId, membership.memberId]);
+      if (!memberRefs.some(ref => callerAliases.has(ref))) continue;
+      refs([membership.group, membership.groupId]).forEach(ref => memberGroupRefs.add(ref));
+    }
+  }
 
   // Resolve every identity alias for RGFs that report to this admin or
   // supervisor. Older data can store a Firestore id, public userId, or email.
@@ -321,13 +350,19 @@ export async function resolveBvScopedGroups(
   }
 
   const { records: allGroups } = await BvGroups.findAll({
-    fields: ['id', 'groupId', 'groupName', 'segment', 'guide', 'isActive', 'bvslLeader', 'bvslId', 'subFacilitatorId', 'rgsfId', 'subFacilitator'],
+    fields: ['id', 'groupId', 'groupName', 'description', 'segment', 'guide', 'isActive', 'bvslLeader', 'bvslId', 'bvslName', 'subFacilitatorId', 'rgsfId', 'subFacilitator', 'joinToken', 'meetingTime', 'preferredTimeSlot'],
     limit: 1000,
   });
   let groups = allGroups.filter(group => {
     if (group.isActive === false) return false;
     const leaderRefs = refs([group.bvslLeader, group.bvslId]);
+    const facilitatorRefs = refs([group.bvslLeader, group.bvslId, group.bvslName]);
     const rgsfRefs = refs([group.subFacilitatorId, group.rgsfId, group.subFacilitator]);
+    const groupIdentityRefs = refs([group.id, group.groupId, group.groupName]);
+    const legacyNameMatch = isFacilitator && facilitatorRefs.some(ref => callerNameAliases.has(ref));
+    const assignedToCaller = isFacilitator && groupIdentityRefs.some(ref =>
+      assignedGroupRefs.has(ref) || memberGroupRefs.has(ref)
+    );
     if (options.segment) {
       const explicitSegment = departmentValue(group.segment);
       const inferredSegments = leaderRefs.map(ref => segmentByUserAlias.get(ref)).filter(Boolean);
@@ -338,14 +373,18 @@ export async function resolveBvScopedGroups(
       const legacyGuideRefs = refs(group.guide);
       return leaderRefs.some(ref => reportingRgfAliases.has(ref)) ||
         leaderRefs.some(ref => callerAliases.has(ref)) ||
-        legacyGuideRefs.some(ref => callerAliases.has(ref));
+        legacyGuideRefs.some(ref => callerAliases.has(ref)) ||
+        legacyNameMatch ||
+        assignedToCaller;
     }
     if (isRgsf) {
       return leaderRefs.some(ref => callerAliases.has(ref)) ||
         rgsfRefs.some(ref => callerAliases.has(ref)) ||
-        leaderRefs.some(ref => parentAliases.has(ref));
+        leaderRefs.some(ref => parentAliases.has(ref)) ||
+        legacyNameMatch ||
+        assignedToCaller;
     }
-    return leaderRefs.some(ref => callerAliases.has(ref));
+    return leaderRefs.some(ref => callerAliases.has(ref)) || legacyNameMatch || assignedToCaller;
   });
 
   if (options.groupId) {

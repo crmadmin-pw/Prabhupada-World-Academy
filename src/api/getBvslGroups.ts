@@ -38,6 +38,7 @@ export default createEndpoint({
     const isRgsfRequest = input.viewRole === 'RGSF';
     let rgsfCallerKeys = new Set<string>();
     let rgsfParentKeys = new Set<string>();
+    let callerKeys = new Set<string>();
 
     if (input.bvslId === 'ALL' || !input.bvslId) {
       if (!isBvSuperAdminUser(context?.user)) {
@@ -46,8 +47,9 @@ export default createEndpoint({
       const { records } = await BvGroups.findAll({ limit: 500 });
       groupRecords = records;
     } else {
-      const userRecord = await Users.findOne({ filters: { userId: input.bvslId }, fields: ['id', 'userId', 'fullName', 'email', 'guide', 'bvReportingFacilitatorId', 'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator'] })
-        ?? await Users.findOne({ id: input.bvslId, fields: ['id', 'userId', 'fullName', 'email', 'guide', 'bvReportingFacilitatorId', 'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator'] });
+      const facilitatorFields = ['id', 'userId', 'fullName', 'email', 'guide', 'bvReportingFacilitatorId', 'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator', 'bvGroupId', 'bvGroupName'];
+      const userRecord = await Users.findOne({ filters: { userId: input.bvslId }, fields: facilitatorFields })
+        ?? await Users.findOne({ id: input.bvslId, fields: facilitatorFields });
       
       const dbUserId = userRecord?.id || input.bvslId;
       const parentRgfId = (userRecord as any)?.bvReportingFacilitatorId;
@@ -55,15 +57,21 @@ export default createEndpoint({
       const isRgsfView = input.viewRole === 'RGSF';
  
       const { records } = await BvGroups.findAll({
-        limit: 200,
+        limit: 1000,
       });
-      const callerKeys = new Set(
+      callerKeys = new Set(
         [
           input.bvslId,
           dbUserId,
           userRecord?.userId,
           userRecord?.email,
+          userRecord?.fullName,
         ]
+          .filter(Boolean)
+          .map((value) => String(value).toLowerCase())
+      );
+      const assignedGroupRefs = new Set(
+        [userRecord?.bvGroupId, userRecord?.bvGroupName]
           .filter(Boolean)
           .map((value) => String(value).toLowerCase())
       );
@@ -89,6 +97,9 @@ export default createEndpoint({
 
         const leader = String(g.bvslLeader || '').toLowerCase();
         const bId = String(g.bvslId || '').toLowerCase();
+        const facilitatorName = String(g.bvslName || '').toLowerCase();
+        const groupRefs = [g.id, g.groupId, g.groupName].filter(Boolean).map((value: unknown) => String(value).toLowerCase());
+        const assignedToCaller = groupRefs.some((value: string) => assignedGroupRefs.has(value));
         const subFacilitatorValues = [
           g.subFacilitatorId,
           g.rgsfId,
@@ -104,12 +115,14 @@ export default createEndpoint({
             .map((value) => String(value).toLowerCase());
           const isParentGroup = ownerValues.some((value) => parentRgfKeys.has(value));
           const isCallerOwnedLegacyGroup = ownerValues.some((value) => callerKeys.has(value));
-          return isParentGroup || isCallerOwnedLegacyGroup || subFacilitatorValues.some((value) => callerKeys.has(value));
+          return isParentGroup || isCallerOwnedLegacyGroup || subFacilitatorValues.some((value) => callerKeys.has(value)) || assignedToCaller || callerKeys.has(facilitatorName);
         }
 
         return (
           callerKeys.has(leader) ||
           callerKeys.has(bId) ||
+          callerKeys.has(facilitatorName) ||
+          assignedToCaller ||
           subFacilitatorValues.some((value) => callerKeys.has(value)) ||
           (parentRgfId && (
             leader === String(parentRgfId).toLowerCase() ||
@@ -120,7 +133,21 @@ export default createEndpoint({
     }
 
     if (!isBvSuperAdminUser(context.user)) {
-      const allowed = new Set((await resolveBvScopedGroups(context.user)).map(group => group.id));
+      const allowedGroups = await resolveBvScopedGroups(context.user);
+      const allowed = new Set(allowedGroups.map(group => group.id));
+      const selfAliases = [context.user?.id, context.user?.userId, context.user?.email, context.user?.fullName]
+        .filter(Boolean)
+        .map((value: unknown) => String(value).toLowerCase());
+      const viewingOwnGroups = selfAliases.some((alias: string) => callerKeys.has(alias));
+      if (viewingOwnGroups) {
+        const seen = new Set(groupRecords.map((group: any) => String(group.id || '')));
+        for (const group of allowedGroups) {
+          if (!seen.has(group.id)) {
+            groupRecords.push(group.record);
+            seen.add(group.id);
+          }
+        }
+      }
       groupRecords = groupRecords.filter(group => allowed.has(group.id));
     }
     const dedupedGroupRecords = new Map<string, any>();
