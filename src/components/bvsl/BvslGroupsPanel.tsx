@@ -8,13 +8,13 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { Users, Plus, Calendar, ChevronRight, Pencil, Trash2, MessageCircle } from 'lucide-react';
+import { Users, Plus, Calendar, ChevronRight, Pencil, Trash2, MessageCircle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { createBvGroup, updateBvGroup, deleteBvGroup } from '@/lib/endpoints-sdk';
 import type { GetBvslGroupsOutputType } from '@/lib/endpoints-sdk';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { nameForWhatsAppInvite } from '@/lib/userUtils';
-import { bvWhatsAppJoinUrl } from '@/lib/bvJoinToken';
+import { bvWhatsAppJoinUrl, bvWhatsAppShareUrl } from '@/lib/bvJoinToken';
 
 type Group = GetBvslGroupsOutputType['groups'][0];
 
@@ -256,12 +256,19 @@ export default function BvslGroupsPanel({
 
                   {/* WhatsApp Invite Button */}
                   <Button
+                    type="button"
                     size="sm"
                     className="w-full h-8 text-xs font-semibold rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 dark:text-emerald-400 border border-emerald-300/60 dark:border-emerald-800/80 shadow-2xs hover:shadow-xs transition-all flex items-center justify-center gap-1.5 mt-2"
                     disabled={invitingId === g.groupId}
                     onClick={async e => {
                       e.stopPropagation();
+                      e.preventDefault();
+                      if (invitingId) return;
                       const isPwInvite = String(g.segment || profile?.segment || '').toUpperCase().replace(/[\s_-]+/g, '') !== 'FOLK';
+                      // Open during the click. A later window.open, after the
+                      // token request, is blocked and the click looks stuck.
+                      const popup = window.open('about:blank', '_blank');
+                      if (popup) popup.opener = null;
                       setInvitingId(g.groupId);
                       try {
                         let token = g.joinToken || '';
@@ -270,31 +277,48 @@ export default function BvslGroupsPanel({
                           token = minted.joinToken || '';
                         }
                         if (!token) {
+                          popup?.close();
                           toast.error('Could not create a group invite link');
                           return;
                         }
                         const joinUrl = bvWhatsAppJoinUrl(window.location.origin, token, isPwInvite);
                         const leaderName = nameForWhatsAppInvite(g.bvslName);
                         const guideName = nameForWhatsAppInvite(g.guideName);
-                        const lines = [
+                        const inviteText = [
                           `Hare Krishna!`,
-                          ``,
                           `You are invited to join *${g.groupName}* — a Bhakti Vriksha group`,
                           leaderName ? `led by *${leaderName}*` : '',
                           guideName ? `under the guidance of *${guideName}*.` : '',
-                          ``,
                           `Click to join: ${joinUrl}`,
-                        ].filter(Boolean);
-                        window.open(`https://wa.me/?text=${encodeURIComponent(lines.join('\n'))}`, '_blank');
+                        ].filter(Boolean).join('\n\n');
+                        const shareUrl = bvWhatsAppShareUrl(inviteText);
+                        if (popup && !popup.closed) {
+                          popup.location.href = shareUrl;
+                          return;
+                        }
+                        popup?.close();
+                        let copied = false;
+                        try {
+                          await navigator.clipboard.writeText(inviteText);
+                          copied = true;
+                        } catch { /* The browser refused the clipboard. */ }
+                        toast.error(copied
+                          ? 'WhatsApp did not open. The invite was copied — paste it into a chat.'
+                          : 'WhatsApp did not open. Allow pop-ups for this site and try again.');
                       } catch (err: any) {
+                        popup?.close();
                         toast.error(err?.message || 'Could not create a group invite link');
                       } finally {
                         setInvitingId(null);
                       }
                     }}
                   >
-                    <MessageCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 fill-emerald-500/10" />
-                    WhatsApp Invite
+                    {invitingId === g.groupId ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <MessageCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 fill-emerald-500/10" />
+                    )}
+                    {invitingId === g.groupId ? 'Opening…' : 'WhatsApp Invite'}
                   </Button>
                 </div>
               </div>

@@ -11,6 +11,7 @@ import BvGroupCreateDialog from './BvGroupCreateDialog';
 import BvGroupAddMembersDialog from './BvGroupAddMembersDialog';
 import BvGroupMembersSection from './BvGroupMembersSection';
 import { ConfirmDialog } from '@/shared';
+import { bvWhatsAppShareUrl } from '@/lib/bvJoinToken';
 
 type Group = GetAllBvGroupsAdminOutputType['groups'][0];
 type EligibleMember = { userId: string; fullName: string; phone: string; ashrayLevel: string | null; isBvsl: boolean; existingGroup: { groupId: string; groupName: string } | null };
@@ -114,9 +115,8 @@ export default function BvGroupManagerPanel({ guideId }: Props) {
                         title="WhatsApp Invite"
                         onClick={() => {
                           const url = `${window.location.origin}/join-group?token=${g.joinToken}`;
-                          window.open(`https://wa.me/?text=${encodeURIComponent(`Hare Krishna!
-
-Join *${g.groupName}*: ${url}`)}`, '_blank');
+                          const opened = window.open(bvWhatsAppShareUrl(`Hare Krishna!\n\nJoin *${g.groupName}*: ${url}`), '_blank', 'noopener,noreferrer');
+                          if (!opened) toast.error('WhatsApp did not open. Allow pop-ups for this site and try again.');
                         }}>
                         <MessageCircle className="w-3.5 h-3.5" />
                       </Button>

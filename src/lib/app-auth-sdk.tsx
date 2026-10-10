@@ -68,26 +68,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (isFirebaseEnabled && auth) {
       return onAuthStateChanged(auth, async (fbUser: FirebaseUser | null) => {
         setIsLoading(true);
-        if (fbUser) {
-          const token = await fbUser.getIdToken();
-          // Store token globally for API endpoints to read
-          if (typeof window !== 'undefined') {
-            (window as any).__firebase_id_token = token;
-            localStorage.setItem('auth_email', fbUser.email || '');
-            localStorage.setItem('auth_user_id', fbUser.uid || '');
-            window.dispatchEvent(new Event('authStateChanged'));
+        try {
+          if (fbUser) {
+            // A thrown or hung token request used to leave isLoading true, so
+            // an invite opened from WhatsApp spun on "Joining…" forever.
+            let token = '';
+            try {
+              token = await withDeadline(fbUser.getIdToken(), 8_000);
+            } catch {
+              token = '';
+            }
+            if (typeof window !== 'undefined') {
+              if (token) (window as any).__firebase_id_token = token;
+              else delete (window as any).__firebase_id_token;
+              localStorage.setItem('auth_email', fbUser.email || '');
+              localStorage.setItem('auth_user_id', fbUser.uid || '');
+              window.dispatchEvent(new Event('authStateChanged'));
+            }
+            setUser({ email: fbUser.email, id: fbUser.uid });
+          } else {
+            if (typeof window !== 'undefined') {
+              delete (window as any).__firebase_id_token;
+              localStorage.removeItem('auth_email');
+              localStorage.removeItem('auth_user_id');
+              window.dispatchEvent(new Event('authStateChanged'));
+            }
+            setUser(null);
           }
-          setUser({ email: fbUser.email, id: fbUser.uid });
-        } else {
-          if (typeof window !== 'undefined') {
-            delete (window as any).__firebase_id_token;
-            localStorage.removeItem('auth_email');
-            localStorage.removeItem('auth_user_id');
-            window.dispatchEvent(new Event('authStateChanged'));
-          }
-          setUser(null);
+        } finally {
+          setIsLoading(false);
         }
-        setIsLoading(false);
       });
     } else {
       setUser(null);

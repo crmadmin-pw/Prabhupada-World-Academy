@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-sdk';
 import { joinBvGroupByToken } from '@/lib/endpoints-sdk';
+import { isEmbeddedInviteBrowser } from '@/lib/bvJoinToken';
+import { withDeadline } from '@/lib/withDeadline';
 import { Leaf, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -11,31 +13,22 @@ export default function BvJoinPage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const { user, isLoading: authLoading, loginWithRedirect } = useAuth();
-  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [status, setStatus] = useState<'checking' | 'signed-out' | 'loading' | 'success' | 'error'>('checking');
   const [message, setMessage] = useState('');
+  const [signingIn, setSigningIn] = useState(false);
+  const joinedToken = useRef('');
 
   const token = params.get('token');
 
-  useEffect(() => {
-    if (authLoading) return;
-    if (!user) {
-      // Not logged in — redirect to login then back
-      loginWithRedirect({ redirectUrl: window.location.href });
-      return;
-    }
-    if (!token) {
-      setStatus('error');
-      setMessage('No invite token found. Make sure you used the correct link.');
-      return;
-    }
-    joinGroup();
-  }, [authLoading, user, token]);
-
   const joinGroup = async () => {
-    if (!token) return;
+    if (!token || !user) return;
     setStatus('loading');
     try {
-      const result = await joinBvGroupByToken({ token });
+      const result = await withDeadline(
+        joinBvGroupByToken({ token }),
+        25_000,
+        'Joining this group is taking too long. Please try again.',
+      );
       if (result.success) {
         setStatus('success');
         setMessage(
@@ -45,12 +38,43 @@ export default function BvJoinPage() {
         );
         setTimeout(() => navigate('/bhaktivriksha'), 3000);
       } else {
+        joinedToken.current = '';
         setStatus('error');
         setMessage(result.error ?? 'Could not join the group');
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
+      joinedToken.current = '';
       setStatus('error');
-      setMessage(e?.message ?? 'Something went wrong. Please try again.');
+      setMessage(e instanceof Error ? e.message : 'Something went wrong. Please try again.');
+    }
+  };
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (!token) {
+      setStatus('error');
+      setMessage('No invite token found. Make sure you used the correct link.');
+      return;
+    }
+    if (!user) {
+      setStatus(current => current === 'success' ? current : 'signed-out');
+      return;
+    }
+    if (joinedToken.current === token) return;
+    joinedToken.current = token;
+    void joinGroup();
+  }, [authLoading, user, token]);
+
+  const signIn = async () => {
+    setSigningIn(true);
+    setMessage('');
+    try {
+      await loginWithRedirect();
+      setSigningIn(false);
+    } catch (e: unknown) {
+      setStatus('signed-out');
+      setMessage(e instanceof Error ? e.message : 'Sign-in did not finish. Please try again.');
+      setSigningIn(false);
     }
   };
 
@@ -62,12 +86,24 @@ export default function BvJoinPage() {
           <h1 className="text-xl font-bold text-primary">Bhakti Vriksha Group</h1>
         </div>
 
-        {(authLoading || status === 'idle' || status === 'loading') && (
+        {(authLoading || status === 'checking' || status === 'loading' || signingIn) && (
           <div className="flex flex-col items-center gap-3 py-8">
             <Loader2 className="w-10 h-10 animate-spin text-primary" />
             <p className="text-muted-foreground text-sm">
-              {authLoading ? 'Checking your session…' : 'Joining group…'}
+              {status === 'loading' ? 'Joining group…' : 'Checking your session…'}
             </p>
+          </div>
+        )}
+
+        {status === 'signed-out' && !authLoading && !signingIn && (
+          <div className="flex flex-col items-center gap-4 py-8">
+            <p className="text-sm text-muted-foreground">
+              {isEmbeddedInviteBrowser()
+                ? 'WhatsApp’s browser cannot finish Google sign-in. Open this page in Chrome or Safari, then sign in.'
+                : 'Sign in to accept this invite.'}
+            </p>
+            {message && <p className="text-sm text-destructive">{message}</p>}
+            <Button onClick={signIn}>Sign in to join</Button>
           </div>
         )}
 
@@ -95,8 +131,8 @@ export default function BvJoinPage() {
               <Button variant="outline" onClick={() => navigate('/bhaktivriksha')}>
                 <Leaf className="w-4 h-4 mr-2" />Go to BV
               </Button>
-              {token && (
-                <Button onClick={joinGroup} disabled={status as string === 'loading'}>
+              {token && user && (
+                <Button onClick={() => { joinedToken.current = token; void joinGroup(); }}>
                   Try Again
                 </Button>
               )}

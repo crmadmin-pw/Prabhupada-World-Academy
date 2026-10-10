@@ -3,7 +3,8 @@ import test from 'node:test';
 import * as sdk from '../src/lib/app-backend-sdk';
 import updateBvGroup from '../src/api/updateBvGroup';
 import joinGroupByToken from '../src/api/joinGroupByToken';
-import { bvWhatsAppJoinUrl } from '../src/lib/bvJoinToken';
+import { bvWhatsAppJoinUrl, bvWhatsAppShareUrl, isEmbeddedInviteBrowser } from '../src/lib/bvJoinToken';
+import { reportingChainWrite } from '../src/lib/app-backend-sdk';
 
 function matches(record: any, filters: any) {
   return Object.entries(filters || {}).every(([field, value]) => {
@@ -44,6 +45,17 @@ function installMemory(t: any, tables: Record<string, any[]>) {
 
 const rgf = { id: 'rgf-doc', userId: 'rgf-public', role: 'User', isBvFacilitator: true, fullName: 'Ramya Devi Dasi' };
 const member = { id: 'member-user', userId: 'member-public', role: 'User', email: 'member@example.test' };
+
+test('a WhatsApp invite opens the send composer instead of a numberless wa.me link', () => {
+  const share = new URL(bvWhatsAppShareUrl('Hare Krishna!\n\nClick to join: https://academy.prabhupadaworld.com/join/inviteToken1/pw'));
+  assert.equal(share.origin + share.pathname, 'https://api.whatsapp.com/send');
+  assert.match(share.searchParams.get('text') || '', /\/join\/inviteToken1\/pw/);
+  assert.equal(share.hostname.includes('wa.me'), false);
+  assert.equal(isEmbeddedInviteBrowser('Mozilla/5.0 WhatsApp/2.23'), true);
+  assert.equal(isEmbeddedInviteBrowser('Mozilla/5.0 Chrome/120'), false);
+  assert.equal(reportingChainWrite('BvGroups', { joinToken: 'inviteToken1' }), false);
+  assert.equal(reportingChainWrite('BvGroups', { bvslId: 'rgf-public' }), true);
+});
 
 test('a PW WhatsApp invite link ends with /pw and carries the group token', () => {
   const url = new URL(bvWhatsAppJoinUrl('https://academy.prabhupadaworld.com', 'inviteToken1', true));

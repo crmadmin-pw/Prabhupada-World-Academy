@@ -741,9 +741,24 @@ export async function markReportingChainsStale(): Promise<void> {
   }
 }
 
+const GROUP_CHAIN_FIELDS = new Set([
+  'bvslLeader', 'bvslId', 'guide', 'isActive', 'segment',
+  'subFacilitatorId', 'rgsfId', 'subFacilitator',
+]);
+
+/** A join-token or invite-text write does not change who reports to whom.
+ * Marking the chains stale from that write rebuilds every user and leaves
+ * the invite button waiting. */
+export function reportingChainWrite(tableName: string, record?: Record<string, unknown>): boolean {
+  if (!REPORTING_CHAIN_TABLES.has(tableName)) return false;
+  if (!record) return true;
+  if (tableName === 'Users') return Object.keys(record).some(key => REPORTING_CHAIN_USER_FIELDS.has(key));
+  if (tableName === 'BvGroups') return Object.keys(record).some(key => GROUP_CHAIN_FIELDS.has(key));
+  return true;
+}
+
 async function noteHierarchyWrite(tableName: string, record?: Record<string, unknown>) {
-  if (!REPORTING_CHAIN_TABLES.has(tableName)) return;
-  if (tableName === 'Users' && record && !Object.keys(record).some(key => REPORTING_CHAIN_USER_FIELDS.has(key))) return;
+  if (!reportingChainWrite(tableName, record)) return;
   await markReportingChainsStale();
 }
 
