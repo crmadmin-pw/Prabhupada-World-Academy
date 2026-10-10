@@ -8,7 +8,8 @@ import {
   rateLimitMemorySize,
   sweepExpiredRateLimits,
 } from '../src/utils/rateLimit';
-import { caughtApiError, POST } from '../src/app/api/run/[endpoint]/route';
+import { caughtApiError } from '../src/lib/caughtApiError';
+import { POST } from '../src/app/api/run/[endpoint]/route';
 
 function sharedDatabase() {
   const documents = new Map<string, Record<string, unknown>>();
@@ -70,13 +71,14 @@ function sharedDatabase() {
 }
 
 async function withNodeEnv<T>(value: string, run: () => Promise<T>): Promise<T> {
-  const previous = process.env.NODE_ENV;
-  process.env.NODE_ENV = value;
+  const env = process.env as Record<string, string | undefined>;
+  const previous = env.NODE_ENV;
+  env.NODE_ENV = value;
   try {
     return await run();
   } finally {
-    if (previous === undefined) delete process.env.NODE_ENV;
-    else process.env.NODE_ENV = previous;
+    if (previous === undefined) delete env.NODE_ENV;
+    else env.NODE_ENV = previous;
   }
 }
 

@@ -16,29 +16,37 @@ export function isPrabhupadaWorldCategory(value: unknown): boolean {
   return token === 'PW' || token === 'PRABHUPADAWORLD';
 }
 
+/** A residency record may carry a name and other fields. Only category and segment classify it. */
+type ResidencyRecord = {
+  category?: unknown;
+  segment?: unknown;
+  isActive?: unknown;
+  [key: string]: unknown;
+} | null | undefined;
+
 /** Explicit category on the record. `segment` is the stored department when `category` is absent. */
-export function residencyCategoryValue(record: { category?: unknown; segment?: unknown } | null | undefined): unknown {
+export function residencyCategoryValue(record: ResidencyRecord): unknown {
   if (present(record?.category)) return record?.category;
   if (present(record?.segment)) return record?.segment;
   return undefined;
 }
 
-export function isPrabhupadaWorldResidency(record: { category?: unknown; segment?: unknown } | null | undefined): boolean {
+export function isPrabhupadaWorldResidency(record: ResidencyRecord): boolean {
   return isPrabhupadaWorldCategory(residencyCategoryValue(record));
 }
 
 export function residencyMatchesDepartment(
-  record: { category?: unknown; segment?: unknown } | null | undefined,
+  record: ResidencyRecord,
   department?: ResidencyDepartment | null,
 ): boolean {
   const isPw = isPrabhupadaWorldResidency(record);
   return department === 'PW' ? isPw : !isPw;
 }
 
-export function isActiveResidency(record: { isActive?: unknown } | null | undefined): boolean {
+export function isActiveResidency(record: ResidencyRecord): boolean {
   return record?.isActive !== false && record?.isActive !== 'false';
 }
 
-export function isActiveFolkResidency(record: { category?: unknown; segment?: unknown; isActive?: unknown } | null | undefined): boolean {
+export function isActiveFolkResidency(record: ResidencyRecord): boolean {
   return isActiveResidency(record) && !isPrabhupadaWorldResidency(record);
 }

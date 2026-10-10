@@ -212,10 +212,12 @@ test('entries stored under different ids for one person are one leaderboard row'
       context: adminContext(user),
     } as never);
     const rows = result.leaderboard.filter((item: any) => item.userId === user.userId);
+    const row = rows[0];
     assert.equal(rows.length, 1);
-    assert.equal(rows[0].daysSubmitted, 2);
-    assert.equal(rows[0].scorePercent, 85);
-    assert.equal(rows[0].currentStreak, 2);
+    assert.ok(row);
+    assert.equal(row.daysSubmitted, 2);
+    assert.equal(row.scorePercent, 85);
+    assert.equal(row.currentStreak, 2);
   } finally {
     await SadhanaEntries.delete({ id: 'SUM-ALIAS-ENTRY-1' });
     await SadhanaEntries.delete({ id: 'SUM-ALIAS-ENTRY-2' });

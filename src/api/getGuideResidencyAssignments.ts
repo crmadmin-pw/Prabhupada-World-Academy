@@ -39,7 +39,7 @@ export default createEndpoint({
     const guideRefKeys = new Set(guideRefs.filter(Boolean).map(key));
     const guideName = key((guide as any)?.fullName || (user as any)?.fullName);
     const assignedFromResidencyRecords = (rawResidencies as any[])
-      .filter(isFolk)
+      .filter(isActiveFolkResidency)
       .filter(r => {
         const refs = [
           ...normalizeRefs(r.guideIds),
