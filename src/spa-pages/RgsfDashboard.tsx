@@ -48,6 +48,11 @@ export default function RgsfDashboard() {
   if (!profile) return <LoadingPage />;
 
   const bvslId = profile.userId || '';
+  const reportGroups = groups.map(group => ({
+    id: group.id,
+    groupId: group.groupId || group.id,
+    groupName: group.groupName,
+  }));
 
   const subtitle = [
     'RGSF',
@@ -100,9 +105,10 @@ export default function RgsfDashboard() {
                   bvslMode
                   segment={isFolk ? 'FOLK' : 'PW'}
                   improvementDetailBasePath="/rgsf/users"
+                  groupOptions={reportGroups}
                 />
               )}
-              {activeTab === 'report' && <BvslSadhanaReportPanel bvslId={bvslId} hideImprovement={!isFolk} />}
+              {activeTab === 'report' && <BvslSadhanaReportPanel bvslId={bvslId} hideImprovement={!isFolk} groupOptions={reportGroups} />}
               {isFolk && activeTab === 'quizzes' && (
                 <BvslQuizPanel
                   groups={groups.map((g: any) => ({ id: g.id, groupName: g.groupName }))}

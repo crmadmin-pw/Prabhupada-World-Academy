@@ -108,7 +108,7 @@ export default createEndpoint({
       }),
       input.minimal
         ? Promise.resolve({ records: [] })
-        : BvGroups.findAll({ limit: 500, fields: ['id', 'groupId', 'groupName', 'bvslLeader', 'bvslId', 'bvslName', 'guide'] }),
+        : BvGroups.findAll({ limit: 1000, fields: ['id', 'groupId', 'groupName', 'bvslLeader', 'bvslId', 'bvslName', 'guide'] }),
       input.minimal
         ? Promise.resolve({ records: [] })
         : BvGroupMembers.findAll({ limit: 2000, fields: ['id', 'user', 'userId', 'group', 'groupId'] }),
@@ -281,15 +281,21 @@ export default createEndpoint({
       }
     });
     // An RGF is the group's facilitator, not necessarily a member row.
-    // Membership still wins when the same person is also in a group.
+    // Membership still wins for the single personal group. Every group they
+    // facilitate is kept separately so one RGF can lead more than one group.
+    const facilitatedByAlias = new Map<string, { id: string; name: string }[]>();
     allBvGroups.forEach((g: any) => {
       const groupKey = String(g.id || g.groupId || '');
       if (!groupKey) return;
+      const groupName = String(g.groupName || '');
       const leaderRefs = [g.bvslLeader, g.bvslId]
         .flatMap((value: unknown) => Array.isArray(value) ? value : [value])
         .map(value => String(value || '').trim().toLowerCase())
         .filter(Boolean);
       for (const ref of leaderRefs) {
+        const led = facilitatedByAlias.get(ref) || [];
+        if (!led.some(group => group.id === groupKey)) led.push({ id: groupKey, name: groupName });
+        facilitatedByAlias.set(ref, led);
         if (!userGroupMap.has(ref)) userGroupMap.set(ref, groupKey);
       }
     });
@@ -459,6 +465,10 @@ export default createEndpoint({
 
         const uId = String(u.id || '').toLowerCase();
         const uUserId = String(u.userId || '').toLowerCase();
+        const uEmail = String(u.email || '').toLowerCase();
+        const facilitatedGroups = [uId, uUserId, uEmail]
+          .flatMap(alias => facilitatedByAlias.get(alias) || [])
+          .filter((group, index, list) => list.findIndex(item => item.id === group.id) === index);
         const assignedGid = u.bvGroupId || userGroupMap.get(uId) || userGroupMap.get(uUserId);
 
         const groupRgf = assignedGid ? groupRgfMap.get(String(assignedGid)) : null;
@@ -524,6 +534,8 @@ export default createEndpoint({
           supervisorName: u.supervisorName || resolvedFacName || null,
           bvGroupId: assignedGid || null,
           bvGroupName: groupNameMap.get(String(assignedGid || '')) || u.bvGroupName || null,
+          facilitatedGroupIds: facilitatedGroups.map(group => group.id),
+          facilitatedGroupNames: facilitatedGroups.map(group => group.name).filter(Boolean),
           // Fields used in UsersTab table
           selectedGuideId: guideIdVal,
           selectedGuideName: guideNameVal,

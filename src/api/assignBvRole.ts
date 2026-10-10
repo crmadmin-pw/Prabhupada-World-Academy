@@ -73,6 +73,8 @@ export default createEndpoint({
     // SUB_FACILITATOR → parentId = the RGF they report to
     parentId: z.string().optional(),
     parentName: z.string().optional(),
+    // Required when the chosen RGF already facilitates more than one group.
+    groupId: z.string().optional(),
     isBvMember: z.boolean().optional(),
     multiRoles: z.object({
       isAdmin: z.boolean().optional(),
@@ -308,14 +310,27 @@ export default createEndpoint({
             message: `${pName} does not have an active Reading Group to assign members to.`,
           });
         }
-        if (facilitatorGroups.length > 1) {
+        const requestedGroup = String(input.groupId || '').trim().toLowerCase();
+        const chosenGroups = requestedGroup
+          ? facilitatorGroups.filter((group: any) =>
+              referenceValues([group.id, group.groupId]).includes(requestedGroup)
+            )
+          : facilitatorGroups;
+        if (requestedGroup && chosenGroups.length === 0) {
+          throw new AppError({
+            code: 'NOT_FOUND',
+            message: `${pName} does not facilitate that Reading Group.`,
+          });
+        }
+        if (chosenGroups.length > 1) {
+          const names = chosenGroups.map((group: any) => group.groupName || 'Reading Group').join(', ');
           throw new AppError({
             code: 'CONFLICT',
-            message: `${pName} has multiple active Reading Groups. Assign the member from the specific group management screen.`,
+            message: `${pName} facilitates more than one Reading Group (${names}). Choose which group this member should join.`,
           });
         }
 
-        const group = facilitatorGroups[0];
+        const group = chosenGroups[0];
         const memberKeys = new Set([
           ...referenceValues(targetUser.id),
           ...referenceValues(targetUser.userId),

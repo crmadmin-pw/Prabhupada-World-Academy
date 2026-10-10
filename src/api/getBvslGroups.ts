@@ -169,9 +169,10 @@ export default createEndpoint({
       const ownerKey = String(group.bvslId || group.bvslLeader || '').toLowerCase();
       const timeKey = String(group.meetingTime || group.preferredTimeSlot || '').toLowerCase();
       const normalizedName = String(group.groupName || '').trim().toLowerCase();
-      const groupKey = isRgsfRequest
-        ? (normalizedName || String(group.groupId || group.id || '').toLowerCase())
-        : (String(group.groupId || '').toLowerCase() || `${normalizedName}|${ownerKey}|${timeKey}`);
+      // One RGF can facilitate several groups, including groups that share a
+      // name. Collapse only duplicate copies of the same group id.
+      const stableId = String(group.groupId || group.id || '').toLowerCase();
+      const groupKey = stableId || `${normalizedName}|${ownerKey}|${timeKey}`;
       if (!groupKey) continue;
       const existing = dedupedGroupRecords.get(groupKey);
       if (

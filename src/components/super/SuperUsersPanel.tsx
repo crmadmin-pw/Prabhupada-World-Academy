@@ -78,6 +78,26 @@ function mergePendingGroupAssignments(list: User[], pending: Map<string, Pending
 }
 type GuideEntry = GetGuidesOutputType['guides'][0];
 type BvGroupOption = { id: string; groupId: string; groupName: string; segment?: string | null; isActive?: boolean; facilitatorIds?: string[] };
+
+function groupsLedBy(
+  parentId: string,
+  groups: BvGroupOption[],
+  people: Array<{ id?: string; userId?: string; userDbId?: string; email?: string }>,
+): BvGroupOption[] {
+  const person = people.find(candidate =>
+    [candidate.userId, candidate.id, candidate.userDbId, candidate.email]
+      .some(value => String(value || '').toLowerCase() === parentId.toLowerCase()),
+  );
+  const refs = new Set(
+    [parentId, person?.id, person?.userId, person?.userDbId, person?.email]
+      .filter(Boolean)
+      .map(value => String(value).toLowerCase()),
+  );
+  return groups.filter(group =>
+    group.isActive !== false &&
+    (group.facilitatorIds || []).some(ref => refs.has(String(ref).toLowerCase())),
+  );
+}
 type SortKey = 'fullName' | 'guideName' | 'ashrayLevel' | 'latestScore' | 'latestEntryDate' | 'isResident';
 type SortDir = 'asc' | 'desc';
 type ResidentLikeUser = Partial<User> & {
@@ -262,6 +282,7 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
     parentOptions: { id: string; name: string }[];
     parentId: string;
     parentName: string;
+    groupId?: string;
   } | null>(null);
 
   const ROLE_LABELS: Record<string, string> = {
@@ -555,9 +576,9 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
     }
   };
 
-  const handleAssignBvRole = async (userId: string, role: string, parentId?: string, parentName?: string) => {
+  const handleAssignBvRole = async (userId: string, role: string, parentId?: string, parentName?: string, groupId?: string) => {
     try {
-      const submission = { userId, role: role as any, parentId, parentName };
+      const submission = { userId, role: role as any, parentId, parentName, ...(groupId ? { groupId } : {}) };
       const outcome = await sendOrQueue({
         type: 'role_update',
         dedupeKey: `role:${userId}:${role}`,
@@ -730,12 +751,15 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
     } else {
       const opts = bvFacilitatorsList;
       const def = opts[0] || { id: '', name: '' };
+      const parentId = (user as any).bvReportingFacilitatorId || def.id;
+      const led = groupsLedBy(parentId, bvGroups, users);
       setHierarchyDialog({
         user, newRole: 'MEMBER', roleLabel: 'Member',
-        parentLabel: 'RGF (will assign their group)',
+        parentLabel: 'RGF',
         parentOptions: opts,
-        parentId: (user as any).bvReportingFacilitatorId || def.id,
+        parentId,
         parentName: (user as any).bvReportingFacilitatorName || def.name,
+        groupId: led.length === 1 ? led[0].id : '',
       });
     }
   };
@@ -1006,17 +1030,17 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                   );
                   const userRole = String((u as any).role || '').trim().replace(/[\s-]+/g, '_').toUpperCase();
                   const isRgf = !!((u as any).isBvFacilitator || (u as any).isBvsl || ['RGF', 'BVSL', 'FACILITATOR'].includes(userRole));
-                  const identity = [u.id, u.userId, (u as any).userDbId, (u as any).email]
-                    .filter(Boolean)
-                    .map(value => String(value).toLowerCase());
-                  const facilitatorGroup = isRgf
-                    ? availableBvGroups.find(group => (group.facilitatorIds || []).some(ref =>
-                        identity.includes(String(ref).toLowerCase())
-                      ))
-                    : undefined;
+                  const facilitatorGroups = isRgf ? groupsLedBy(u.userId || u.id || '', availableBvGroups, [u]) : [];
+                  const storedFacilitatedNames = Array.isArray((u as any).facilitatedGroupNames)
+                    ? (u as any).facilitatedGroupNames.filter(Boolean)
+                    : [];
+                  const facilitatedLabel = (facilitatorGroups.length > 0
+                    ? facilitatorGroups.map(group => group.groupName)
+                    : storedFacilitatedNames
+                  ).join(', ');
                   const storedGroupName = String((u as any).bvGroupName || '').trim();
                   const hasStoredGroup = !!storedGroupName && !/^(unassigned|n\/a|na|none|—|-)$/i.test(storedGroupName);
-                  const displayedGroup = currentBvGroup || facilitatorGroup;
+                  const displayedGroup = currentBvGroup;
                   const groupSelectValue = displayedGroup?.id
                     || ((u as any).bvGroupId && hasStoredGroup ? (u as any).bvGroupId : '')
                     || '__unassigned__';
@@ -1144,7 +1168,11 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                         );
                       })()}
                       <td data-label="Bhakti Vriksha Group" data-summary="true" className="px-3 py-2 text-center align-middle text-xs" onClick={e => e.stopPropagation()}>
-                        {isBvUser ? (
+                        {isRgf && facilitatedLabel ? (
+                          <span className="inline-block max-w-48 truncate" title={facilitatedLabel}>
+                            {facilitatedLabel}
+                          </span>
+                        ) : isBvUser ? (
                           <Select
                             value={groupSelectValue}
                             onValueChange={(value) => {
@@ -1431,7 +1459,7 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                 <span className="block">Please select who <span className="font-semibold text-foreground">{hierarchyDialog.user.fullName}</span> will report to.</span>
                 {hierarchyDialog.newRole === 'MEMBER' && (
                   <span className="block text-amber-600 dark:text-amber-400 font-medium">
-                    ℹ️ The member will be assigned to this RGF's active Reading Group.
+                    The member joins one of this RGF's Reading Groups. An RGF can facilitate more than one group.
                   </span>
                 )}
               </AlertDialogDescription>
@@ -1452,7 +1480,13 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                     if (!id) return;
                     const selected = hierarchyDialog.parentOptions.find(p => p.id === id);
                     const selectedName = selected?.name || '';
-                    setHierarchyDialog(prev => prev ? { ...prev, parentId: id, parentName: selectedName } : null);
+                    const led = hierarchyDialog.newRole === 'MEMBER' ? groupsLedBy(id, bvGroups, users) : [];
+                    setHierarchyDialog(prev => prev ? {
+                      ...prev,
+                      parentId: id,
+                      parentName: selectedName,
+                      groupId: led.length === 1 ? led[0].id : '',
+                    } : null);
                   }}
                 >
                   <SelectTrigger className="w-full h-9 text-xs">
@@ -1467,12 +1501,39 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                   </SelectContent>
                 </Select>
               )}
+              {hierarchyDialog.newRole === 'MEMBER' && (() => {
+                const ledGroups = groupsLedBy(hierarchyDialog.parentId, bvGroups, users);
+                if (ledGroups.length < 2) return null;
+                return (
+                  <div className="space-y-2 pt-2">
+                    <label className="text-xs font-bold text-foreground block">Reading Group</label>
+                    <Select
+                      value={hierarchyDialog.groupId || undefined}
+                      onValueChange={(id: string | null) => {
+                        if (!id) return;
+                        setHierarchyDialog(prev => prev ? { ...prev, groupId: id } : null);
+                      }}
+                    >
+                      <SelectTrigger className="w-full h-9 text-xs">
+                        <SelectValue placeholder="Choose a Reading Group…">
+                          {ledGroups.find(group => group.id === hierarchyDialog.groupId)?.groupName || 'Choose a Reading Group…'}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ledGroups.map(group => (
+                          <SelectItem key={group.id} value={group.id} className="text-xs">{group.groupName}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                );
+              })()}
             </div>
 
             <AlertDialogFooter className="pt-3 border-t border-border flex flex-row items-center justify-end gap-2.5">
               <AlertDialogCancel onClick={() => setHierarchyDialog(null)} className="h-9 px-4 text-xs font-semibold rounded-xl cursor-pointer">Cancel</AlertDialogCancel>
               <AlertDialogAction
-                disabled={!hierarchyDialog.parentId || hierarchyDialog.parentOptions.length === 0}
+                disabled={!hierarchyDialog.parentId || hierarchyDialog.parentOptions.length === 0 || (hierarchyDialog.newRole === 'MEMBER' && groupsLedBy(hierarchyDialog.parentId, bvGroups, users).length > 1 && !hierarchyDialog.groupId)}
                 onClick={async () => {
                   if (!hierarchyDialog) return;
                   await handleAssignBvRole(
@@ -1480,6 +1541,7 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                     hierarchyDialog.newRole,
                     hierarchyDialog.parentId,
                     hierarchyDialog.parentName,
+                    hierarchyDialog.newRole === 'MEMBER' ? hierarchyDialog.groupId : undefined,
                   );
                   setHierarchyDialog(null);
                 }}

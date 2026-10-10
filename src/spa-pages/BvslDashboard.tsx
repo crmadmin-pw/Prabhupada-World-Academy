@@ -70,6 +70,11 @@ export default function BvslDashboard() {
   if (!profile) return <LoadingPage />;
 
   const bvslId = profile.userId || '';
+  const reportGroups = groups.map(group => ({
+    id: group.id,
+    groupId: group.groupId || group.id,
+    groupName: group.groupName,
+  }));
 
   const canView1on1 = !isSubFacilitatorOnly;
 
@@ -116,8 +121,8 @@ export default function BvslDashboard() {
               )}
               {activeTab === 'session' && <BvslSessionPanel bvslId={bvslId} groups={groups} />}
               {activeTab === 'members' && <BvslMembersTable bvslId={bvslId} />}
-              {activeTab === 'bvreport' && <BvSection guideId={bvslId} bvslMode />}
-              {activeTab === 'report' && <BvslSadhanaReportPanel bvslId={bvslId} />}
+              {activeTab === 'bvreport' && <BvSection guideId={bvslId} bvslMode groupOptions={reportGroups} />}
+              {activeTab === 'report' && <BvslSadhanaReportPanel bvslId={bvslId} groupOptions={reportGroups} />}
               {isFolk && activeTab === 'quizzes' && (
                 <BvslQuizPanel
                   groups={groups.map((g: any) => ({ id: g.id, groupName: g.groupName }))}

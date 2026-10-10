@@ -350,7 +350,7 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
               <Plus className="w-5 h-5 text-primary" /> Create New Reading Group
             </DialogTitle>
             <DialogDescription>
-              Add a new Bhakti Vriksha reading group and assign an RGF.
+              Add a new Bhakti Vriksha reading group and assign an RGF. One RGF can facilitate more than one group.
             </DialogDescription>
           </DialogHeader>
 

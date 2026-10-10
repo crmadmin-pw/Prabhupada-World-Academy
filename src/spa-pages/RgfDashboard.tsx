@@ -50,6 +50,11 @@ export default function RgfDashboard() {
   if (!profile) return <LoadingPage />;
 
   const bvslId = profile.userId || '';
+  const reportGroups = groups.map(group => ({
+    id: group.id,
+    groupId: group.groupId || group.id,
+    groupName: group.groupName,
+  }));
 
   const subtitle = [
     'RGF',
@@ -96,8 +101,8 @@ export default function RgfDashboard() {
               )}
               {activeTab === 'session' && <BvslSessionPanel bvslId={bvslId} groups={groups} />}
               {activeTab === 'members' && <BvslMembersTable bvslId={bvslId} canAssignSadhana={!isFolk} />}
-              {activeTab === 'bvreport' && <BvSection guideId={bvslId} bvslMode segment={isFolk ? 'FOLK' : 'PW'} />}
-              {activeTab === 'report' && <BvslSadhanaReportPanel bvslId={bvslId} hideImprovement={!isFolk} />}
+              {activeTab === 'bvreport' && <BvSection guideId={bvslId} bvslMode segment={isFolk ? 'FOLK' : 'PW'} groupOptions={reportGroups} />}
+              {activeTab === 'report' && <BvslSadhanaReportPanel bvslId={bvslId} hideImprovement={!isFolk} groupOptions={reportGroups} />}
               {activeTab === 'quizzes' && (isFolk ? (
                 <BvslQuizPanel
                   groups={groups.map((g: any) => ({ id: g.id, groupName: g.groupName }))}
