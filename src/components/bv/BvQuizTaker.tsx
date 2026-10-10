@@ -1,5 +1,6 @@
 import { useReactiveEffect } from '@/hooks/useReactiveEffect';
 import { useState, useEffect } from 'react';
+import { useUnsavedWork } from '@/lib/formActivity';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -44,6 +45,7 @@ export default function BvQuizTaker({ quizId, submissionId, onBack, onSubmitted 
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<SubmitResult | null>(null);
   const [showReview, setShowReview] = useState(false);
+  useUnsavedWork((!submissionId && !result) || submitting);
 
   useReactiveEffect((read) => {
     !read.background && !read.cancelled && setLoading(true);

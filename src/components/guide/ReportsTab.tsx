@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { GetGuideDetailedReportOutputType, recalculateScoresForDate } from '@/lib/endpoints-sdk';
 import { useEndpointQuery } from '@/hooks/useEndpointQuery';
 import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
+import { residencyMatchesDepartment } from '@/lib/residencyCategory';
 import { formatPwProgress, pwTarget } from '@/lib/pwSadhana';
 import { format, subDays, startOfMonth, endOfMonth, startOfISOWeek, endOfISOWeek, getISOWeek, getISOWeekYear } from 'date-fns';
 import { ASHRAY_LEVELS } from '@/types/enums';
@@ -920,7 +921,7 @@ export default function ReportsTab({ guideId = '', senderName, bvslMode, mentorM
 
                         <SelectContent>
                           <SelectItem value="all">All Residencies</SelectItem>
-                          {residencies.filter((r: any) => !r.residencyName?.includes('Prabhupada World') && !r.residencyName?.includes('PW')).map((r: any) => (
+                          {residencies.filter((r: any) => residencyMatchesDepartment(r, 'FOLK')).map((r: any) => (
                             <SelectItem key={r.residencyId} value={r.residencyId}>
                               {r.residencyName.replace(/^FOLK\s+/i, '')}
                             </SelectItem>

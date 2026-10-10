@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Users } from '@/lib/app-backend-sdk';
+import { resolveAuthenticatedProfile } from '@/lib/accountLinkReview';
 import { getApps, initializeApp, cert } from 'firebase-admin/app';
 import { verifyFirebaseIdToken } from '@/lib/verifyFirebaseIdToken';
 import { timingSafeEqual } from 'crypto';
@@ -14,8 +14,10 @@ import {
 } from '@/lib/apiAuthorization';
 import { isReadOnlyEndpoint } from '@/lib/realtimeChannels';
 import { withRequestQueries } from '@/lib/requestQueries';
+import { whenServerCacheShared } from '@/lib/serverCache';
 import { registerRealtimeQuery } from '@/lib/realtimeQueryRegistration';
 import { registerRealtimeIdentity } from '@/lib/realtimeIdentityRegistration';
+import { isRateLimited, RATE_LIMIT_MESSAGE } from '@/utils/rateLimit';
 
 interface SchemaIssue {
   message?: string;
@@ -36,12 +38,41 @@ interface EndpointConfig {
   execute(args: { input: unknown; context: { user: ApiUserContext | null } }): Promise<unknown> | unknown;
 }
 
-function errorDetails(error: unknown): { message: string; code?: string } {
-  if (error instanceof Error) {
-    const code = 'code' in error && typeof error.code === 'string' ? error.code : undefined;
-    return { message: error.message, code };
+export function caughtApiError(error: unknown): { status: number; message: string; code: string; retryAfterSeconds?: number } {
+  const failure = errorDetails(error);
+  const statusByCode: Record<string, number> = {
+    BAD_REQUEST: 400,
+    UNAUTHORIZED: 401,
+    FORBIDDEN: 403,
+    NOT_FOUND: 404,
+    CONFLICT: 409,
+    TOO_MANY_REQUESTS: 429,
+  };
+  return {
+    status: (failure.code && statusByCode[failure.code]) || 500,
+    message: failure.message,
+    code: failure.code || 'INTERNAL_ERROR',
+    retryAfterSeconds: failure.retryAfterSeconds,
+  };
+}
+
+function errorDetails(error: unknown): { message: string; code?: string; retryAfterSeconds?: number } {
+  const record = error && typeof error === 'object'
+    ? error as { message?: unknown; code?: unknown; retryAfterSeconds?: unknown }
+    : undefined;
+  const code = typeof record?.code === 'string' ? record.code : undefined;
+  const message = error instanceof Error
+    ? error.message
+    : typeof record?.message === 'string' && record.message.trim()
+      ? record.message
+      : 'Internal Server Error';
+  const retryAfterSeconds = typeof record?.retryAfterSeconds === 'number' && record.retryAfterSeconds > 0
+    ? Math.ceil(record.retryAfterSeconds)
+    : undefined;
+  if (code === 'TOO_MANY_REQUESTS' || /rate limit exceeded|too many requests/i.test(message)) {
+    return { message: RATE_LIMIT_MESSAGE, code: 'TOO_MANY_REQUESTS', retryAfterSeconds };
   }
-  return { message: 'Internal Server Error' };
+  return { message, code };
 }
 
 // Initialize Firebase Admin safely
@@ -90,23 +121,24 @@ if (apps.length === 0) {
   }
 }
 
-async function verifyToken(token: string): Promise<{ email: string; uid: string; emailVerified: boolean }> {
+async function verifyToken(token: string): Promise<{ email: string; uid: string; emailVerified: boolean; authTime: number | null }> {
   const decoded = await verifyFirebaseIdToken(token);
   if (!decoded.email) throw new Error('Unauthorized: An email address is required.');
   return {
     email: decoded.email,
     uid: decoded.uid,
     emailVerified: decoded.email_verified === true,
+    authTime: typeof decoded.auth_time === 'number' ? decoded.auth_time : null,
   };
 }
 
 type VerifiedUser = Awaited<ReturnType<typeof verifyToken>>;
 
 // A dashboard commonly starts several endpoint requests together. Without a
-// burst cache, every request independently repeats the same UID lookup, email
-// fallback queries, and first-login linking work before its real endpoint can
-// even start. Keep this deliberately short so role/status revocations remain
-// effectively immediate while requests from one render share the lookup.
+// burst cache, every request independently repeats the same UID lookup before
+// its real endpoint can even start. Keep this deliberately short so role/status
+// revocations remain effectively immediate while requests from one render share
+// the lookup. Email matches are not linked here.
 const resolvedUserBurstCache = new Map<string, { user: ApiDatabaseUser | null; expiresAt: number }>();
 const resolvedUserInFlight = new Map<string, Promise<ApiDatabaseUser | null>>();
 const RESOLVED_USER_BURST_TTL_MS = 2_000;
@@ -123,36 +155,7 @@ async function resolveDatabaseUser(decodedUser: VerifiedUser, freshAuthority = f
   if (!freshAuthority && existing) return existing;
 
   const resolution = (async (): Promise<ApiDatabaseUser | null> => {
-    const emailLower = decodedUser.email.toLowerCase();
-    const uidRecord = await Users.findOne({ id: decodedUser.uid }).catch(() => null);
-    const uidRecordIsProfile = !!(uidRecord?.userId && uidRecord?.status);
-    let dbUser: ApiDatabaseUser | null = uidRecordIsProfile ? uidRecord : null;
-
-    if (!dbUser) {
-      dbUser = await Users.findOne({ filters: { firebaseUid: decodedUser.uid } }).catch(() => null);
-    }
-    if (!dbUser) {
-      const [exactEmailMatches, lowerEmailMatches] = await Promise.all([
-        Users.findAll({ filters: { email: decodedUser.email }, limit: 10 }).catch(() => ({ records: [] })),
-        Users.findAll({ filters: { email: emailLower }, limit: 10 }).catch(() => ({ records: [] })),
-      ]);
-      const emailCandidates = [...(exactEmailMatches.records || []), ...(lowerEmailMatches.records || [])]
-        .filter((record, index, records) => records.findIndex(item => item.id === record.id) === index);
-      dbUser = emailCandidates.find(record => record.userId && record.status) || emailCandidates[0] || uidRecord || null;
-    }
-
-    // Bulk-created profiles exist before the member's first Google login.
-    if (dbUser?.id && dbUser.id !== decodedUser.uid && dbUser.firebaseUid !== decodedUser.uid) {
-      await Users.update({
-        id: dbUser.id,
-        record: { firebaseUid: decodedUser.uid, authLinkedAt: new Date().toISOString() },
-      });
-      dbUser.firebaseUid = decodedUser.uid;
-
-      if (uidRecord?.id === decodedUser.uid && !uidRecordIsProfile && uidRecord.id !== dbUser.id) {
-        await Users.delete({ id: uidRecord.id }).catch(() => undefined);
-      }
-    }
+    const dbUser = await resolveAuthenticatedProfile(decodedUser.uid, decodedUser.email);
 
     if (resolvedUserBurstCache.size >= MAX_RESOLVED_USER_CACHE_ENTRIES) {
       const oldestKey = resolvedUserBurstCache.keys().next().value;
@@ -196,26 +199,7 @@ function verifyPublicEndpointSecret(req: NextRequest, endpointConfig: EndpointCo
   return !!provided && secretsMatch(provided, expected);
 }
 
-// Sliding window in-memory rate limiter per key (max 60 requests per minute for IPs, 180 for authenticated keys)
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT_WINDOW_MS = 60_000;
-
-function isRateLimited(key: string, limit: number): boolean {
-  const now = Date.now();
-  const entry = rateLimitMap.get(key);
-
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    return false;
-  }
-
-  if (entry.count >= limit) {
-    return true;
-  }
-
-  entry.count++;
-  return false;
-}
 
 export async function POST(
   req: NextRequest,
@@ -229,10 +213,10 @@ export async function POST(
   const rateLimitKey = token ? `token:${token.slice(-30)}` : `ip:${req.headers.get('x-forwarded-for')?.split(',')[0] || '127.0.0.1'}`;
   const limit = token ? 180 : 60;
 
-  if (process.env.NODE_ENV !== 'development' && isRateLimited(rateLimitKey, limit)) {
+  if (process.env.NODE_ENV !== 'development' && await isRateLimited(rateLimitKey, limit, RATE_LIMIT_WINDOW_MS)) {
     return NextResponse.json(
-      { message: 'Too many requests. Please slow down and try again.' },
-      { status: 429 }
+      { message: RATE_LIMIT_MESSAGE, code: 'TOO_MANY_REQUESTS' },
+      { status: 429, headers: { 'Retry-After': String(RATE_LIMIT_WINDOW_MS / 1000) } }
     );
   }
 
@@ -297,7 +281,7 @@ export async function POST(
         context.user = buildApiUserContext(decodedUser, dbUser);
         authDurationMs = Date.now() - authStartedAt;
       } catch (authError: unknown) {
-        const authFailure = errorDetails(authError);
+        const authFailure = caughtApiError(authError);
         console.error('[API Router] Authentication error:', authError);
         // Never fail open when a caller presents an invalid token, even for a public endpoint.
         return NextResponse.json(
@@ -378,25 +362,23 @@ export async function POST(
         `(auth ${authDurationMs}ms, endpoint ${endpointDurationMs}ms)`,
       );
     }
+    await whenServerCacheShared();
     return response;
 
   } catch (error: unknown) {
-    const failure = errorDetails(error);
-    console.error(`[API Router] Error running ${endpoint}:`, error);
-    
-    // Check if it is a AppError or contains code property
-    const statusByCode: Record<string, number> = {
-      BAD_REQUEST: 400,
-      UNAUTHORIZED: 401,
-      FORBIDDEN: 403,
-      NOT_FOUND: 404,
-      CONFLICT: 409,
-      TOO_MANY_REQUESTS: 429,
-    };
-    const status = (failure.code && statusByCode[failure.code]) || 500;
+    const failure = caughtApiError(error);
+    if (failure.code !== 'TOO_MANY_REQUESTS') {
+      console.error(`[API Router] Error running ${endpoint}:`, error);
+    }
+    await whenServerCacheShared();
     return NextResponse.json(
-      { message: failure.message, code: failure.code || 'INTERNAL_ERROR' },
-      { status }
+      { message: failure.message, code: failure.code },
+      {
+        status: failure.status,
+        headers: failure.code === 'TOO_MANY_REQUESTS'
+          ? { 'Retry-After': String(failure.retryAfterSeconds || RATE_LIMIT_WINDOW_MS / 1000) }
+          : undefined,
+      }
     );
   }
 }

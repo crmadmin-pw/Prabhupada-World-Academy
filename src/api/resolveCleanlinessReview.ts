@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createEndpoint, CleanlinessReviewRequests, CleanlinessInspections, SadhanaEntries, Users, AppError } from '@/lib/backend-sdk';
+import { refreshUserPeriodSummaries } from '../lib/sadhanaPeriodSummary';
 
 export default createEndpoint({
   description: 'Approve or dismiss a cleanliness review request',
@@ -27,9 +28,9 @@ export default createEndpoint({
       // Find and update the sadhana entry for this date + user
       const rawUserId = Array.isArray(review.user) ? review.user[0] : review.user;
       const userRecord = rawUserId
-        ? await Users.findOne({ id: rawUserId, fields: ['id', 'userId', 'email'] }).catch(() => null) ||
-          await Users.findOne({ filters: { userId: rawUserId }, fields: ['id', 'userId', 'email'] }).catch(() => null) ||
-          await Users.findOne({ filters: { email: rawUserId }, fields: ['id', 'userId', 'email'] }).catch(() => null)
+        ? await Users.findOne({ id: rawUserId, fields: ['id', 'userId', 'email'] }) ||
+          await Users.findOne({ filters: { userId: rawUserId }, fields: ['id', 'userId', 'email'] }) ||
+          await Users.findOne({ filters: { email: rawUserId }, fields: ['id', 'userId', 'email'] })
         : null;
       const userIds = [...new Set([rawUserId, (userRecord as any)?.id, (userRecord as any)?.userId, (userRecord as any)?.email].filter(Boolean))];
       const date = review.date;
@@ -51,6 +52,10 @@ export default createEndpoint({
                 totalScore: newTotal,
                 scorePercent: newPct,
               } as any,
+            });
+            await refreshUserPeriodSummaries({
+              userId: String(Array.isArray(entry.user) ? entry.user[0] : entry.user || userIds[0] || ''),
+              entryDate: String(date).slice(0, 10),
             });
           }
         }

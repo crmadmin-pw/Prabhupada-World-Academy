@@ -30,7 +30,7 @@ export default createEndpoint({
     const uid = context.user!.id;
     const today = getTodayIST();
 
-    const userRecord = await Users.findOne({ id: uid, fields: ['id', 'userId', 'fullName', 'email', 'bvGroupId', 'bvGroupName', 'bvRegistrationStatus', 'isBvMember', 'pendingBvGroupAssignmentNotice', 'segment', 'isPrabhupadaWorldUser'] }).catch(() => null);
+    const userRecord = await Users.findOne({ id: uid, fields: ['id', 'userId', 'fullName', 'email', 'bvGroupId', 'bvGroupName', 'bvRegistrationStatus', 'isBvMember', 'pendingBvGroupAssignmentNotice', 'segment', 'isPrabhupadaWorldUser'] });
     const altUid = userRecord?.userId || uid;
     const userIdentityKeys = new Set([
       uid,
@@ -190,18 +190,18 @@ export default createEndpoint({
 
     const groupFields = ['id', 'groupId', 'groupName', 'bvslLeader', 'bvslId', 'bvslName'];
     const groupRecord = await BvGroups.findOne({ id: storedGroupId, fields: groupFields })
-      .catch(() => null)
+      
       || await BvGroups.findOne({ filters: { groupId: storedGroupId }, fields: groupFields })
-        .catch(() => null)
+        
       || await BvGroups.findOne({ filters: { groupName: storedGroupId }, fields: groupFields })
-        .catch(() => null);
+        ;
     const groupQueryRefs = [...new Set([storedGroupId, groupRecord?.id, groupRecord?.groupId, groupRecord?.groupName].flatMap(exactValues))];
     const groupMatchKeys = new Set(groupQueryRefs.flatMap(referenceValues));
     const [membersByGroup, membersByGroupId, attendanceByGroup, attendanceByGroupId] = await Promise.all([
       BvGroupMembers.findAll({ filters: { group: { in: groupQueryRefs } }, fields: ['id', 'user', 'userId', 'memberId'], limit: 1000 }),
-      BvGroupMembers.findAll({ filters: { groupId: { in: groupQueryRefs } }, fields: ['id', 'user', 'userId', 'memberId'], limit: 1000 }).catch(() => ({ records: [] })),
+      BvGroupMembers.findAll({ filters: { groupId: { in: groupQueryRefs } }, fields: ['id', 'user', 'userId', 'memberId'], limit: 1000 }),
       BvAttendance.findAll({ filters: { group: { in: groupQueryRefs } }, fields: ['id', 'user', 'group', 'groupId', 'present', 'attendanceDate'], limit: 1000 }),
-      BvAttendance.findAll({ filters: { groupId: { in: groupQueryRefs } }, fields: ['id', 'user', 'group', 'groupId', 'present', 'attendanceDate'], limit: 1000 }).catch(() => ({ records: [] })),
+      BvAttendance.findAll({ filters: { groupId: { in: groupQueryRefs } }, fields: ['id', 'user', 'group', 'groupId', 'present', 'attendanceDate'], limit: 1000 }),
     ]);
 
     const group = groupRecord as any;
@@ -213,7 +213,7 @@ export default createEndpoint({
     if (groupMemberRecords.length === 0) {
       const { records: allMemberships } = await BvGroupMembers.findAll({
         fields: ['id', 'group', 'groupId', 'user', 'userId', 'memberId'], limit: 5000,
-      }).catch(() => ({ records: [] }));
+      });
       groupMemberRecords = allMemberships.filter((member: any) =>
         referenceValues([member.group, member.groupId]).some(value => groupMatchKeys.has(value))
       );
@@ -230,7 +230,7 @@ export default createEndpoint({
       const { records: attendanceRows } = await BvAttendance.findAll({
         fields: ['id', 'user', 'group', 'groupId', 'present', 'attendanceDate'],
         limit: 5000,
-      }).catch(() => ({ records: [] }));
+      });
       allGroupAtt = attendanceRows.filter((attendance: any) =>
         referenceValues([attendance.group, attendance.groupId]).some(value => groupMatchKeys.has(value))
       );
@@ -277,8 +277,8 @@ export default createEndpoint({
       if (leaderRec) {
         bvslName = leaderRec.fullName || '';
       } else {
-        const gRec = await Guides.findOne({ id: leaderId, fields: ['id', 'fullName'] }).catch(() => null) ||
-                     await Guides.findOne({ filters: { guideId: leaderId }, fields: ['id', 'fullName'] }).catch(() => null);
+        const gRec = await Guides.findOne({ id: leaderId, fields: ['id', 'fullName'] }) ||
+                     await Guides.findOne({ filters: { guideId: leaderId }, fields: ['id', 'fullName'] });
         if (gRec) {
           bvslName = gRec.fullName || '';
         }

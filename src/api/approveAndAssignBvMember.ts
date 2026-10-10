@@ -34,15 +34,15 @@ async function resolveRegistrationUser(registration: any, registrationId: string
     .filter(Boolean))];
 
   for (const key of identityKeys) {
-    const user = await Users.findOne({ id: key }).catch(() => null) ||
-      await Users.findOne({ filters: { userId: key } }).catch(() => null);
+    const user = await Users.findOne({ id: key }) ||
+      await Users.findOne({ filters: { userId: key } });
     if (user) return user;
   }
 
   const email = firstValue(registration?.email).toLowerCase();
   if (email) {
-    const user = await Users.findOne({ filters: { email } }).catch(() => null) ||
-      await Users.findOne({ filters: { email: firstValue(registration?.email) } }).catch(() => null);
+    const user = await Users.findOne({ filters: { email } }) ||
+      await Users.findOne({ filters: { email: firstValue(registration?.email) } });
     if (user) return user;
   }
 
@@ -57,7 +57,7 @@ async function resolveRegistrationUser(registration: any, registrationId: string
   const { records: users } = await Users.findAll({
     fields: ['id', 'userId', 'uid', 'authUid', 'email', 'phone', 'fullName'],
     limit: 5000,
-  }).catch(() => ({ records: [] }));
+  });
   const normalizedKeys = new Set(identityKeys.map(key => key.toLowerCase()));
   return users.find((user: any) => {
     const aliases = [user.id, user.userId, user.uid, user.authUid]
@@ -115,14 +115,14 @@ export default createEndpoint({
 
     // Real registration documents are also named BVREG-<userId>. Treat the id
     // as synthetic only when no BvMemberRegistrations document exists.
-    let reg: any = await BvMemberRegistrations.findOne({ id: input.registrationId }).catch(() => null);
+    let reg: any = await BvMemberRegistrations.findOne({ id: input.registrationId });
     const synthetic = !reg;
     if (synthetic) {
       if (!isSyntheticId(input.registrationId)) {
         throw new AppError({ code: 'NOT_FOUND', message: 'Registration request not found' });
       }
       const userDbId = input.registrationId.replace(/^BVREG-/, '');
-      const userRec = await Users.findOne({ id: userDbId }).catch(() => null);
+      const userRec = await Users.findOne({ id: userDbId });
       if (!userRec) throw new AppError({ code: 'NOT_FOUND', message: 'User record not found for synthetic registration' });
       reg = { id: null, userId: userRec.id, userDbId: userRec.id, email: userRec.email || '' };
     }
@@ -160,7 +160,7 @@ export default createEndpoint({
       ].filter(Boolean);
 
       for (const registrationId of [...new Set(relatedRegistrationIds)]) {
-        const relatedReg = await BvMemberRegistrations.findOne({ id: registrationId }).catch(() => null);
+        const relatedReg = await BvMemberRegistrations.findOne({ id: registrationId });
         if (!relatedReg) continue;
         await BvMemberRegistrations.update({
           id: relatedReg.id,
@@ -186,7 +186,7 @@ export default createEndpoint({
 
       // 2. Add member to group
       const memberRecordId = `BVMEM-${targetUserDbId}-${group.id}`;
-      const existingMember = await BvGroupMembers.findOne({ id: memberRecordId }).catch(() => null);
+      const existingMember = await BvGroupMembers.findOne({ id: memberRecordId });
       if (!existingMember) {
         await BvGroupMembers.create({
           record: {
@@ -206,9 +206,9 @@ export default createEndpoint({
       const rawRgfId = Array.isArray(group.bvslLeader) ? group.bvslLeader[0] : (group.bvslLeader || group.bvslId || group.guide);
       let rgfUser: any = null;
       if (rawRgfId) {
-        rgfUser = await Users.findOne({ id: rawRgfId }).catch(() => null)
-               || await Users.findOne({ filters: { userId: rawRgfId } }).catch(() => null)
-               || await Users.findOne({ filters: { email: rawRgfId } }).catch(() => null);
+        rgfUser = await Users.findOne({ id: rawRgfId })
+               || await Users.findOne({ filters: { userId: rawRgfId } })
+               || await Users.findOne({ filters: { email: rawRgfId } });
       }
 
       const formatEmailToName = (nameStr: string, fallback: string) => {

@@ -139,6 +139,13 @@ export function directoryReads(endpoint: string): readonly string[] {
   return DIRECTORY_MUTATIONS.has(endpoint) ? DIRECTORY_READS : [];
 }
 
+const ACCOUNT_LINK_MUTATIONS = new Set(['reviewAccountLink']);
+const ACCOUNT_LINK_READS = ['getPendingAccountLinks'] as const;
+
+export function accountLinkReads(endpoint: string): readonly string[] {
+  return ACCOUNT_LINK_MUTATIONS.has(endpoint) ? ACCOUNT_LINK_READS : [];
+}
+
 const QUIZ_MUTATIONS = new Set(['createBvQuiz', 'deleteBvQuiz', 'setBvQuizGroupActive']);
 const QUIZ_READS = [
   'getBvQuizDetail',

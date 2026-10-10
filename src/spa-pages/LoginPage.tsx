@@ -35,6 +35,8 @@ export default function LoginPage({ mode = 'signin', isPw = false }: { mode?: 's
         navigate('/pending');
       } else if (profile.status === 'REJECTED') {
         navigate('/rejected');
+      } else if (profile.status === 'PENDING_DELETION') {
+        navigate('/account-deletion');
       }
     }
   }, [user, profile, navigate]);

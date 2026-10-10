@@ -1,5 +1,5 @@
 import { AppError, BvGroups, BvGroupMembers, Users } from '@/lib/backend-sdk';
-import { getScopedHierarchyUserIds, isHierarchyAdmin, isUserInHierarchy, hierarchyRefs } from './hierarchyUtils';
+import { getScopedHierarchyUserIds, isHierarchyAdmin, isUserInHierarchy, hierarchyRefs, readScopedUsers } from './hierarchyUtils';
 
 const IDENTITY_FIELDS = [
   'id', 'userId', 'email', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId',
@@ -232,22 +232,20 @@ export async function resolveBvScopedGroups(
     'isBvSupervisor', 'isBvMentor', 'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator',
     'bvReportingFacilitatorId',
   ];
-  const caller = await Users.findOne({ id: contextUser.id, fields: callerFields }).catch(() => undefined) ||
-    await Users.findOne({ filters: { userId: contextUser.userId || contextUser.id }, fields: callerFields }).catch(() => undefined) ||
-    await Users.findOne({ filters: { email: contextUser.email }, fields: callerFields }).catch(() => undefined);
+  const caller = await Users.findOne({ id: contextUser.id, fields: callerFields }) ||
+    await Users.findOne({ filters: { userId: contextUser.userId || contextUser.id }, fields: callerFields }) ||
+    await Users.findOne({ filters: { email: contextUser.email }, fields: callerFields });
 
   const callerAliases = new Set([
     contextUser.id, contextUser.userId, contextUser.email,
     caller?.id, caller?.userId, caller?.email,
   ].flatMap(refs));
-  const allUsersResult = await Users.findAll({
-    fields: [
-      'id', 'userId', 'email', 'role', 'segment', 'isPrabhupadaWorldUser', 'guide',
-      'isBvSupervisor', 'isBvMentor', 'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator',
-      'bvReportingAdminId', 'bvReportingSupervisorId', 'bvReportingFacilitatorId',
-    ],
-    limit: 5000,
-  }).catch(() => ({ records: [] }));
+  const reportingFields = [
+    'id', 'userId', 'email', 'role', 'segment', 'isPrabhupadaWorldUser', 'guide',
+    'isBvSupervisor', 'isBvMentor', 'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator',
+    'bvReportingAdminId', 'bvReportingSupervisorId', 'bvReportingFacilitatorId',
+  ];
+  const allUsersResult = await readScopedUsers(contextUser, { fields: reportingFields, limit: 5000 });
   const allUsers = allUsersResult.records as UserRecord[];
 
   const parentAliases = new Set([
@@ -256,6 +254,22 @@ export async function resolveBvScopedGroups(
   ].flatMap(refs));
 
   if (parentAliases.size > 0) {
+    const known = new Set(allUsers.flatMap(user => bvUserAliases(user)));
+    const rawParents = [contextUser.bvReportingFacilitatorId, (caller as UserRecord | undefined)?.bvReportingFacilitatorId]
+      .flatMap(value => Array.isArray(value) ? value.flat(Infinity) : [value])
+      .filter(Boolean)
+      .map(value => String(value).trim())
+      .filter(Boolean);
+    const missing = [...new Set([...parentAliases, ...rawParents])].filter(alias => !known.has(alias) && !known.has(alias.toLowerCase()));
+    for (const field of ['id', 'userId', 'email']) {
+      for (let index = 0; index < missing.length; index += 30) {
+        const chunk = missing.slice(index, index + 30);
+        const { records } = await Users.findAll({
+          filters: { [field]: { in: chunk } }, fields: reportingFields, limit: 30,
+        });
+        allUsers.push(...(records as UserRecord[]));
+      }
+    }
     for (const parent of allUsers) {
       if (bvUserAliases(parent).some(alias => parentAliases.has(alias))) {
         bvUserAliases(parent).forEach(alias => parentAliases.add(alias));

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { getScopedHierarchyUserIds, isUserInHierarchy } from '../lib/hierarchyUtils';
+import { getScopedHierarchyUserIds, isUserInHierarchy, readScopedUsers } from '../lib/hierarchyUtils';
 import { scopeRealtimeDependencies } from '@/lib/requestQueries';
 import { createEndpoint, AppError, Users, BvslPreachingEntries, BvGroups, Guides, SadhanaEntries } from '@/lib/backend-sdk';
 import { requireGuideRole } from '../lib/userUtils';
@@ -61,9 +61,9 @@ async function _fetchBvPreachingReport({ input, context }: { input: any; context
 
     // Robust guide ID resolution: resolve Users-table UUID → Guides-table UUID
     if (guideDbId) {
-      const directGuideRec = await Guides.findOne({ id: guideDbId, fields: ['id'] }).catch(() => undefined);
+      const directGuideRec = await Guides.findOne({ id: guideDbId, fields: ['id'] });
       if (!directGuideRec) {
-        const guideUser = await Users.findOne({ id: guideDbId, fields: ['id', 'email'] }).catch(() => undefined);
+        const guideUser = await Users.findOne({ id: guideDbId, fields: ['id', 'email'] });
         if (guideUser?.email) {
           const guideByEmail = await Guides.findOne({ filters: { email: guideUser.email }, fields: ['id'] });
           if (guideByEmail) guideDbId = guideByEmail.id;
@@ -125,12 +125,12 @@ async function _fetchBvPreachingReport({ input, context }: { input: any; context
       if (allGuideIds.length > 0) {
         const bvslMap = new Map<string, any>();
         const fetches = await Promise.all(allGuideIds.map(gid =>
-          Users.findAll({ filters: { isBvsl: true, status: 'Active', guide: gid }, fields: ['id', 'userId', 'fullName', 'ashrayLevel', 'residency', 'residencyApproved', 'phone', 'role', 'isBvAdmin', 'isBvSuperAdmin'], limit: 200 })
+          readScopedUsers(context.user, { filters: { isBvsl: true, status: 'Active', guide: gid }, fields: ['id', 'userId', 'fullName', 'ashrayLevel', 'residency', 'residencyApproved', 'phone', 'role', 'isBvAdmin', 'isBvSuperAdmin'], limit: 200 })
         ));
         for (const res of fetches) for (const u of res.records) bvslMap.set(u.id, u);
         // Also get BVSLs from the residencies directly (in case they're not assigned to a specific guide)
         const resFetches = await Promise.all(residencyIds.map((rid: string) =>
-          Users.findAll({ filters: { isBvsl: true, status: 'Active', residency: rid }, fields: ['id', 'userId', 'fullName', 'ashrayLevel', 'residency', 'residencyApproved', 'phone', 'role', 'isBvAdmin', 'isBvSuperAdmin'], limit: 200 })
+          readScopedUsers(context.user, { filters: { isBvsl: true, status: 'Active', residency: rid }, fields: ['id', 'userId', 'fullName', 'ashrayLevel', 'residency', 'residencyApproved', 'phone', 'role', 'isBvAdmin', 'isBvSuperAdmin'], limit: 200 })
         ));
         for (const res of resFetches) for (const u of res.records) bvslMap.set(u.id, u);
         bvslUsers = Array.from(bvslMap.values());
@@ -139,7 +139,7 @@ async function _fetchBvPreachingReport({ input, context }: { input: any; context
       const userFilter: any = { isBvsl: true, status: 'Active' };
       if (guideDbId) userFilter.guide = guideDbId;
 
-      const { records } = await Users.findAll({
+      const { records } = await readScopedUsers(context.user, {
         filters: userFilter,
         fields: ['id', 'userId', 'fullName', 'ashrayLevel', 'residency', 'residencyApproved', 'phone', 'role', 'isBvAdmin', 'isBvSuperAdmin'],
         limit: 200,

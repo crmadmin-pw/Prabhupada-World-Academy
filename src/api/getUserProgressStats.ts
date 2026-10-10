@@ -379,7 +379,7 @@ export default createEndpoint({
         found = records.find(r => r.id !== r.userId) || records[0];
       }
       if (!found) {
-        const byId = await Users.findOne({ id: targetUserId, fields: USER_FIELDS }).catch(() => undefined);
+        const byId = await Users.findOne({ id: targetUserId, fields: USER_FIELDS });
         if (byId) {
           if (byId.id === byId.userId) {
             const { records } = await Users.findAll({ filters: { userId: byId.userId } as any, fields: USER_FIELDS });
@@ -445,7 +445,7 @@ export default createEndpoint({
           filters: { user },
           fields: ['id', 'attendanceDate', 'present', 'status'],
           limit: 500,
-        }).catch(() => ({ records: [] }))
+        })
       ));
       const byDate = new Map<string, boolean>();
       for (const attendance of results.flatMap(result => result.records)) {

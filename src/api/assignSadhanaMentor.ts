@@ -31,8 +31,8 @@ export default createEndpoint({
         record: { sadhanaMentor: null }
       });
     } else {
-      const mentor = await Users.findOne({ id: input.sadhanaMentorId }).catch(() => null) ??
-                     await Users.findOne({ filters: { userId: input.sadhanaMentorId } }).catch(() => null);
+      const mentor = await Users.findOne({ id: input.sadhanaMentorId }) ??
+                     await Users.findOne({ filters: { userId: input.sadhanaMentorId } });
       if (!mentor) throw new AppError({ code: 'NOT_FOUND', message: 'Sadhana Mentor not found' });
 
       await Users.update({

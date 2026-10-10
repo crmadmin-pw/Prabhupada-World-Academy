@@ -22,30 +22,30 @@ export default createEndpoint({
     let guideDbId: string | null = null;
 
     // Step 1: Try direct Guides-table lookup by UUID
-    const directGuideRec = await Guides.findOne({ id: input.guideId, fields: ['id'] }).catch(() => undefined);
+    const directGuideRec = await Guides.findOne({ id: input.guideId, fields: ['id'] });
     if (directGuideRec) {
       guideDbId = directGuideRec.id;
     } else {
       // Step 2: Try as a Users-table UUID — look up email, then find Guides record
-      const guideUser = await Users.findOne({ id: input.guideId, fields: ['id', 'email'] }).catch(() => undefined);
+      const guideUser = await Users.findOne({ id: input.guideId, fields: ['id', 'email'] });
       if (guideUser?.email) {
-        const guideByEmail = await Guides.findOne({ filters: { email: guideUser.email }, fields: ['id'] }).catch(() => undefined);
+        const guideByEmail = await Guides.findOne({ filters: { email: guideUser.email }, fields: ['id'] });
         if (guideByEmail) guideDbId = guideByEmail.id;
       }
       // Step 3: Fallback — legacy custom guideId string field
       if (!guideDbId) {
-        const guideByCustomId = await Guides.findOne({ filters: { guideId: input.guideId }, fields: ['id'] }).catch(() => undefined);
+        const guideByCustomId = await Guides.findOne({ filters: { guideId: input.guideId }, fields: ['id'] });
         if (guideByCustomId) guideDbId = guideByCustomId.id;
       }
     }
 
     if (!guideDbId) return { members: [] };
 
-    const guideRec = await Guides.findOne({ id: guideDbId, fields: ['id', 'guideId', 'email', 'userId', 'segment'] }).catch(() => null);
+    const guideRec = await Guides.findOne({ id: guideDbId, fields: ['id', 'guideId', 'email', 'userId', 'segment'] });
     const guideSegment = guideRec?.segment || context.user.segment || 'PW';
     const guideUser = guideRec?.email
-      ? await Users.findOne({ filters: { email: guideRec.email }, fields: ['id', 'userId', 'email'] }).catch(() => null)
-      : await Users.findOne({ id: input.guideId, fields: ['id', 'userId', 'email'] }).catch(() => null);
+      ? await Users.findOne({ filters: { email: guideRec.email }, fields: ['id', 'userId', 'email'] })
+      : await Users.findOne({ id: input.guideId, fields: ['id', 'userId', 'email'] });
     // Approved members may be linked by a user id rather than the Guides-table
     // UUID. Match every identity the approving admin can be stored under.
     const ownerIds = [...new Set(
@@ -88,7 +88,7 @@ export default createEndpoint({
       filters: { [field]: ownerId, status: 'Active', segment: guideSegment },
       fields: memberFields,
       limit: 1000,
-    }).catch(() => ({ records: [] })))));
+    }))));
     const usersById = new Map<string, any>();
     for (const page of linkedPages) {
       for (const user of page.records || []) if (user?.id) usersById.set(user.id, user);

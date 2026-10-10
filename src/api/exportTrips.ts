@@ -21,8 +21,8 @@ export default createEndpoint({
 
     const filters: any = {};
     if (input.userId) {
-      const user = await Users.findOne({ id: input.userId }).catch(() => undefined)
-        || await Users.findOne({ filters: { userId: input.userId } }).catch(() => undefined);
+      const user = await Users.findOne({ id: input.userId })
+        || await Users.findOne({ filters: { userId: input.userId } });
       if (user) filters.user = user.id;
     }
 

@@ -30,8 +30,8 @@ export default createEndpoint({
     let rgfUser: any = null;
     const Users = (await import('@/lib/backend-sdk')).Users;
     if (rawRgfId) {
-      rgfUser = await Users.findOne({ id: rawRgfId }).catch(() => null)
-             || await Users.findOne({ filters: { userId: rawRgfId } }).catch(() => null);
+      rgfUser = await Users.findOne({ id: rawRgfId })
+             || await Users.findOne({ filters: { userId: rawRgfId } });
     }
 
     const formatEmailToName = (nameStr: string, fallback: string) => {
@@ -53,8 +53,8 @@ export default createEndpoint({
     // Standardize all input userIds to standard Users table database UUIDs
     const resolvedUserIds: string[] = [];
     for (const uId of input.userIds) {
-      const user = await Users.findOne({ id: uId }).catch(() => null)
-                || await Users.findOne({ filters: { userId: uId } }).catch(() => null);
+      const user = await Users.findOne({ id: uId })
+                || await Users.findOne({ filters: { userId: uId } });
       if (user) {
         resolvedUserIds.push(user.id);
       }

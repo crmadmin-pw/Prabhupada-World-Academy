@@ -24,7 +24,7 @@ async function resolveUser(id: string) {
     if (registered) return registered;
     if (records.length > 0) return records[0];
   }
-  const byId = await Users.findOne({ id, fields: USER_FIELDS }).catch(() => undefined);
+  const byId = await Users.findOne({ id, fields: USER_FIELDS });
   if (byId) {
     if (byId.id === byId.userId) {
       const { records } = await Users.findAll({ filters: { userId: byId.userId }, fields: USER_FIELDS });
@@ -58,16 +58,16 @@ async function isBvslMember(caller: any, targetUserId: string, rgsfOnly = false)
 
   const parentRgfKeys = new Set<string>();
   if (rgsfOnly) {
-    const callerRecord = await Users.findOne({ id: caller?.id, fields: ['id', 'userId', 'email', 'bvReportingFacilitatorId'] }).catch(() => undefined) ||
-      await Users.findOne({ filters: { userId: caller?.userId || caller?.id }, fields: ['id', 'userId', 'email', 'bvReportingFacilitatorId'] }).catch(() => undefined) ||
-      await Users.findOne({ filters: { email: caller?.email }, fields: ['id', 'userId', 'email', 'bvReportingFacilitatorId'] }).catch(() => undefined);
+    const callerRecord = await Users.findOne({ id: caller?.id, fields: ['id', 'userId', 'email', 'bvReportingFacilitatorId'] }) ||
+      await Users.findOne({ filters: { userId: caller?.userId || caller?.id }, fields: ['id', 'userId', 'email', 'bvReportingFacilitatorId'] }) ||
+      await Users.findOne({ filters: { email: caller?.email }, fields: ['id', 'userId', 'email', 'bvReportingFacilitatorId'] });
     const parentRefValue = caller?.bvReportingFacilitatorId || (callerRecord as any)?.bvReportingFacilitatorId;
     const parentRef = parentRefValue ? String(parentRefValue).toLowerCase() : '';
     if (parentRef) {
       parentRgfKeys.add(parentRef);
-      const parent = await Users.findOne({ filters: { userId: parentRefValue }, fields: ['id', 'userId', 'email'] }).catch(() => undefined) ||
-        await Users.findOne({ id: parentRefValue, fields: ['id', 'userId', 'email'] }).catch(() => undefined) ||
-        await Users.findOne({ filters: { email: parentRefValue }, fields: ['id', 'userId', 'email'] }).catch(() => undefined);
+      const parent = await Users.findOne({ filters: { userId: parentRefValue }, fields: ['id', 'userId', 'email'] }) ||
+        await Users.findOne({ id: parentRefValue, fields: ['id', 'userId', 'email'] }) ||
+        await Users.findOne({ filters: { email: parentRefValue }, fields: ['id', 'userId', 'email'] });
       [parent?.id, parent?.userId, parent?.email].filter(Boolean).forEach(value => parentRgfKeys.add(String(value).toLowerCase()));
     }
   }
@@ -98,7 +98,7 @@ async function isBvslMember(caller: any, targetUserId: string, rgsfOnly = false)
   if (groupIds.length === 0) return false;
 
   const targetKeys = [targetUserId].filter(Boolean).map((value) => String(value));
-  const targetUser = await Users.findOne({ id: targetUserId, fields: ['id', 'userId', 'email'] }).catch(() => undefined);
+  const targetUser = await Users.findOne({ id: targetUserId, fields: ['id', 'userId', 'email'] });
   if (targetUser?.userId) targetKeys.push(String(targetUser.userId));
   if (targetUser?.email) targetKeys.push(String(targetUser.email));
 
@@ -106,7 +106,7 @@ async function isBvslMember(caller: any, targetUserId: string, rgsfOnly = false)
     filters: { group: { in: groupIds }, user: userKey } as any,
     fields: ['id'],
     limit: 1,
-  }).catch(() => ({ records: [] }))));
+  })));
 
   return membershipResults.some((result) => result.records.length > 0);
 }
@@ -232,7 +232,7 @@ export default createEndpoint({
                fields: ENTRY_FIELDS,
                limit: 2000,
                offset,
-             }).catch(() => ({ records: [], hasMore: false }));
+             });
              records.push(...(page.records || []));
              if (!page.hasMore || (page.records || []).length === 0 || records.length >= 100000) break;
              offset += (page.records || []).length;
@@ -296,7 +296,7 @@ export default createEndpoint({
       });
       guideName = guides[0]?.fullName as string || null;
       if (!guideName) {
-        const guideRecord = await Guides.findOne({ id: guideId as string, fields: ['id', 'fullName'] }).catch(() => undefined);
+        const guideRecord = await Guides.findOne({ id: guideId as string, fields: ['id', 'fullName'] });
         guideName = guideRecord?.fullName as string || null;
       }
     }

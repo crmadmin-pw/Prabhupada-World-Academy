@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { createEndpoint, Users, OneToOneMeetings, BvGroups, BvGroupMembers } from '@/lib/backend-sdk';
-import { getScopedHierarchyUserIds } from '../lib/hierarchyUtils';
+import { getScopedHierarchyUserIds, readScopedUsers } from '../lib/hierarchyUtils';
 import { resolveBvGroupFacilitatorUsers, resolveBvGroupMemberUsers } from '../lib/bvGroupMemberScope';
 
 function getWeeks(weeksBack: number): string[] {
@@ -44,7 +44,7 @@ export default createEndpoint({
     const customUserId = context.user.userId || dbUserId;
 
     // Fetch booking link for current user if set
-    const bvslUser = await Users.findOne({ id: dbUserId, fields: ['oneToOneLink'] }).catch(() => null);
+    const bvslUser = await Users.findOne({ id: dbUserId, fields: ['oneToOneLink'] });
 
     // Get strict hierarchy scoped user IDs for the calling user
     const scopedUserIds = await getScopedHierarchyUserIds(context.user);
@@ -69,7 +69,7 @@ export default createEndpoint({
     ];
 
     // Fetch candidate users
-    const { records: allUsers } = await Users.findAll({
+    const { records: allUsers } = await readScopedUsers(context.user, {
       // Group Members resolves users from the membership records and does not
       // exclude them by status. Keep the same behavior here so members shown
       // in that tab are also available in the RGSF 1:1 report.
@@ -122,15 +122,15 @@ export default createEndpoint({
       };
       const callerKeys = new Set([dbUserId, customUserId, context.user.email]
         .filter(Boolean).map(value => String(value).toLowerCase()));
-      const callerRecord = await Users.findOne({ id: dbUserId, fields: ['id', 'userId', 'email', 'bvReportingFacilitatorId'] }).catch(() => undefined) ||
-        await Users.findOne({ filters: { userId: customUserId }, fields: ['id', 'userId', 'email', 'bvReportingFacilitatorId'] }).catch(() => undefined);
+      const callerRecord = await Users.findOne({ id: dbUserId, fields: ['id', 'userId', 'email', 'bvReportingFacilitatorId'] }) ||
+        await Users.findOne({ filters: { userId: customUserId }, fields: ['id', 'userId', 'email', 'bvReportingFacilitatorId'] });
       const parentKeys = new Set([context.user.bvReportingFacilitatorId, (callerRecord as any)?.bvReportingFacilitatorId]
         .filter(Boolean).map((value: any) => String(value).toLowerCase()));
       if (parentKeys.size > 0) {
         const parentQueries = await Promise.all([
-          Users.findAll({ filters: { id: { in: Array.from(parentKeys) } } as any, fields: ['id', 'userId', 'email'], limit: 20 }).catch(() => ({ records: [] })),
-          Users.findAll({ filters: { userId: { in: Array.from(parentKeys) } } as any, fields: ['id', 'userId', 'email'], limit: 20 }).catch(() => ({ records: [] })),
-          Users.findAll({ filters: { email: { in: Array.from(parentKeys) } } as any, fields: ['id', 'userId', 'email'], limit: 20 }).catch(() => ({ records: [] })),
+          Users.findAll({ filters: { id: { in: Array.from(parentKeys) } } as any, fields: ['id', 'userId', 'email'], limit: 20 }),
+          Users.findAll({ filters: { userId: { in: Array.from(parentKeys) } } as any, fields: ['id', 'userId', 'email'], limit: 20 }),
+          Users.findAll({ filters: { email: { in: Array.from(parentKeys) } } as any, fields: ['id', 'userId', 'email'], limit: 20 }),
         ]);
         parentQueries.flatMap(result => result.records || []).forEach((parent: any) => [parent.id, parent.userId, parent.email].filter(Boolean)
           .forEach((value: any) => parentKeys.add(String(value).toLowerCase())));
@@ -161,9 +161,9 @@ export default createEndpoint({
         // Membership rows are authoritative. Resolve their users directly so
         // legacy segment/status metadata cannot hide a valid RGSF group member.
         const memberUserQueries = await Promise.all([
-          Users.findAll({ filters: { id: { in: memberIdentityValues } } as any, fields: userFields, limit: 500 }).catch(() => ({ records: [] })),
-          Users.findAll({ filters: { userId: { in: memberIdentityValues } } as any, fields: userFields, limit: 500 }).catch(() => ({ records: [] })),
-          Users.findAll({ filters: { email: { in: memberIdentityValues } } as any, fields: userFields, limit: 500 }).catch(() => ({ records: [] })),
+          Users.findAll({ filters: { id: { in: memberIdentityValues } } as any, fields: userFields, limit: 500 }),
+          Users.findAll({ filters: { userId: { in: memberIdentityValues } } as any, fields: userFields, limit: 500 }),
+          Users.findAll({ filters: { email: { in: memberIdentityValues } } as any, fields: userFields, limit: 500 }),
         ]);
         const memberUsers = new Map<string, any>();
         memberUserQueries.flatMap(result => result.records || []).forEach((user: any) => {
@@ -217,12 +217,12 @@ export default createEndpoint({
     const { records: allBvGroups } = await BvGroups.findAll({
       limit: 1000,
       fields: ['id', 'groupId', 'groupName', 'bvslLeader', 'bvslId', 'bvslName', 'bvReportingSupervisorId', 'bvReportingSupervisorName', 'bvReportingAdminId', 'bvReportingAdminName'],
-    }).catch(() => ({ records: [] }));
+    });
 
     const { records: allBvMemberships } = await BvGroupMembers.findAll({
       limit: 3000,
       fields: ['id', 'user', 'userId', 'memberId', 'group', 'groupId'],
-    }).catch(() => ({ records: [] }));
+    });
 
     const groupMap = new Map<string, any>();
     allBvGroups.forEach((g: any) => {

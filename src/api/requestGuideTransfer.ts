@@ -22,8 +22,8 @@ export default createEndpoint({
 
     // Find the guide DB record by guideId field
     const guideRecord = await Guides.findOne({ filters: { guideId: targetGuideId }, fields: ['id'] })
-      || await Guides.findOne({ id: targetGuideId, fields: ['id'] }).catch(() => undefined)
-      || await Guides.findOne({ filters: { email: targetGuideId.toLowerCase() }, fields: ['id'] }).catch(() => undefined);
+      || await Guides.findOne({ id: targetGuideId, fields: ['id'] })
+      || await Guides.findOne({ filters: { email: targetGuideId.toLowerCase() }, fields: ['id'] });
     const toGuideDbId = guideRecord?.id || targetGuideId;
 
     const userProfile = await Users.findOne({ id: context.user.id, fields: ['guide'] });
@@ -31,9 +31,9 @@ export default createEndpoint({
     // Store a canonical Guides-table id when possible. Legacy user records may
     // hold the source guide as a custom userId, email, or display name.
     const sourceGuide = fromGuideId ? (
-      await Guides.findOne({ id: fromGuideId, fields: ['id'] }).catch(() => undefined) ||
-      await Guides.findOne({ filters: { guideId: fromGuideId }, fields: ['id'] }).catch(() => undefined) ||
-      await Guides.findOne({ filters: { email: String(fromGuideId).toLowerCase() }, fields: ['id'] }).catch(() => undefined)
+      await Guides.findOne({ id: fromGuideId, fields: ['id'] }) ||
+      await Guides.findOne({ filters: { guideId: fromGuideId }, fields: ['id'] }) ||
+      await Guides.findOne({ filters: { email: String(fromGuideId).toLowerCase() }, fields: ['id'] })
     ) : undefined;
 
     const record = await GuideTransferRequests.create({

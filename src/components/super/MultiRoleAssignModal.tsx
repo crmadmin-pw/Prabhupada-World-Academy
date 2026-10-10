@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Shield, ShieldAlert, Network, UserCheck, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { assignBvRole } from '@/lib/endpoints-sdk';
+import { sendOrQueue } from '@/lib/offlineQueue';
 
 interface OptionItem {
   id: string;
@@ -101,7 +102,7 @@ export default function MultiRoleAssignModal({
         parentName = filteredFacilitatorsList.find(f => f.id === facilitatorParentId)?.name || '';
       }
 
-      await assignBvRole({
+      const submission = {
         userId: user.userId || user.id,
         role: primaryRole as any,
         parentId: parentId || undefined,
@@ -112,7 +113,14 @@ export default function MultiRoleAssignModal({
           isFacilitator,
           isSubFacilitator,
         },
+      };
+      const outcome = await sendOrQueue({
+        type: 'role_update',
+        dedupeKey: `role:${submission.userId}`,
+        payload: { endpoint: 'assignBvRole', input: submission },
+        send: () => assignBvRole(submission),
       });
+      if (outcome.status === 'queued') return;
 
       toast.success(`Updated roles for ${user.fullName}`);
       onSaved();

@@ -172,7 +172,6 @@ export default function ProfilePage() {
           <AccountCard
             createdAt={profile.createdAt ?? undefined}
             lastLoginAt={profile.lastLoginAt ?? undefined}
-            deleteReturnTo={isPwUser ? '/pw' : '/'}
           />
           <NotificationCard />
         </div>

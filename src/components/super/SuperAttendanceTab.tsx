@@ -13,6 +13,7 @@ import { useUserProfile } from '@/contexts/UserProfileContext';
 import { ASHRAY_LEVELS } from '@/types/enums';
 import { exportToCsv } from '@/utils/exportCsv';
 import { fmt } from '@/lib/fmt';
+import { isPrabhupadaWorldResidency } from '@/lib/residencyCategory';
 
 interface SuperAttendanceTabProps {
   segment?: 'PW' | 'FOLK';
@@ -175,7 +176,7 @@ export default function SuperAttendanceTab({ segment }: SuperAttendanceTabProps 
                   <SelectTrigger className="h-9"><SelectValue placeholder="All" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Centers</SelectItem>
-                    {(fo?.centers || []).filter((c: any) => !c.name?.includes('Prabhupada World') && !c.name?.includes('PW')).map((c: any) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                    {(fo?.centers || []).filter((c: any) => !isPrabhupadaWorldResidency(c)).map((c: any) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>

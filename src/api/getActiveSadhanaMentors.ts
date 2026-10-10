@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { createEndpoint, Users } from '@/lib/backend-sdk';
-import { getScopedHierarchyUserIds, isUserInHierarchy } from '../lib/hierarchyUtils';
+import { createEndpoint } from '@/lib/backend-sdk';
+import { getScopedHierarchyUserIds, isUserInHierarchy, readScopedUsers } from '../lib/hierarchyUtils';
 
 export default createEndpoint({
   description: 'Get all active Sadhana Mentors',
@@ -11,7 +11,7 @@ export default createEndpoint({
   outputSchema: z.any(),
   execute: async ({ input, context }: any) => {
     const scope = await getScopedHierarchyUserIds(context.user);
-    const { records } = await Users.findAll({
+    const { records } = await readScopedUsers(context.user, {
       filters: { status: 'Active' },
       fields: ['id', 'userId', 'fullName', 'email', 'isSadhanaMentor', 'role', 'segment', 'isPrabhupadaWorldUser'],
       limit: 1000,

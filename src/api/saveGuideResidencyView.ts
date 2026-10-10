@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createEndpoint, Guides, Users, FolkResidencies, AppError } from '@/lib/backend-sdk';
+import { isActiveFolkResidency } from '../lib/residencyCategory';
 import type { ApiUserContext } from '@/lib/apiAuthorization';
 
 function normalizeIds(value: unknown): string[] {
@@ -42,20 +43,20 @@ export default createEndpoint({
     const guide = await Guides.findOne({
       filters: { email: context.user.email, isActive: true },
       fields: ['id', 'folkResidencies'],
-    }).catch(() => undefined);
+    });
     const guideUser = !guide
       ? await Users.findOne({
         id: context.user.id,
         fields: ['id', 'userId', 'email', 'folkResidencies'],
-      }).catch(() => undefined) ||
+      }) ||
         await Users.findOne({
           filters: { userId: context.user.userId },
           fields: ['id', 'userId', 'email', 'folkResidencies'],
-        }).catch(() => undefined) ||
+        }) ||
         await Users.findOne({
           filters: { email: context.user.email },
           fields: ['id', 'userId', 'email', 'folkResidencies'],
-        }).catch(() => undefined)
+        })
       : undefined;
 
     if (!guide && !guideUser) {
@@ -70,15 +71,11 @@ export default createEndpoint({
 
     if (isSuperGuide) {
       const { records: residencies } = await FolkResidencies.findAll({
-        fields: ['id', 'residencyName', 'isActive'],
+        fields: ['id', 'residencyName', 'isActive', 'category', 'segment'],
         limit: 500,
       });
       linkedResidencyIds = residencies
-        .filter((residency: any) => {
-          const name = String(residency?.residencyName || '').trim().toLowerCase();
-          const isActive = residency?.isActive !== false && residency?.isActive !== 'false';
-          return isActive && !name.includes('prabhupada world') && !name.startsWith('pw ');
-        })
+        .filter((residency: any) => isActiveFolkResidency(residency))
         .map((residency: any) => String(residency.id || '').trim())
         .filter(Boolean);
     }

@@ -61,7 +61,7 @@ async function fetchUsersByKeys(keys: string[]): Promise<any[]> {
       const { records } = await Users.findAll({
         filters: { [field]: { in: chunk } } as any,
         limit: 2000,
-      }).catch(() => ({ records: [] }));
+      });
       for (const u of records) {
         if (u?.id || u?.userId || u?.email) results.set(u.id || u.userId || u.email, u);
       }

@@ -7,6 +7,7 @@ import getSadhanaLeaderboard from '../src/api/getSadhanaLeaderboard';
 import markBvAttendance from '../src/api/markBvAttendance';
 import { BvAttendance, BvGroupMembers, BvGroups, SadhanaEntries, Users } from '../src/lib/app-backend-sdk';
 import { serverCacheGetOrFetch, serverCacheInvalidate } from '../src/lib/serverCache';
+import { deleteStoredLeaderboardPeriod } from '../src/lib/sadhanaPeriodSummary';
 import { getTodayIST } from '../src/lib/streakUtils';
 
 test('server reference cache shares concurrent database fetches', async () => {
@@ -252,6 +253,7 @@ test('a facilitator save uses the member document ID for a legacy BV membership'
 
 test('current Sadhana leaderboard uses stored streaks without a 100-day collection scan', async () => {
   const today = getTodayIST();
+  await deleteStoredLeaderboardPeriod(today, today);
   const user = {
     id: 'PERF-LB-USER-DB',
     userId: 'PERF-LB-USER',
@@ -302,5 +304,6 @@ test('current Sadhana leaderboard uses stored streaks without a 100-day collecti
     (SadhanaEntries as any).findAll = originalFindAll;
     await SadhanaEntries.delete({ id: entry.id });
     await Users.delete({ id: user.id });
+    await deleteStoredLeaderboardPeriod(today, today);
   }
 });

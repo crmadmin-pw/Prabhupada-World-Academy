@@ -1,11 +1,13 @@
 import { z } from 'zod';
-import { createEndpoint, SadhanaEntries, BvslPreachingEntries, Users } from '@/lib/backend-sdk';
+import { AppError, createEndpoint, SadhanaEntries, BvslPreachingEntries, Users } from '@/lib/backend-sdk';
 import { nextSadhanaEntryId, nextBvEntryId } from '../lib/entryIdCounter';
 import { getNRMaxScore, fillingSameDayApplies } from '../lib/userUtils';
-import { TEMPLATE_MODES } from '../types/enums';
-import { computeStreak, daysAgo } from '../lib/streakUtils';
+import { TEMPLATE_MODES, TIME_BUCKETS } from '../types/enums';
+import { refreshUserPeriodSummaries } from '../lib/sadhanaPeriodSummary';
 import { getUserDepartment } from '../lib/userDashboardRoutes';
 import { pwTarget, scorePwSadhana } from '../lib/pwSadhana';
+import { computeSingleFieldScore } from '../lib/scoring';
+import { NON_RESIDENT_FIELDS, RESIDENT_FIELDS, toFormField } from '../config/sadhanaFields';
 
 
 /** Normalize templateMode to canonical TEMPLATE_MODES values */
@@ -17,6 +19,77 @@ function normalizeTemplateMode(raw: string | undefined): string {
 }
 
 const ENTRY_FIND_FIELDS = ['id', 'entryId'];
+
+function isResidentTemplate(templateMode: string | undefined): boolean {
+  const upper = (templateMode || '').toUpperCase();
+  return upper.includes('RESIDENT') && !upper.includes('NON_RESIDENT');
+}
+
+/** Points the raw answers can earn. Client-supplied `_per_field` values are
+ * claims, so each one is capped by scoring those answers again here. */
+function allowedFieldPoints(input: any, ashrayLevel: string): Record<string, number> {
+  const fv = input.fieldValues || {};
+  const resident = isResidentTemplate(input.templateMode);
+  const fields = (resident ? RESIDENT_FIELDS : NON_RESIDENT_FIELDS).map(field => toFormField(field));
+  const entryDate = String(input.entryDate || '').split('T')[0];
+  const buckets = resident ? Object.values(TIME_BUCKETS) : [TIME_BUCKETS.ZERO_TO_THREE];
+  const allowed: Record<string, number> = {};
+  for (const field of fields) {
+    if (!field.contributesToScore) continue;
+    let best = 0;
+    for (const residencyBucket of buckets) {
+      const scored = computeSingleFieldScore({
+        field: field as any,
+        value: fv[field.fieldKey],
+        ashrayLevel,
+        entryDate,
+        residencyBucket,
+      });
+      best = Math.max(best, scored.points);
+    }
+    allowed[field.fieldKey] = best;
+  }
+  return allowed;
+}
+
+function claimedFieldPoints(fieldValues: Record<string, any>): Array<[string, number]> {
+  const claims: Array<[string, number]> = [];
+  const perField = fieldValues._per_field;
+  if (perField && typeof perField === 'object') {
+    for (const [key, value] of Object.entries(perField)) claims.push([key, Number(value)]);
+  }
+  for (const [key, value] of Object.entries(fieldValues)) {
+    const match = key.match(/^_(?:nr_)?pts_(.+)$/);
+    if (match) claims.push([match[1], Number(value)]);
+  }
+  return claims;
+}
+
+function assertScoresMatchAnswers(input: any, ashrayLevel: string) {
+  const fv = input.fieldValues || {};
+  const resident = isResidentTemplate(input.templateMode);
+  const allowed = allowedFieldPoints(input, ashrayLevel);
+  for (const [key, claimed] of claimedFieldPoints(fv)) {
+    // Same-day credit is calculated from the submission clock, not from the form.
+    if (key === 'fillingSameDay') continue;
+    if (!Number.isFinite(claimed) || claimed > (allowed[key] ?? 0)) {
+      throw new AppError({ code: 'BAD_REQUEST', message: 'Submitted scores do not match the recorded sadhana' });
+    }
+  }
+  const earned = Object.entries(allowed)
+    .filter(([key]) => key !== 'fillingSameDay')
+    .reduce((sum, [, points]) => sum + points, 0);
+  const sameDayAllowance = resident ? 1 : (fillingSameDayApplies(ashrayLevel) ? 4 : 0);
+  if (Number(input.totalScore) > earned + sameDayAllowance) {
+    throw new AppError({ code: 'BAD_REQUEST', message: 'Submitted scores do not match the recorded sadhana' });
+  }
+  const sick = input.flagSick || input.flagOs || (Array.isArray(fv.flags) && (fv.flags.includes('Sick') || fv.flags.includes('OS')));
+  const maxScore = resident ? (sick ? 8 : 20) : getNRMaxScore(ashrayLevel);
+  const percentCeiling = maxScore > 0 ? Math.min(100, Math.round(((earned + sameDayAllowance) / maxScore) * 100)) : 0;
+  if (input.scorePercent != null && Number(input.scorePercent) > percentCeiling) {
+    throw new AppError({ code: 'BAD_REQUEST', message: 'Submitted scores do not match the recorded sadhana' });
+  }
+}
 
 function normalizeTime(v: any): string {
   if (v == null || v === '' || v === 0 || v === '0') return '';
@@ -259,6 +332,7 @@ export default createEndpoint({
     if (isFolk && (!/^\d{4}-\d{2}-\d{2}$/.test(entryDate) || Number.isNaN(entryDateObj.getTime()))) throw new Error('Invalid entry date');
     if (isFolk ? entryDate > submissionTodayIST : entryDateObj > oneDayAhead) throw new Error('Cannot submit for a future date');
     if (!isFolk && entryDateObj < sevenDaysAgo) throw new Error('Cannot submit for dates older than 7 days');
+    assertScoresMatchAnswers(input, userRec?.ashrayLevel || input.ashrayLevelUsed || 'Jigyasa');
 
     // Never trust a row or user ID supplied by the client.  First locate the
     // authenticated user's entry.  The second lookup makes entries written by
@@ -330,6 +404,13 @@ export default createEndpoint({
       await SadhanaEntries.create({ record });
     }
 
+    await refreshUserPeriodSummaries({
+      userId: authenticatedUserId,
+      entryDate,
+      savedEntry: record,
+      now,
+    });
+
     // Write BVSL preaching data if present
     if (bvData && typeof bvData === 'object') {
       const totalPreachingMinutes = ['pr_calling_time', 'pr_one_on_one_time', 'pr_book_dist_time', 'pr_rdua_time', 'pr_plan_time']
@@ -372,31 +453,6 @@ export default createEndpoint({
       } else {
         await BvslPreachingEntries.create({ record: bvRecord });
       }
-    }
-
-    // Persist streak to DB — non-blocking (so submission never fails due to streak update).
-    // Only triggered for today's entry in IST. Recomputes from actual entry history (SSOT —
-    // no incremental drift, no stale stored values affecting the result).
-    const entryDateForStreak = (record.entryDate as string).slice(0, 10);
-    const todayIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0];
-    if (entryDateForStreak === todayIST) {
-      const userId = authenticatedUserId;
-      const streakWindowStart = daysAgo(todayIST, 100);
-      // Keep this query index-free for the same reason as the dashboard read:
-      // `user` plus a range on `entryDate` needs a composite Firestore index.
-      // A missing index must never turn a successful Sadhana save into a zero
-      // streak after deployment.
-      SadhanaEntries.findAll({
-        filters: { user: userId },
-        fields: ['entryDate', 'scorePercent'],
-      }).then(({ records }) => {
-        const recentEntries = records.filter((entry: any) => {
-          const date = String(entry.entryDate || '').slice(0, 10);
-          return date >= streakWindowStart && date <= todayIST;
-        });
-        const newStreak = computeStreak(recentEntries as any[], todayIST);
-        return Users.update({ id: userId, record: { currentStreak: newStreak, lastStreakUpdatedAt: now } });
-      }).catch(() => {});
     }
 
     return {

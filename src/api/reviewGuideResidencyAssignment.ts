@@ -22,14 +22,14 @@ export default createEndpoint({
 
     const requestedIds = ids(request.requestedResidencyIds);
     if (input.action === 'approve') {
-      let user = request.requesterId ? await Users.findOne({ id: request.requesterId }).catch(() => undefined) : undefined;
-      user = user || (request.requesterUserId ? await Users.findOne({ filters: { userId: request.requesterUserId } }).catch(() => undefined) : undefined);
-      user = user || (request.requesterEmail ? await Users.findOne({ filters: { email: request.requesterEmail } }).catch(() => undefined) : undefined);
+      let user = request.requesterId ? await Users.findOne({ id: request.requesterId }) : undefined;
+      user = user || (request.requesterUserId ? await Users.findOne({ filters: { userId: request.requesterUserId } }) : undefined);
+      user = user || (request.requesterEmail ? await Users.findOne({ filters: { email: request.requesterEmail } }) : undefined);
       if (!user) throw new AppError({ code: 'NOT_FOUND', message: 'Guide profile not found' });
 
       await Users.update({ id: user.id, record: { folkResidencies: requestedIds } });
       const guide = request.requesterEmail
-        ? await Guides.findOne({ filters: { email: request.requesterEmail, isActive: true } }).catch(() => undefined)
+        ? await Guides.findOne({ filters: { email: request.requesterEmail, isActive: true } })
         : undefined;
       if (guide?.id) await Guides.update({ id: guide.id, record: { folkResidencies: requestedIds } });
       serverCacheInvalidate(`user_profile:${user.id}`);

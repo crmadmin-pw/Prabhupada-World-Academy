@@ -13,7 +13,7 @@ import { Flame, CheckCircle2, XCircle, Leaf, LogOut, Loader2, Clock } from 'luci
 import { toast } from 'sonner';
 import { getUserBvStatus, getBvAttendance, leaveBvGroup } from '@/lib/endpoints-sdk';
 import { format } from 'date-fns';
-import { invalidateUserDashboardCache } from '@/utils/cache';
+import { invalidateMemberHomeQueries } from '@/lib/app-endpoints-sdk';
 import type { GetUserBvStatusOutputType, GetBvAttendanceOutputType } from '@/lib/endpoints-sdk';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import BvLeaderboard from '@/components/dashboard/BvLeaderboard';
@@ -70,7 +70,7 @@ export default function BvTab({ userId, segment }: Props) {
     setLeavingGroup(true);
     try {
       await leaveBvGroup({ userId, groupId: status.myGroup.groupId });
-      invalidateUserDashboardCache(userId);
+      invalidateMemberHomeQueries();
       await refreshProfile();
       toast.success('Left group successfully');
       load();

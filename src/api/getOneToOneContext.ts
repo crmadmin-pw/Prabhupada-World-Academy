@@ -46,13 +46,13 @@ export default createEndpoint({
     const user = await Users.findOne({
       id: input.userId,
       fields: [...USER_IDENTITY_FIELDS, 'fullName', 'currentStreak', 'ashrayLevel', 'residencyApproved', 'residencyGuideVerified', 'segment', 'isPrabhupadaWorldUser'],
-    }).catch(() => undefined) || await Users.findOne({
+    }) || await Users.findOne({
       filters: { userId: input.userId },
       fields: [...USER_IDENTITY_FIELDS, 'fullName', 'currentStreak', 'ashrayLevel', 'residencyApproved', 'residencyGuideVerified', 'segment', 'isPrabhupadaWorldUser'],
-    }).catch(() => undefined) || await Users.findOne({
+    }) || await Users.findOne({
       filters: { email: input.userId },
       fields: [...USER_IDENTITY_FIELDS, 'fullName', 'currentStreak', 'ashrayLevel', 'residencyApproved', 'residencyGuideVerified', 'segment', 'isPrabhupadaWorldUser'],
-    }).catch(() => undefined);
+    });
 
     if (!user?.id) {
       return {

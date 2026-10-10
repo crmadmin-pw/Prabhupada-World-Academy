@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createEndpoint, AppError, SadhanaEntries, SadhanaMonthlySummaries } from '@/lib/backend-sdk';
+import { computeStreak, daysAgo } from '../lib/streakUtils';
 
 export default createEndpoint({
   description: 'Archive old sadhana entries into monthly summaries and delete the raw entries — Super Guide only',
@@ -27,6 +28,7 @@ export default createEndpoint({
     const allEntries: Array<{
       id: string;
       userId: string;
+      entryDate: string;
       month: string; // YYYY-MM
       scorePercent: number;
       totalScore: number;
@@ -60,6 +62,7 @@ export default createEndpoint({
         allEntries.push({
           id: r.id,
           userId,
+          entryDate: dateStr,
           month,
           scorePercent: (r.scorePercent as number) ?? 0,
           totalScore: (r.totalScore as number) ?? 0,
@@ -121,6 +124,12 @@ export default createEndpoint({
 
     const entryIdsToDelete: string[] = [];
     const monthsSet = new Set<string>();
+    const historyByUser = new Map<string, Array<{ entryDate: string; scorePercent: number | null }>>();
+    for (const entry of allEntries) {
+      const history = historyByUser.get(entry.userId) || [];
+      history.push({ entryDate: entry.entryDate, scorePercent: entry.scorePercent });
+      historyByUser.set(entry.userId, history);
+    }
 
     for (const [key, entries] of groups) {
       if (existingKeys.has(key)) continue; // already archived — skip
@@ -145,6 +154,9 @@ export default createEndpoint({
         : modes[0] === 'Resident' ? 'Resident' : 'Non-Resident';
 
       const [userId, month] = key.split('::');
+      const periodEnd = monthEnd(month);
+      const asOf = periodEnd < cutoff ? periodEnd : daysAgo(cutoff, 1);
+      const history = (historyByUser.get(userId) || []).filter(item => item.entryDate >= daysAgo(asOf, 100) && item.entryDate <= asOf);
       summariesToCreate.push({
         user: userId,
         month,
@@ -156,7 +168,7 @@ export default createEndpoint({
         sickDays,
         osDays,
         templateMode: dominantMode,
-        streakAtMonthEnd: 0, // streak not computed here — would need entry sequence
+        streakAtMonthEnd: computeStreak(history, asOf),
         entriesArchived: count,
         archivedAt: now,
       });
@@ -178,7 +190,7 @@ export default createEndpoint({
     const DELETE_BATCH = 20;
     for (let i = 0; i < entryIdsToDelete.length; i += DELETE_BATCH) {
       const batch = entryIdsToDelete.slice(i, i + DELETE_BATCH);
-      await Promise.all(batch.map(id => SadhanaEntries.delete({ id }).catch(() => {})));
+      await Promise.all(batch.map(id => SadhanaEntries.delete({ id })));
       deleted += batch.length;
     }
 
@@ -189,3 +201,8 @@ export default createEndpoint({
     };
   },
 });
+
+function monthEnd(month: string): string {
+  const [year, monthNumber] = month.split('-').map(Number);
+  return new Date(Date.UTC(year, monthNumber, 0)).toISOString().slice(0, 10);
+}

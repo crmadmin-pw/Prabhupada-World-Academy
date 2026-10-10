@@ -75,9 +75,9 @@ export default createEndpoint({
       const parentRgfKeys = new Set<string>();
       if (parentRgfId) parentRgfKeys.add(String(parentRgfId).toLowerCase());
       if (parentRgfId) {
-        const parent = await Users.findOne({ filters: { userId: String(parentRgfId) }, fields: ['id', 'userId', 'email'] }).catch(() => undefined) ||
-          await Users.findOne({ id: String(parentRgfId), fields: ['id', 'userId', 'email'] }).catch(() => undefined) ||
-          await Users.findOne({ filters: { email: String(parentRgfId) }, fields: ['id', 'userId', 'email'] }).catch(() => undefined);
+        const parent = await Users.findOne({ filters: { userId: String(parentRgfId) }, fields: ['id', 'userId', 'email'] }) ||
+          await Users.findOne({ id: String(parentRgfId), fields: ['id', 'userId', 'email'] }) ||
+          await Users.findOne({ filters: { email: String(parentRgfId) }, fields: ['id', 'userId', 'email'] });
         [parent?.id, parent?.userId, parent?.email].filter(Boolean).forEach(value => parentRgfKeys.add(String(value).toLowerCase()));
       }
       rgsfParentKeys = parentRgfKeys;
@@ -180,12 +180,12 @@ export default createEndpoint({
               filters: { userId: { in: batch } } as any,
               fields: ['id', 'userId', 'segment', 'fullName'],
               limit: 100,
-            }).catch(() => ({ records: [] })),
+            }),
             Users.findAll({
               filters: { id: { in: batch } } as any,
               fields: ['id', 'userId', 'segment', 'fullName'],
               limit: 100,
-            }).catch(() => ({ records: [] })),
+            }),
           ]);
           return [...(byUserId?.records || []), ...(byId?.records || [])];
         }));
@@ -215,7 +215,7 @@ export default createEndpoint({
             filters: { id: { in: batch } } as any,
             fields: ['id', 'guideId', 'fullName', 'email', 'segment'],
             limit: 100,
-          }).catch(() => ({ records: [] }));
+          });
           return res.records || [];
         }));
         const legacyGuides = guideLists.flat();
@@ -226,7 +226,7 @@ export default createEndpoint({
             filters: { email: { in: guideEmails.slice(i, i + 30) } } as any,
             fields: ['id', 'userId', 'segment', 'fullName', 'email'],
             limit: 100,
-          }).catch(() => ({ records: [] }));
+          });
           for (const user of records) usersByGuideEmail.set(String(user.email || '').toLowerCase(), user);
         }
         for (const guide of legacyGuides) {
@@ -258,7 +258,7 @@ export default createEndpoint({
             filters: { id: { in: batch } } as any,
             fields: ['id', 'fullName'],
             limit: 100,
-          }).catch(() => ({ records: [] }));
+          });
           return res?.records || [];
         }));
         for (const list of results) {
@@ -284,7 +284,7 @@ export default createEndpoint({
               filters: { groupId: { in: [...new Set([...groupIdList, ...groupPublicIdList])] } } as any,
               limit: 5000,
               fields: ['id', 'group', 'groupId', 'user', 'userId', 'memberId'],
-            }).catch(() => ({ records: [] }))
+            })
           : Promise.resolve({ records: [] }),
       ]);
       const membershipMap = new Map<string, any>();
@@ -324,7 +324,7 @@ export default createEndpoint({
             filters: { [field]: { in: batch } } as any,
             fields: userFields,
             limit: 100,
-          }).catch(() => ({ records: [] }))));
+          })));
           return lists.flatMap(result => result.records || []);
         }));
 

@@ -38,12 +38,12 @@ async function syncAssignedGroupNames(groupKeys: Set<string>, groupName: string)
   // write already refreshes open lists.
   const [userPages, membershipPages] = await Promise.all([
     Promise.all(keys.flatMap(key => [
-      Users.findAll({ filters: { bvGroupId: key }, fields: userFields, limit: 500 }).catch(() => ({ records: [] })),
-      Users.findAll({ filters: { bvGroupId: [key] }, fields: userFields, limit: 200 }).catch(() => ({ records: [] })),
+      Users.findAll({ filters: { bvGroupId: key }, fields: userFields, limit: 500 }),
+      Users.findAll({ filters: { bvGroupId: [key] }, fields: userFields, limit: 200 }),
     ])),
     Promise.all(keys.flatMap(key => (['group', 'groupId'] as const).flatMap(field => [
-      BvGroupMembers.findAll({ filters: { [field]: key }, fields: memberFields, limit: 500 }).catch(() => ({ records: [] })),
-      BvGroupMembers.findAll({ filters: { [field]: [key] }, fields: memberFields, limit: 200 }).catch(() => ({ records: [] })),
+      BvGroupMembers.findAll({ filters: { [field]: key }, fields: memberFields, limit: 500 }),
+      BvGroupMembers.findAll({ filters: { [field]: [key] }, fields: memberFields, limit: 200 }),
     ]))),
   ]);
   userPages.forEach(page => (page.records || []).forEach(remember));
@@ -58,8 +58,8 @@ async function syncAssignedGroupNames(groupKeys: Set<string>, groupName: string)
   }));
 
   await Promise.all([...memberKeys].map(async userKey => {
-    const user = await Users.findOne({ id: userKey, fields: userFields }).catch(() => null)
-      || await Users.findOne({ filters: { userId: userKey }, fields: userFields }).catch(() => null);
+    const user = await Users.findOne({ id: userKey, fields: userFields })
+      || await Users.findOne({ filters: { userId: userKey }, fields: userFields });
     if (user) remember(user);
   }));
 

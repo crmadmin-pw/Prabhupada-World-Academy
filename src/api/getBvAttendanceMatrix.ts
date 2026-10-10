@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, BvAttendance, Users, AppError } from '@/lib/backend-sdk';
+import { resolveBvScopedGroups } from '@/lib/bvGroupMemberScope';
 
 function firstValue(value: unknown): string {
   if (Array.isArray(value)) return String(value[0] || '');
@@ -9,19 +10,22 @@ function firstValue(value: unknown): string {
 export default createEndpoint({
   description: 'Get attendance matrix for a BV group — dates x members grid (queries attendance by group and filters the requested date range)',
   authenticated: true,
+  requiredCapabilities: 'bv.manage',
   inputSchema: z.object({
     groupId: z.string().optional(),
     startDate: z.string().optional(),
     endDate: z.string().optional(),
   }),
   outputSchema: z.any(),
-  execute: async ({ input }: any) => {
+  execute: async ({ input, context }: { input: any; context: any }) => {
     if (!input.groupId) return { sessions: [], members: [], matrix: {}, rows: [], dates: [] };
+    if (!context?.user) throw new AppError({ code: 'UNAUTHORIZED', message: 'Unauthorized' });
+    await resolveBvScopedGroups(context.user, { groupId: input.groupId });
 
     // Resolve group
     let group = await BvGroups.findOne({ filters: { groupId: input.groupId }, fields: ['id', 'groupId', 'groupName'] });
     if (!group) {
-      group = await BvGroups.findOne({ id: input.groupId, fields: ['id', 'groupId', 'groupName'] }).catch(() => undefined);
+      group = await BvGroups.findOne({ id: input.groupId, fields: ['id', 'groupId', 'groupName'] });
     }
     if (!group) return { sessions: [], members: [], matrix: {}, rows: [], dates: [] };
 
@@ -32,7 +36,7 @@ export default createEndpoint({
       limit: 200,
     });
     const membersByGroupIdRes = group.groupId
-      ? await BvGroupMembers.findAll({ filters: { groupId: group.groupId } as any, fields: ['id', 'user', 'userId', 'group', 'groupId'], limit: 200 }).catch(() => ({ records: [] }))
+      ? await BvGroupMembers.findAll({ filters: { groupId: group.groupId } as any, fields: ['id', 'user', 'userId', 'group', 'groupId'], limit: 200 })
       : { records: [] };
     const membershipMap = new Map<string, any>();
     [...membersByGroupRes.records, ...membersByGroupIdRes.records].forEach((membership: any) => membershipMap.set(String(membership.id), membership));

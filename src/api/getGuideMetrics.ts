@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { getScopedHierarchyUserIds, isUserInHierarchy, isHierarchyAdmin } from '../lib/hierarchyUtils';
+import { getScopedHierarchyUserIds, isUserInHierarchy, isHierarchyAdmin, readScopedUsers } from '../lib/hierarchyUtils';
 import { createEndpoint, Users, SadhanaEntries, Guides } from '@/lib/backend-sdk';
 import { getTodayIST, daysAgo } from '../lib/streakUtils';
 
@@ -30,8 +30,8 @@ export default createEndpoint({
 
     const [{ records: allActiveUsers }, { records: allPendingUsers }, { records: todayEntries }, { records: weekEntries }] =
       await Promise.all([
-        Users.findAll({ filters: userFilter, fields: ['id'], limit: 2000 }),
-        Users.findAll({ filters: pendingFilter, fields: ['id'], limit: 500 }),
+        readScopedUsers(context.user, { filters: userFilter, fields: ['id'], limit: 2000 }),
+        readScopedUsers(context.user, { filters: pendingFilter, fields: ['id'], limit: 500 }),
         SadhanaEntries.findAll({ filters: { entryDate: todayStr }, fields: ['id', 'user', 'scorePercent'], limit: 2000 }),
         SadhanaEntries.findAll({
           filters: { entryDate: { gte: sevenDaysAgo } as any },

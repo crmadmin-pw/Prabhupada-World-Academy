@@ -1,8 +1,9 @@
 import { z } from 'zod';
-import { getScopedHierarchyUserIds, isUserInHierarchy } from '../lib/hierarchyUtils';
+import { getScopedHierarchyUserIds, isUserInHierarchy, readScopedUsers } from '../lib/hierarchyUtils';
 import { getGuideScope } from '../lib/guideScope';
 import { createEndpoint, FolkResidencies, Guides, Users, SadhanaEntries } from '@/lib/backend-sdk';
 import { getTodayIST, daysAgo } from '../lib/streakUtils';
+import { isPrabhupadaWorldResidency } from '../lib/residencyCategory';
 
 export default createEndpoint({
   description: 'Get all residencies with resident count, guide info, and 3-month sadhana averages',
@@ -23,7 +24,7 @@ export default createEndpoint({
       { records: allResidents },
     ] = await Promise.all([
       FolkResidencies.findAll({
-        fields: ['id', 'residencyId', 'residencyName', 'isActive', 'maxCapacity', 'guides', 'guideIds'],
+        fields: ['id', 'residencyId', 'residencyName', 'isActive', 'maxCapacity', 'guides', 'guideIds', 'category', 'segment'],
         limit: 200,
       }),
       Guides.findAll({
@@ -34,12 +35,12 @@ export default createEndpoint({
       // Some seeded/legacy guides exist only in Users. Include those records
       // when resolving hostel assignments so a guide selected in the UI is
       // still displayed even when there is no matching Guides row.
-      Users.findAll({
+      readScopedUsers(context.user, {
         filters: { status: 'Active' },
         fields: ['id', 'userId', 'fullName', 'email', 'role', 'segment', 'isPrabhupadaWorldUser', 'isBvAdmin', 'isBvSuperAdmin', 'folkResidencies'],
         limit: 2000,
       }),
-      Users.findAll({
+      readScopedUsers(context.user, {
         filters: { residencyApproved: true, status: 'Active' } as any,
         fields: ['id', 'residency', 'guide'],
         limit: 2000,
@@ -189,7 +190,7 @@ export default createEndpoint({
       }
     }
 
-    return residencies.map((r: any) => {
+    return residencies.filter((r: any) => !isPrabhupadaWorldResidency(r)).map((r: any) => {
       const guideList = residencyGuideMap.get(r.id) ?? [];
       const guideInfo = guideList[0];
       const residentCount = residencyUserMap.get(r.id)?.size ?? 0;
@@ -226,6 +227,6 @@ export default createEndpoint({
         monthlyAvgs,
         quarterAvg,
       };
-    }).filter((r: any) => !r.residencyName.includes('Prabhupada World') && !r.residencyName.includes('PW'));
+    });
   },
 });

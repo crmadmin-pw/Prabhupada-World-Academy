@@ -39,11 +39,11 @@ export default createEndpoint({
           guideDbId = (guide as any).id;
         } else if ((isBvMentor || true) && input.guideId) {
           // Robust 3-step resolution for BV Mentors (and any caller providing guideId)
-          const directGuideRec = await Guides.findOne({ id: input.guideId, fields: ['id'] }).catch(() => undefined);
+          const directGuideRec = await Guides.findOne({ id: input.guideId, fields: ['id'] });
           if (directGuideRec) {
             guideDbId = directGuideRec.id;
           } else {
-            const guideUser = await Users.findOne({ id: input.guideId, fields: ['id', 'email'] }).catch(() => undefined);
+            const guideUser = await Users.findOne({ id: input.guideId, fields: ['id', 'email'] });
             if (guideUser?.email) {
               const guideByEmail = await Guides.findOne({ filters: { email: guideUser.email }, fields: ['id'] });
               if (guideByEmail) guideDbId = guideByEmail.id;
@@ -59,11 +59,11 @@ export default createEndpoint({
         }
       } else if (input.guideId) {
         // Super Guide viewing a specific guide — resolve that guide's ID
-        const directGuideRec = await Guides.findOne({ id: input.guideId, fields: ['id'] }).catch(() => undefined);
+        const directGuideRec = await Guides.findOne({ id: input.guideId, fields: ['id'] });
         if (directGuideRec) {
           guideDbId = directGuideRec.id;
         } else {
-          const guideUser = await Users.findOne({ id: input.guideId, fields: ['id', 'email'] }).catch(() => undefined);
+          const guideUser = await Users.findOne({ id: input.guideId, fields: ['id', 'email'] });
           if (guideUser?.email) {
             const guideByEmail = await Guides.findOne({ filters: { email: guideUser.email }, fields: ['id'] });
             if (guideByEmail) guideDbId = guideByEmail.id;
@@ -120,9 +120,9 @@ export default createEndpoint({
       const groupIds = [...new Set([g.id, g.groupId].filter(Boolean))];
       const [membersByGroup, membersByGroupId, attendanceByGroup, attendanceByGroupId] = await Promise.all([
         BvGroupMembers.findAll({ filters: { group: { in: groupIds } } as any, fields: ['id', 'user', 'userId', 'memberId'], limit: 500 }),
-        BvGroupMembers.findAll({ filters: { groupId: { in: groupIds } } as any, fields: ['id', 'user', 'userId', 'memberId'], limit: 500 }).catch(() => ({ records: [] })),
+        BvGroupMembers.findAll({ filters: { groupId: { in: groupIds } } as any, fields: ['id', 'user', 'userId', 'memberId'], limit: 500 }),
         BvAttendance.findAll({ filters: { group: { in: groupIds } } as any, fields: ['id', 'user', 'present', 'attendanceDate'], limit: 2000 }),
-        BvAttendance.findAll({ filters: { groupId: { in: groupIds } } as any, fields: ['id', 'user', 'present', 'attendanceDate'], limit: 2000 }).catch(() => ({ records: [] })),
+        BvAttendance.findAll({ filters: { groupId: { in: groupIds } } as any, fields: ['id', 'user', 'present', 'attendanceDate'], limit: 2000 }),
       ]);
       const memberRows = [...membersByGroup.records, ...membersByGroupId.records]
         .filter((row, index, rows) => rows.findIndex(candidate => candidate.id === row.id) === index);

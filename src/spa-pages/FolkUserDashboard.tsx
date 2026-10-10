@@ -4,6 +4,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { BookOpen, Leaf, Trophy, ClipboardCheck, Sparkles, Building2, Settings2 } from 'lucide-react';
 import { FEATURES } from '@/config/features';
 import { getUserDashboardData, getSadhanaLeaderboard } from '@/lib/endpoints-sdk';
+import { DASHBOARD_RECENT_DAYS } from '@/lib/sadhanaHistoryWindow';
 import { format } from 'date-fns';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { isManagementProfile } from '@/lib/userDashboardRoutes';
@@ -65,7 +66,7 @@ export default function FolkUserDashboard() {
 
   const { data: dashboardData, loading: dashLoading, setData: setDashboardData, refetch: refetchDashboard } = useQuery({
     key: profile?.userId ? `dashboard:${profile.userId}` : null,
-    fetcher: () => getUserDashboardData({ userId: profile!.userId, days: 30 }),
+    fetcher: () => getUserDashboardData({ userId: profile!.userId, days: DASHBOARD_RECENT_DAYS }),
     ttl: 60_000,
     realtimeChannels: ['sadhana', 'attendance', 'groups', 'quizzes'],
   });
@@ -209,6 +210,7 @@ export default function FolkUserDashboard() {
                 residencyId={profile.selectedFolkResidency ?? undefined}
                 isResident={isResident}
                 refreshVersion={sadhanaRefreshVersion}
+                historyWindowStart={dd?.windowStart ?? null}
               />
             </SectionErrorBoundary>
           )}

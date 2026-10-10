@@ -1,5 +1,6 @@
 import { useReactiveLoader } from '@/hooks/useReactiveLoader';
 import { useState, useEffect, useRef } from 'react';
+import { useUnsavedWork } from '@/lib/formActivity';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -107,6 +108,7 @@ export default function UserAvailabilityTab() {
   const [submittedAt, setSubmittedAt] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  useUnsavedWork(hasUnsavedChanges || saving || editing);
   const editRevision = useRef(0);
   const markDirty = () => { editRevision.current++; setHasUnsavedChanges(true); };
 

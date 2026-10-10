@@ -1,5 +1,6 @@
 import { useReactiveLoader } from '@/hooks/useReactiveLoader';
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useUnsavedWork } from '@/lib/formActivity';
 import { format, startOfWeek, addWeeks, subWeeks, addDays } from 'date-fns';
 import { ChevronLeft, ChevronRight, Save, BookOpen, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -54,6 +55,7 @@ export default function BvslWeeklyPlanTab({ userEmail }: Props) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  useUnsavedWork(hasUnsavedChanges || saving);
   const editRevision = useRef(0);
   const [books, setBooks] = useState<{ date: string; bookName: string; quantity: number }[]>([]);
   const [totalBooks, setTotalBooks] = useState(0);

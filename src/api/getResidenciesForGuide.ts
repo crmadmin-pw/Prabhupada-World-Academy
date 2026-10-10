@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createEndpoint, FolkResidencies, Guides, Users } from '@/lib/backend-sdk';
 import { getGuideScope } from '../lib/guideScope';
+import { isActiveFolkResidency } from '../lib/residencyCategory';
 
 const normalizeRole = (value: unknown) => String(value || '').trim().replace(/[\s-]+/g, '_').toUpperCase();
 const refs = (value: unknown): string[] => {
@@ -8,10 +9,6 @@ const refs = (value: unknown): string[] => {
   return values.flatMap(v => String(v || '').split(',')).map(v => v.trim()).filter(Boolean);
 };
 const key = (value: unknown) => String(value || '').trim().toLowerCase();
-const isFolk = (r: any) => {
-  const name = key(r?.residencyName);
-  return r?.isActive !== false && r?.isActive !== 'false' && !name.includes('prabhupada world') && !name.startsWith('pw ');
-};
 
 export default createEndpoint({
   description: 'Get the FOLK residencies assigned to the current guide',
@@ -24,10 +21,10 @@ export default createEndpoint({
     const isSuperGuide = role === 'SUPER_GUIDE' || role === 'SUPER_ADMIN' || context.user.isBvSuperAdmin === true;
 
     const { records: rawResidencies } = await FolkResidencies.findAll({
-      fields: ['id', 'residencyId', 'residencyName', 'isActive', 'maxCapacity', 'guides', 'guideIds'],
+      fields: ['id', 'residencyId', 'residencyName', 'isActive', 'maxCapacity', 'guides', 'guideIds', 'category', 'segment'],
       limit: 500,
     });
-    const folkResidencies = rawResidencies.filter(isFolk);
+    const folkResidencies = rawResidencies.filter(isActiveFolkResidency);
 
     if (isSuperGuide) {
       return folkResidencies.map((r: any) => ({
@@ -39,8 +36,8 @@ export default createEndpoint({
     }
 
     const isServiceAllocator = !!context.user.isServiceAllocator;
-    const currentUser = await Users.findOne({ id: context.user.id, fields: ['id', 'userId', 'email', 'fullName', 'residency', 'folkResidencies'] }).catch(() => undefined) ||
-      await Users.findOne({ filters: { email: context.user.email }, fields: ['id', 'userId', 'email', 'fullName', 'residency', 'folkResidencies'] }).catch(() => undefined);
+    const currentUser = await Users.findOne({ id: context.user.id, fields: ['id', 'userId', 'email', 'fullName', 'residency', 'folkResidencies'] }) ||
+      await Users.findOne({ filters: { email: context.user.email }, fields: ['id', 'userId', 'email', 'fullName', 'residency', 'folkResidencies'] });
     if (isServiceAllocator) {
       const currentResidency = refs(currentUser?.residency)[0];
       const match = folkResidencies.find((r: any) => [r.id, r.residencyId, r.residencyName].some(v => key(v) === key(currentResidency)));
@@ -48,8 +45,8 @@ export default createEndpoint({
     }
 
     const [guide, scope] = await Promise.all([
-      Guides.findOne({ filters: { email: context.user.email, isActive: true }, fields: ['id', 'guideId', 'email', 'fullName', 'folkResidencies'] }).catch(() => undefined),
-      getGuideScope(context.user.email).catch(() => null),
+      Guides.findOne({ filters: { email: context.user.email, isActive: true }, fields: ['id', 'guideId', 'email', 'fullName', 'folkResidencies'] }),
+      getGuideScope(context.user.email),
     ]);
     const guideKeys = new Set([context.user.id, context.user.userId, context.user.email, guide?.id, guide?.guideId, guide?.email, guide?.fullName, currentUser?.id, currentUser?.userId, currentUser?.fullName].filter(Boolean).map(key));
     const assignedResidencyIds = new Set([...(scope?.residencyIds || []), ...refs(guide?.folkResidencies), ...refs(currentUser?.folkResidencies)].map(key));

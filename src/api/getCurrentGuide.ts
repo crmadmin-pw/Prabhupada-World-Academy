@@ -1,18 +1,13 @@
 import { z } from 'zod';
 import { createEndpoint, Guides, Users, SadhanaEntries, FolkResidencies, AppError } from '@/lib/backend-sdk';
 import { getTodayIST } from '../lib/streakUtils';
+import { isActiveFolkResidency } from '../lib/residencyCategory';
 
 const GUIDE_FIELDS = ['id', 'email', 'isActive', 'fullName', 'phone', 'abbreviation', 'folkResidencies', 'activeResidencyView'];
 const CURRENT_USER_GUIDE_FIELDS = ['id', 'userId', 'email', 'fullName', 'phone', 'folkResidencies', 'activeResidencyView'];
 const USER_FIELDS = ['id', 'status', 'residencyApproved', 'guide'];
 const ENTRY_FIELDS = ['id', 'user', 'entryDate'];
-const RESIDENCY_FIELDS = ['id', 'residencyName', 'isActive'];
-
-function isActiveFolkResidency(residency: any): boolean {
-  const name = String(residency?.residencyName || '').trim().toLowerCase();
-  const isActive = residency?.isActive !== false && residency?.isActive !== 'false';
-  return isActive && !name.includes('prabhupada world') && !name.startsWith('pw ');
-}
+const RESIDENCY_FIELDS = ['id', 'residencyName', 'isActive', 'category', 'segment'];
 
 export default createEndpoint({
   description: 'Get guide info + metrics for the guide dashboard — counts all center users, not just direct folk',
@@ -55,9 +50,9 @@ export default createEndpoint({
 
       if (hasGuideAccess) {
         const currentGuideUser =
-          await Users.findOne({ id: context.user?.id, fields: CURRENT_USER_GUIDE_FIELDS }).catch(() => undefined) ||
-          await Users.findOne({ filters: { userId: context.user?.userId }, fields: CURRENT_USER_GUIDE_FIELDS }).catch(() => undefined) ||
-          await Users.findOne({ filters: { email: context.user?.email }, fields: CURRENT_USER_GUIDE_FIELDS }).catch(() => undefined);
+          await Users.findOne({ id: context.user?.id, fields: CURRENT_USER_GUIDE_FIELDS }) ||
+          await Users.findOne({ filters: { userId: context.user?.userId }, fields: CURRENT_USER_GUIDE_FIELDS }) ||
+          await Users.findOne({ filters: { email: context.user?.email }, fields: CURRENT_USER_GUIDE_FIELDS });
 
         if (currentGuideUser) {
           guideRecord = {
@@ -71,7 +66,7 @@ export default createEndpoint({
     }
 
     if (guideRecord && (!guideRecord.folkResidencies || (Array.isArray(guideRecord.folkResidencies) && guideRecord.folkResidencies.length === 0))) {
-      const linkedUser = await Users.findOne({ filters: { email: context.user?.email }, fields: CURRENT_USER_GUIDE_FIELDS }).catch(() => undefined);
+      const linkedUser = await Users.findOne({ filters: { email: context.user?.email }, fields: CURRENT_USER_GUIDE_FIELDS });
       if (linkedUser?.folkResidencies) guideRecord = { ...guideRecord, folkResidencies: linkedUser.folkResidencies };
     }
 

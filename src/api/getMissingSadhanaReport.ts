@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { scopeRealtimeDependencies } from '@/lib/requestQueries';
 import { createEndpoint, Users, Guides, SadhanaEntries, FolkResidencies } from '@/lib/backend-sdk';
 import { requireGuideRole } from '../lib/userUtils';
-import { getDashboardHierarchyScope } from '../lib/hierarchyUtils';
+import { getDashboardHierarchyScope, readScopedUsers } from '../lib/hierarchyUtils';
 import { getGuideScope } from '../lib/guideScope';
 import getGuides from './getGuides';
 import { getReportReferenceData } from '../lib/reportReferenceData';
@@ -96,9 +96,9 @@ export default createEndpoint({
 
     // Direct assignments and residency membership are independent queries.
     const [{ records: baseUsers }, ...resFetches] = await Promise.all([
-      Users.findAll({ filters, fields: USER_FIELDS, limit: 2000 }),
+      readScopedUsers(context.user, { filters, fields: USER_FIELDS, limit: 2000 }),
       ...(!isSuperGuide && guideRecord && !effectiveResidencyId ? guideRids : []).map(rid =>
-        Users.findAll({ filters: { residency: rid, status: 'Active' }, fields: USER_FIELDS, limit: 500 })
+        readScopedUsers(context.user, { filters: { residency: rid, status: 'Active' }, fields: USER_FIELDS, limit: 500 })
       ),
     ]);
     const userMap = new Map(baseUsers.map(user => [user.id, user]));
@@ -163,7 +163,7 @@ export default createEndpoint({
         }
         return entries;
       })(),
-      Users.findAll({ filters: { status: 'Active' }, fields: ['id', 'userId', 'fullName', 'email', 'role', 'isBvAdmin', 'isBvSuperAdmin'], limit: 2000 }),
+      readScopedUsers(context.user, { filters: { status: 'Active' }, fields: ['id', 'userId', 'fullName', 'email', 'role', 'isBvAdmin', 'isBvSuperAdmin'], limit: 2000 }),
       displayPromise,
     ]);
 

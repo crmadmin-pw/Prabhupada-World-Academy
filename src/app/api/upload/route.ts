@@ -2,11 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 import { verifyFirebaseIdToken } from '@/lib/verifyFirebaseIdToken';
 import { getDownloadURL, getStorage } from 'firebase-admin/storage';
-import { Users } from '@/lib/app-backend-sdk';
+import { resolveAuthenticatedProfile } from '@/lib/accountLinkReview';
 import {
   buildApiUserContext,
   hasApiCapabilities,
-  type ApiDatabaseUser,
 } from '@/lib/apiAuthorization';
 import {
   buildImageObjectPath,
@@ -17,23 +16,6 @@ import {
 } from '@/lib/uploadPolicy';
 
 export const runtime = 'nodejs';
-
-async function resolveDatabaseUser(uid: string, email: string): Promise<ApiDatabaseUser | null> {
-  const uidRecord = await Users.findOne({ id: uid }).catch(() => null);
-  if (uidRecord?.userId && uidRecord?.status) return uidRecord;
-
-  const firebaseUidRecord = await Users.findOne({ filters: { firebaseUid: uid } }).catch(() => null);
-  if (firebaseUidRecord) return firebaseUidRecord;
-
-  const emailLower = email.toLowerCase();
-  const [exactMatches, lowerMatches] = await Promise.all([
-    Users.findAll({ filters: { email }, limit: 10 }).catch(() => ({ records: [] })),
-    Users.findAll({ filters: { email: emailLower }, limit: 10 }).catch(() => ({ records: [] })),
-  ]);
-  const candidates = [...exactMatches.records, ...lowerMatches.records]
-    .filter((record, index, records) => records.findIndex(item => item.id === record.id) === index);
-  return candidates.find(record => record.userId && record.status) || candidates[0] || uidRecord || null;
-}
 
 function jsonError(message: string, status: number) {
   return NextResponse.json({ message }, { status });
@@ -62,7 +44,7 @@ export async function POST(req: NextRequest) {
     const purpose = parseUploadPurpose(formData.get('purpose'));
     if (!purpose) return jsonError('Invalid upload purpose', 400);
 
-    const dbUser = await resolveDatabaseUser(decoded.uid, decoded.email);
+    const dbUser = await resolveAuthenticatedProfile(decoded.uid, decoded.email);
     const user = buildApiUserContext({
       uid: decoded.uid,
       email: decoded.email,

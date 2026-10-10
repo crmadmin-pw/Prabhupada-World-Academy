@@ -8,7 +8,7 @@ function requireRentEditor(user: any) {
 }
 
 async function resolveUser(id: string) {
-  const byDbId = await Users.findOne({ id, fields: ['id'] }).catch(() => undefined);
+  const byDbId = await Users.findOne({ id, fields: ['id'] });
   if (byDbId) return byDbId;
   return Users.findOne({ filters: { userId: id }, fields: ['id'] });
 }

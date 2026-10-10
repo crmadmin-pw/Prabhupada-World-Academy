@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { getScopedHierarchyUserIds, isUserInHierarchy, isHierarchySuperAdmin } from '../lib/hierarchyUtils';
+import { getScopedHierarchyUserIds, isUserInHierarchy, isHierarchySuperAdmin, readScopedUsers } from '../lib/hierarchyUtils';
 import { createEndpoint, Guides, Users, OneToOneMeetings } from '@/lib/backend-sdk';
 
 function getWeeks(weeksBack: number): string[] {
@@ -40,8 +40,8 @@ export default createEndpoint({
     const normalizedSegment = String(context.user.segment || '').trim().toUpperCase().replace(/[\s_-]+/g, '');
     const isPwSadhanaMentor = isSadhanaMentor && normalizedSegment !== 'FOLK';
     const mentorUser = isPwSadhanaMentor
-      ? (await Users.findOne({ id: context.user.id, fields: ['id', 'userId', 'email', 'oneToOneLink'] }).catch(() => null)
-        || await Users.findOne({ filters: { email: context.user.email }, fields: ['id', 'userId', 'email', 'oneToOneLink'] }).catch(() => null))
+      ? (await Users.findOne({ id: context.user.id, fields: ['id', 'userId', 'email', 'oneToOneLink'] })
+        || await Users.findOne({ filters: { email: context.user.email }, fields: ['id', 'userId', 'email', 'oneToOneLink'] }))
       : null;
 
     // PW mentors are scoped to the members explicitly assigned through the
@@ -86,12 +86,12 @@ export default createEndpoint({
     if (!guideDbId) return { users: [], meetings: [], weeks, availableGuides };
 
     const [usersRes, bvslRes] = await Promise.all([
-      Users.findAll({
+      readScopedUsers(context.user, {
         filters: isPwSadhanaMentor ? { status: 'Active' } : { guide: guideDbId, status: 'Active' },
         fields: ['id', 'userId', 'email', 'fullName', 'ashrayLevel', 'residencyApproved', 'oneToOneEligibility', 'oneToOneDelegate', 'sadhanaMentor'],
         limit: 1000,
       }),
-      Users.findAll({
+      readScopedUsers(context.user, {
         filters: { guide: guideDbId, isBvsl: true, status: 'Active' },
         fields: ['id', 'fullName'],
         limit: 100,

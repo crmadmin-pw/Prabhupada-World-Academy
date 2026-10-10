@@ -19,7 +19,7 @@ export default createEndpoint({
       group = await BvGroups.findOne({
         id: input.groupId,
         fields: ['id', 'groupId', 'groupName'],
-      }).catch(() => undefined);
+      });
     }
     if (!group) throw new AppError({ code: 'NOT_FOUND', message: 'Group not found' });
 

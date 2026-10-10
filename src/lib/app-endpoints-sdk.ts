@@ -6,6 +6,7 @@ import { confirmBvGroupDeletion } from './confirmBvGroupDeletion';
 import type { z } from 'zod';
 import {
   isReadOnlyEndpoint,
+  accountLinkReads,
   directoryReads,
   membershipCountAdjustment,
   membershipCountReads,
@@ -32,12 +33,17 @@ let forceObservedRead = false;
 
 /** Observe only the synchronous invocation of explicitly wrapped SDK reads.
  * Restoring before awaiting is important: concurrent loaders cannot acquire
- * one another's query keys. Wrap each call after an await separately. */
+ * one another's query keys. Wrap each call after an await separately.
+ * Nested observers are all notified. An inner call cannot clear an outer
+ * force flag, so a cached read stays cached when it is wrapped again. */
 export function observeEndpointReads<T>(run: () => T, observer: (key: string) => void, force = false): T {
   const previous = requestObserver;
   const previousForce = forceObservedRead;
-  requestObserver = observer;
-  forceObservedRead = force;
+  requestObserver = key => {
+    observer(key);
+    previous?.(key);
+  };
+  forceObservedRead = force || previousForce;
   try { return run(); }
   finally { requestObserver = previous; forceObservedRead = previousForce; }
 }
@@ -76,6 +82,7 @@ export const PUBLIC_ENDPOINTS = new Set([
   'getVapidPublicKey',
   'joinSessionChallenge',
   'markSessionAttendance',
+  'purgeScheduledAccountDeletions',
   'registerAndAttend',
   'sendDueMeetingReminders',
   'sendMeetingReminder',
@@ -241,6 +248,16 @@ function invalidateCachedEndpoints(names: readonly string[], extra?: Record<stri
   );
 }
 
+const MEMBER_HOME_READS = ['getUserDashboardData', 'getSadhanaLeaderboard', 'getUserHistory'] as const;
+
+/** Mark the member home screens stale in the shared endpoint cache.
+ * Realtime revisions cover other devices. The member's own save uses this
+ * so those screens do not keep the pre-save response until a timer expires.
+ */
+export function invalidateMemberHomeQueries(): void {
+  invalidateCachedEndpoints(MEMBER_HOME_READS);
+}
+
 export function endpointCacheTtl(name: string): number {
   return ['getGuides', 'getAllResidencies', 'getActiveSadhanaMentors'].includes(name) ? 300_000 : CACHE_TTL_MS;
 }
@@ -248,6 +265,18 @@ export function endpointCacheTtl(name: string): number {
 // Referentially stable snapshots for useSyncExternalStore. Never mutate them.
 export function getEndpointCacheSnapshot(name: string, input: any) {
   return clientCache.get(queryCacheKey(name, input));
+}
+
+export function getEndpointCacheEntry(key: string) {
+  return clientCache.get(key);
+}
+
+/** Replace one cached response. A stale entry stays stale so revalidation still runs. */
+export function writeEndpointCacheEntry(key: string, data: unknown): void {
+  const existing = clientCache.get(key);
+  clientCache.delete(key);
+  clientCache.set(key, { data, timestamp: existing?.timestamp ?? Date.now() });
+  notifyCacheListeners();
 }
 
 export function isEndpointQueryFresh(name: string, input: any): boolean {
@@ -370,13 +399,17 @@ async function invokeEndpoint(name: string, input: any): Promise<any> {
         clientCache.delete(cacheKey);
         notifyCacheListeners();
       }
-      throw Object.assign(new Error(errorData.message || 'API request failed'), { status: res.status });
+      const rawMessage = typeof errorData.message === 'string' ? errorData.message.trim() : '';
+      const message = res.status === 429
+        ? (!rawMessage || /internal server error/i.test(rawMessage) ? 'Too many requests. Please wait a moment and try again.' : rawMessage)
+        : (rawMessage || 'API request failed');
+      throw Object.assign(new Error(message), { status: res.status, code: errorData.code });
     }
     const data = await res.json();
     if (!isQuery) {
       const membership = membershipCountAdjustment(name, input);
       invalidateCachedEndpoints(
-        [...membershipCountReads(name, input), ...directoryReads(name), ...quizReads(name)],
+        [...membershipCountReads(name, input), ...directoryReads(name), ...quizReads(name), ...accountLinkReads(name)],
         membership ? { membership } : undefined,
       );
     }
@@ -713,6 +746,13 @@ type deleteAccount_Output = ReturnType<typeof deleteAccount_Type.execute> extend
 export const deleteAccount = (input: deleteAccount_Input): Promise<deleteAccount_Output> => invokeEndpoint('deleteAccount', input);
 export type DeleteAccountOutputType = deleteAccount_Output;
 export type DeleteAccountInputType = deleteAccount_Input;
+
+import type purgeScheduledAccountDeletions_Type from '../api/purgeScheduledAccountDeletions';
+type purgeScheduledAccountDeletions_Input = z.input<typeof purgeScheduledAccountDeletions_Type.inputSchema>;
+type purgeScheduledAccountDeletions_Output = ReturnType<typeof purgeScheduledAccountDeletions_Type.execute> extends Promise<infer R> ? R : ReturnType<typeof purgeScheduledAccountDeletions_Type.execute>;
+export const purgeScheduledAccountDeletions = (input: purgeScheduledAccountDeletions_Input): Promise<purgeScheduledAccountDeletions_Output> => invokeEndpoint('purgeScheduledAccountDeletions', input);
+export type PurgeScheduledAccountDeletionsOutputType = purgeScheduledAccountDeletions_Output;
+export type PurgeScheduledAccountDeletionsInputType = purgeScheduledAccountDeletions_Input;
 
 import type deletePendingApprovals_Type from '../api/deletePendingApprovals';
 type deletePendingApprovals_Input = z.input<typeof deletePendingApprovals_Type.inputSchema>;
@@ -1138,6 +1178,13 @@ export const requestGuideResidencyAssignment = (input: requestGuideResidencyAssi
 export type RequestGuideResidencyAssignmentOutputType = requestGuideResidencyAssignment_Output;
 export type RequestGuideResidencyAssignmentInputType = requestGuideResidencyAssignment_Input;
 
+import type reviewAccountLink_Type from '../api/reviewAccountLink';
+type reviewAccountLink_Input = z.input<typeof reviewAccountLink_Type.inputSchema>;
+type reviewAccountLink_Output = ReturnType<typeof reviewAccountLink_Type.execute> extends Promise<infer R> ? R : ReturnType<typeof reviewAccountLink_Type.execute>;
+export const reviewAccountLink = (input: reviewAccountLink_Input): Promise<reviewAccountLink_Output> => invokeEndpoint('reviewAccountLink', input);
+export type ReviewAccountLinkOutputType = reviewAccountLink_Output;
+export type ReviewAccountLinkInputType = reviewAccountLink_Input;
+
 import type reviewGuideResidencyAssignment_Type from '../api/reviewGuideResidencyAssignment';
 type reviewGuideResidencyAssignment_Input = z.input<typeof reviewGuideResidencyAssignment_Type.inputSchema>;
 type reviewGuideResidencyAssignment_Output = ReturnType<typeof reviewGuideResidencyAssignment_Type.execute> extends Promise<infer R> ? R : ReturnType<typeof reviewGuideResidencyAssignment_Type.execute>;
@@ -1344,6 +1391,13 @@ type getOpenSwaps_Output = ReturnType<typeof getOpenSwaps_Type.execute> extends 
 export const getOpenSwaps = (input: getOpenSwaps_Input): Promise<getOpenSwaps_Output> => invokeEndpoint('getOpenSwaps', input);
 export type GetOpenSwapsOutputType = getOpenSwaps_Output;
 export type GetOpenSwapsInputType = getOpenSwaps_Input;
+
+import type getPendingAccountLinks_Type from '../api/getPendingAccountLinks';
+type getPendingAccountLinks_Input = z.input<typeof getPendingAccountLinks_Type.inputSchema>;
+type getPendingAccountLinks_Output = ReturnType<typeof getPendingAccountLinks_Type.execute> extends Promise<infer R> ? R : ReturnType<typeof getPendingAccountLinks_Type.execute>;
+export const getPendingAccountLinks = (input: getPendingAccountLinks_Input): Promise<getPendingAccountLinks_Output> => invokeEndpoint('getPendingAccountLinks', input);
+export type GetPendingAccountLinksOutputType = getPendingAccountLinks_Output;
+export type GetPendingAccountLinksInputType = getPendingAccountLinks_Input;
 
 import type getPendingApprovals_Type from '../api/getPendingApprovals';
 type getPendingApprovals_Input = z.input<typeof getPendingApprovals_Type.inputSchema>;

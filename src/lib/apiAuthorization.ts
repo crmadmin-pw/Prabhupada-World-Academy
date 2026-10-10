@@ -20,6 +20,7 @@ export interface VerifiedApiIdentity {
   uid: string;
   email: string;
   emailVerified: boolean;
+  authTime?: number | null;
 }
 
 export interface ApiDatabaseUser {
@@ -74,6 +75,7 @@ export interface ApiUserContext {
   isFolkLead: boolean;
   isTripCoordinator: boolean;
   capabilities: ApiCapability[];
+  authTime: number | null;
 }
 
 export function normalizeApiRole(value: unknown): string {
@@ -223,6 +225,7 @@ export function buildApiUserContext(
     isFolkLead: isActive && dbUser?.isFolkLead === true,
     isTripCoordinator: isActive && dbUser?.isTripCoordinator === true,
     capabilities: deriveApiCapabilities(dbUser),
+    authTime: identity.authTime ?? null,
   };
 }
 

@@ -9,8 +9,8 @@ function firstValue(value: unknown): string {
 
 async function resolveUserFromKeys(keys: string[]) {
   for (const key of [...new Set(keys.filter(Boolean))]) {
-    const user = await Users.findOne({ id: key, fields: ['id', 'userId'] }).catch(() => null)
-      || await Users.findOne({ filters: { userId: key }, fields: ['id', 'userId'] }).catch(() => null);
+    const user = await Users.findOne({ id: key, fields: ['id', 'userId'] })
+      || await Users.findOne({ filters: { userId: key }, fields: ['id', 'userId'] });
     if (user) return user;
   }
   return null;
@@ -28,7 +28,7 @@ export default createEndpoint({
     if (!['Guide', 'Super Guide'].includes(callerRole) && !isBvMentor) {
       throw new AppError({ code: 'FORBIDDEN', message: 'Only guides or BV Mentors can remove members' });
     }
-    const membership = await BvGroupMembers.findOne({ id: input.membershipId }).catch(() => null);
+    const membership = await BvGroupMembers.findOne({ id: input.membershipId });
     const groupDbId = firstValue(membership?.group || (membership as any)?.groupId);
     const initialKeys = [firstValue(membership?.user), firstValue((membership as any)?.userId)].filter(Boolean);
     const resolvedUser = await resolveUserFromKeys(initialKeys);
@@ -43,7 +43,7 @@ export default createEndpoint({
         filters: { group: groupDbId },
         fields: ['id', 'user', 'userId'],
         limit: 1000,
-      }).catch(() => ({ records: [] }));
+      });
       const deleteIds = groupMemberships
         .filter((m: any) =>
           m.id === input.membershipId ||

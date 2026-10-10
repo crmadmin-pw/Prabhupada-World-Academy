@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/lib/auth-sdk';
+import { useUserProfile } from '@/contexts/UserProfileContext';
+import { ACCOUNT_DELETE_CONFIRM_TEXT, ACCOUNT_DELETION_GRACE_DAYS } from '@/lib/accountDeletionPolicy';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +17,6 @@ import { toast } from 'sonner';
 interface Props {
   createdAt?: string;
   lastLoginAt?: string;
-  deleteReturnTo?: string;
 }
 
 function safeDate(val: unknown, includeTime = false): string {
@@ -24,22 +25,34 @@ function safeDate(val: unknown, includeTime = false): string {
   return includeTime ? format(d, 'MMM dd, yyyy, h:mm a') : format(d, 'MMM dd, yyyy');
 }
 
-export default function AccountCard({ createdAt, lastLoginAt, deleteReturnTo = '/' }: Props) {
-  const { user, logout } = useAuth();
+export default function AccountCard({ createdAt, lastLoginAt }: Props) {
+  const { user, reauthenticate } = useAuth();
+  const { refreshProfile } = useUserProfile();
   const [deleteConfirm, setDeleteConfirm] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const confirmed = deleteConfirm.trim() === ACCOUNT_DELETE_CONFIRM_TEXT;
 
-  const handleDelete = async () => {
-    if (!user?.email || deleteConfirm !== 'DELETE') return;
+  const handleDelete = () => {
+    if (!user?.email || !confirmed) return;
+    const email = user.email;
     setDeleting(true);
-    try {
-      await deleteAccount({ email: user.email, confirmText: 'DELETE' });
-      toast.success('Account deleted. You will be logged out.');
-      setTimeout(() => logout({ returnTo: deleteReturnTo }), 2000);
-    } catch (err: any) {
-      toast.error(err?.message || 'Failed to delete account');
-      setDeleting(false);
-    }
+    void reauthenticate()
+      .then(() => deleteAccount({ action: 'schedule', email, confirmText: ACCOUNT_DELETE_CONFIRM_TEXT }))
+      .then(async result => {
+        const purgeDate = result.purgeAt ? safeDate(result.purgeAt) : null;
+        toast.success(purgeDate
+          ? `Account scheduled for deletion on ${purgeDate}. You can cancel until then.`
+          : 'Account scheduled for deletion. You can cancel during the recovery period.');
+        await refreshProfile();
+      })
+      .catch((err: any) => {
+        const code = String(err?.code || '');
+        const message = String(err?.message || '');
+        toast.error(code.includes('popup-closed') || message.toLowerCase().includes('popup-closed')
+          ? 'Sign-in was cancelled. Your account was not deleted.'
+          : (message || 'Failed to schedule account deletion'));
+        setDeleting(false);
+      });
   };
 
   return (
@@ -69,16 +82,16 @@ export default function AccountCard({ createdAt, lastLoginAt, deleteReturnTo = '
               <AlertDialogHeader>
                 <AlertDialogTitle>Delete Your Account</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This will permanently wipe all your data. Type <strong>DELETE</strong> to confirm:
+                  Your account is deactivated now and permanently deleted after {ACCOUNT_DELETION_GRACE_DAYS} days. Rent, trip, service, attendance, challenge, and file records leave reports immediately and can be restored if you cancel during that time. Type <strong>DELETE</strong>, then sign in again.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <Input value={deleteConfirm} onChange={e => setDeleteConfirm(e.target.value)} placeholder="Type DELETE to confirm" className="mt-2" />
               <AlertDialogFooter>
                 <AlertDialogCancel onClick={() => setDeleteConfirm('')}>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={handleDelete} disabled={deleteConfirm !== 'DELETE' || deleting}
+                <AlertDialogAction type="button" onClick={handleDelete} disabled={!confirmed || deleting}
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
                   {deleting && <Loader2 className="w-4 h-4 animate-spin mr-1" />}
-                  Permanently Delete
+                  Sign in again and schedule deletion
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>

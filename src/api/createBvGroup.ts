@@ -32,22 +32,22 @@ export default createEndpoint({
     // Falling back to PW here was what made newly-created FOLK groups vanish
     // from FOLK group management and from the member-assignment dropdown.
     let facilitatorUser =
-      await Users.findOne({ id: input.bvslId, fields: ['id', 'userId', 'fullName', 'email', 'segment', 'isPrabhupadaWorldUser', 'guide', 'bvReportingAdminId', 'bvReportingSupervisorId'] }).catch(() => undefined) ||
-      await Users.findOne({ filters: { userId: input.bvslId }, fields: ['id', 'userId', 'fullName', 'email', 'segment', 'isPrabhupadaWorldUser', 'guide', 'bvReportingAdminId', 'bvReportingSupervisorId'] }).catch(() => undefined) ||
-      await Users.findOne({ filters: { email: input.bvslId.toLowerCase() }, fields: ['id', 'userId', 'fullName', 'email', 'segment', 'isPrabhupadaWorldUser', 'guide', 'bvReportingAdminId', 'bvReportingSupervisorId'] }).catch(() => undefined);
+      await Users.findOne({ id: input.bvslId, fields: ['id', 'userId', 'fullName', 'email', 'segment', 'isPrabhupadaWorldUser', 'guide', 'bvReportingAdminId', 'bvReportingSupervisorId'] }) ||
+      await Users.findOne({ filters: { userId: input.bvslId }, fields: ['id', 'userId', 'fullName', 'email', 'segment', 'isPrabhupadaWorldUser', 'guide', 'bvReportingAdminId', 'bvReportingSupervisorId'] }) ||
+      await Users.findOne({ filters: { email: input.bvslId.toLowerCase() }, fields: ['id', 'userId', 'fullName', 'email', 'segment', 'isPrabhupadaWorldUser', 'guide', 'bvReportingAdminId', 'bvReportingSupervisorId'] });
 
     // getGuides() can supply a Guides-table ID. Resolve it through its email
     // to the corresponding Users record when available.
     let facilitatorGuide: any = undefined;
     if (!facilitatorUser) {
       facilitatorGuide =
-        await Guides.findOne({ id: input.bvslId, fields: ['id', 'guideId', 'fullName', 'email', 'segment'] }).catch(() => undefined) ||
-        await Guides.findOne({ filters: { guideId: input.bvslId }, fields: ['id', 'guideId', 'fullName', 'email', 'segment'] }).catch(() => undefined);
+        await Guides.findOne({ id: input.bvslId, fields: ['id', 'guideId', 'fullName', 'email', 'segment'] }) ||
+        await Guides.findOne({ filters: { guideId: input.bvslId }, fields: ['id', 'guideId', 'fullName', 'email', 'segment'] });
       if (facilitatorGuide?.email) {
         facilitatorUser = await Users.findOne({
           filters: { email: facilitatorGuide.email },
           fields: ['id', 'userId', 'fullName', 'email', 'segment', 'isPrabhupadaWorldUser', 'guide', 'bvReportingAdminId', 'bvReportingSupervisorId'],
-        }).catch(() => undefined);
+        });
       }
     }
 

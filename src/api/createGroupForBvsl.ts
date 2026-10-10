@@ -30,17 +30,17 @@ export default createEndpoint({
     // Robust 3-step guide ID resolution (handles Users-table UUID, Guides-table UUID, or custom ID)
     let guideDbId: string | null = null;
 
-    const directGuideRec = await Guides.findOne({ id: input.guideId, fields: ['id'] }).catch(() => undefined);
+    const directGuideRec = await Guides.findOne({ id: input.guideId, fields: ['id'] });
     if (directGuideRec) {
       guideDbId = directGuideRec.id;
     } else {
-      const guideUser = await Users.findOne({ id: input.guideId, fields: ['id', 'email'] }).catch(() => undefined);
+      const guideUser = await Users.findOne({ id: input.guideId, fields: ['id', 'email'] });
       if (guideUser?.email) {
-        const guideByEmail = await Guides.findOne({ filters: { email: guideUser.email }, fields: ['id'] }).catch(() => undefined);
+        const guideByEmail = await Guides.findOne({ filters: { email: guideUser.email }, fields: ['id'] });
         if (guideByEmail) guideDbId = guideByEmail.id;
       }
       if (!guideDbId) {
-        const guideByCustomId = await Guides.findOne({ filters: { guideId: input.guideId }, fields: ['id'] }).catch(() => undefined);
+        const guideByCustomId = await Guides.findOne({ filters: { guideId: input.guideId }, fields: ['id'] });
         if (guideByCustomId) guideDbId = guideByCustomId.id;
       }
     }

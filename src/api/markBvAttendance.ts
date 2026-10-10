@@ -11,7 +11,7 @@ async function requireAssignedFacilitator(groupId: string, context: any) {
   const group = await BvGroups.findOne({
     id: groupId,
     fields: ['id', 'bvslLeader', 'bvslId', 'rgsfId', 'subFacilitatorId', 'subFacilitator'],
-  }).catch(() => null);
+  });
   if (!group) throw new AppError({ code: 'NOT_FOUND', message: 'Reading Group not found' });
 
   const callerIds = new Set([
@@ -52,9 +52,9 @@ export default createEndpoint({
     // rather than treating the custom userId as a separate member.
     const targetUserId = input.userId || context.user!.id;
     const [byId, byUserId, byEmail] = await Promise.all([
-      Users.findOne({ id: targetUserId, fields: ['id', 'userId', 'email'] }).catch(() => null),
-      Users.findOne({ filters: { userId: targetUserId }, fields: ['id', 'userId', 'email'] }).catch(() => null),
-      Users.findOne({ filters: { email: targetUserId }, fields: ['id', 'userId', 'email'] }).catch(() => null),
+      Users.findOne({ id: targetUserId, fields: ['id', 'userId', 'email'] }),
+      Users.findOne({ filters: { userId: targetUserId }, fields: ['id', 'userId', 'email'] }),
+      Users.findOne({ filters: { email: targetUserId }, fields: ['id', 'userId', 'email'] }),
     ]);
     const targetUser = byId || byUserId || byEmail;
     const uid = targetUser?.id || targetUserId;
@@ -81,7 +81,7 @@ export default createEndpoint({
       const { records: dateRecords } = await BvAttendance.findAll({
         filters: { attendanceDate: sessionDate },
         limit: 1000,
-      }).catch(() => ({ records: [] }));
+      });
 
       const existing = dateRecords.find((a: any) => {
         const u = Array.isArray(a.user) ? a.user[0] : a.user;
@@ -111,15 +111,15 @@ export default createEndpoint({
       // member cannot mark their own attendance merely by calling this API.
       const aliases = [...userKeys];
       const [membershipByUser, membershipByUserId] = await Promise.all([
-        BvGroupMembers.findAll({ filters: { user: { in: aliases } }, limit: 5, fields: ['id', 'group', 'groupId', 'user', 'userId', 'memberId'] }).catch(() => ({ records: [] })),
-        BvGroupMembers.findAll({ filters: { userId: { in: aliases } }, limit: 5, fields: ['id', 'group', 'groupId', 'user', 'userId', 'memberId'] }).catch(() => ({ records: [] })),
+        BvGroupMembers.findAll({ filters: { user: { in: aliases } }, limit: 5, fields: ['id', 'group', 'groupId', 'user', 'userId', 'memberId'] }),
+        BvGroupMembers.findAll({ filters: { userId: { in: aliases } }, limit: 5, fields: ['id', 'group', 'groupId', 'user', 'userId', 'memberId'] }),
       ]);
       let membership = membershipByUser.records[0] || membershipByUserId.records[0];
       if (!membership) {
         const { records } = await BvGroupMembers.findAll({
           fields: ['id', 'group', 'groupId', 'user', 'userId', 'memberId'],
           limit: 5000,
-        }).catch(() => ({ records: [] }));
+        });
         membership = records.find((member: any) => normalizedValues([
           member.id, member.user, member.userId, member.memberId,
         ]).some(value => userKeys.has(value)));
@@ -131,8 +131,8 @@ export default createEndpoint({
         ? (Array.isArray(membership.group) ? membership.group[0] : (membership.group || membership.groupId) as string)
         : null;
       const group = storedGroupId
-        ? await BvGroups.findOne({ id: storedGroupId, fields: ['id', 'groupId'] }).catch(() => null)
-          || await BvGroups.findOne({ filters: { groupId: storedGroupId }, fields: ['id', 'groupId'] }).catch(() => null)
+        ? await BvGroups.findOne({ id: storedGroupId, fields: ['id', 'groupId'] })
+          || await BvGroups.findOne({ filters: { groupId: storedGroupId }, fields: ['id', 'groupId'] })
         : null;
       const groupId = group?.id || storedGroupId;
       if (!groupId) throw new AppError({ code: 'NOT_FOUND', message: 'User is not assigned to a Reading Group' });
@@ -142,7 +142,7 @@ export default createEndpoint({
       const { records: dateRecords } = await BvAttendance.findAll({
         filters: { attendanceDate: input.localDate },
         limit: 1000,
-      }).catch(() => ({ records: [] }));
+      });
 
       const existing = dateRecords.find((a: any) => {
         const u = Array.isArray(a.user) ? a.user[0] : a.user;
@@ -156,7 +156,7 @@ export default createEndpoint({
       }
 
       const session = groupId
-        ? await BvSessions.findOne({ filters: { group: groupId, sessionDate: input.localDate }, fields: ['id'] }).catch(() => null)
+        ? await BvSessions.findOne({ filters: { group: groupId, sessionDate: input.localDate }, fields: ['id'] })
         : null;
 
       await BvAttendance.create({

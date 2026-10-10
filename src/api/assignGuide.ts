@@ -31,8 +31,8 @@ export default createEndpoint({
     }
 
     // Fetch the target user record first to resolve their actual id (email) and userId
-    const targetUserRecord = await Users.findOne({ id: input.userId }).catch(() => null) ||
-                             await Users.findOne({ filters: { userId: input.userId } }).catch(() => null);
+    const targetUserRecord = await Users.findOne({ id: input.userId }) ||
+                             await Users.findOne({ filters: { userId: input.userId } });
     if (!targetUserRecord) throw new AppError({ code: 'NOT_FOUND', message: 'User not found' });
 
     // Regular guides can only reassign users in their center

@@ -3,7 +3,7 @@ import { createEndpoint, Users, Guides, FolkResidencies, SadhanaEntries, BvGroup
 import { getTodayIST, daysAgo } from '../lib/streakUtils';
 import { normalizeRole, normalizeStatus } from './resolveUserLogin';
 import { folkGuideIdentityRefs, isPrabhupadaWorldDirectoryMember, normalizeDepartmentToken } from '../lib/directoryDepartment';
-import { callerDirectoryDepartment, getDashboardHierarchyScope, HIERARCHY_IDENTITY_FIELDS, hierarchyRefs, isHierarchySuperAdmin, isPwDepartmentAdmin, memberDirectoryDepartment } from '../lib/hierarchyUtils';
+import { callerDirectoryDepartment, getDashboardHierarchyScope, HIERARCHY_IDENTITY_FIELDS, hierarchyRefs, isHierarchySuperAdmin, isPwDepartmentAdmin, memberDirectoryDepartment, readScopedUsers } from '../lib/hierarchyUtils';
 import { getGuideScope } from '../lib/guideScope';
 import { getReportReferenceData } from '../lib/reportReferenceData';
 
@@ -75,12 +75,12 @@ export default createEndpoint({
     let bvMentorGuideDbId: string | null = null;
     if (!seesEntireDirectory && isBvMentor && input.guideId) {
       // Try direct Guides table lookup first (covers Super Guide assignment)
-      const directGuideRec = await Guides.findOne({ id: input.guideId, fields: ['id'] }).catch(() => undefined);
+      const directGuideRec = await Guides.findOne({ id: input.guideId, fields: ['id'] });
       if (directGuideRec) {
         bvMentorGuideDbId = directGuideRec.id;
       } else {
         // Must be a Users-table UUID — look up that user's email, then find their Guides record
-        const guideUser = await Users.findOne({ id: input.guideId, fields: ['id', 'email'] }).catch(() => undefined);
+        const guideUser = await Users.findOne({ id: input.guideId, fields: ['id', 'email'] });
         if (guideUser?.email) {
           const guideRec = await Guides.findOne({ filters: { email: guideUser.email }, fields: ['id'] });
           if (guideRec) bvMentorGuideDbId = guideRec.id;
@@ -105,13 +105,13 @@ export default createEndpoint({
         filters: { entryDate: todayStr },
         fields: ENTRY_TODAY_FIELDS,
         limit: 2000,
-      }).catch(() => ({ records: [] })),
+      }),
       input.minimal
         ? Promise.resolve({ records: [] })
-        : BvGroups.findAll({ limit: 500, fields: ['id', 'groupId', 'groupName', 'bvslLeader', 'bvslId', 'bvslName', 'guide'] }).catch(() => ({ records: [] })),
+        : BvGroups.findAll({ limit: 500, fields: ['id', 'groupId', 'groupName', 'bvslLeader', 'bvslId', 'bvslName', 'guide'] }),
       input.minimal
         ? Promise.resolve({ records: [] })
-        : BvGroupMembers.findAll({ limit: 2000, fields: ['id', 'user', 'userId', 'group', 'groupId'] }).catch(() => ({ records: [] })),
+        : BvGroupMembers.findAll({ limit: 2000, fields: ['id', 'user', 'userId', 'group', 'groupId'] }),
       input.minimal ? Promise.resolve({ residencies: [], guides: [] }) : getReportReferenceData(),
     ]);
     void metadataPromise.catch(() => {});
@@ -148,8 +148,9 @@ export default createEndpoint({
     // Phase 1 FIX: also fetch users from all residencies the guide manages (deduped)
     let users: any[] = [];
     let userOffset = 0;
+    const loadUsers = (args: any) => seesEntireDirectory ? Users.findAll(args) : readScopedUsers(context.user, args);
     while (true) {
-      const page = await Users.findAll({ filters, fields: USER_FIELDS, limit: 2000, offset: userOffset });
+      const page = await loadUsers({ filters, fields: USER_FIELDS, limit: 2000, offset: userOffset });
       users.push(...(page.records || []));
       if (!page.hasMore || !page.records?.length) break;
       userOffset += page.records.length;
@@ -168,7 +169,7 @@ export default createEndpoint({
               const statusMap: Record<string, string> = { active: 'Active', inactive: 'Inactive', pending: 'Pending Approval', rejected: 'Rejected' };
               resFilters.status = statusMap[statusKey] ?? statusKey;
             }
-            return Users.findAll({ filters: resFilters, fields: USER_FIELDS, limit: 500 }).catch(() => ({ records: [] }));
+            return loadUsers({ filters: resFilters, fields: USER_FIELDS, limit: 500 });
           })
         );
         const allUsersMap = new Map<string, any>();
@@ -206,7 +207,7 @@ export default createEndpoint({
       const { records: guideRecords } = await Guides.findAll({
         fields: ['id', 'guideId', 'email', 'fullName', 'name', 'segment'],
         limit: 500,
-      }).catch(() => ({ records: [] as any[] }));
+      });
       const folkGuideEmails = new Set<string>();
       for (const user of users) {
         const role = normalizeDepartmentToken(user?.role);
@@ -243,7 +244,7 @@ export default createEndpoint({
           filters: { user: { in: ids }, entryDate: { gte: cutoffStr } } as any,
           fields: ['id', 'user', 'entryDate', 'scorePercent', 'submittedAt'],
           limit: 2000,
-        }).catch(() => ({ records: [] }))));
+        })));
         batches.forEach(batch => entries.push(...(batch.records || [])));
       } else {
         // A full super-admin catalogue is cheaper as one paged query than many
@@ -255,7 +256,7 @@ export default createEndpoint({
             fields: ['id', 'user', 'entryDate', 'scorePercent', 'submittedAt'],
             limit: 2000,
             offset: entryOffset,
-          }).catch(() => ({ records: [], hasMore: false }));
+          });
           entries.push(...records);
           if (!hasMore || entries.length > 6000) break;
           entryOffset += 2000;

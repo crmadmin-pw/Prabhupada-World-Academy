@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { LayoutGrid, List, Download, ChevronDown, ChevronRight, Users, Calendar, XCircle, TrendingUp, Smartphone, Clock } from 'lucide-react';
 import { getAllResidencies } from '@/lib/endpoints-sdk';
+import { residencyMatchesDepartment } from '@/lib/residencyCategory';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { exportToCsv } from '@/utils/exportCsv';
 import { toast } from 'sonner';
@@ -711,7 +712,7 @@ export default function MissingSadhanaTab({ guideId, segment }: Props) {
             <SelectContent>
               <SelectItem value="all">All Residencies</SelectItem>
               {residencies
-                .filter((r: any) => !r.residencyName?.includes('Prabhupada World') && !r.residencyName?.includes('PW'))
+                .filter((r: any) => residencyMatchesDepartment(r, 'FOLK'))
                 .map((r: any) => (
                   <SelectItem key={r.residencyId} value={r.residencyId}>
                     {r.residencyName.replace(/^FOLK\s+/i, '')}

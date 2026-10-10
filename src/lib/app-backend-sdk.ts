@@ -3,15 +3,25 @@ import { getFirestore, FieldPath } from 'firebase-admin/firestore';
 import fs from 'fs';
 import path from 'path';
 import { requestQuery, invalidateRequestTable, recordQueryReadTime } from './requestQueries';
-import { serverCacheInvalidate } from './serverCache';
+import { attachSharedCacheDatabase, serverCacheInvalidate } from './serverCache';
+import { escapeEmailHtml, escapeHtml } from './sanitize';
 import type { z } from 'zod';
 import type { ApiCapability, ApiUserContext } from './apiAuthorization';
 
-function invalidateTableReads(table: string) {
+function invalidateTableReads(table: string, publish: boolean): Promise<void> {
   invalidateRequestTable(table);
-  if (table === 'Guides' || table === 'FolkResidencies') serverCacheInvalidate('reportReference:');
-  if (table === 'Users' || table === 'Guides') serverCacheInvalidate('ref:guides');
-  if (['Users', 'Guides', 'BvGroups', 'BvGroupMembers', 'BvAttendance'].includes(table)) serverCacheInvalidate('allBvGroupsAdmin:');
+  const tasks: Promise<void>[] = [];
+  const drop = (prefix: string) => {
+    const pending = serverCacheInvalidate(prefix, { publish });
+    if (publish) tasks.push(pending);
+  };
+  if (table === 'Guides' || table === 'FolkResidencies') drop('reportReference:');
+  if (table === 'FolkResidencies') drop('ref:residencies');
+  if (table === 'Users' || table === 'Guides') drop('ref:guides');
+  if (table === 'Services') drop('service_reference:');
+  if (table === 'SadhanaFields') drop('sadhana_fields:');
+  if (['Users', 'Guides', 'BvGroups', 'BvGroupMembers', 'BvAttendance'].includes(table)) drop('allBvGroupsAdmin:');
+  return Promise.all(tasks).then(() => undefined);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -100,6 +110,7 @@ function initFirestoreOnStartup() {
 }
 
 initFirestoreOnStartup();
+attachSharedCacheDatabase(getFirestoreDb);
 
 interface EndpointDefinition<Input extends z.ZodType, Output extends z.ZodType, Result, Public extends boolean> {
   description: string;
@@ -150,6 +161,14 @@ function applyFilters(ref: any, filters: any) {
           } else {
             q = q.where(dbField, '==', '__EMPTY_QUERY_RESULT__');
           }
+        } else if (op === 'arrayContainsAny' || op === 'array-contains-any') {
+          if (Array.isArray(opVal) && opVal.length > 0) {
+            q = q.where(dbField, 'array-contains-any', opVal.slice(0, 10));
+          } else {
+            q = q.where(dbField, '==', '__EMPTY_QUERY_RESULT__');
+          }
+        } else if (op === 'arrayContains' || op === 'array-contains') {
+          q = q.where(dbField, 'array-contains', opVal);
         } else if (op === 'notIn' || op === 'not_in') {
           if (Array.isArray(opVal) && opVal.length > 0) {
             q = q.where(dbField, 'not-in', opVal.slice(0, 30));
@@ -321,10 +340,44 @@ function hasWorkingFirestore(): boolean {
   return _hasValidCredentials;
 }
 
+let firestoreForTests: any | undefined;
+
+/** Point table operations at a stand-in client. Tests use this to simulate a
+ * missing index or a failed delete without a live Firestore. */
+export function setFirestoreForTests(db: any | undefined): void {
+  firestoreForTests = db;
+}
+
+function activeDb(): any {
+  if (firestoreForTests !== undefined) return firestoreForTests;
+  return hasWorkingFirestore() ? getFirestoreDb() : null;
+}
+
 function ensureFirestoreInProduction() {
   if (process.env.NODE_ENV === 'production' && !hasWorkingFirestore()) {
     throw new Error('Database Connection Error: Real Cloud Firestore is not configured. Please verify your Firebase Service Account credentials.');
   }
+}
+
+function databaseOperationError(operation: 'read' | 'delete', tableName: string, error: unknown): Error {
+  const detail = error instanceof Error ? error.message : String(error);
+  return new Error(`Database ${operation} failed for ${tableName}: ${detail}`, { cause: error });
+}
+
+function outsideRange(actual: unknown, op: 'gte' | 'lte' | 'gt' | 'lt', expected: unknown): boolean {
+  if (expected === undefined || expected === null) return false;
+  if (typeof actual === 'number' && typeof expected === 'number') {
+    if (op === 'gte') return actual < expected;
+    if (op === 'lte') return actual > expected;
+    if (op === 'gt') return actual <= expected;
+    return actual >= expected;
+  }
+  const left = String(actual ?? '');
+  const right = String(expected);
+  if (op === 'gte') return left < right;
+  if (op === 'lte') return left > right;
+  if (op === 'gt') return left <= right;
+  return left >= right;
 }
 
 export class Table {
@@ -345,6 +398,15 @@ export class Table {
         if (val.in && Array.isArray(val.in)) {
           if (!val.in.includes(item[key])) return false;
         }
+        const contained = val.arrayContainsAny || val['array-contains-any'];
+        if (Array.isArray(contained)) {
+          const actual = [item[key]].flat().filter(value => value != null).map(value => String(value).toLowerCase());
+          if (!contained.some((value: unknown) => actual.includes(String(value).toLowerCase()))) return false;
+        }
+        if (outsideRange(item[key], 'gte', val.gte)) return false;
+        if (outsideRange(item[key], 'lte', val.lte)) return false;
+        if (outsideRange(item[key], 'gt', val.gt)) return false;
+        if (outsideRange(item[key], 'lt', val.lt)) return false;
       } else {
         if (key === 'guide' || key === 'guideId' || key === 'selectedGuideId') {
           const itemVal = String(item.guide || item.guideName || item.selectedGuideId || '').toLowerCase();
@@ -368,38 +430,37 @@ export class Table {
 
   private async findOneUncached(query: any): Promise<any> {
     ensureFirestoreInProduction();
-    if (hasWorkingFirestore()) {
+    const db = activeDb();
+    if (db) {
       try {
-        const db = getFirestoreDb();
-        if (db) {
-          if (query.id) {
-            if (Array.isArray(query.fields) && query.fields.length > 0) {
-              let q = db.collection(this.tableName)
-                .where(FieldPath.documentId(), '==', query.id);
-              q = applyFieldSelection(q, query.fields);
-              const snapshot = await q.limit(1).get();
-              recordQueryReadTime(snapshot.readTime);
-              if (!snapshot.empty) {
-                return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
-              }
-            } else {
-              const doc = await db.collection(this.tableName).doc(query.id).get();
-              recordQueryReadTime(doc.readTime);
-              if (doc.exists) return { id: doc.id, ...doc.data() };
-            }
-          } else if (query.filters) {
-            let q = db.collection(this.tableName);
-            q = applyFilters(q, query.filters);
+        if (query.id) {
+          if (Array.isArray(query.fields) && query.fields.length > 0) {
+            let q = db.collection(this.tableName)
+              .where(FieldPath.documentId(), '==', query.id);
             q = applyFieldSelection(q, query.fields);
             const snapshot = await q.limit(1).get();
             recordQueryReadTime(snapshot.readTime);
             if (!snapshot.empty) {
               return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
             }
+          } else {
+            const doc = await db.collection(this.tableName).doc(query.id).get();
+            recordQueryReadTime(doc.readTime);
+            if (doc.exists) return { id: doc.id, ...doc.data() };
+          }
+        } else if (query.filters) {
+          let q = db.collection(this.tableName);
+          q = applyFilters(q, query.filters);
+          q = applyFieldSelection(q, query.fields);
+          const snapshot = await q.limit(1).get();
+          recordQueryReadTime(snapshot.readTime);
+          if (!snapshot.empty) {
+            return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
           }
         }
-      } catch (e: any) {
-        console.warn(`[Table ${this.tableName}] Firestore query error (${e?.message || e}), using local memory store.`);
+      } catch (e: unknown) {
+        // Same rule as findAll: a failed read is an error, not "no data".
+        throw databaseOperationError('read', this.tableName, e);
       }
     }
 
@@ -421,54 +482,55 @@ export class Table {
 
   private async findAllUncached(query: any = {}): Promise<{ records: any[]; hasMore: boolean }> {
     ensureFirestoreInProduction();
-    if (hasWorkingFirestore()) {
+    const db = activeDb();
+    if (db) {
       try {
-        const db = getFirestoreDb();
-        if (db) {
-          let q = db.collection(this.tableName);
+        let q = db.collection(this.tableName);
 
-          if (query.id) {
-            q = q.where(FieldPath.documentId(), '==', query.id);
-          } else if (query.filters) {
-            q = applyFilters(q, query.filters);
-          }
-
-          if (query.sorts && Array.isArray(query.sorts) && query.sorts.length > 0) {
-            query.sorts.forEach((s: any) => {
-              q = q.orderBy(s.field, s.dir.toLowerCase() as 'asc' | 'desc');
-            });
-          }
-
-          q = applyFieldSelection(q, query.fields);
-
-          const limit = query.limit ? Number(query.limit) : null;
-          const offset = query.offset ? Number(query.offset) : null;
-
-          if (limit !== null) {
-            q = q.limit(limit + 1);
-          }
-
-          if (offset !== null) {
-            q = q.offset(offset);
-          }
-
-          const snapshot = await q.get();
-          recordQueryReadTime(snapshot.readTime);
-          const records = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
-
-          let hasMore = false;
-          if (limit !== null && records.length > limit) {
-            hasMore = true;
-            records.pop();
-          }
-
-          return {
-            records,
-            hasMore,
-          };
+        if (query.id) {
+          q = q.where(FieldPath.documentId(), '==', query.id);
+        } else if (query.filters) {
+          q = applyFilters(q, query.filters);
         }
-      } catch (e: any) {
-        console.warn(`[Table ${this.tableName}] Firestore findAll error (${e?.message || e}), using local memory store.`);
+
+        if (query.sorts && Array.isArray(query.sorts) && query.sorts.length > 0) {
+          query.sorts.forEach((s: any) => {
+            q = q.orderBy(s.field, s.dir.toLowerCase() as 'asc' | 'desc');
+          });
+        }
+
+        q = applyFieldSelection(q, query.fields);
+
+        const limit = query.limit ? Number(query.limit) : null;
+        const offset = query.offset ? Number(query.offset) : null;
+
+        if (limit !== null) {
+          q = q.limit(limit + 1);
+        }
+
+        if (offset !== null) {
+          q = q.offset(offset);
+        }
+
+        const snapshot = await q.get();
+        recordQueryReadTime(snapshot.readTime);
+        const records = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
+
+        let hasMore = false;
+        if (limit !== null && records.length > limit) {
+          hasMore = true;
+          records.pop();
+        }
+
+        return {
+          records,
+          hasMore,
+        };
+      } catch (e: unknown) {
+        // A missing index or any other Firestore failure must not look like an
+        // empty collection. The in-memory store is only for environments
+        // without Firestore.
+        throw databaseOperationError('read', this.tableName, e);
       }
     }
 
@@ -481,14 +543,35 @@ export class Table {
       records = records.filter(r => this.matchMock(r, query.filters));
     }
 
-    const limit = query.limit ? Number(query.limit) : records.length;
-    return { records: records.slice(0, limit), hasMore: false };
+    if (Array.isArray(query.sorts) && query.sorts.length > 0) {
+      const sorts = query.sorts;
+      records.sort((a, b) => {
+        for (const sort of sorts) {
+          const direction = String(sort?.dir || 'asc').toLowerCase() === 'desc' ? -1 : 1;
+          const left = a?.[sort.field];
+          const right = b?.[sort.field];
+          if (left === right) continue;
+          if (typeof left === 'number' && typeof right === 'number') {
+            return left < right ? -direction : direction;
+          }
+          const compared = String(left ?? '').localeCompare(String(right ?? ''));
+          if (compared !== 0) return compared * direction;
+        }
+        return 0;
+      });
+    }
+
+    const offset = query.offset ? Number(query.offset) : 0;
+    const windowed = offset > 0 ? records.slice(offset) : records;
+    const limit = query.limit ? Number(query.limit) : null;
+    if (limit === null) return { records: windowed, hasMore: false };
+    return { records: windowed.slice(0, limit), hasMore: windowed.length > limit };
   }
 
   async create({ record }: { record: any }): Promise<any> {
-    invalidateTableReads(this.tableName);
+    invalidateTableReads(this.tableName, false);
     try { return await this.createUncached({ record }); }
-    finally { invalidateTableReads(this.tableName); }
+    finally { await invalidateTableReads(this.tableName, true); }
   }
 
   private async createUncached({ record }: { record: any }): Promise<any> {
@@ -514,13 +597,14 @@ export class Table {
     store.set(id, fullRecord);
     if (fullRecord.userId) store.set(fullRecord.userId, fullRecord);
     if (fullRecord.email) store.set(fullRecord.email.toLowerCase(), fullRecord);
+    await noteHierarchyWrite(this.tableName, fullRecord);
     return fullRecord;
   }
 
   async update({ id, record }: { id: string; record: any }): Promise<any> {
-    invalidateTableReads(this.tableName);
+    invalidateTableReads(this.tableName, false);
     try { return await this.updateUncached({ id, record }); }
-    finally { invalidateTableReads(this.tableName); }
+    finally { await invalidateTableReads(this.tableName, true); }
   }
 
   private async updateUncached({ id, record }: { id: string; record: any }): Promise<any> {
@@ -563,27 +647,31 @@ export class Table {
     if (existing.userId) store.set(existing.userId, existing);
     if (existing.email) store.set(existing.email.toLowerCase(), existing);
 
+    await noteHierarchyWrite(this.tableName, data);
     return existing;
   }
 
   async delete({ id }: { id: string }): Promise<any> {
-    invalidateTableReads(this.tableName);
+    invalidateTableReads(this.tableName, false);
     try { return await this.deleteUncached({ id }); }
-    finally { invalidateTableReads(this.tableName); }
+    finally { await invalidateTableReads(this.tableName, true); }
   }
 
   private async deleteUncached({ id }: { id: string }): Promise<any> {
     ensureFirestoreInProduction();
     let record: any = null;
-    const db = getFirestoreDb();
-    if (db && hasWorkingFirestore()) {
-      try {
-        record = await this.findOne({ id });
-        if (record) {
+    const db = activeDb();
+    if (db) {
+      record = await this.findOne({ id });
+      if (record) {
+        try {
           await db.collection(this.tableName).doc(id).delete();
+        } catch (e: unknown) {
+          // Create and update already fail the request. A failed delete must
+          // not continue into the memory store and return the record as if it
+          // were gone.
+          throw databaseOperationError('delete', this.tableName, e);
         }
-      } catch (e: any) {
-        console.warn(`[Table ${this.tableName}] Firestore delete error (${e?.message || e}), removed from local memory store.`);
       }
     }
 
@@ -600,6 +688,7 @@ export class Table {
     } else {
       store.delete(id);
     }
+    await noteHierarchyWrite(this.tableName);
     return existing || record;
   }
 
@@ -613,18 +702,98 @@ export class Table {
   }
 }
 
+const REPORTING_CHAIN_TABLES = new Set(['Users', 'Guides', 'BvGroups', 'BvGroupMembers', 'FolkResidencies']);
+const REPORTING_CHAIN_USER_FIELDS = new Set([
+  'role', 'guide', 'selectedGuideId', 'segment', 'isPrabhupadaWorldUser', 'status',
+  'bvReportingAdminId', 'bvReportingSupervisorId', 'bvReportingFacilitatorId', 'bvSupervisorGuideId',
+  'sadhanaMentor', 'folkResidencies', 'residency',
+  'isBvAdmin', 'isBvSuperAdmin', 'isPwAdmin', 'isBvSupervisor', 'isBvMentor',
+  'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator', 'isSadhanaMentor',
+  'userId', 'email',
+]);
+export const REPORTING_CHAINS_KEY = 'reportingChainsVersion';
+export const REPORTING_CHAINS_READY = 'ready:1';
+
+let reportingChainsLocallyStale = false;
+
+export function reportingChainsLocallyStaleNow(): boolean {
+  return reportingChainsLocallyStale;
+}
+
+export function clearReportingChainsLocalStale(): void {
+  reportingChainsLocallyStale = false;
+}
+
+export async function markReportingChainsStale(): Promise<void> {
+  reportingChainsLocallyStale = true;
+  try {
+    await Config.update({
+      id: REPORTING_CHAINS_KEY,
+      record: {
+        configKey: REPORTING_CHAINS_KEY,
+        configValue: `stale:${Date.now()}`,
+        updatedAt: new Date().toISOString(),
+      },
+    });
+  } catch {
+    // This instance still rebuilds on the next scoped read. Other instances
+    // keep the previous chains until a later invalidation is stored.
+  }
+}
+
+async function noteHierarchyWrite(tableName: string, record?: Record<string, unknown>) {
+  if (!REPORTING_CHAIN_TABLES.has(tableName)) return;
+  if (tableName === 'Users' && record && !Object.keys(record).some(key => REPORTING_CHAIN_USER_FIELDS.has(key))) return;
+  await markReportingChainsStale();
+}
+
+function safeMailHeader(value: unknown): string {
+  return String(value ?? '').replace(/[\r\n]+/g, ' ').trim();
+}
+
+function safeMailHref(value: unknown): string {
+  const href = String(value ?? '').trim();
+  if (/[\r\n\0]/.test(href)) return '';
+  if (/^https?:\/\//i.test(href)) return href;
+  if (/^\/[A-Za-z0-9]/.test(href)) return href;
+  return '';
+}
+
+function safeMailBody(body: unknown): unknown[] {
+  if (!Array.isArray(body)) return [];
+  return body.map(part => {
+    if (!part || typeof part !== 'object') return part;
+    const next = { ...(part as Record<string, unknown>) };
+    if (typeof next.content === 'string') next.content = escapeEmailHtml(next.content);
+    if (typeof next.label === 'string') next.label = escapeHtml(sanitizeMailLabel(next.label));
+    if (typeof next.href === 'string') next.href = safeMailHref(next.href);
+    return next;
+  });
+}
+
+function sanitizeMailLabel(label: string): string {
+  return label.replace(/[\r\n\0]/g, ' ');
+}
+
 // ─── EMAIL CLIENT MOCK ────────────────────────────────────────────────────────
 export const Email = {
   send: async (params: { to: string; subject: string; body: any[] }) => {
-    console.log(`[Email Mock] Sending to: ${params.to}`);
-    console.log(`[Email Mock] Subject: ${params.subject}`);
-    console.log(`[Email Mock] Body:`, JSON.stringify(params.body, null, 2));
+    const message = {
+      to: safeMailHeader(params.to),
+      subject: safeMailHeader(params.subject),
+      body: safeMailBody(params.body),
+    };
+    console.log(`[Email Mock] Sending to: ${message.to}`);
+    console.log(`[Email Mock] Subject: ${message.subject}`);
+    console.log(`[Email Mock] Body:`, JSON.stringify(message.body, null, 2));
     // In production, configure nodemailer/SMTP here.
     return { success: true };
   }
 };
 
 // ─── INSTANTIATE & EXPORT ALL TABLES ──────────────────────────────────────────
+export const AccountDeletionHolds = new Table('AccountDeletionHolds');
+export const AccountLinkRequests = new Table('AccountLinkRequests');
 export const AshrayChecklist = new Table('AshrayChecklist');
 export const AshrayLevels = new Table('AshrayLevels');
 export const AshrayUpgradeRequests = new Table('AshrayUpgradeRequests');
@@ -665,6 +834,8 @@ export const SadhanaEntries = new Table('SadhanaEntries');
 export const SadhanaFields = new Table('SadhanaFields');
 export const SadhanaFieldsTable = SadhanaFields;
 export const SadhanaMonthlySummaries = new Table('SadhanaMonthlySummaries');
+export const SadhanaPeriodSummaries = new Table('SadhanaPeriodSummaries');
+export const SadhanaPeriodSummaryMeta = new Table('SadhanaPeriodSummaryMeta');
 export const ServiceAllocations = new Table('ServiceAllocations');
 export const ServiceAvailability = new Table('ServiceAvailability');
 export const ServicePreferences = new Table('ServicePreferences');

@@ -30,7 +30,7 @@ export default createEndpoint({
       throw new Error('Only Guides and Super Guides can set ashray levels');
     }
 
-    let target = await Users.findOne({ id: input.userId, fields: ['id', 'residency', 'guide', 'ashrayLevel', 'fullName', 'email', 'phone', 'tagMangoEnrollmentStatus', 'tagMangoEnrollmentAttempts'] }).catch(() => undefined);
+    let target = await Users.findOne({ id: input.userId, fields: ['id', 'residency', 'guide', 'ashrayLevel', 'fullName', 'email', 'phone', 'tagMangoEnrollmentStatus', 'tagMangoEnrollmentAttempts'] });
     if (!target) {
       target = await Users.findOne({ filters: { userId: input.userId }, fields: ['id', 'residency', 'guide', 'ashrayLevel', 'fullName', 'email', 'phone', 'tagMangoEnrollmentStatus', 'tagMangoEnrollmentAttempts'] });
     }

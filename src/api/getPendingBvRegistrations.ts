@@ -68,9 +68,9 @@ export default createEndpoint({
 
     try {
       const [{ records: list1 }, { records: list2 }, { records: list3 }] = await Promise.all([
-        rawUserIds.length > 0 ? Users.findAll({ filters: { id: { in: rawUserIds } }, limit: 500 }).catch(() => ({ records: [] })) : { records: [] },
-        rawUserIds.length > 0 ? Users.findAll({ filters: { userId: { in: rawUserIds } }, limit: 500 }).catch(() => ({ records: [] })) : { records: [] },
-        rawEmails.length > 0 ? Users.findAll({ filters: { email: { in: rawEmails } }, limit: 500 }).catch(() => ({ records: [] })) : { records: [] },
+        rawUserIds.length > 0 ? Users.findAll({ filters: { id: { in: rawUserIds } }, limit: 500 }) : { records: [] },
+        rawUserIds.length > 0 ? Users.findAll({ filters: { userId: { in: rawUserIds } }, limit: 500 }) : { records: [] },
+        rawEmails.length > 0 ? Users.findAll({ filters: { email: { in: rawEmails } }, limit: 500 }) : { records: [] },
       ]);
       [...(list1 || []), ...(list2 || []), ...(list3 || [])].forEach(u => {
         if (u.id) userMap[u.id] = u;
@@ -84,7 +84,7 @@ export default createEndpoint({
       const { records: pendingUsers } = await Users.findAll({
         filters: { bvRegistrationStatus: 'Pending Approval' },
         limit: 500,
-      }).catch(() => ({ records: [] }));
+      });
 
       const existingUserIds = new Set(records.map(r => r.userDbId || r.userId || r.id));
       const existingEmails = new Set(records.map(r => (r.email || '').toLowerCase()).filter(Boolean));
@@ -126,15 +126,15 @@ export default createEndpoint({
         filters: { status: 'Pending' },
         fields: ['id', 'user', 'group', 'requestedAt', 'status'],
         limit: 200,
-      }).catch(() => ({ records: [] }));
+      });
       const firstRef = (value: unknown) => Array.isArray(value) ? value[0] : value;
       const requestUserIds = [...new Set(joinRequests.map(request => firstRef(request.user)).filter(Boolean).map(String))];
       const requestGroupIds = [...new Set(joinRequests.map(request => firstRef(request.group)).filter(Boolean).map(String))];
       const missingUserIds = requestUserIds.filter(id => !userMap[id]);
       if (missingUserIds.length > 0) {
         const [{ records: byId }, { records: byUserId }] = await Promise.all([
-          Users.findAll({ filters: { id: { in: missingUserIds } }, limit: 200 }).catch(() => ({ records: [] })),
-          Users.findAll({ filters: { userId: { in: missingUserIds } }, limit: 200 }).catch(() => ({ records: [] })),
+          Users.findAll({ filters: { id: { in: missingUserIds } }, limit: 200 }),
+          Users.findAll({ filters: { userId: { in: missingUserIds } }, limit: 200 }),
         ]);
         [...(byId || []), ...(byUserId || [])].forEach(u => {
           if (u.id) userMap[u.id] = u;
@@ -145,8 +145,8 @@ export default createEndpoint({
       const groupMap: Record<string, any> = {};
       if (requestGroupIds.length > 0) {
         const [{ records: groupsById }, { records: groupsByGroupId }] = await Promise.all([
-          BvGroups.findAll({ filters: { id: { in: requestGroupIds } }, fields: ['id', 'groupId', 'groupName', 'segment'], limit: 200 }).catch(() => ({ records: [] })),
-          BvGroups.findAll({ filters: { groupId: { in: requestGroupIds } }, fields: ['id', 'groupId', 'groupName', 'segment'], limit: 200 }).catch(() => ({ records: [] })),
+          BvGroups.findAll({ filters: { id: { in: requestGroupIds } }, fields: ['id', 'groupId', 'groupName', 'segment'], limit: 200 }),
+          BvGroups.findAll({ filters: { groupId: { in: requestGroupIds } }, fields: ['id', 'groupId', 'groupName', 'segment'], limit: 200 }),
         ]);
         [...(groupsById || []), ...(groupsByGroupId || [])].forEach(group => {
           if (group.id) groupMap[group.id] = group;
@@ -201,12 +201,12 @@ export default createEndpoint({
           filters: { user: { in: batch } },
           fields: ['user', 'userId'],
           limit: 500,
-        }).catch(() => ({ records: [] })),
+        }),
         BvGroupMembers.findAll({
           filters: { userId: { in: batch } },
           fields: ['user', 'userId'],
           limit: 500,
-        }).catch(() => ({ records: [] })),
+        }),
       ]);
       [...byUser.records, ...byUserId.records].forEach((member: any) => {
         const user = Array.isArray(member.user) ? member.user[0] : member.user;
@@ -222,7 +222,7 @@ export default createEndpoint({
     );
     const isFolkSuper = role === 'SUPER_GUIDE' || role === 'SUPER_ADMIN' || context.user.isBvSuperAdmin || context.user.isBvAdmin;
     const guideScope = targetSegment === 'FOLK' && !isFolkSuper
-      ? await getGuideScope(context.user.email || '').catch(() => null)
+      ? await getGuideScope(context.user.email || '')
       : null;
 
     const isPwAdminUser = String(context.user.segment || '').toUpperCase() === 'PW' && !!(

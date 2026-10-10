@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-sdk';
+import { readAccountLinkHold } from '@/lib/accountLinkHold';
 import { getDepartmentLandingUrl } from '@/lib/userDashboardRoutes';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useUserProfile } from '@/contexts/UserProfileContext';
@@ -109,7 +110,8 @@ export default function ProtectedRoute({ children, allowedRoles }: Props) {
     </div>
   );
 
-  if (!profile) return <Navigate to="/register" replace />;
+  if (!profile) return <Navigate to={readAccountLinkHold() ? '/account-link-pending' : '/register'} replace />;
+  if (profile.status === 'PENDING_DELETION') return <Navigate to="/account-deletion" replace />;
   if (profile.status === 'PENDING_APPROVAL') return <Navigate to="/pending" replace />;
   if (profile.status === 'REJECTED') return <Navigate to="/rejected" replace />;
 

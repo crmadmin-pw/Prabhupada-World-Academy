@@ -78,7 +78,7 @@ export default createEndpoint({
       userIds.slice(index * 30, index * 30 + 30)
     );
     const userBatches = await Promise.all(idChunks.map(ids =>
-      Users.findAll({ filters: { id: { in: ids } }, limit: ids.length }).catch(() => ({ records: [] }))
+      Users.findAll({ filters: { id: { in: ids } }, limit: ids.length })
     ));
     const users = userBatches.flatMap(batch => batch.records || []);
 

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { getScopedHierarchyUserIds, isUserInHierarchy } from '../lib/hierarchyUtils';
+import { getScopedHierarchyUserIds, isUserInHierarchy, readScopedUsers } from '../lib/hierarchyUtils';
 import { createEndpoint, Users, FolkResidencies, SadhanaEntries } from '@/lib/backend-sdk';
 import { requireGuideRole } from '../lib/userUtils';
 import { getGuideScope } from '../lib/guideScope';
@@ -94,7 +94,7 @@ export default createEndpoint({
     const allUsers: any[] = [];
     let uOffset = 0;
     while (true) {
-      const { records, hasMore } = await Users.findAll({
+      const { records, hasMore } = await readScopedUsers(context.user, {
         filters: { status: 'Active', residencyApproved: true },
         fields: ['id', 'residency', 'residencyApproved', 'temporaryResidencyEnabled'],
         limit: 2000,
@@ -199,7 +199,7 @@ export default createEndpoint({
     const residencyNameMap: Record<string, string> = {};
     if (residencyIds.length > 0) {
       const recs = await Promise.all(
-        residencyIds.map(id => FolkResidencies.findOne({ id, fields: ['id', 'residencyName'] }).catch(() => null))
+        residencyIds.map(id => FolkResidencies.findOne({ id, fields: ['id', 'residencyName'] }))
       );
       recs.forEach(r => { if (r?.id) residencyNameMap[r.id] = (r as any).residencyName || ''; });
     }

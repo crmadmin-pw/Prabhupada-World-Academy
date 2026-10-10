@@ -3,6 +3,7 @@ import { lazy, Suspense, useState, useCallback, useEffect, useRef } from 'react'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { BookOpen, Leaf, Trophy } from 'lucide-react';
 import { getUserDashboardData, getSadhanaLeaderboard } from '@/lib/endpoints-sdk';
+import { DASHBOARD_RECENT_DAYS } from '@/lib/sadhanaHistoryWindow';
 import { format } from 'date-fns';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { isManagementProfile } from '@/lib/userDashboardRoutes';
@@ -62,7 +63,7 @@ export default function PwUserDashboard() {
 
   const { data: dashboardData, loading: dashLoading, setData: setDashboardData, refetch: refetchDashboard } = useQuery({
     key: profile?.userId ? `dashboard:${profile.userId}` : null,
-    fetcher: () => getUserDashboardData({ userId: profile!.userId, days: 30 }),
+    fetcher: () => getUserDashboardData({ userId: profile!.userId, days: DASHBOARD_RECENT_DAYS }),
     ttl: 60_000,
     realtimeChannels: ['sadhana', 'attendance', 'groups'],
   });
@@ -184,6 +185,7 @@ export default function PwUserDashboard() {
                 userId={profile.userId}
                 isResident={false}
                 refreshVersion={sadhanaRefreshVersion}
+                historyWindowStart={dd?.windowStart ?? null}
               />
             </SectionErrorBoundary>
           )}

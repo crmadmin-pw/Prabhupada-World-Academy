@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { createEndpoint, Users, AppError } from '@/lib/backend-sdk';
 import { serverCacheInvalidate } from '../lib/serverCache';
-import { resolveGuideReference } from '../lib/guideResolution';
+import { getUserSegment, resolveGuideReference } from '../lib/guideResolution';
 
 export default createEndpoint({
   description: 'Update user profile fields — writes all provided fields to the Users table',
@@ -31,13 +31,17 @@ export default createEndpoint({
     }
     // Linked record fields — pass the record ID directly
     if (input.guideId) {
-      updates.guide = input.guideId;
-
       const guide = await resolveGuideReference(input.guideId);
       if (!guide) throw new AppError({ code: 'NOT_FOUND', message: 'Selected guide or admin was not found.' });
-      const isPw = guide.segment === 'PW' || guide.isPrabhupadaWorldMentor === true;
-      updates.segment = isPw ? 'PW' : 'FOLK';
-      updates.isPrabhupadaWorldUser = isPw;
+      const stored = await Users.findOne({
+        id: context.user.id,
+        fields: ['segment', 'isPrabhupadaWorldUser', 'isFolkUser'],
+      });
+      const currentProgram = getUserSegment(stored || context.user);
+      if (currentProgram && guide.segment && guide.segment !== currentProgram) {
+        throw new AppError({ code: 'FORBIDDEN', message: 'You cannot change your program.' });
+      }
+      updates.guide = input.guideId;
     }
     if (input.residencyId) updates.residency = input.residencyId;
 

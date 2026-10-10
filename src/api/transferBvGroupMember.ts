@@ -9,9 +9,9 @@ function referenceValues(value: unknown): string[] {
 }
 
 async function findUser(userId: string) {
-  return await Users.findOne({ id: userId }).catch(() => null)
-    || await Users.findOne({ filters: { userId } }).catch(() => null)
-    || await Users.findOne({ filters: { email: userId } }).catch(() => null);
+  return await Users.findOne({ id: userId })
+    || await Users.findOne({ filters: { userId } })
+    || await Users.findOne({ filters: { email: userId } });
 }
 
 const MEMBERSHIP_FIELDS = ['id', 'group', 'groupId', 'user', 'userId', 'memberId', 'role'];
@@ -35,12 +35,12 @@ async function membershipsForUser(user: any) {
       filters: { [field]: { in: chunk } },
       fields: MEMBERSHIP_FIELDS,
       limit: 50,
-    }).catch(() => ({ records: [] as any[] })))),
+    }))),
     ...keys.flatMap(key => fields.map(field => BvGroupMembers.findAll({
       filters: { [field]: [key] },
       fields: MEMBERSHIP_FIELDS,
       limit: 20,
-    }).catch(() => ({ records: [] as any[] })))),
+    }))),
   ]);
   const byId = new Map<string, any>();
   for (const page of pages) {
@@ -98,8 +98,8 @@ export default createEndpoint({
       return { success: true, groupId: '', groupName: '' };
     }
 
-    const group = await BvGroups.findOne({ id: input.groupId }).catch(() => null)
-      || await BvGroups.findOne({ filters: { groupId: input.groupId } }).catch(() => null);
+    const group = await BvGroups.findOne({ id: input.groupId })
+      || await BvGroups.findOne({ filters: { groupId: input.groupId } });
     if (!group) throw new AppError({ code: 'NOT_FOUND', message: 'Reading Group not found' });
     if (group.isActive === false) throw new AppError({ code: 'BAD_REQUEST', message: 'Members can only be assigned to an active Reading Group' });
 

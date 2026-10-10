@@ -1,5 +1,4 @@
-import { Users } from '@/lib/backend-sdk';
-import { resolveHierarchyScope, isUserInHierarchy } from './hierarchyUtils';
+import { resolveHierarchyScope, isUserInHierarchy, readScopedUsers } from './hierarchyUtils';
 
 const SCOPE_FIELDS = [
   'id', 'userId', 'email', 'status', 'segment', 'isPrabhupadaWorldUser', 'role', 'guide',
@@ -99,6 +98,6 @@ export async function resolveBvAdminFacilitators(
   segment?: 'PW' | 'FOLK',
 ): Promise<any[]> {
   const fields = [...new Set([...requestedFields, ...SCOPE_FIELDS])];
-  const { records } = await Users.findAll({ fields, limit: 2000 });
+  const { records } = await readScopedUsers(contextUser, { fields, limit: 2000 });
   return filterBvAdminFacilitators(records, contextUser, targetAdminId, segment);
 }

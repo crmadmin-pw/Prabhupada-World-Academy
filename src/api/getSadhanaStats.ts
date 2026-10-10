@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { getDashboardHierarchyScope, isUserInHierarchy, isHierarchyAdmin } from '../lib/hierarchyUtils';
+import { getDashboardHierarchyScope, isUserInHierarchy, isHierarchyAdmin, readScopedUsers } from '../lib/hierarchyUtils';
 import { createEndpoint, Users, Guides, FolkResidencies, SadhanaEntries } from '@/lib/backend-sdk';
 import { getGuideScope } from '../lib/guideScope';
 import { requireGuideRole, isScholar as checkIsScholar } from '../lib/userUtils';
@@ -81,8 +81,8 @@ export default createEndpoint({
     const normalizedSegment = String(context.user.segment || '').trim().toUpperCase().replace(/[\s_-]+/g, '');
     const isPwMentor = !!mentorMode && (input.segment === 'PW' || normalizedSegment === 'PW' || normalizedSegment === 'PRABHUPADAWORLD');
     const mentorUser = isPwMentor
-      ? (await Users.findOne({ id: context.user.id, fields: ['id', 'userId', 'email'] }).catch(() => null)
-        || await Users.findOne({ filters: { email: context.user.email }, fields: ['id', 'userId', 'email'] }).catch(() => null))
+      ? (await Users.findOne({ id: context.user.id, fields: ['id', 'userId', 'email'] })
+        || await Users.findOne({ filters: { email: context.user.email }, fields: ['id', 'userId', 'email'] }))
       : null;
     const mentorReferences = new Set(
       [context.user.id, (mentorUser as any)?.id, (mentorUser as any)?.userId, context.user.email]
@@ -106,14 +106,14 @@ export default createEndpoint({
     } else if (isPwMentor) {
       // A PW Sadhana Mentor sees only members explicitly assigned through
       // sadhanaMentor, never every member under the mentor's linked admin.
-      const { records } = await Users.findAll({ filters: { status: 'Active' }, fields: USER_FIELDS, limit: 2000 });
+      const { records } = await readScopedUsers(context.user, { filters: { status: 'Active' }, fields: USER_FIELDS, limit: 2000 });
       users = records.filter((user: any) => {
         const assigned = Array.isArray(user.sadhanaMentor) ? user.sadhanaMentor : [user.sadhanaMentor];
         return isPrabhupadaWorldSegment(user.segment)
           && assigned.some((value: any) => mentorReferences.has(String(value || '').trim().toLowerCase()));
       });
     } else if (guideDbId) {
-      const guide = await Guides.findOne({ id: guideDbId, fields: ['id', 'folkResidencies'] }).catch(() => undefined);
+      const guide = await Guides.findOne({ id: guideDbId, fields: ['id', 'folkResidencies'] });
       if (guide) {
         guideResidencyIds = Array.isArray(guide.folkResidencies)
           ? guide.folkResidencies as string[]
@@ -126,8 +126,8 @@ export default createEndpoint({
 
     if (!facilitatorMode && !isPwMentor && guideDbId) {
       const promises = [
-        Users.findAll({ filters: { guide: guideDbId, status: 'Active' }, fields: USER_FIELDS, limit: 2000 }),
-        ...guideResidencyIds.map(rid => Users.findAll({ filters: { residency: rid, status: 'Active' }, fields: USER_FIELDS, limit: 500 })),
+        readScopedUsers(context.user, { filters: { guide: guideDbId, status: 'Active' }, fields: USER_FIELDS, limit: 2000 }),
+        ...guideResidencyIds.map(rid => readScopedUsers(context.user, { filters: { residency: rid, status: 'Active' }, fields: USER_FIELDS, limit: 500 })),
       ];
       const [guideRes, ...residencyResults] = await Promise.all(promises);
       const map = new Map<string, any>();
@@ -150,7 +150,7 @@ export default createEndpoint({
       // ALL mode — fetch all active users, scoped by segment if provided
       const allUsersFilter: any = { status: 'Active' };
       if (input.segment) allUsersFilter.segment = input.segment;
-      const { records } = await Users.findAll({ filters: allUsersFilter, fields: USER_FIELDS, limit: 2000 });
+      const { records } = await readScopedUsers(context.user, { filters: allUsersFilter, fields: USER_FIELDS, limit: 2000 });
       users = records;
     }
 

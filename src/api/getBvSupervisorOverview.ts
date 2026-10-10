@@ -110,7 +110,7 @@ export default createEndpoint({
         filters: { group: groupRefs.length > 1 ? { in: groupRefs } : groupRefs[0] } as any,
         fields: ['id', 'attendanceDate', 'present'],
         limit: 5000,
-      }).catch(() => ({ records: [] }));
+      });
       const sessionDates = new Set(attendance.map((entry: any) => String(entry.attendanceDate || '').slice(0, 10)).filter(Boolean));
       const groupKey = String(g.id || g.groupId);
 

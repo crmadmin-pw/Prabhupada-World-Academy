@@ -4,6 +4,7 @@
 import React, { useEffect, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-sdk';
+import { readAccountLinkHold } from '@/lib/accountLinkHold';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { AlertTriangle, WifiOff } from 'lucide-react';
 
@@ -35,6 +36,7 @@ export function GuestOnlyRoute({ children }: { children: React.ReactNode }) {
     );
   }
 
+  if (profile?.status === 'PENDING_DELETION') return <Navigate to="/account-deletion" replace />;
   if (profile?.status === 'ACTIVE') return <Navigate to="/dashboard" replace />;
   if (profile?.status === 'PENDING_APPROVAL') return <Navigate to="/pending" replace />;
   if (profile?.status === 'REJECTED') return <Navigate to="/rejected" replace />;
@@ -42,6 +44,7 @@ export function GuestOnlyRoute({ children }: { children: React.ReactNode }) {
   // Safety net: if the user just submitted registration but the server profile
   // hasn't loaded yet (race / temporary failure), keep them on /pending.
   if (!profile) {
+    if (readAccountLinkHold()) return <Navigate to="/account-link-pending" replace />;
     try {
       const pendingEmail = localStorage.getItem('pwa_pending_registration');
       if (pendingEmail && user?.email && pendingEmail === user.email) {
@@ -108,6 +111,7 @@ export function StatusRoute({
 
   // Route to the correct page based on status
   if (profile.status !== required) {
+    if (profile.status === 'PENDING_DELETION') return <Navigate to="/account-deletion" replace />;
     if (profile.status === 'ACTIVE') return <Navigate to="/dashboard" replace />;
     if (profile.status === 'PENDING_APPROVAL') return <Navigate to="/pending" replace />;
     if (profile.status === 'REJECTED') return <Navigate to="/rejected" replace />;
@@ -139,7 +143,7 @@ export function AuthCallbackGuard({ children }: { children: React.ReactNode }) {
   // This fires unconditionally regardless of authLoading, isStuck, or any other state.
   useEffect(() => {
     const hardTimeout = setTimeout(() => {
-      window.location.href = '/dashboard';
+      window.location.href = readAccountLinkHold() ? '/account-link-pending' : '/dashboard';
     }, 20_000);
     return () => clearTimeout(hardTimeout);
   }, []);

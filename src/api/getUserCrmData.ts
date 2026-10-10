@@ -10,7 +10,7 @@ async function resolveUser(id: string) {
     if (registered) return registered;
     if (records.length > 0) return records[0];
   }
-  const byDbId = await Users.findOne({ id, fields }).catch(() => undefined);
+  const byDbId = await Users.findOne({ id, fields });
   if (byDbId) {
     if (byDbId.id === byDbId.userId) {
       const { records } = await Users.findAll({ filters: { userId: byDbId.userId }, fields });

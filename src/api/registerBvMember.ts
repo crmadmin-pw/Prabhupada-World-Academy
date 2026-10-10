@@ -3,6 +3,7 @@ import { createEndpoint, Users, BvMemberRegistrations, AppError } from '@/lib/ba
 import { serverCacheInvalidate } from '../lib/serverCache';
 import { profileCacheKey } from './getUserProfile';
 import { publishCollectionRevision, publishUsersRevision } from '../lib/publishUsersRevision';
+import { getUserSegment } from '../lib/guideResolution';
 
 function isAtLeastFourteen(value: string): boolean {
   const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value);
@@ -65,10 +66,10 @@ export default createEndpoint({
     let userRecord = await Users.findOne({
       id: userId,
       fields: ['id', 'userId', 'email', 'isPrabhupadaWorldUser', 'segment', 'guide', 'selectedGuideId', 'guideName', 'bvRegistrationStatus'],
-    }).catch(() => null);
+    });
 
     if (!userRecord && userEmail) {
-      userRecord = await Users.findOne({ filters: { email: userEmail } }).catch(() => null);
+      userRecord = await Users.findOne({ filters: { email: userEmail } });
     }
 
     const priorRegistrationIds = [...new Set([
@@ -78,11 +79,11 @@ export default createEndpoint({
     ].filter(Boolean))];
     let priorRegistration = null;
     for (const registrationId of priorRegistrationIds) {
-      priorRegistration = await BvMemberRegistrations.findOne({ id: registrationId }).catch(() => null);
+      priorRegistration = await BvMemberRegistrations.findOne({ id: registrationId });
       if (priorRegistration) break;
     }
     if (!priorRegistration && userEmail) {
-      priorRegistration = await BvMemberRegistrations.findOne({ filters: { email: userEmail } }).catch(() => null);
+      priorRegistration = await BvMemberRegistrations.findOne({ filters: { email: userEmail } });
     }
     const priorStatus = String(userRecord?.bvRegistrationStatus || priorRegistration?.status || '').trim().toLowerCase();
     if (priorRegistration || ['pending approval', 'pending', 'awaiting approval', 'approved', 'rejected'].includes(priorStatus)) {
@@ -92,8 +93,11 @@ export default createEndpoint({
       });
     }
 
-    const isPwByGuide = !!(userRecord?.isPrabhupadaWorldUser) || userRecord?.segment === 'PW';
-    const segment = input.segment || userRecord?.segment || (isPwByGuide ? 'PW' : 'FOLK');
+    const currentProgram = getUserSegment(userRecord);
+    if (input.segment && currentProgram && input.segment !== currentProgram) {
+      throw new AppError({ code: 'FORBIDDEN', message: 'You cannot change your program.' });
+    }
+    const segment = currentProgram || input.segment || 'FOLK';
     const isPw = segment === 'PW';
 
     const registrationRecord = {
@@ -132,17 +136,17 @@ export default createEndpoint({
 
     // Update main User record with spiritual & profile fields
     const targetId = userRecord?.id || userId;
-    await Users.update({
-      id: targetId,
-      record: {
-        fullName: input.fullName,
-        phone: input.phone,
-        ashrayLevel: input.ashrayLevel === 'none' ? null : input.ashrayLevel,
-        bvRegistrationStatus: 'Pending Approval',
-        segment: segment,
-        isPrabhupadaWorldUser: isPw,
-      },
-    }).catch(() => {});
+    const profileUpdate: Record<string, unknown> = {
+      fullName: input.fullName,
+      phone: input.phone,
+      ashrayLevel: input.ashrayLevel === 'none' ? null : input.ashrayLevel,
+      bvRegistrationStatus: 'Pending Approval',
+    };
+    if (!currentProgram) {
+      profileUpdate.segment = segment;
+      profileUpdate.isPrabhupadaWorldUser = isPw;
+    }
+    await Users.update({ id: targetId, record: profileUpdate }).catch(() => {});
 
     serverCacheInvalidate(profileCacheKey(userId));
     await publishCollectionRevision('BvMemberRegistrations', registrationRecord.id);

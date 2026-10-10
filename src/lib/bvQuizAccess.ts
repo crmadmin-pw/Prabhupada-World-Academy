@@ -185,11 +185,11 @@ async function loadDepartmentDirectory(): Promise<Map<string, QuizDepartment>> {
     Users.findAll({
       limit: 5000,
       fields: ['id', 'userId', 'email', 'fullName', 'segment', 'isPrabhupadaWorldUser'],
-    }).catch(() => ({ records: [] })),
+    }),
     Guides.findAll({
       limit: 2000,
       fields: ['id', 'guideId', 'email', 'fullName', 'segment'],
-    }).catch(() => ({ records: [] })),
+    }),
   ]);
 
   for (const record of [...usersResult.records, ...guidesResult.records]) {
@@ -226,9 +226,9 @@ async function getExpandedAliases(reference: unknown): Promise<Set<string>> {
   const seed = quizRefValues(reference);
   const aliases = new Set(seed);
   for (const value of seed) {
-    const record = await Users.findOne({ id: value }).catch(() => undefined) ||
-      await Users.findOne({ filters: { userId: value } }).catch(() => undefined) ||
-      await Users.findOne({ filters: { email: value } }).catch(() => undefined);
+    const record = await Users.findOne({ id: value }) ||
+      await Users.findOne({ filters: { userId: value } }) ||
+      await Users.findOne({ filters: { email: value } });
     if (record) directoryAliases(record).forEach(alias => aliases.add(alias));
   }
   return aliases;
@@ -247,9 +247,9 @@ export async function getQuizGroupsForUser(
     loadDepartmentDirectory(),
   ]);
 
-  const callerRecord = await Users.findOne({ id: String(user.id || '') }).catch(() => undefined) ||
-    await Users.findOne({ filters: { userId: String(user.userId || '') } }).catch(() => undefined) ||
-    await Users.findOne({ filters: { email: String(user.email || '') } }).catch(() => undefined);
+  const callerRecord = await Users.findOne({ id: String(user.id || '') }) ||
+    await Users.findOne({ filters: { userId: String(user.userId || '') } }) ||
+    await Users.findOne({ filters: { email: String(user.email || '') } });
   if (callerRecord) directoryAliases(callerRecord).forEach(alias => callerAliases.add(alias));
 
   const reportingFacilitatorAliases = await getExpandedAliases((callerRecord as any)?.bvReportingFacilitatorId);
@@ -309,9 +309,9 @@ export async function findQuizGroup(reference: unknown): Promise<any | null> {
     : value == null ? [] : String(value).split(',').map(part => part.trim()).filter(Boolean);
   const refs = [...new Set(exactRefs(reference))];
   for (const ref of refs) {
-    const group = await BvGroups.findOne({ id: ref }).catch(() => undefined) ||
-      await BvGroups.findOne({ filters: { groupId: ref } }).catch(() => undefined) ||
-      await BvGroups.findOne({ filters: { groupName: ref } }).catch(() => undefined);
+    const group = await BvGroups.findOne({ id: ref }) ||
+      await BvGroups.findOne({ filters: { groupId: ref } }) ||
+      await BvGroups.findOne({ filters: { groupName: ref } });
     if (group) return group;
   }
   return null;
@@ -328,9 +328,9 @@ export async function resolveQuizDepartment(quiz: any, fallback: QuizDepartment)
   }
 
   for (const creatorRef of quizRefValues(quiz?.createdBy)) {
-    const creator = await Users.findOne({ id: creatorRef }).catch(() => undefined) ||
-      await Users.findOne({ filters: { userId: creatorRef } }).catch(() => undefined) ||
-      await Users.findOne({ filters: { email: creatorRef } }).catch(() => undefined);
+    const creator = await Users.findOne({ id: creatorRef }) ||
+      await Users.findOne({ filters: { userId: creatorRef } }) ||
+      await Users.findOne({ filters: { email: creatorRef } });
     if (creator?.segment) return normalizeQuizDepartment(creator.segment, fallback);
   }
 
@@ -347,9 +347,9 @@ export async function participantQuizDepartment(user: QuizAccessUser): Promise<Q
   if (direct === 'PW' || direct === 'FOLK') return direct;
   if (String(user?.segment || '').trim()) return direct;
 
-  const record = await Users.findOne({ id: String(user?.id || '') }).catch(() => undefined) ||
-    await Users.findOne({ filters: { userId: String(user?.userId || '') } }).catch(() => undefined) ||
-    await Users.findOne({ filters: { email: String(user?.email || '') } }).catch(() => undefined);
+  const record = await Users.findOne({ id: String(user?.id || '') }) ||
+    await Users.findOne({ filters: { userId: String(user?.userId || '') } }) ||
+    await Users.findOne({ filters: { email: String(user?.email || '') } });
   const fromRecord = quizUserDepartment({
     segment: record?.segment,
     role: record?.role || user?.role,
@@ -367,9 +367,9 @@ export async function participantQuizDepartment(user: QuizAccessUser): Promise<Q
 
 export async function getUserQuizMemberships(user: QuizAccessUser): Promise<any[]> {
   const aliases = quizUserAliases(user);
-  const record = await Users.findOne({ id: String(user.id || '') }).catch(() => undefined) ||
-    await Users.findOne({ filters: { userId: String(user.userId || '') } }).catch(() => undefined) ||
-    await Users.findOne({ filters: { email: String(user.email || '') } }).catch(() => undefined);
+  const record = await Users.findOne({ id: String(user.id || '') }) ||
+    await Users.findOne({ filters: { userId: String(user.userId || '') } }) ||
+    await Users.findOne({ filters: { email: String(user.email || '') } });
   if (record) directoryAliases(record).forEach(alias => aliases.add(alias));
 
   const { records } = await BvGroupMembers.findAll({

@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, BvSessions, BvAttendance, BvQuizzes, Users, AppError } from '@/lib/backend-sdk';
 import { legacyQuizMatchesGroup, normalizeQuizDepartment } from '@/lib/bvQuizAccess';
+import { bvUserAliases, resolveBvScopedGroups } from '@/lib/bvGroupMemberScope';
+import { isHierarchyAdmin } from '@/lib/hierarchyUtils';
 
 function normalizeKey(value: unknown): string {
   return String(value || '').trim().toLowerCase();
@@ -67,7 +69,7 @@ async function findUsersForKeys(keys: string[]): Promise<any[]> {
         filters: { [field]: { in: chunk } } as any,
         fields,
         limit: 500,
-      }).catch(() => ({ records: [] }));
+      });
       records.forEach((u: any) => results.set(u.id || u.userId || u.email, u));
     }));
   }
@@ -75,24 +77,44 @@ async function findUsersForKeys(keys: string[]): Promise<any[]> {
   return [...results.values()];
 }
 
+function leaderAliases(group: any): string[] {
+  return [...new Set([group?.bvslLeader, group?.bvslId]
+    .flatMap(value => Array.isArray(value) ? value : [value])
+    .filter(Boolean)
+    .map(value => String(value).trim().toLowerCase()))];
+}
+
+/** Join tokens let someone enrol themselves. Only the group's leader and
+ * department admins/guides receive one; other managers in the chain do not. */
+function callerMaySeeJoinToken(caller: any, group: any): boolean {
+  if (isHierarchyAdmin(caller)) return true;
+  const aliases = new Set(bvUserAliases(caller));
+  return leaderAliases(group).some(alias => aliases.has(alias));
+}
+
 export default createEndpoint({
   description: 'Get full BV group detail — group info, active members, recent sessions',
   authenticated: true,
+  requiredCapabilities: 'bv.manage',
   inputSchema: z.object({ groupId: z.string() }),
   outputSchema: z.any(),
-  execute: async ({ input }: any) => {
+  execute: async ({ input, context }: { input: any; context: any }) => {
+    if (!context?.user) throw new AppError({ code: 'UNAUTHORIZED', message: 'Unauthorized' });
     if (!input.groupId) throw new AppError({ code: 'BAD_REQUEST', message: 'groupId is required' });
+    // Reject before any member lookup. This throws when the group is outside
+    // the caller's chain, including when the caller is a plain member.
+    await resolveBvScopedGroups(context.user, { groupId: input.groupId });
 
     // Try finding by the custom groupId field first, then fall back to DB record ID
     let group = await BvGroups.findOne({
       filters: { groupId: input.groupId },
-      fields: ['id', 'groupId', 'groupName', 'description', 'isActive', 'joinToken', 'whatsAppLink', 'bvslLeader', 'segment'],
+      fields: ['id', 'groupId', 'groupName', 'description', 'isActive', 'joinToken', 'whatsAppLink', 'bvslLeader', 'bvslId', 'segment'],
     });
     if (!group) {
       group = await BvGroups.findOne({
         id: input.groupId,
-        fields: ['id', 'groupId', 'groupName', 'description', 'isActive', 'joinToken', 'whatsAppLink', 'bvslLeader', 'segment'],
-      }).catch(() => undefined);
+        fields: ['id', 'groupId', 'groupName', 'description', 'isActive', 'joinToken', 'whatsAppLink', 'bvslLeader', 'bvslId', 'segment'],
+      });
     }
     if (!group) throw new AppError({ code: 'NOT_FOUND', message: 'Group not found' });
 
@@ -102,10 +124,10 @@ export default createEndpoint({
       // id or public groupId in either field. Query both aliases, matching
       // the group-card counter, so its count and the detail list agree.
       BvGroupMembers.findAll({ filters: { group: groupRefs.length > 1 ? { in: groupRefs } : group.id } as any, fields: ['id', 'user', 'userId', 'memberId', 'role', 'joinedAt', 'group', 'groupId'], limit: 200 }),
-      BvGroupMembers.findAll({ filters: { groupId: groupRefs.length > 1 ? { in: groupRefs } : group.id } as any, fields: ['id', 'user', 'userId', 'memberId', 'role', 'joinedAt', 'group', 'groupId'], limit: 200 }).catch(() => ({ records: [] })),
+      BvGroupMembers.findAll({ filters: { groupId: groupRefs.length > 1 ? { in: groupRefs } : group.id } as any, fields: ['id', 'user', 'userId', 'memberId', 'role', 'joinedAt', 'group', 'groupId'], limit: 200 }),
       BvSessions.findAll({ filters: { group: groupRefs.length > 1 ? { in: groupRefs } : group.id } as any, fields: ['id', 'sessionId', 'sessionDate', 'topic', 'notes'], limit: 50 }),
       group.groupId
-        ? BvSessions.findAll({ filters: { groupId: group.groupId } as any, fields: ['id', 'sessionId', 'sessionDate', 'topic', 'notes'], limit: 50 }).catch(() => ({ records: [] }))
+        ? BvSessions.findAll({ filters: { groupId: group.groupId } as any, fields: ['id', 'sessionId', 'sessionDate', 'topic', 'notes'], limit: 50 })
         : Promise.resolve({ records: [] }),
       String(group.segment || '').toUpperCase() === 'FOLK'
         ? BvQuizzes.findAll({ fields: ['id', 'group', 'groupId', 'department', 'isActive', 'quizTitle', 'createdAt'], limit: 500 })
@@ -132,7 +154,7 @@ export default createEndpoint({
         filters: { group: groupRefs.length > 1 ? { in: groupRefs } : group.id } as any,
         fields: ['id', 'user', 'userId', 'present', 'attendanceDate'],
         limit: 2000,
-      }).catch(() => ({ records: [] })),
+      }),
     ]);
 
     const userMap: Record<string, any> = {};
@@ -222,7 +244,7 @@ export default createEndpoint({
         groupName: (group.groupName as string) || '',
         description: (group.description as string) || '',
         isActive: (group.isActive as boolean) ?? true,
-        joinToken: (group.joinToken as string) || null,
+        joinToken: callerMaySeeJoinToken(context.user, group) ? ((group.joinToken as string) || null) : null,
         whatsAppLink: (group.whatsAppLink as string) || null,
         segment: String(group.segment || '').toUpperCase() === 'FOLK' ? 'FOLK' : 'PW',
       },

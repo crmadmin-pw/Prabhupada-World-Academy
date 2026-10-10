@@ -30,7 +30,7 @@ export default createEndpoint({
     // Fetch all user records in parallel to verify scope
     const userRecords = await Promise.all(
       input.userIds.map(id =>
-        Users.findOne({ id, fields: ['id', 'residency', 'guide'] }).catch(() => undefined)
+        Users.findOne({ id, fields: ['id', 'residency', 'guide'] })
       )
     );
 

@@ -26,7 +26,7 @@ async function resolveUserProfile(contextUser: any) {
     filters: { [field]: { in: aliases } },
     fields: USER_IDENTITY_FIELDS,
     limit: 30,
-  }).catch(() => ({ records: [] })));
+  }));
   const results = await Promise.all(lookups);
   return results.flatMap(result => result.records)[0] || null;
 }
@@ -56,19 +56,19 @@ export default createEndpoint({
         filters: { user: { in: initialKeys } },
         fields: ['id', 'user', 'userId', 'memberId'],
         limit: 10,
-      }).catch(() => ({ records: [] })),
+      }),
       BvGroupMembers.findAll({
         filters: { userId: { in: initialKeys } },
         fields: ['id', 'user', 'userId', 'memberId'],
         limit: 10,
-      }).catch(() => ({ records: [] })),
+      }),
     ]);
     let memberships = [...membershipByUser.records, ...membershipByUserId.records];
     if (memberships.length === 0) {
       const { records } = await BvGroupMembers.findAll({
         fields: ['id', 'user', 'userId', 'memberId'],
         limit: 5000,
-      }).catch(() => ({ records: [] }));
+      });
       memberships = records.filter((member: any) => [member.id, member.user, member.userId, member.memberId]
         .flatMap(value => Array.isArray(value) ? value : [value])
         .filter(Boolean)
@@ -90,7 +90,7 @@ export default createEndpoint({
     const { records: allBv } = await BvAttendance.findAll({
       limit: 2000,
       fields: ['id', 'user', 'group', 'groupId', 'attendanceDate', 'present'],
-    }).catch(() => ({ records: [] }));
+    });
 
     const bvAtt = allBv.filter((a: any) => {
       const rawU = Array.isArray(a.user) ? a.user[0] : a.user;
@@ -107,7 +107,7 @@ export default createEndpoint({
     const { records: allLegacy } = await AttendanceRecords.findAll({
       limit: 2000,
       fields: ['id', 'user', 'session', 'date'],
-    }).catch(() => ({ records: [] }));
+    });
 
     const records = allLegacy.filter((r: any) => {
       const rawU = Array.isArray(r.user) ? r.user[0] : r.user;
@@ -128,7 +128,7 @@ export default createEndpoint({
           filters: { id: { in: batch } } as any,
           fields: ['id', 'name', 'event'],
           limit: 100,
-        }).catch(() => ({ records: [] }));
+        });
         sessions.forEach(s => {
           const eid = Array.isArray(s.event) ? s.event[0] : s.event;
           sessionMap.set(s.id, { name: s.name || '', eventId: eid });
@@ -143,7 +143,7 @@ export default createEndpoint({
         filters: { id: { in: [...eventIds] } } as any,
         fields: ['id', 'title'],
         limit: 100,
-      }).catch(() => ({ records: [] }));
+      });
       events.forEach(e => eventMap.set(e.id, e.title || ''));
     }
 

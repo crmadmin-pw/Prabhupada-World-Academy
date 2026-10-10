@@ -376,6 +376,7 @@
     { "collectionGroup": "realtimeSubscriptions", "fieldPath": "expiresAt", "ttl": true, "indexes": [] },
     { "collectionGroup": "realtimeSubscriptions", "fieldPath": "dependencies", "indexes": [] },
     { "collectionGroup": "realtimeEvents", "fieldPath": "expiresAt", "ttl": true, "indexes": [] },
-    { "collectionGroup": "notifications", "fieldPath": "realtimeExpiresAt", "ttl": true, "indexes": [] }
+    { "collectionGroup": "notifications", "fieldPath": "realtimeExpiresAt", "ttl": true, "indexes": [] },
+    { "collectionGroup": "RateLimits", "fieldPath": "expiresAt", "ttl": true, "indexes": [] }
   ]
 }

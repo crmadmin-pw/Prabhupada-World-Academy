@@ -33,8 +33,8 @@ export default createEndpoint({
     const uniqueUserIds = Array.from(new Set<string>(input.records.map(r => r.userId)));
     const userMap: Record<string, string> = {};
     for (const uid of uniqueUserIds) {
-      const user = await Users.findOne({ id: uid, fields: ['id'] }).catch(() => undefined)
-        || await Users.findOne({ filters: { userId: uid }, fields: ['id'] }).catch(() => undefined);
+      const user = await Users.findOne({ id: uid, fields: ['id'] })
+        || await Users.findOne({ filters: { userId: uid }, fields: ['id'] });
       if (user) userMap[uid] = user.id;
       else errors.push(`User not found: ${uid}`);
     }

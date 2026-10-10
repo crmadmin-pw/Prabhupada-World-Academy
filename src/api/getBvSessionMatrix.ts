@@ -108,7 +108,7 @@ export default createEndpoint({
         filters: { groupId: { in: groupIds } } as any,
         fields: ['id', 'user', 'userId', 'memberId', 'group', 'groupId'],
         limit: 2000,
-      }).catch(() => ({ records: [] })),
+      }),
     ]);
     const memberships = [...membersByGroup.records, ...membersByGroupId.records]
       .filter((member: any, index: number, records: any[]) => records.findIndex(item => item.id === member.id) === index);
@@ -173,7 +173,7 @@ export default createEndpoint({
                 fields: ['id', 'group', 'groupId', 'user', 'present', 'attendanceDate'],
                 limit: 2000,
                 offset,
-              }).catch(() => ({ records: [], hasMore: false }));
+              });
               records.push(...result.records);
               if (!result.hasMore) return records;
               offset += 2000;

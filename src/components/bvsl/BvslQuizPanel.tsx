@@ -1,5 +1,6 @@
 import { useReactiveLoader } from '@/hooks/useReactiveLoader';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useUnsavedWork } from '@/lib/formActivity';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,7 +26,6 @@ import {
   getBvQuizSubmissions,
 } from '@/lib/endpoints-sdk';
 import type { GetBvQuizzesOutputType } from '@/lib/endpoints-sdk';
-import { useEffect } from 'react';
 import { format } from 'date-fns';
 
 // --- Types ---
@@ -138,7 +138,14 @@ export function QuizEditor({
   const [saveError, setSaveError] = useState<{ questionId?: string; message: string } | null>(null);
   const draftRef = useRef({ title, description, isActive, quizDate, questions });
   const draftDirtyRef = useRef(false);
+  const [draftDirty, setDraftDirty] = useState(false);
+  useUnsavedWork(draftDirty || saving);
   draftRef.current = { title, description, isActive, quizDate, questions };
+
+  const markDraftDirty = () => {
+    draftDirtyRef.current = true;
+    setDraftDirty(true);
+  };
 
   const replaceQuestions = (next: QuizQuestion[] | ((current: QuizQuestion[]) => QuizQuestion[])) => {
     setQuestions(current => {
@@ -152,6 +159,7 @@ export function QuizEditor({
     if (!editingQuiz) return;
     let cancelled = false;
     draftDirtyRef.current = false;
+    setDraftDirty(false);
     getBvQuizDetail({ quizId: editingQuiz.id, department, includeAnswers: true, bypassCache: true })
       .then((quiz: any) => {
         if (cancelled || draftDirtyRef.current) return;
@@ -188,19 +196,19 @@ export function QuizEditor({
   }, [department, editingQuiz?.id]);
 
   const addQuestion = () => {
-    draftDirtyRef.current = true;
+    markDraftDirty();
     const q = emptyQuestion();
     replaceQuestions(current => [...current, q]);
     setExpandedQ(q.id);
   };
 
   const removeQuestion = (id: string) => {
-    draftDirtyRef.current = true;
+    markDraftDirty();
     replaceQuestions(current => current.filter(q => q.id !== id));
   };
 
   const updateQuestion = (id: string, patch: Partial<QuizQuestion> | ((question: QuizQuestion) => Partial<QuizQuestion>)) => {
-    draftDirtyRef.current = true;
+    markDraftDirty();
     replaceQuestions(current => current.map(question => {
       if (question.id !== id) return question;
       const nextPatch = typeof patch === 'function' ? patch(question) : patch;
@@ -329,7 +337,7 @@ export function QuizEditor({
           {department !== 'PW' && (
             <div className="flex items-center gap-2">
               <Switch id="quiz-active" checked={isActive} onCheckedChange={value => {
-                draftDirtyRef.current = true;
+                markDraftDirty();
                 draftRef.current = { ...draftRef.current, isActive: value };
                 setIsActive(value);
               }} />
@@ -355,7 +363,7 @@ export function QuizEditor({
           <Input
             value={title}
             onChange={e => {
-              draftDirtyRef.current = true;
+              markDraftDirty();
               draftRef.current = { ...draftRef.current, title: e.target.value };
               setTitle(e.target.value);
             }}
@@ -365,7 +373,7 @@ export function QuizEditor({
           <Textarea
             value={description}
             onChange={e => {
-              draftDirtyRef.current = true;
+              markDraftDirty();
               draftRef.current = { ...draftRef.current, description: e.target.value };
               setDescription(e.target.value);
             }}
@@ -386,7 +394,7 @@ export function QuizEditor({
               type="date"
               value={quizDate}
               onChange={e => {
-                draftDirtyRef.current = true;
+                markDraftDirty();
                 draftRef.current = { ...draftRef.current, quizDate: e.target.value };
                 setQuizDate(e.target.value);
               }}

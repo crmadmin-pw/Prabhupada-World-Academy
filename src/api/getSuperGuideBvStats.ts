@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { resolveBvScopedGroups } from '../lib/bvGroupMemberScope';
+import { readScopedUsers } from '../lib/hierarchyUtils';
 import { createEndpoint, BvGroups, BvGroupMembers, BvAttendance, Users, Guides } from '@/lib/backend-sdk';
 import { getRefId } from '../lib/userUtils';
 
@@ -109,7 +110,7 @@ async function fetchUsersByKeys(keys: string[]): Promise<any[]> {
         filters: { [field]: { in: chunk } } as any,
         fields,
         limit: 2000,
-      }).catch(() => ({ records: [] }));
+      });
       for (const u of records) results.set(u.id || u.userId || u.email || Math.random().toString(36), u);
     }));
   }
@@ -199,7 +200,7 @@ export default createEndpoint({
 
     // Fetch user info for members (display name, ashray, guide, role, flags)
     const [allUsersRes, keyedUserRecs] = await Promise.all([
-      Users.findAll({
+      readScopedUsers(context.user, {
         fields: ['id', 'userId', 'fullName', 'email', 'phone', 'ashrayLevel', 'guide', 'role', 'isBvAdmin', 'isBvSuperAdmin', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'],
         limit: 2000,
       }),

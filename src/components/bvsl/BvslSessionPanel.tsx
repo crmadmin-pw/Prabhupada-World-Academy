@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useUnsavedWork } from '@/lib/formActivity';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,6 +35,7 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  useUnsavedWork(hasUnsavedChanges || saving);
 
   const loadAttendance = useReactiveLoader(async (read, groupId: string, date: string, silent = false) => {
     if (!groupId || !date) return;

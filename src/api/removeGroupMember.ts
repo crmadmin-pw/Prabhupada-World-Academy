@@ -8,8 +8,8 @@ function firstValue(value: unknown): string {
 
 async function resolveUserFromKeys(keys: string[]) {
   for (const key of [...new Set(keys.filter(Boolean))]) {
-    const user = await Users.findOne({ id: key, fields: ['id', 'userId'] }).catch(() => null)
-      || await Users.findOne({ filters: { userId: key }, fields: ['id', 'userId'] }).catch(() => null);
+    const user = await Users.findOne({ id: key, fields: ['id', 'userId'] })
+      || await Users.findOne({ filters: { userId: key }, fields: ['id', 'userId'] });
     if (user) return user;
   }
   return null;
@@ -34,7 +34,7 @@ export default createEndpoint({
       const user = await Users.findOne({ filters: { userId: input.userId }, fields: ['id'] });
 
       // Find group — first try by DB record ID (UUID), then by custom groupId field
-      let group = await BvGroups.findOne({ id: input.groupId, fields: ['id'] }).catch(() => null);
+      let group = await BvGroups.findOne({ id: input.groupId, fields: ['id'] });
       if (!group) {
         group = await BvGroups.findOne({ filters: { groupId: input.groupId }, fields: ['id'] });
       }
@@ -48,7 +48,7 @@ export default createEndpoint({
 
     if (!membershipDbId) throw new AppError({ code: 'NOT_FOUND', message: 'Membership not found' });
 
-    const membership = await BvGroupMembers.findOne({ id: membershipDbId }).catch(() => null);
+    const membership = await BvGroupMembers.findOne({ id: membershipDbId });
     groupDbId = groupDbId || firstValue(membership?.group || (membership as any)?.groupId);
     const initialKeys = [firstValue(membership?.user), firstValue((membership as any)?.userId), input.userId].filter(Boolean);
     const resolvedUser = await resolveUserFromKeys(initialKeys);
@@ -63,7 +63,7 @@ export default createEndpoint({
         filters: { group: groupDbId },
         fields: ['id', 'user', 'userId'],
         limit: 1000,
-      }).catch(() => ({ records: [] }));
+      });
       const deleteIds = groupMemberships
         .filter((m: any) =>
           m.id === membershipDbId ||

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createEndpoint, SadhanaEntries, AppError } from '@/lib/backend-sdk';
 import { getNRMaxScore, fillingSameDayApplies, normalizeAshrayLevel } from '../lib/userUtils';
 import { getScopedHierarchyUserIds } from '@/lib/hierarchyUtils';
+import { refreshUserPeriodSummaries } from '../lib/sadhanaPeriodSummary';
 
 function getIstDateStr(isoString: string): string {
   const ms = new Date(isoString).getTime() + 5.5 * 60 * 60 * 1000;
@@ -98,6 +99,8 @@ export default createEndpoint({
     let fixed = 0;
     let skipped = 0;
     const details: any[] = [];
+    const touched: Array<{ userId: string; entryDate: string }> = [];
+    const seen = new Set<string>();
 
     for (const e of allEntries) {
       const entryUserIds = refValues(e.user);
@@ -199,6 +202,12 @@ export default createEndpoint({
       });
 
       fixed++;
+      const owner = String(Array.isArray(e.user) ? e.user[0] : e.user || '').trim();
+      const touchKey = `${owner}\0${entryDate}`;
+      if (owner && entryDate && !seen.has(touchKey)) {
+        seen.add(touchKey);
+        touched.push({ userId: owner, entryDate });
+      }
       if (details.length < 50) {
         details.push({
           entryDate,
@@ -207,6 +216,8 @@ export default createEndpoint({
         });
       }
     }
+
+    for (const item of touched) await refreshUserPeriodSummaries(item);
 
     return { fixed, skipped, details };
   },

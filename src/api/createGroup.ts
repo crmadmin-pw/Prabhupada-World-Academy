@@ -37,7 +37,7 @@ export default createEndpoint({
 
     if (input.bvslId) {
       // BUG 3 FIX: Try UUID first, then userId field
-      let bvslRecord = await Users.findOne({ id: input.bvslId, fields: ['id', 'guide', 'fullName'] }).catch(() => undefined);
+      let bvslRecord = await Users.findOne({ id: input.bvslId, fields: ['id', 'guide', 'fullName'] });
       if (!bvslRecord) {
         bvslRecord = await Users.findOne({ filters: { userId: input.bvslId }, fields: ['id', 'guide', 'fullName'] });
       }

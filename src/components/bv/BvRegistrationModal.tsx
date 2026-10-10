@@ -9,6 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { Check, ChevronDown, Loader2, Leaf, HeartHandshake, BookOpen, Clock, Building2 } from 'lucide-react';
 import { registerBvMember } from '@/lib/app-endpoints-sdk';
+import { sendOrQueue } from '@/lib/offlineQueue';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { BULK_USER_ASHRAY_LEVELS, BULK_USER_TIME_PREFERENCES } from '@/config/bulkUserCsv';
 
@@ -198,7 +199,7 @@ export default function BvRegistrationModal({ open, onOpenChange, onSuccess, seg
 
     setSubmitting(true);
     try {
-      await registerBvMember({
+      const submission = {
         fullName: fullName.trim(),
         phoneCountryCode,
         phone: sanitizedPhone,
@@ -219,7 +220,17 @@ export default function BvRegistrationModal({ open, onOpenChange, onSuccess, seg
         devoteeName: inTouchWithTemple ? devoteeName.trim() : '',
         timePreference,
         segment: segment || (profile as any)?.segment || ((profile as any)?.isPrabhupadaWorldUser ? 'PW' : 'FOLK'),
+      };
+      const outcome = await sendOrQueue({
+        type: 'bv_registration',
+        dedupeKey: `bv_registration:${profile?.userId || fullName.trim()}`,
+        payload: submission,
+        send: () => registerBvMember(submission),
       });
+      if (outcome.status === 'queued') {
+        onOpenChange(false);
+        return;
+      }
 
       toast.success('Bhakti Vriksha Registration submitted! Awaiting Admin approval.');
       onOpenChange(false);

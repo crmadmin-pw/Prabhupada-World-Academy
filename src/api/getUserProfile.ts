@@ -1,11 +1,12 @@
 import { z } from 'zod';
 import { createEndpoint, Users, Guides, FolkResidencies, GuideTransferRequests, ResidencyTransferRequests, AshrayUpgradeRequests, BvGroupMembers } from '@/lib/backend-sdk';
 import { normalizeRole, normalizeStatus } from './resolveUserLogin';
+import { isCompleteProfile, isLoginLinkedToProfile } from '@/lib/accountLinkReview';
 import { getUserDepartment } from '../lib/userDashboardRoutes';
 
 export const profileCacheKey = (userId: string) => `user_profile:${userId}`;
 
-const USER_FIELDS = ['id', 'userId', 'fullName', 'phone', 'email', 'role', 'status',
+const USER_FIELDS = ['id', 'userId', 'fullName', 'phone', 'email', 'role', 'status', 'deletionRequestedAt', 'deletionPurgeAt',
   'guide', 'residency', 'residencyClaimed', 'residencyApproved', 'createdAt',
   'lastLoginAt', 'ashrayLevel', 'residencyJoinDate', 'isBvsl', 'isSadhanaMentor', 'isServiceAllocator',
   'isBvMentor', 'bvMentorGuideId', 'isCleanlinessManager', 'isFolkLead', 'isTripCoordinator',
@@ -28,57 +29,14 @@ export default createEndpoint({
   outputSchema: z.any(),
   execute: async ({ context }: any) => {
     if (!context.user) throw new Error('Unauthorized');
+    const authUid = String(context.user.uid || context.user.id || '');
     let userRecord = await Users.findOne({ id: context.user.id, fields: USER_FIELDS });
-
-    // Fallback lookup by email if not found by ID
-    if (!userRecord && context.user.email) {
-      userRecord = await Users.findOne({ filters: { email: context.user.email } }) ||
-                 await Users.findOne({ filters: { email: context.user.email.toLowerCase() } });
+    if (!isCompleteProfile(userRecord) && authUid && authUid !== String(context.user.id || '')) {
+      userRecord = await Users.findOne({ id: authUid, fields: USER_FIELDS }) || userRecord;
     }
-
-    // ── EMAIL FALLBACK ────────────────────────────────────────────────────────
-    if ((!userRecord?.userId || !userRecord?.status) && context.user.email) {
-      const emailLower = context.user.email.toLowerCase();
-      const { records: allRecords } = await Users.findAll({
-        fields: USER_FIELDS,
-        limit: 200,
-      });
-      const realProfile = allRecords.find(r =>
-        r.id !== context.user.id &&
-        r.userId &&
-        r.status &&
-        (r.email || '').toLowerCase() === emailLower,
-      );
-      if (realProfile) {
-        await Users.update({
-          id: context.user.id,
-          record: {
-            userId: realProfile.userId,
-            fullName: realProfile.fullName || '',
-            phone: realProfile.phone || '',
-            email: realProfile.email || context.user.email,
-            guide: Array.isArray(realProfile.guide) ? realProfile.guide[0] : (realProfile.guide || undefined),
-            residency: Array.isArray(realProfile.residency) ? realProfile.residency[0] : (realProfile.residency || undefined),
-            role: realProfile.role || 'User',
-            status: realProfile.status,
-            segment: realProfile.segment || undefined,
-            isPrabhupadaWorldUser: realProfile.isPrabhupadaWorldUser ?? false,
-            isBvSuperAdmin: realProfile.isBvSuperAdmin ?? false,
-            isBvAdmin: realProfile.isBvAdmin ?? false,
-            isBvSupervisor: realProfile.isBvSupervisor ?? false,
-            isBvFacilitator: realProfile.isBvFacilitator ?? false,
-            isBvSubFacilitator: realProfile.isBvSubFacilitator ?? false,
-            residencyClaimed: realProfile.residencyClaimed ?? false,
-            residencyApproved: realProfile.residencyApproved ?? false,
-            residencyJoinDate: realProfile.residencyJoinDate || undefined,
-            ashrayLevel: realProfile.ashrayLevel || undefined,
-            isBvsl: realProfile.isBvsl ?? false,
-            isSadhanaMentor: realProfile.isSadhanaMentor ?? false,
-            createdAt: realProfile.createdAt || new Date().toISOString(),
-          },
-        }).catch(() => {});
-        userRecord = { ...realProfile, id: context.user.id };
-      }
+    if (!isCompleteProfile(userRecord) && authUid) {
+      const linked = await Users.findOne({ filters: { firebaseUid: authUid } });
+      if (isCompleteProfile(linked) && isLoginLinkedToProfile(linked, authUid)) userRecord = linked;
     }
 
     // Authentication-sync documents are not registrations. A real profile is
@@ -102,12 +60,12 @@ export default createEndpoint({
         filters: { user: { in: userIdentities } },
         fields: ['id', 'group', 'groupId', 'user', 'userId'],
         limit: 5,
-      }).catch(() => ({ records: [] })),
+      }),
       BvGroupMembers.findAll({
         filters: { userId: { in: userIdentities } },
         fields: ['id', 'group', 'groupId', 'user', 'userId'],
         limit: 5,
-      }).catch(() => ({ records: [] })),
+      }),
     ]);
     let rawMembership = byUser.records[0] || byUserId.records[0];
     if (!rawMembership) {
@@ -115,7 +73,7 @@ export default createEndpoint({
       const { records: allMemberships } = await BvGroupMembers.findAll({
         fields: ['id', 'group', 'groupId', 'user', 'userId', 'memberId'],
         limit: 5000,
-      }).catch(() => ({ records: [] }));
+      });
       rawMembership = allMemberships.find((membership: any) => [
         membership.user,
         membership.userId,
@@ -162,19 +120,19 @@ export default createEndpoint({
 
     if (rawGuideId) {
       // Try by document ID first
-      guideRecord = await Guides.findOne({ id: rawGuideId, fields: GUIDE_FIELDS }).catch(() => undefined);
+      guideRecord = await Guides.findOne({ id: rawGuideId, fields: GUIDE_FIELDS });
       if (!guideRecord) {
         // Fallback: try search by fullName
         guideRecord = await Guides.findOne({
           filters: { fullName: rawGuideId },
           fields: GUIDE_FIELDS,
-        }).catch(() => undefined);
+        });
         if (!guideRecord) {
           // Fallback: try search by email
           guideRecord = await Guides.findOne({
             filters: { email: rawGuideId },
             fields: GUIDE_FIELDS,
-          }).catch(() => undefined);
+          });
         }
       }
       if (guideRecord) {
@@ -182,10 +140,10 @@ export default createEndpoint({
       } else {
         guideId = rawGuideId;
         // Fallback: Resolve guide name from Users collection if not found in Guides
-        const userGuideRecord = await Users.findOne({ id: rawGuideId }).catch(() => null) ||
-                           await Users.findOne({ filters: { userId: rawGuideId } }).catch(() => null) ||
-                           await Users.findOne({ filters: { email: rawGuideId } }).catch(() => null) ||
-                           await Users.findOne({ filters: { email: rawGuideId.toLowerCase() } }).catch(() => null);
+        const userGuideRecord = await Users.findOne({ id: rawGuideId }) ||
+                           await Users.findOne({ filters: { userId: rawGuideId } }) ||
+                           await Users.findOne({ filters: { email: rawGuideId } }) ||
+                           await Users.findOne({ filters: { email: rawGuideId.toLowerCase() } });
         if (userGuideRecord) {
           guideRecord = {
             id: userGuideRecord.id,
@@ -283,6 +241,8 @@ function buildProfileResult({
       guideName: guideRecord?.fullName || null,
       role: primaryRole,
       status: normalizeStatus(userRecord.status || 'Pending Approval'),
+      deletionRequestedAt: userRecord.deletionRequestedAt || null,
+      deletionPurgeAt: userRecord.deletionPurgeAt || null,
       residencyUserClaim: userRecord.residencyClaimed || false,
       residencyGuideVerified: userRecord.residencyApproved || false,
       createdAt: userRecord.createdAt || new Date().toISOString(),

@@ -2,6 +2,7 @@ import { FolkResidencies, Guides, Users } from '@/lib/backend-sdk';
 import { hierarchyAliases, hierarchyRefs } from './hierarchyUtils';
 import { isPwSadhanaUser } from './sadhanaDepartment';
 import { getUserDepartment } from './userDashboardRoutes';
+import { isActiveFolkResidency } from './residencyCategory';
 
 /** FOLK Sadhana scope: self, assigned residencies and the linked guide's boys. */
 export async function getSadhanaMentorResidencyScope(caller: any) {
@@ -12,10 +13,10 @@ export async function getSadhanaMentorResidencyScope(caller: any) {
     ? await Users.findOne({ filters: { email: caller.email }, fields }) : null);
   if (!stored || getUserDepartment({ ...caller, ...stored }) !== 'FOLK') return null;
   const assigned = new Set(hierarchyRefs(stored.sadhanaMentorResidencyIds));
-  const { records } = await FolkResidencies.findAll({ fields: ['id', 'residencyId', 'residencyName', 'isActive'], limit: 500 });
+  const { records } = await FolkResidencies.findAll({ fields: ['id', 'residencyId', 'residencyName', 'isActive', 'category', 'segment'], limit: 500 });
   const enabled = stored.isSadhanaMentor === true && String(stored.status).toLowerCase() === 'active';
   const residencies = enabled ? records.filter((r: any) =>
-    r.isActive !== false && r.isActive !== 'false' && !/prabhupada world|^pw\s/i.test(r.residencyName || '') &&
+    isActiveFolkResidency(r) &&
     hierarchyRefs([r.id, r.residencyId, r.residencyName]).some(ref => assigned.has(ref))) : [];
   const residencyRefs = new Set(residencies.flatMap((r: any) => hierarchyRefs([r.id, r.residencyId, r.residencyName])));
   const self = new Set([...hierarchyAliases(stored), ...hierarchyAliases(caller)]);

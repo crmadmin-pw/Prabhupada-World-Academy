@@ -31,20 +31,21 @@ export async function resolveGuideReference(reference?: string): Promise<Resolve
   if (!value) return null;
   const email = value.toLowerCase();
 
-  const guide = await Guides.findOne({ id: value }).catch(() => null) ||
-    await Guides.findOne({ filters: { guideId: value } }).catch(() => null) ||
-    (value.includes('@') ? await Guides.findOne({ filters: { email } }).catch(() => null) : null);
+  const guide = await Guides.findOne({ id: value }) ||
+    await Guides.findOne({ filters: { guideId: value } }) ||
+    (value.includes('@') ? await Guides.findOne({ filters: { email } }) : null);
   if (guide) return asGuide(guide);
 
-  const user = await Users.findOne({ id: value }).catch(() => null) ||
-    await Users.findOne({ filters: { userId: value } }).catch(() => null) ||
-    (value.includes('@') ? await Users.findOne({ filters: { email } }).catch(() => null) : null);
+  const user = await Users.findOne({ id: value }) ||
+    await Users.findOne({ filters: { userId: value } }) ||
+    (value.includes('@') ? await Users.findOne({ filters: { email } }) : null);
   return asGuide(user);
 }
 
-export function getUserSegment(user: { segment?: unknown; isPrabhupadaWorldUser?: unknown } | null | undefined): 'PW' | 'FOLK' | null {
-  if (user?.segment === 'PW' || user?.isPrabhupadaWorldUser === true) return 'PW';
-  if (user?.segment === 'FOLK') return 'FOLK';
+export function getUserSegment(user: { segment?: unknown; isPrabhupadaWorldUser?: unknown; isFolkUser?: unknown } | null | undefined): 'PW' | 'FOLK' | null {
+  const segment = String(user?.segment || '').trim().toUpperCase().replace(/[\s_-]+/g, '');
+  if (segment === 'FOLK' || user?.isFolkUser === true) return 'FOLK';
+  if (segment === 'PW' || segment === 'PRABHUPADAWORLD' || user?.isPrabhupadaWorldUser === true) return 'PW';
   return null;
 }
 

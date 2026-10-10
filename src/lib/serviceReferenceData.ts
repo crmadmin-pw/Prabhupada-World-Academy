@@ -29,8 +29,8 @@ export async function resolveCachedResidencyDbId(rawResidency?: string): Promise
     `service_reference:residency:${rawResidency}`,
     async () => {
       const [byCustomId, byDbId] = await Promise.all([
-        FolkResidencies.findOne({ filters: { residencyId: rawResidency }, fields: ['id'] }).catch(() => null),
-        FolkResidencies.findOne({ id: rawResidency, fields: ['id'] }).catch(() => null),
+        FolkResidencies.findOne({ filters: { residencyId: rawResidency }, fields: ['id'] }),
+        FolkResidencies.findOne({ id: rawResidency, fields: ['id'] }),
       ]);
       return byCustomId?.id || byDbId?.id;
     },

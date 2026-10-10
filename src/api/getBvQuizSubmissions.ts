@@ -91,11 +91,11 @@ export default createEndpoint({
       BvGroupMembers.findAll({
         limit: 5000,
         fields: ['id', 'group', 'groupId', 'user', 'userId', 'memberId'],
-      }).catch(() => ({ records: [] })),
+      }),
       Users.findAll({
         limit: 5000,
         fields: ['id', 'userId', 'email', 'fullName', 'name'],
-      }).catch(() => ({ records: [] })),
+      }),
     ]);
     const visibleSubmissions = selectedGroup
       ? submissions.filter(submission => submissionMatchesGroup(submission, selectedGroup!.record, memberships))
@@ -188,11 +188,11 @@ async function buildQuizSubmissionReport(quiz: any, visibleGroups: { id: string;
     BvGroupMembers.findAll({
       limit: 5000,
       fields: ['id', 'group', 'groupId', 'user', 'userId', 'memberId'],
-    }).catch(() => ({ records: [] })),
+    }),
     Users.findAll({
       limit: 5000,
       fields: ['id', 'userId', 'email', 'fullName', 'name'],
-    }).catch(() => ({ records: [] })),
+    }),
   ]);
   const visibleSubmissions = submissions.filter(submission =>
     visibleGroups.some(group => submissionMatchesGroup(submission, group.record, memberships))

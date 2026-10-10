@@ -49,16 +49,16 @@ export default createEndpoint({
       let guideRecord: any = await Guides.findOne({
         ...(scopedGuideId && scopedGuideId !== 'ALL' ? { id: scopedGuideId } : { filters: { email: context.user.email, isActive: true } }),
         fields: ['id', 'userId', 'email', 'fullName', 'folkResidencies'],
-      }).catch(() => undefined);
+      });
       // Dual-role guide/super-guide profiles may exist only in Users. Prefer
       // the authenticated record so its saved residency view is used even if
       // legacy duplicate Users rows share the same custom userId.
       if (!guideRecord) {
         guideRecord =
-          await Users.findOne({ id: context.user.id, fields: ['id', 'userId', 'email', 'fullName', 'folkResidencies'] }).catch(() => undefined) ||
-          await Users.findOne({ id: scopedGuideId, fields: ['id', 'userId', 'email', 'fullName', 'folkResidencies'] }).catch(() => undefined) ||
-          await Users.findOne({ filters: { userId: scopedGuideId }, fields: ['id', 'userId', 'email', 'fullName', 'folkResidencies'] }).catch(() => undefined) ||
-          await Users.findOne({ filters: { email: context.user.email }, fields: ['id', 'userId', 'email', 'fullName', 'folkResidencies'] }).catch(() => undefined);
+          await Users.findOne({ id: context.user.id, fields: ['id', 'userId', 'email', 'fullName', 'folkResidencies'] }) ||
+          await Users.findOne({ id: scopedGuideId, fields: ['id', 'userId', 'email', 'fullName', 'folkResidencies'] }) ||
+          await Users.findOne({ filters: { userId: scopedGuideId }, fields: ['id', 'userId', 'email', 'fullName', 'folkResidencies'] }) ||
+          await Users.findOne({ filters: { email: context.user.email }, fields: ['id', 'userId', 'email', 'fullName', 'folkResidencies'] });
       }
       if (!guideRecord) return [];
 
@@ -69,7 +69,7 @@ export default createEndpoint({
           ? guideRecord.folkResidencies
           : [guideRecord.folkResidencies]
       );
-      const scope = await getGuideScope(context.user.email).catch(() => null);
+      const scope = await getGuideScope(context.user.email);
       linkedResidencyNames = scope?.residencyNames || [];
       // Even when the account also has Super Guide access, an explicit guide
       // view must be limited to that guide's assigned residencies. The
@@ -77,7 +77,7 @@ export default createEndpoint({
       const { records: residencyRecords } = await FolkResidencies.findAll({
         fields: ['id', 'guides', 'guideIds'],
         limit: 500,
-      }).catch(() => ({ records: [] }));
+      });
       const guideRefs = new Set([
         guideRecord.id,
         guideRecord.userId,

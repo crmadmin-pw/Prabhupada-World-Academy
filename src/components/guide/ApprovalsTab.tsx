@@ -1,6 +1,6 @@
 import { useReactiveLoader } from '@/hooks/useReactiveLoader';
 import { REALTIME_INVALIDATION_EVENT } from '@/lib/realtimeChannels';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { CheckCircle, XCircle, Edit, UserCheck, ArrowRightLeft, Star, Home, ClipboardList, ExternalLink, Sparkles } from 'lucide-react';
+import { CheckCircle, XCircle, Edit, UserCheck, ArrowRightLeft, Star, Home, ClipboardList, ExternalLink, Sparkles, Link2 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import {
@@ -28,6 +28,7 @@ import { publishMemberDirectoryChange } from '@/lib/memberDirectorySync';
 import { fmt } from '@/lib/fmt';
 import { EmptyState, ConfirmDialog, AsyncButton } from '@/shared';
 import { ASHRAY_LEVELS } from '@/types/enums';
+import AccountLinkReviews from './AccountLinkReviews';
 
 type PendingUser = GetPendingApprovalsOutputType[0];
 type GuideRequest = any;
@@ -46,6 +47,28 @@ export default function ApprovalsTab({ guideId = '', reviewerGuideId, isSuperGui
   const navigate = useNavigate();
   const { profile } = useUserProfile();
   const actionGuideId = reviewerGuideId || guideId;
+  const reviewerRole = String(profile?.role || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+  const canReviewAccountLinks = !!(
+    profile?.isBvSuperAdmin ||
+    reviewerRole === 'SUPER_ADMIN' ||
+    reviewerRole === 'ADMIN' ||
+    reviewerRole === 'PW_ADMIN'
+  );
+  const onCountLoadedRef = useRef(onCountLoaded);
+  onCountLoadedRef.current = onCountLoaded;
+  const canReviewAccountLinksRef = useRef(canReviewAccountLinks);
+  canReviewAccountLinksRef.current = canReviewAccountLinks;
+  const otherApprovalCountRef = useRef(0);
+  const linkReviewCountRef = useRef(0);
+  const [linkReviewCount, setLinkReviewCount] = useState(0);
+  const reportCounts = () => {
+    onCountLoadedRef.current?.(otherApprovalCountRef.current + (canReviewAccountLinksRef.current ? linkReviewCountRef.current : 0));
+  };
+  const handleLinkCount = useCallback((count: number) => {
+    linkReviewCountRef.current = count;
+    setLinkReviewCount(count);
+    onCountLoadedRef.current?.(otherApprovalCountRef.current + (canReviewAccountLinksRef.current ? count : 0));
+  }, []);
   const [pendingUsers, setPendingUsers] = useState<PendingUser[]>([]);
   const [guideTransfers, setGuideTransfers] = useState<GuideRequest[]>([]);
   const [ashrayUpgrades, setAshrayUpgrades] = useState<AshrayRequest[]>([]);
@@ -101,7 +124,8 @@ export default function ApprovalsTab({ guideId = '', reviewerGuideId, isSuperGui
       const visibleCount = isPwAdmin
         ? registrationCount + ashrayCount
         : registrationCount + requestsRes.guideTransfers.length + ashrayCount + residencyTransferRes.length + (Array.isArray(cleanReviews) ? cleanReviews.length : 0);
-      onCountLoaded?.(visibleCount);
+      otherApprovalCountRef.current = visibleCount;
+      reportCounts();
     } catch {
       if (read.cancelled) return;
       if (!background) toast.error('Failed to load approvals');
@@ -298,6 +322,15 @@ export default function ApprovalsTab({ guideId = '', reviewerGuideId, isSuperGui
             </TabsTrigger>
           )}
 
+          {canReviewAccountLinks && (
+            <TabsTrigger value="account_links" className="gap-1 text-xs sm:text-sm">
+              <Link2 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Login links</span>
+              <span className="sm:hidden">Links</span>
+              {linkReviewCount > 0 && <Badge className="ml-1 text-xs px-1.5">{linkReviewCount}</Badge>}
+            </TabsTrigger>
+          )}
+
           {!isPwAdmin && (
             <TabsTrigger value="cleanliness" className="gap-1 text-xs sm:text-sm">
               <Sparkles className="w-3.5 h-3.5" />
@@ -309,6 +342,12 @@ export default function ApprovalsTab({ guideId = '', reviewerGuideId, isSuperGui
             </TabsTrigger>
           )}
         </TabsList>
+
+        {canReviewAccountLinks && (
+          <TabsContent value="account_links">
+            <AccountLinkReviews onCountChange={handleLinkCount} />
+          </TabsContent>
+        )}
 
         {/* ── Registration Approvals ── */}
         <TabsContent value="registrations">

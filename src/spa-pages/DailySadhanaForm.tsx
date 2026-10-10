@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useUnsavedWork } from '@/lib/formActivity';
 import { useReactiveLoader } from '@/hooks/useReactiveLoader';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -15,8 +16,9 @@ import { toast } from 'sonner';
 import { getSadhanaFormData, submitSadhana, setTemporaryResidency, getAllResidencies, getCleanlinessForSadhana, requestCleanlinessReview, GetSadhanaFormDataOutputType, GetAllResidenciesOutputType } from '@/lib/endpoints-sdk';
 const SADHANA_SUBMITTED_KEY_PREFIX = 'sadhana_submitted_';
 import { markSubmittedToday, scheduleSadhanaReminder } from '@/utils/sadhanaNotification';
-import { invalidateUserDashboardCache } from '@/utils/cache';
+import { invalidateMemberHomeQueries } from '@/lib/app-endpoints-sdk';
 import { publishSadhanaEntrySaved } from '@/utils/sadhanaDashboardRefresh';
+import { sendOrQueue } from '@/lib/offlineQueue';
 import { getUserDashboardPath, getUserDepartment } from '@/lib/userDashboardRoutes';
 import { useDebouncedCallback } from 'use-debounce';
 import { format, subDays } from 'date-fns';
@@ -59,6 +61,7 @@ export default function DailySadhanaForm() {
   const [entryDate, setEntryDate] = useState(searchParams.get('date') || format(new Date(), 'yyyy-MM-dd'));
   const [formValues, setFormValues] = useState<Record<string, any>>({});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  useUnsavedWork(hasUnsavedChanges || submitting);
   const [isEditMode, setIsEditMode] = useState(false);
   const [existingRowId, setExistingRowId] = useState<number | undefined>(undefined);
   const [existingEntryId, setExistingEntryId] = useState<string | undefined>(undefined);
@@ -370,7 +373,7 @@ export default function DailySadhanaForm() {
       // Store temp residency ID so guide reports can identify these entries
       if (tempResidencyEnabled && tempResidencyId) enriched._tempResidencyId = tempResidencyId;
 
-      const savedEntry = await submitSadhana({
+      const submission = {
         userId, entryDate, totalScore,
         maxScore: maxScore,
         scorePercent: maxScore > 0 ? (scorePercent ?? undefined) : undefined,
@@ -380,7 +383,16 @@ export default function DailySadhanaForm() {
         flagOs: isOS,
         existingRowId,
         existingEntryId,
+      };
+      const outcome = await sendOrQueue({
+        type: 'sadhana_entry',
+        dedupeKey: `sadhana:${userId}:${entryDate}`,
+        payload: submission,
+        toastId: 'sadhana-submit',
+        send: () => submitSadhana(submission),
       });
+      if (outcome.status === 'queued') return;
+      const savedEntry = outcome.result;
       const scoreLabel = isPwUser
         ? (scoreResult.scorePercent != null ? `${scoreResult.scorePercent}%` : 'saved')
         : scoreResult.scorePercent != null
@@ -394,7 +406,7 @@ export default function DailySadhanaForm() {
         markSubmittedToday();
         scheduleSadhanaReminder(true, getUserDepartment(profile));
       }
-      invalidateUserDashboardCache(userId);
+      invalidateMemberHomeQueries();
       publishSadhanaEntrySaved({
         userId,
         entryDate,

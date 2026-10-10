@@ -52,7 +52,7 @@ export async function getGuideScope(email: string): Promise<GuideScope | null> {
   const [directGuide, linkedUser, residencies] = await Promise.all([
     Guides.findOne({ filters: { email }, fields: ['id', 'folkResidencies', 'fullName', 'email', 'abbreviation'] }),
     Users.findOne({ filters: { email }, fields: ['id', 'userId', 'role', 'fullName', 'email', 'folkResidencies', 'isBvSuperAdmin', 'isBvAdmin'] }),
-    FolkResidencies.findAll({ fields: ['id', 'residencyId', 'residencyName', 'guides', 'guideIds'], limit: 500 }).catch(() => ({ records: [] })),
+    FolkResidencies.findAll({ fields: ['id', 'residencyId', 'residencyName', 'guides', 'guideIds'], limit: 500 }),
   ]);
   let guide = directGuide;
 

@@ -1,5 +1,6 @@
 import { useReactiveEffect } from '@/hooks/useReactiveEffect';
 import { useEffect, useState, useMemo } from 'react';
+import { useUnsavedWork } from '@/lib/formActivity';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-sdk';
 import { Button } from '@/components/ui/button';
@@ -185,6 +186,7 @@ export default function ServiceManagementPage() {
   const pendingCount = Object.values(edits).reduce(
     (sum, weekMap) => sum + Object.keys(weekMap).length, 0
   );
+  useUnsavedWork(pendingCount > 0 || saving);
 
   if (authLoading) return null;
 

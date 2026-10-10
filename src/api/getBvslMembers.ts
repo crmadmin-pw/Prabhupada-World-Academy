@@ -36,9 +36,9 @@ export default createEndpoint({
 
 async function resolveLeader(bvslId: string) {
   const fields = ['id', 'userId', 'email', 'role', 'fullName'];
-  return await Users.findOne({ filters: { userId: bvslId }, fields }).catch(() => undefined)
-    || await Users.findOne({ id: bvslId, fields }).catch(() => undefined)
-    || await Users.findOne({ filters: { email: bvslId }, fields }).catch(() => undefined);
+  return await Users.findOne({ filters: { userId: bvslId }, fields })
+    || await Users.findOne({ id: bvslId, fields })
+    || await Users.findOne({ filters: { email: bvslId }, fields });
 }
 
 async function fetchBvslMembers({ input, context }: { input: any; context: any }) {
@@ -102,7 +102,7 @@ async function fetchBvslMembers({ input, context }: { input: any; context: any }
     filters: { groupId: { in: targetGroupKeys } } as any,
     fields: ['id', 'user', 'userId', 'group', 'groupId'],
     limit: 1000,
-  }).catch(() => ({ records: [] }));
+  });
   const membershipMap = new Map<string, any>();
   [...memberships, ...membershipsByGroupId].forEach((membership: any) => membershipMap.set(String(membership.id), membership));
   const allMemberships = [...membershipMap.values()];
@@ -111,9 +111,9 @@ async function fetchBvslMembers({ input, context }: { input: any; context: any }
   let memberUsers: any[] = [];
   if (userIds.length > 0) {
     const userQueries = await Promise.all([
-      Users.findAll({ filters: { id: { in: userIds } } as any, fields: ['id', 'userId', 'fullName', 'phone', 'ashrayLevel', 'email', 'residency', 'residencyApproved', 'role', 'roles', 'isRgsf', 'pwChantingTarget', 'pwReadingTarget'], limit: 500 }).catch(() => ({ records: [] })),
-      Users.findAll({ filters: { userId: { in: userIds } } as any, fields: ['id', 'userId', 'fullName', 'phone', 'ashrayLevel', 'email', 'residency', 'residencyApproved', 'role', 'roles', 'isRgsf', 'pwChantingTarget', 'pwReadingTarget'], limit: 500 }).catch(() => ({ records: [] })),
-      Users.findAll({ filters: { email: { in: userIds } } as any, fields: ['id', 'userId', 'fullName', 'phone', 'ashrayLevel', 'email', 'residency', 'residencyApproved', 'role', 'roles', 'isRgsf', 'pwChantingTarget', 'pwReadingTarget'], limit: 500 }).catch(() => ({ records: [] })),
+      Users.findAll({ filters: { id: { in: userIds } } as any, fields: ['id', 'userId', 'fullName', 'phone', 'ashrayLevel', 'email', 'residency', 'residencyApproved', 'role', 'roles', 'isRgsf', 'pwChantingTarget', 'pwReadingTarget'], limit: 500 }),
+      Users.findAll({ filters: { userId: { in: userIds } } as any, fields: ['id', 'userId', 'fullName', 'phone', 'ashrayLevel', 'email', 'residency', 'residencyApproved', 'role', 'roles', 'isRgsf', 'pwChantingTarget', 'pwReadingTarget'], limit: 500 }),
+      Users.findAll({ filters: { email: { in: userIds } } as any, fields: ['id', 'userId', 'fullName', 'phone', 'ashrayLevel', 'email', 'residency', 'residencyApproved', 'role', 'roles', 'isRgsf', 'pwChantingTarget', 'pwReadingTarget'], limit: 500 }),
     ]);
     const uniqueUsers = new Map<string, any>();
     userQueries.flatMap(result => result.records || []).forEach((user: any) => uniqueUsers.set(String(user.id), user));

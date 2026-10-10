@@ -8,17 +8,17 @@ export default createEndpoint({
   outputSchema: z.any(),
   execute: async ({ input, context }: any) => {
     const uid = context.user!.id;
-    const userRecord = await Users.findOne({ id: uid, fields: ['id', 'userId', 'email'] }).catch(() => null);
+    const userRecord = await Users.findOne({ id: uid, fields: ['id', 'userId', 'email'] });
     const memberIdentities = new Set([uid, userRecord?.id, userRecord?.userId, userRecord?.email].filter(Boolean).map(value => String(value).toLowerCase()));
     // The UI exposes a group's public groupId, whereas membership documents
     // reference its database document ID. Resolve either form before cleanup.
     const groupRecord = await BvGroups.findOne({
       id: input.groupId,
       fields: ['id', 'groupId', 'groupName', 'bvslId', 'guide'],
-    }).catch(() => null) || await BvGroups.findOne({
+    }) || await BvGroups.findOne({
       filters: { groupId: input.groupId },
       fields: ['id', 'groupId', 'groupName', 'bvslId', 'guide'],
-    }).catch(() => null);
+    });
     const groupDocumentId = groupRecord?.id || input.groupId;
     const groupReferences = [...new Set([groupDocumentId, groupRecord?.groupId, input.groupId].filter(Boolean))];
 
@@ -34,7 +34,7 @@ export default createEndpoint({
         filters: { groupId: groupReferences.length > 1 ? { in: groupReferences } : groupDocumentId } as any,
         limit: 1000,
         fields: ['id', 'user', 'userId', 'memberId'],
-      }).catch(() => ({ records: [] })),
+      }),
     ]);
     const groupMembers = [...new Map([...membersByGroup.records, ...membersByGroupId.records]
       .map(member => [String(member.id), member])).values()];
@@ -72,24 +72,24 @@ export default createEndpoint({
 
       // 1. RGF (bvslId)
       if (group?.bvslId) {
-        const rgf = await Users.findOne({ id: group.bvslId, fields: ['email'] }).catch(() => null);
+        const rgf = await Users.findOne({ id: group.bvslId, fields: ['email'] });
         if (rgf?.email) notifyEmails.add(rgf.email.toLowerCase());
       }
 
       // 2. Supervisor (group's guide)
       if (group?.guide) {
-        const sup = await Users.findOne({ id: group.guide, fields: ['email'] }).catch(() => null);
+        const sup = await Users.findOne({ id: group.guide, fields: ['email'] });
         if (sup?.email) notifyEmails.add(sup.email.toLowerCase());
       }
 
       // 3. Only that particular Admin supervising this group's supervisor
       let specificAdminEmail: string | null = null;
       if (group?.guide) {
-        const supervisorUser = await Users.findOne({ id: group.guide, fields: ['id', 'email', 'bvSupervisorGuideId', 'guide'] }).catch(() => null);
+        const supervisorUser = await Users.findOne({ id: group.guide, fields: ['id', 'email', 'bvSupervisorGuideId', 'guide'] });
         if (supervisorUser) {
           const adminId = supervisorUser.bvSupervisorGuideId || (Array.isArray(supervisorUser.guide) ? supervisorUser.guide[0] : supervisorUser.guide);
           if (adminId) {
-            const adminUser = await Users.findOne({ id: adminId, fields: ['email'] }).catch(() => null);
+            const adminUser = await Users.findOne({ id: adminId, fields: ['email'] });
             if (adminUser?.email) specificAdminEmail = adminUser.email.toLowerCase();
           }
         }
@@ -99,7 +99,7 @@ export default createEndpoint({
         notifyEmails.add(specificAdminEmail);
       } else {
         // Fallback: notify primary BV Admin for this segment
-        const { records: admins } = await Users.findAll({ filters: { isBvAdmin: true }, fields: ['email'], limit: 1 }).catch(() => ({ records: [] }));
+        const { records: admins } = await Users.findAll({ filters: { isBvAdmin: true }, fields: ['email'], limit: 1 });
         if (admins[0]?.email) notifyEmails.add(admins[0].email.toLowerCase());
       }
 

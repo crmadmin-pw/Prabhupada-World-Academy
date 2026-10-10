@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { createEndpoint, Users } from '@/lib/backend-sdk';
-import { getScopedHierarchyUserIds, isUserInHierarchy } from '../lib/hierarchyUtils';
+import { createEndpoint } from '@/lib/backend-sdk';
+import { getScopedHierarchyUserIds, isUserInHierarchy, readScopedUsers } from '../lib/hierarchyUtils';
 import { resolveBvScopedGroups, resolveBvGroupMemberUsers } from '../lib/bvGroupMemberScope';
 
 export default createEndpoint({
@@ -13,7 +13,7 @@ export default createEndpoint({
     const [hierarchy, groups, candidates] = await Promise.all([
       getScopedHierarchyUserIds(context.user),
       resolveBvScopedGroups(context.user, { segment: 'FOLK' }),
-      Users.findAll({ filters: { status: 'Active' }, fields: ['id', 'userId', 'email', 'fullName', 'status', 'segment', 'isPrabhupadaWorldUser'], limit: 2000 }),
+      readScopedUsers(context.user, { filters: { status: 'Active' }, fields: ['id', 'userId', 'email', 'fullName', 'status', 'segment', 'isPrabhupadaWorldUser'], limit: 2000 }),
     ]);
     const activeUsers = candidates.records.filter(user => isUserInHierarchy(user, hierarchy) &&
       !user.isPrabhupadaWorldUser && !['PW', 'PRABHUPADA WORLD'].includes(String(user.segment || '').toUpperCase()));

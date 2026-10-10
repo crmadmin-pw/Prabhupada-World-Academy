@@ -3,6 +3,7 @@ import { createEndpoint, Users, SadhanaEntries } from '@/lib/backend-sdk';
 import { computeStreak, daysAgo } from '../lib/streakUtils';
 import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
 import { pwScoreFromFieldValues } from '@/lib/pwSadhana';
+import { DASHBOARD_HISTORY_MAX_DAYS, DASHBOARD_RECENT_DAYS } from '@/lib/sadhanaHistoryWindow';
 
 // Minimal field sets
 const USER_FIELDS = ['id', 'userId', 'fullName', 'email', 'ashrayLevel', 'residencyApproved', 'segment', 'isPrabhupadaWorldUser'];
@@ -40,6 +41,8 @@ export default createEndpoint({
   inputSchema: z.object({
     userId: z.string().optional(),
     days: z.number().optional(),
+    /** Exclusive cursor. Set only when the caller asks for the previous window. */
+    before: z.string().max(10).optional(),
   }),
   outputSchema: z.any(),
   execute: async ({ input, context }: { input: any; context: any }) => {
@@ -47,14 +50,33 @@ export default createEndpoint({
     // Use IST (UTC+5:30) for "today" — server runs UTC but all users are in India
     const todayStr = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-    const streakStart = daysAgo(todayStr, 100);
+    const requestedBefore = typeof input.before === 'string' ? input.before.slice(0, 10) : '';
+    const before = /^\d{4}-\d{2}-\d{2}$/.test(requestedBefore) && requestedBefore <= todayStr
+      ? requestedBefore
+      : '';
+    const requestedDays = typeof input.days === 'number' && Number.isFinite(input.days) && input.days > 0
+      ? Math.floor(input.days)
+      : DASHBOARD_RECENT_DAYS;
+    // Opening the dashboard always covers the streak window. A larger `days`
+    // value, or `before`, is how a caller asks for more — never the full history.
+    const windowDays = Math.min(
+      DASHBOARD_HISTORY_MAX_DAYS,
+      before ? requestedDays : Math.max(DASHBOARD_RECENT_DAYS, requestedDays),
+    );
+    const windowEnd = before ? daysAgo(before, 1) : todayStr;
+    const windowStart = daysAgo(windowEnd, windowDays);
+    // One row per day, plus a little room for duplicate same-day writes.
+    const entryCap = Math.min(windowDays + 15, DASHBOARD_HISTORY_MAX_DAYS + 15);
+    const entryDate = before
+      ? { gte: windowStart, lt: before }
+      : { gte: windowStart, lte: todayStr };
     const authenticatedUserId = context.user.id;
     const requestedUserId = typeof input.userId === 'string' ? input.userId : '';
     const userRecord = await Users.findOne({ id: authenticatedUserId, fields: USER_FIELDS });
     const requestedUserRecord = requestedUserId
-      ? await Users.findOne({ id: requestedUserId, fields: USER_FIELDS }).catch(() => null)
-        || await Users.findOne({ filters: { userId: requestedUserId }, fields: USER_FIELDS }).catch(() => null)
-        || await Users.findOne({ filters: { email: requestedUserId }, fields: USER_FIELDS }).catch(() => null)
+      ? await Users.findOne({ id: requestedUserId, fields: USER_FIELDS })
+        || await Users.findOne({ filters: { userId: requestedUserId }, fields: USER_FIELDS })
+        || await Users.findOne({ filters: { email: requestedUserId }, fields: USER_FIELDS })
       : null;
     const contextEmail = String(context.user.email || '').toLowerCase();
     const requestedBelongsToCurrentUser = !!requestedUserRecord && (
@@ -77,15 +99,14 @@ export default createEndpoint({
       ...(requestedBelongsToCurrentUser ? [requestedUserRecord?.id, requestedUserRecord?.userId] : []),
     ].filter(Boolean).map(String))];
 
-    // Do not combine `user` with an entryDate range here. That Firestore query
-    // requires a composite index; when an App Hosting rebuild runs before the
-    // index is available, the SDK deliberately falls back to an empty local
-    // store and the calendar/card appear blank. Query by the owner (a normal
-    // single-field index) and constrain the small per-user result in memory.
+    // user + entryDate is indexed in firestore.indexes.json. Bound every read
+    // so a long-time member does not download their whole history on open.
     const entryResults = await Promise.all(ownerIds.map(ownerId =>
       SadhanaEntries.findAll({
-        filters: { user: ownerId },
+        filters: { user: ownerId, entryDate },
         fields: ENTRY_FIELDS,
+        sorts: [{ field: 'entryDate', dir: 'desc' }],
+        limit: entryCap,
       })
     ));
 
@@ -96,7 +117,7 @@ export default createEndpoint({
     for (const result of entryResults) {
       for (const entry of result.records) {
         const dateKey = String(entry.entryDate || '').slice(0, 10);
-        if (!dateKey || dateKey < streakStart || dateKey > todayStr) continue;
+        if (!dateKey || dateKey < windowStart || dateKey > windowEnd) continue;
         const existing = entriesByDate.get(dateKey);
         if (!existing || entry.user === authenticatedUserId) {
           entriesByDate.set(dateKey, entry);
@@ -146,7 +167,16 @@ export default createEndpoint({
       ? Math.round(weekEntries.reduce((s, e) => s + (e.totalScore ?? 0), 0) / 7)
       : 0;
 
+    const oldestReturned = sorted.reduce((oldest, entry) => {
+      const date = String(entry.entryDate || '').slice(0, 10);
+      return date && date < oldest ? date : oldest;
+    }, windowEnd);
+    const truncated = entryResults.some(result => result.hasMore);
+
     return {
+      windowStart: truncated ? oldestReturned : windowStart,
+      windowEnd,
+      hasMore: truncated,
       metrics: {
         todayScore: todayEntry?.totalScore ?? null,
         todayPercent: todayEntry?.scorePercent ?? null,
@@ -163,7 +193,7 @@ export default createEndpoint({
         weekEndDate: weekEnd,
         streakAtRisk: !todayEntry && currentStreak > 0,
       },
-      recentEntries: sorted.slice(0, 45).map(e => {
+      recentEntries: sorted.map(e => {
         // For residents: recalculate scorePercent using MAX(column sum, DB total)
         // so manual edits to individual point columns are reflected correctly
         const isNR = String(e.templateMode || '').toUpperCase().includes('NON_RESIDENT');

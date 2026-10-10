@@ -7,9 +7,19 @@ import { useUserProfile } from '@/contexts/UserProfileContext';
 import { receiveEndpointRevision, setEndpointPermissionScope, subscribeEndpointCache, getEndpointRealtimeTokens, getRealtimeEndpointNames, forgetEndpointRevisionToken } from '@/lib/app-endpoints-sdk';
 import { getRealtimeFirestore } from '@/lib/realtimeFirestore';
 import { realtimeListenerBatches } from '@/lib/realtimeListenerBatches';
-import { invalidateCache } from '@/utils/cache';
 import { triggerInAppOrNativeNotification } from '@/utils/sadhanaNotification';
 import { toast } from 'sonner';
+import { startOfflineSync } from '@/lib/offlineSync';
+
+// Drop leftover session entries from the retired second client cache.
+try {
+  const retiredKeys: string[] = [];
+  for (let i = 0; i < sessionStorage.length; i++) {
+    const storageKey = sessionStorage.key(i);
+    if (storageKey?.startsWith('pwac_')) retiredKeys.push(storageKey);
+  }
+  retiredKeys.forEach(storageKey => sessionStorage.removeItem(storageKey));
+} catch {}
 
 export default function RealtimeSyncProvider() {
   const { user } = useAuth();
@@ -19,8 +29,12 @@ export default function RealtimeSyncProvider() {
     // Authority changes are the only reason to discard all of this user's
     // cached data. Routine realtime updates preserve every unaffected query.
     setEndpointPermissionScope(permissionScope);
-    invalidateCache();
   }, [permissionScope]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    return startOfflineSync();
+  }, [user?.id]);
 
   useEffect(() => {
     if (!user?.id) return;

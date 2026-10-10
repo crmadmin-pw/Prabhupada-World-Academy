@@ -4,7 +4,7 @@ import { scopeRealtimeDependencies } from '@/lib/requestQueries';
 import { getReportReferenceData } from '../lib/reportReferenceData';
 import { createEndpoint, Users, Guides, FolkResidencies, SadhanaEntries } from '@/lib/backend-sdk';
 import { requireGuideRole, normalizeAshrayLevel } from '../lib/userUtils';
-import { getDashboardHierarchyScope, isHierarchyAdmin, isHierarchySuperAdmin } from '../lib/hierarchyUtils';
+import { getDashboardHierarchyScope, isHierarchyAdmin, isHierarchySuperAdmin, readScopedUsers } from '../lib/hierarchyUtils';
 import getGuides from './getGuides';
 import getAllResidencies from './getAllResidencies';
 import { resolveBvGroupMemberUsers } from '../lib/bvGroupMemberScope';
@@ -14,6 +14,7 @@ import { getGuideScope } from '../lib/guideScope';
 import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
 import { pwFieldPercent, pwOverallPercent, pwTarget } from '@/lib/pwSadhana';
 import { resolveBvAdminFacilitators } from '@/lib/bvAdminFacilitatorScope';
+import { residencyMatchesDepartment } from '../lib/residencyCategory';
 
 const USER_FIELDS = ['status', 'id', 'userId', 'fullName', 'email', 'phone', 'segment', 'isPrabhupadaWorldUser', 'sadhanaMentor', 'ashrayLevel', 'residency', 'residencyApproved', 'temporaryResidencyEnabled', 'temporaryResidency', 'residencyJoinDate', 'scholarSince', 'residentSince', 'currentStreak', 'lastStreakUpdatedAt', 'guide', 'role', 'isBvSuperAdmin', 'isBvAdmin', 'pwChantingTarget', 'pwReadingTarget', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
 const ENTRY_FIELDS = [
@@ -752,8 +753,8 @@ export default createEndpoint({
     const hierarchyPromise = residencyMentorScope ? Promise.resolve(null) : getDashboardHierarchyScope(context.user, inputGuideId);
     void hierarchyPromise.catch(() => {});
     const mentorRecord = isPwMentor
-      ? (await Users.findOne({ id: context.user.id, fields: ['id', 'userId', 'email'] }).catch(() => null)
-        || await Users.findOne({ filters: { email: context.user.email }, fields: ['id', 'userId', 'email'] }).catch(() => null))
+      ? (await Users.findOne({ id: context.user.id, fields: ['id', 'userId', 'email'] })
+        || await Users.findOne({ filters: { email: context.user.email }, fields: ['id', 'userId', 'email'] }))
       : null;
     const mentorReferences = new Set(
       [context.user.id, context.user.userId, context.user.email, (mentorRecord as any)?.id, (mentorRecord as any)?.userId, (mentorRecord as any)?.email]
@@ -805,9 +806,9 @@ export default createEndpoint({
     let guideResidencyIds: string[] = [];
     if (guideDbId && !facilitatorMode) {
       const guideSources = await Promise.all([
-        Guides.findOne({ id: guideDbId, fields: ['id', 'folkResidencies'] }).catch(() => undefined),
-        Users.findOne({ id: guideDbId, fields: ['id', 'folkResidencies'] }).catch(() => undefined),
-        Users.findOne({ filters: { userId: guideDbId }, fields: ['id', 'folkResidencies'] }).catch(() => undefined),
+        Guides.findOne({ id: guideDbId, fields: ['id', 'folkResidencies'] }),
+        Users.findOne({ id: guideDbId, fields: ['id', 'folkResidencies'] }),
+        Users.findOne({ filters: { userId: guideDbId }, fields: ['id', 'folkResidencies'] }),
       ]);
       const guide = guideSources.find(Boolean);
       guideResidencyIds = Array.isArray(guide?.folkResidencies)
@@ -820,11 +821,12 @@ export default createEndpoint({
         if (input.segment === 'PW' || facilitatorMode) return [];
         return getAllResidencies.execute({ input: { segment: input.segment }, context });
       }
-      if (!guideDbId) return reference.residencies.filter(residency => residency.isActive === true).slice(0, 200)
-        .map(residency => ({ residencyId: residency.id, residencyName: residency.residencyName || '' }));
+      if (!guideDbId) return reference.residencies.filter(residency => residency.isActive === true && residencyMatchesDepartment(residency, input.segment)).slice(0, 200)
+        .map(residency => ({ residencyId: residency.id, residencyName: residency.residencyName || '', category: residency.category ?? residency.segment ?? null }));
       if (facilitatorMode) return [];
       return guideResidencyIds.map(id => reference.residencies.find(residency => residency.id === id)).filter(Boolean)
-        .map(residency => ({ residencyId: residency.id, residencyName: residency.residencyName || '' }));
+        .filter(residency => residencyMatchesDepartment(residency, input.segment))
+        .map(residency => ({ residencyId: residency.id, residencyName: residency.residencyName || '', category: residency.category ?? residency.segment ?? null }));
     });
     void availableResidenciesPromise.catch(() => {});
 
@@ -836,7 +838,7 @@ export default createEndpoint({
     } else if (facilitatorMode) {
       users = await resolveBvAdminFacilitators(context.user, inputGuideId, USER_FIELDS, input.segment);
     } else if (isPwMentor) {
-      const { records } = await Users.findAll({ filters: { status: 'Active' }, fields: USER_FIELDS, limit: 2000 });
+      const { records } = await readScopedUsers(context.user, { filters: { status: 'Active' }, fields: USER_FIELDS, limit: 2000 });
       users = records.filter(user => {
         const assignments = Array.isArray(user.sadhanaMentor) ? user.sadhanaMentor : [user.sadhanaMentor];
         return isPwSadhanaUser(user)
@@ -844,10 +846,10 @@ export default createEndpoint({
       });
     } else if (guideDbId) {
       const userFetchPromises = [
-        Users.findAll({ filters: { guide: guideDbId, status: 'Active' }, fields: USER_FIELDS, limit: 2000 }),
-        ...guideResidencyIds.map(rid => Users.findAll({ filters: { residency: rid, status: 'Active' }, fields: USER_FIELDS, limit: 500 })),
+        readScopedUsers(context.user, { filters: { guide: guideDbId, status: 'Active' }, fields: USER_FIELDS, limit: 2000 }),
+        ...guideResidencyIds.map(rid => readScopedUsers(context.user, { filters: { residency: rid, status: 'Active' }, fields: USER_FIELDS, limit: 500 })),
         // Include NR users temporarily visiting this FOLK residency
-        ...guideResidencyIds.map(rid => Users.findAll({ filters: { temporaryResidency: rid, temporaryResidencyEnabled: true, status: 'Active' } as any, fields: USER_FIELDS, limit: 200 })),
+        ...guideResidencyIds.map(rid => readScopedUsers(context.user, { filters: { temporaryResidency: rid, temporaryResidencyEnabled: true, status: 'Active' } as any, fields: USER_FIELDS, limit: 200 })),
       ];
       const [guideUsersRes, ...residencyUsersArr] = await Promise.all(userFetchPromises);
       const allUsersMap = new Map<string, any>();
@@ -887,7 +889,7 @@ export default createEndpoint({
       // ALL = super guide — show all Active users, scoped by segment if provided
       const allUsersFilter: any = { status: 'Active' };
       if (input.segment) allUsersFilter.segment = input.segment;
-      const { records } = await Users.findAll({ filters: allUsersFilter, fields: USER_FIELDS, limit: 2000 });
+      const { records } = await readScopedUsers(context.user, { filters: allUsersFilter, fields: USER_FIELDS, limit: 2000 });
       // Dedup: the same person can have two Firestore documents (one auto-ID and one keyed by email).
       // Keep the first occurrence (Firestore returns documents ordered by insertion time, so the
       // most-recently-updated record typically comes first via query ordering).

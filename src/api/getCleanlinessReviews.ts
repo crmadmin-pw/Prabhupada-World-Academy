@@ -30,9 +30,9 @@ export default createEndpoint({
       const rawUserRef = Array.isArray(r.user) ? r.user[0] : r.user;
       const [user, room, inspection] = await Promise.all([
         rawUserRef
-          ? await Users.findOne({ id: rawUserRef }).catch(() => null) ||
-            await Users.findOne({ filters: { userId: rawUserRef } }).catch(() => null) ||
-            await Users.findOne({ filters: { email: rawUserRef } }).catch(() => null)
+          ? await Users.findOne({ id: rawUserRef }) ||
+            await Users.findOne({ filters: { userId: rawUserRef } }) ||
+            await Users.findOne({ filters: { email: rawUserRef } })
           : null,
         r.room ? CleanlinessRooms.findOne({ id: Array.isArray(r.room) ? r.room[0] : r.room }) : null,
         r.inspection ? CleanlinessInspections.findOne({ id: Array.isArray(r.inspection) ? r.inspection[0] : r.inspection }) : null,

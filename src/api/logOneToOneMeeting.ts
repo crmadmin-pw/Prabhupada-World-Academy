@@ -25,8 +25,8 @@ export default createEndpoint({
     const isPwSadhanaMentor = isSadhanaMentor && normalizedSegment !== 'FOLK';
 
     if (isPwSadhanaMentor) {
-      const mentor = await Users.findOne({ id: context.user!.id, fields: ['id', 'userId', 'email'] }).catch(() => null)
-        || await Users.findOne({ filters: { email: context.user!.email }, fields: ['id', 'userId', 'email'] }).catch(() => null);
+      const mentor = await Users.findOne({ id: context.user!.id, fields: ['id', 'userId', 'email'] })
+        || await Users.findOne({ filters: { email: context.user!.email }, fields: ['id', 'userId', 'email'] });
       const member = await Users.findOne({ id: input.memberId, fields: ['id', 'sadhanaMentor'] });
       const mentorRefs = new Set(
         [context.user!.id, mentor?.id, (mentor as any)?.userId, context.user!.email]

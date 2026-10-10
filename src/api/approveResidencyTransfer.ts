@@ -57,7 +57,7 @@ export default createEndpoint({
           ? guideRecord.folkResidencies
           : [guideRecord.folkResidencies]
       );
-      const scope = await getGuideScope(context.user.email).catch(() => null);
+      const scope = await getGuideScope(context.user.email);
       guideResidencies.push(...(scope?.residencyIds || []), ...(scope?.residencyNames || []));
       const requestResidencyIds = normalizeIds([request.fromResidency, request.toResidency]);
 
@@ -78,10 +78,10 @@ export default createEndpoint({
 
     const rawUserId = Array.isArray(request.user) ? request.user[0] : request.user as string;
     const targetUser = rawUserId
-      ? await Users.findOne({ id: rawUserId }).catch(() => null) ||
-        await Users.findOne({ filters: { userId: rawUserId } }).catch(() => null) ||
-        await Users.findOne({ filters: { email: rawUserId } }).catch(() => null) ||
-        await Users.findOne({ filters: { email: String(rawUserId).toLowerCase() } }).catch(() => null)
+      ? await Users.findOne({ id: rawUserId }) ||
+        await Users.findOne({ filters: { userId: rawUserId } }) ||
+        await Users.findOne({ filters: { email: rawUserId } }) ||
+        await Users.findOne({ filters: { email: String(rawUserId).toLowerCase() } })
       : null;
     const userId = targetUser?.id || rawUserId;
     if (input.action === 'approve') {

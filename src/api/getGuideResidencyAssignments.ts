@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createEndpoint, FolkResidencies, Guides, GuideResidencyAssignmentRequests, Users } from '@/lib/backend-sdk';
+import { isActiveFolkResidency } from '../lib/residencyCategory';
 
 const normalizeRole = (value: unknown) => String(value || '').trim().replace(/[\s-]+/g, '_').toUpperCase();
 const normalizeIds = (value: unknown): string[] => {
@@ -7,10 +8,6 @@ const normalizeIds = (value: unknown): string[] => {
   return values.flatMap(v => Array.isArray(v) ? v : [v]).map(v => String(v || '').trim()).filter(Boolean);
 };
 const normalizeRefs = (value: unknown): string[] => normalizeIds(value).flatMap(v => v.split(',').map(part => part.trim()).filter(Boolean));
-const isFolk = (r: any) => {
-  const name = String(r?.residencyName || '').toLowerCase();
-  return r?.isActive !== false && r?.isActive !== 'false' && !name.includes('prabhupada world') && !name.startsWith('pw ');
-};
 const key = (value: unknown) => String(value || '').trim().toLowerCase();
 
 export default createEndpoint({
@@ -26,15 +23,15 @@ export default createEndpoint({
     if (!guideCapable) throw new Error('Guide access required');
 
     const email = String(context.user.email || '').toLowerCase();
-    const user = await Users.findOne({ id: context.user.id, fields: ['id', 'userId', 'email', 'fullName', 'folkResidencies'] }).catch(() => undefined) ||
-      await Users.findOne({ filters: { email: context.user.email }, fields: ['id', 'userId', 'email', 'fullName', 'folkResidencies'] }).catch(() => undefined);
-    const guide = await Guides.findOne({ filters: { email: context.user.email, isActive: true }, fields: ['id', 'email', 'fullName', 'folkResidencies'] }).catch(() => undefined);
+    const user = await Users.findOne({ id: context.user.id, fields: ['id', 'userId', 'email', 'fullName', 'folkResidencies'] }) ||
+      await Users.findOne({ filters: { email: context.user.email }, fields: ['id', 'userId', 'email', 'fullName', 'folkResidencies'] });
+    const guide = await Guides.findOne({ filters: { email: context.user.email, isActive: true }, fields: ['id', 'email', 'fullName', 'folkResidencies'] });
     const guideAssignedIds = normalizeIds((guide as any)?.folkResidencies);
     const assignedIds = guideAssignedIds.length > 0 ? guideAssignedIds : normalizeIds((user as any)?.folkResidencies);
-    const { records: rawResidencies } = await FolkResidencies.findAll({ limit: 500, fields: ['id', 'residencyId', 'residencyName', 'isActive', 'guides', 'guideIds'] });
-    const residencies = rawResidencies.filter(isFolk).map((r: any) => ({ id: r.id, residencyName: r.residencyName || '' }));
+    const { records: rawResidencies } = await FolkResidencies.findAll({ limit: 500, fields: ['id', 'residencyId', 'residencyName', 'isActive', 'guides', 'guideIds', 'category', 'segment'] });
+    const residencies = rawResidencies.filter(isActiveFolkResidency).map((r: any) => ({ id: r.id, residencyName: r.residencyName || '' }));
     const residencyByRef = new Map<string, string>();
-    for (const r of rawResidencies.filter(isFolk) as any[]) {
+    for (const r of rawResidencies.filter(isActiveFolkResidency) as any[]) {
       for (const ref of [r.id, r.residencyId, r.residencyName]) if (ref) residencyByRef.set(key(ref), String(r.id));
     }
     const canonicalAssignedIds = assignedIds.map(id => residencyByRef.get(key(id)) || '').filter(Boolean);
@@ -67,7 +64,7 @@ export default createEndpoint({
     const requesterIds = [user?.id, user?.userId, context.user.id, context.user.userId, email].filter(Boolean).map(String);
     let pendingRequest: any = null;
     for (const requesterId of requesterIds) {
-      pendingRequest = await GuideResidencyAssignmentRequests.findOne({ filters: { requesterId, status: 'Pending' } }).catch(() => undefined);
+      pendingRequest = await GuideResidencyAssignmentRequests.findOne({ filters: { requesterId, status: 'Pending' } });
       if (pendingRequest) break;
     }
 

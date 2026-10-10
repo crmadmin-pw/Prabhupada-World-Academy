@@ -4,7 +4,8 @@ import { generateUniqueUserId } from '../lib/userIdGen';
 import { enforceRateLimit } from '../utils/rateLimit';
 import { serverCacheInvalidate } from '../lib/serverCache';
 import { profileCacheKey } from './getUserProfile';
-import { resolveGuideReference } from '../lib/guideResolution';
+import { getUserSegment, resolveGuideReference } from '../lib/guideResolution';
+import { ensureAccountLinkReview, findUnlinkedEmailProfiles, isLoginLinkedToProfile } from '@/lib/accountLinkReview';
 import { publishUsersRevision } from '../lib/publishUsersRevision';
 
 export default createEndpoint({
@@ -31,7 +32,7 @@ export default createEndpoint({
   execute: async ({ input, context }: any) => {
     if (!context.user) throw new Error('Unauthorized');
     // Rate limit: max 5 registration attempts per user per 10 minutes
-    enforceRateLimit(`register:${context.user.id}`, 5, 10 * 60 * 1000);
+    await enforceRateLimit(`register:${context.user.id}`, 5, 10 * 60 * 1000);
 
     const requestedPwRegistration = input.isPrabhupadaWorldUser === true;
 
@@ -45,6 +46,7 @@ export default createEndpoint({
       });
     }
     const isPw = requestedPwRegistration || guideRecord?.segment === 'PW' || guideRecord?.isPrabhupadaWorldMentor === true;
+    const requestedProgram = isPw ? 'PW' : 'FOLK';
 
     // Verify residency if claimed
     let residencyRecordId: string | undefined;
@@ -59,6 +61,7 @@ export default createEndpoint({
     // A signed-in user may already own a migrated profile whose document ID is
     // different from their Firebase Auth UID. Never turn that into a second,
     // browser-only "pending" registration.
+    const authUid = String(context.user.uid || context.user.id || '');
     const authAliases = [context.user.id, context.user.uid, context.user.userId]
       .filter(Boolean).map((value: unknown) => String(value));
     const { records: emailMatches } = userEmail
@@ -70,7 +73,24 @@ export default createEndpoint({
         record[field] && authAliases.includes(String(record[field]))
       )
     );
+    if (existingProfile && !isLoginLinkedToProfile(existingProfile, authUid)) {
+      await ensureAccountLinkReview({ authUid, email: userEmail, bareRecordId: authUid });
+      throw new AppError({
+        code: 'CONFLICT',
+        message: 'This email matches an existing profile. An administrator must confirm which profile this login belongs to before it can be used.',
+      });
+    }
+    const currentProgram = getUserSegment(existingProfile);
+    if (currentProgram && currentProgram !== requestedProgram) {
+      throw new AppError({ code: 'FORBIDDEN', message: 'You cannot change your program.' });
+    }
     const existingStatus = String(existingProfile?.status || '').trim().toUpperCase().replace(/[\s_-]+/g, '_');
+    if (existingStatus === 'PENDING_DELETION') {
+      throw new AppError({
+        code: 'CONFLICT',
+        message: 'This account is scheduled for deletion. Sign in and cancel the deletion, or wait until the recovery period ends before registering again.',
+      });
+    }
     if (existingProfile?.userId && existingStatus === 'ACTIVE') {
       const existingGuideRef = Array.isArray(existingProfile.guide) ? existingProfile.guide[0] : existingProfile.guide;
       if (guideRecord?.id && String(existingGuideRef || '') !== guideRecord.id) {
@@ -82,7 +102,7 @@ export default createEndpoint({
           selectedGuideId: guideRecord.id,
           guideName: guideRecord.fullName || null,
           status: 'Pending Approval',
-          firebaseUid: context.user.id,
+          firebaseUid: authUid,
           statusChangedAt: new Date().toISOString(),
         } });
         serverCacheInvalidate(profileCacheKey(existingProfile.id));
@@ -116,30 +136,19 @@ export default createEndpoint({
       });
     }
 
-    // ── Guard against bare user-sync records re-registering over a real profile ──
-    // If user-sync created a bare record (case-mismatch), the real profile may already
-    // exist under a different email case. Detect and merge instead of overwriting with
-    // incomplete data.
     const existingRecord = await Users.findOne({ id: context.user.id, fields: ['id', 'userId', 'status', 'email'] });
     let userId = existingRecord?.userId ? String(existingRecord.userId) : '';
-
-    // If THIS record has no userId but another record with the same email (case-insensitive) does,
-    // that means a real profile exists — we should merge it rather than start a fresh registration.
+    if (!userId && existingProfile?.userId && isLoginLinkedToProfile(existingProfile, authUid)) {
+      userId = String(existingProfile.userId);
+    }
     if (!userId) {
-      const authEmailLower = (context.user.email || '').toLowerCase();
-      const { records: allRecords } = await Users.findAll({
-        fields: ['id', 'userId', 'status', 'email'],
-        limit: 200,
-      });
-      const realProfile = allRecords.find(r =>
-        r.id !== context.user.id &&
-        r.userId &&
-        r.status &&
-        (r.email || '').toLowerCase() === authEmailLower,
-      );
-      if (realProfile) {
-        // Real profile exists — don't create a duplicate. Just re-link.
-        userId = String(realProfile.userId);
+      const unlinkedProfiles = await findUnlinkedEmailProfiles(userEmail, authUid);
+      if (unlinkedProfiles.length > 0) {
+        await ensureAccountLinkReview({ authUid, email: userEmail, bareRecordId: authUid });
+        throw new AppError({
+          code: 'CONFLICT',
+          message: 'This email matches an existing profile. An administrator must confirm which profile this login belongs to before it can be used.',
+        });
       }
     }
 
@@ -157,7 +166,7 @@ export default createEndpoint({
     const targetRecordId = existingProfile?.id || context.user.id;
     const firestoreRecord = {
       id: targetRecordId,
-      firebaseUid: context.user.id,
+      firebaseUid: authUid,
       userId,
       fullName: input.fullName,
       phone,
@@ -171,8 +180,8 @@ export default createEndpoint({
       residencyJoinDate: input.residencyJoinDate || null,
       ashrayLevel,
       bvServiceAllocated: false,
-      isPrabhupadaWorldUser: isPw,
-      segment: isPw ? 'PW' : 'FOLK',
+      isPrabhupadaWorldUser: (currentProgram || requestedProgram) === 'PW',
+      segment: currentProgram || requestedProgram,
       createdAt: new Date().toISOString()
     };
     const existingFirestoreUser = await Users.findOne({ id: targetRecordId });

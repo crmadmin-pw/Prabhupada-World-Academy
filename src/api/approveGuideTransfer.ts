@@ -48,11 +48,11 @@ export default createEndpoint({
     const rawUserId = Array.isArray(request.user) ? request.user[0] : request.user as string;
     let targetUser = null;
     if (rawUserId) {
-      targetUser = await Users.findOne({ id: rawUserId }).catch(() => null) ||
-                   await Users.findOne({ filters: { userId: rawUserId } }).catch(() => null) ||
-                   await Users.findOne({ filters: { fullName: rawUserId } }).catch(() => null) ||
-                   await Users.findOne({ filters: { email: rawUserId } }).catch(() => null) ||
-                   await Users.findOne({ filters: { email: String(rawUserId).toLowerCase() } }).catch(() => null);
+      targetUser = await Users.findOne({ id: rawUserId }) ||
+                   await Users.findOne({ filters: { userId: rawUserId } }) ||
+                   await Users.findOne({ filters: { fullName: rawUserId } }) ||
+                   await Users.findOne({ filters: { email: rawUserId } }) ||
+                   await Users.findOne({ filters: { email: String(rawUserId).toLowerCase() } });
     }
 
     if (input.action === 'approve') {
@@ -61,10 +61,10 @@ export default createEndpoint({
       // depending on which client created them. Resolve the canonical guide
       // record before writing the user's profile fields.
       const targetGuide = requestedGuideId
-        ? await Guides.findOne({ id: requestedGuideId, fields: ['id', 'guideId', 'fullName', 'email'] }).catch(() => null) ||
-          await Guides.findOne({ filters: { guideId: requestedGuideId }, fields: ['id', 'guideId', 'fullName', 'email'] }).catch(() => null) ||
-          await Guides.findOne({ filters: { email: requestedGuideId }, fields: ['id', 'guideId', 'fullName', 'email'] }).catch(() => null) ||
-          await Guides.findOne({ filters: { fullName: requestedGuideId }, fields: ['id', 'guideId', 'fullName', 'email'] }).catch(() => null)
+        ? await Guides.findOne({ id: requestedGuideId, fields: ['id', 'guideId', 'fullName', 'email'] }) ||
+          await Guides.findOne({ filters: { guideId: requestedGuideId }, fields: ['id', 'guideId', 'fullName', 'email'] }) ||
+          await Guides.findOne({ filters: { email: requestedGuideId }, fields: ['id', 'guideId', 'fullName', 'email'] }) ||
+          await Guides.findOne({ filters: { fullName: requestedGuideId }, fields: ['id', 'guideId', 'fullName', 'email'] })
         : null;
       const canonicalGuideId = targetGuide?.id || requestedGuideId;
       if (targetUser && canonicalGuideId) {

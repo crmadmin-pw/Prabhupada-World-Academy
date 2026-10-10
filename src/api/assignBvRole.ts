@@ -9,6 +9,56 @@ const referenceValues = (value: unknown): string[] => {
     : String(value).split(',').map(item => item.trim().toLowerCase()).filter(Boolean);
 };
 
+function isAliasDocument(record: any): boolean {
+  const id = String(record?.id || '').trim();
+  if (!id) return true;
+  const email = String(record?.email || '').trim().toLowerCase();
+  const userId = String(record?.userId || '').trim();
+  if (id.includes('@') || email && id.toLowerCase() === email) return true;
+  if (/^user-\d+$/i.test(id) || userId && id.toLowerCase() === userId.toLowerCase()) return true;
+  return false;
+}
+
+function chooseMemberRecord(records: any[]): any | null {
+  const unique: any[] = [];
+  const seen = new Set<string>();
+  for (const record of records) {
+    const id = String(record?.id || '');
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    unique.push(record);
+  }
+  if (!unique.length) return null;
+  const score = (record: any) => (record.fullName ? 4 : 0) + (record.email ? 2 : 0) + (record.userId ? 1 : 0);
+  const profiles = unique.filter(record => !isAliasDocument(record));
+  const pool = profiles.length ? profiles : unique;
+  return [...pool].sort((left, right) => score(right) - score(left))[0];
+}
+
+async function resolveMemberRecord(key: string): Promise<any | null> {
+  const raw = String(key || '').trim();
+  if (!raw) return null;
+  const collected: any[] = [];
+  const byId = await Users.findOne({ id: raw });
+  if (byId) collected.push(byId);
+  const byUserId = await Users.findAll({ filters: { userId: raw }, limit: 10 });
+  collected.push(...(byUserId.records || []));
+  const byEmail = await Users.findAll({ filters: { email: raw }, limit: 10 });
+  collected.push(...(byEmail.records || []));
+  let chosen = chooseMemberRecord(collected);
+  if (!chosen || isAliasDocument(chosen)) {
+    const { records } = await Users.findAll({ limit: 2000 });
+    const needle = raw.toLowerCase();
+    collected.push(...records.filter((user: any) =>
+      String(user.id || '').toLowerCase() === needle ||
+      String(user.userId || '').toLowerCase() === needle ||
+      String(user.email || '').toLowerCase() === needle
+    ));
+    chosen = chooseMemberRecord(collected);
+  }
+  return chosen;
+}
+
 export default createEndpoint({
   description: 'Assign or update Bhakti Vriksha roles for a user (Supervisor, Facilitator/RGF, Sub-Facilitator/RGSF, Admin). Requires a parentId for hierarchy roles.',
   authenticated: true,
@@ -55,30 +105,12 @@ export default createEndpoint({
       targetParentName = context.user.fullName || context.user.name || context.user.email || 'Admin';
     }
 
-    // Multi-tiered user lookup to prevent 'User not found' errors
-    let targetUser: any = await Users.findOne({ id: input.userId }).catch(() => null);
-    if (!targetUser) {
-      const res = await Users.findAll({ filters: { userId: input.userId }, limit: 1 }).catch(() => ({ records: [] }));
-      targetUser = (res as any)?.records?.[0] || null;
-    }
-    if (!targetUser) {
-      const res = await Users.findAll({ filters: { email: input.userId }, limit: 1 }).catch(() => ({ records: [] }));
-      targetUser = (res as any)?.records?.[0] || null;
-    }
-    if (!targetUser) {
-      const { records: allUsers } = await Users.findAll({ limit: 2000 }).catch(() => ({ records: [] }));
-      const key = input.userId.toLowerCase();
-      targetUser = allUsers.find((u: any) =>
-        String(u.id || '').toLowerCase() === key ||
-        String(u.userId || '').toLowerCase() === key ||
-        String(u.email || '').toLowerCase() === key
-      ) || null;
-    }
+    const targetUser = await resolveMemberRecord(input.userId);
     if (!targetUser) {
       throw new AppError({ code: 'NOT_FOUND', message: `User not found for id: ${input.userId}` });
     }
 
-    const dbId = targetUser.id;
+    const dbId = String(targetUser.id);
 
     const ROLE_LABELS: Record<string, string> = {
       SUPERVISOR: 'BV Supervisor',
@@ -89,27 +121,7 @@ export default createEndpoint({
     };
 
     // Lookup parent user details if targetParentId provided
-    let parentUser: any = null;
-    if (targetParentId) {
-      parentUser = await Users.findOne({ id: targetParentId }).catch(() => null);
-      if (!parentUser) {
-        const res = await Users.findAll({ filters: { userId: targetParentId }, limit: 1 }).catch(() => ({ records: [] }));
-        parentUser = (res as any)?.records?.[0] || null;
-      }
-      if (!parentUser) {
-        const res = await Users.findAll({ filters: { email: targetParentId }, limit: 1 }).catch(() => ({ records: [] }));
-        parentUser = (res as any)?.records?.[0] || null;
-      }
-      if (!parentUser) {
-        const { records: allUsers } = await Users.findAll({ limit: 2000 }).catch(() => ({ records: [] }));
-        const key = targetParentId.toLowerCase();
-        parentUser = allUsers.find((u: any) =>
-          String(u.id || '').toLowerCase() === key ||
-          String(u.userId || '').toLowerCase() === key ||
-          String(u.email || '').toLowerCase() === key
-        ) || null;
-      }
-    }
+    const parentUser = targetParentId ? await resolveMemberRecord(targetParentId) : null;
 
     let pName = targetParentName || '';
     if (!pName && parentUser) {
@@ -367,15 +379,6 @@ export default createEndpoint({
     }
 
     await Users.update({ id: dbId, record: updates });
-    if (targetUser.id && targetUser.id !== dbId) {
-      await Users.update({ id: targetUser.id, record: updates }).catch(() => {});
-    }
-    if (targetUser.userId && targetUser.userId !== dbId) {
-      await Users.update({ id: targetUser.userId, record: updates }).catch(() => {});
-    }
-    if (targetUser.email) {
-      await Users.update({ id: targetUser.email.toLowerCase(), record: updates }).catch(() => {});
-    }
     
     serverCacheInvalidate();
 

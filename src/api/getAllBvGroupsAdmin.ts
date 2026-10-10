@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, BvAttendance, Users, Guides } from '@/lib/backend-sdk';
 import { serverCacheGetOrFetch, serverCacheInvalidate } from '../lib/serverCache';
 import { isBvSuperAdminUser } from '../lib/bvGroupMemberScope';
-import { getScopedHierarchyUserIds, isUserInHierarchy, hierarchyRefs } from '../lib/hierarchyUtils';
+import { getScopedHierarchyUserIds, isUserInHierarchy, hierarchyRefs, readScopedUsers } from '../lib/hierarchyUtils';
 
 export default createEndpoint({
   description: 'Get all BV groups and BVSLs under a guide (admin view — for Guide/Super Guide)',
@@ -51,23 +51,23 @@ export default createEndpoint({
     // Resolve authorization before any cached result: a recent reassignment
     // must not leave a former admin able to read a group's cached members.
     const hierarchy = await getScopedHierarchyUserIds(context.user);
-    if (hierarchy !== null) return _fetchAllBvGroupsAdmin(effectiveGuideId, hierarchy);
-    return serverCacheGetOrFetch(cacheKey, () => _fetchAllBvGroupsAdmin(effectiveGuideId, null), 30_000);
+    if (hierarchy !== null) return _fetchAllBvGroupsAdmin(effectiveGuideId, hierarchy, context.user);
+    return serverCacheGetOrFetch(cacheKey, () => _fetchAllBvGroupsAdmin(effectiveGuideId, null, context.user), 30_000);
   },
 });
 
 export { serverCacheInvalidate as _invalidateAllBvGroupsAdmin };
 
-async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<string> | null) {
+async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<string> | null, caller: any) {
 
     // Resolve legacy identity forms in one batch and reuse the records. Keep
     // the same precedence: Guides document, linked user email, custom guide ID.
     const guideFields = ['id', 'fullName', 'email', 'guideId', 'folkResidencies'];
     const userFields = ['id', 'userId', 'fullName', 'email', 'folkResidencies', 'residency'];
     const [directGuide, userById, userByCustomId, guideByCustomId] = await Promise.all([
-      Guides.findOne({ id: inputGuideId, fields: guideFields }).catch(() => undefined),
-      Users.findOne({ id: inputGuideId, fields: userFields }).catch(() => undefined),
-      Users.findOne({ filters: { userId: inputGuideId }, fields: userFields }).catch(() => undefined),
+      Guides.findOne({ id: inputGuideId, fields: guideFields }),
+      Users.findOne({ id: inputGuideId, fields: userFields }),
+      Users.findOne({ filters: { userId: inputGuideId }, fields: userFields }),
       Guides.findOne({ filters: { guideId: inputGuideId }, fields: guideFields }),
     ]);
     let linkedGuideUser = directGuide ? undefined : (userById || userByCustomId);
@@ -79,7 +79,7 @@ async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<strin
     if (!guideDbId && !linkedGuideUser) return { bvsls: [], groups: [], error: null };
 
     if (!linkedGuideUser && resolvedGuide?.email) {
-      linkedGuideUser = await Users.findOne({ filters: { email: resolvedGuide.email }, fields: userFields }).catch(() => undefined);
+      linkedGuideUser = await Users.findOne({ filters: { email: resolvedGuide.email }, fields: userFields });
     }
     linkedGuideUser = linkedGuideUser || userById || userByCustomId;
     const rawGuideResidencies = (resolvedGuide as any)?.folkResidencies ||
@@ -115,7 +115,7 @@ async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<strin
         filters: { isActive: true },
         limit: 500,
       }),
-      Users.findAll({
+      readScopedUsers(caller, {
         // Keep this a single-field query; filtering both status and isBvsl can
         // require a composite index that may not exist immediately after deploy.
         filters: { status: 'Active' },

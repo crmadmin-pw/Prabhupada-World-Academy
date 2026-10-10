@@ -1,9 +1,10 @@
 import { z } from 'zod';
-import { getScopedHierarchyUserIds, isUserInHierarchy, isHierarchySuperAdmin } from '../lib/hierarchyUtils';
+import { getScopedHierarchyUserIds, isUserInHierarchy, isHierarchySuperAdmin, readScopedUsers } from '../lib/hierarchyUtils';
 import { createEndpoint, Users, AttendanceRecords, AttendanceSessions, AttendanceEvents, BvAttendance, Guides, FolkResidencies, AppError } from '@/lib/backend-sdk';
 import { bvUserAliases, resolveBvDepartmentGroups, resolveBvScopedGroups, resolveBvUsersByAliases } from '@/lib/bvGroupMemberScope';
 
 import getGuides from './getGuides';
+import { isPrabhupadaWorldResidency } from '../lib/residencyCategory';
 
 export default createEndpoint({
   description: 'Get attendance report for Super Guide (all users, all centers)',
@@ -38,7 +39,7 @@ export default createEndpoint({
 
     let guideDbId: string | null = input.guideId === 'ALL' ? null : (input.guideId || null);
     if (!isSuperGuide) {
-      const guideRecord = await Guides.findOne({ filters: { email: context.user.email, isActive: true }, fields: ['id'] }).catch(() => null);
+      const guideRecord = await Guides.findOne({ filters: { email: context.user.email, isActive: true }, fields: ['id'] });
       if (guideRecord) {
         guideDbId = (guideRecord as any).id;
       } else {
@@ -57,7 +58,7 @@ export default createEndpoint({
       AttendanceEvents.findAll({ filters: {}, limit: 200, fields: ['id', 'title'] }),
       AttendanceSessions.findAll({ filters: {}, limit: 500, fields: ['id', 'name', 'event', 'shareToken'] }),
       getGuides.execute({ input: { segment: input.segment }, context }),
-      FolkResidencies.findAll({ filters: { isActive: true } as any, limit: 100, fields: ['id', 'residencyName'] }),
+      FolkResidencies.findAll({ filters: { isActive: true } as any, limit: 100, fields: ['id', 'residencyName', 'category', 'segment'] }),
     ]);
 
     const guideOptions = (guidesListRes.guides || []).map((g: any) => ({ id: g.guideId, name: g.name }));
@@ -88,7 +89,7 @@ export default createEndpoint({
       if (input.residencyId) userFilters.residency = input.residencyId;
       if (input.ashrayLevel) userFilters.ashrayLevel = input.ashrayLevel;
 
-      const { records: scopeUsers } = await Users.findAll({
+      const { records: scopeUsers } = await readScopedUsers(context.user, {
         filters: userFilters,
         fields: ['id', 'fullName', 'phone', 'ashrayLevel', 'guide', 'residency'],
         limit: 2000,
@@ -133,7 +134,7 @@ export default createEndpoint({
         filters: bvAttFilters as any,
         limit: 2000,
         fields: ['id', 'attendanceDate', 'user', 'sessionTopic', 'group', 'groupId'],
-      }).catch(() => ({ records: [] })),
+      }),
     ]);
 
     const scopedBvRows = (bvRes.records || []).filter((record: any) => {
@@ -260,7 +261,7 @@ export default createEndpoint({
           name: g.name,
           isPrabhupadaWorldMentor: !!g.isPrabhupadaWorldMentor,
         })),
-        centers: centersRes.records.filter(c => hierarchy === null || [...userDetails.values()].some(u => isUserInHierarchy(u, hierarchy) && [u.residency].flat().includes(c.id))).map(c => ({ id: c.id, name: c.residencyName || '' })),
+        centers: centersRes.records.filter(c => !isPrabhupadaWorldResidency(c) && (hierarchy === null || [...userDetails.values()].some(u => isUserInHierarchy(u, hierarchy) && [u.residency].flat().includes(c.id)))).map(c => ({ id: c.id, name: c.residencyName || '', category: c.category ?? c.segment ?? null })),
         events: eventsRes.records.map(e => ({ id: e.id, title: e.title || '' })),
         sessions: sessionsRes.records.map(s => ({ id: s.id, name: s.name || '', eventId: (Array.isArray(s.event) ? s.event[0] : s.event) || '', shareToken: s.shareToken || '' })),
       },

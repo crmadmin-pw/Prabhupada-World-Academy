@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { getCachedStale, invalidateCache, setCached } from '@/utils/cache';
 import { useReactiveLoader } from '@/hooks/useReactiveLoader';
+import { getEndpointCacheEntry, observeEndpointReads, writeEndpointCacheEntry } from '@/lib/app-endpoints-sdk';
 import type { RealtimeChannel } from '@/lib/realtimeChannels';
 
 interface UseQueryOptions<T> {
@@ -9,14 +9,13 @@ interface UseQueryOptions<T> {
   /** The async fetcher function */
   fetcher: () => Promise<T>;
   /**
-   * Cache TTL in milliseconds.
-   * - 0 → no caching (always fetch fresh)
-   * - Default 60 000ms (60s) — good for dashboard data
+   * Pass 0 to bypass the shared endpoint cache.
+   * Any other value reads and updates that cache. It does not start a second timer.
    */
   ttl?: number;
   /** Ignored — kept for API compat */
   refetchOnFocus?: boolean;
-  /** Realtime data domains that silently refresh this active query. */
+  /** Ignored — exact endpoint keys already follow the realtime stream. */
   realtimeChannels?: RealtimeChannel[];
   /** Initial / placeholder data shown before first fetch */
   initialData?: T;
@@ -32,35 +31,39 @@ interface UseQueryResult<T> {
   setData: (data: T) => void;
 }
 
+/** Points a useQuery key at the endpoint-cache entry observed for that read.
+ * The map stores no response body. The endpoint cache is the only copy.
+ */
+const endpointKeyByQueryKey = new Map<string, string>();
+
+function cachedEndpointEntry(key: string | null | undefined | false, ttl: number) {
+  if (!key || ttl <= 0) return undefined;
+  const endpointKey = endpointKeyByQueryKey.get(key);
+  if (!endpointKey) return undefined;
+  return getEndpointCacheEntry(endpointKey);
+}
+
 /**
- * Stale-while-revalidate data fetching hook with client-side caching.
+ * Stale-while-revalidate reads over the shared endpoint cache.
  *
- * - If the cache has a fresh value for `key`: returns it immediately, no loading flash.
- * - If the cache has a stale value: shows it immediately, revalidates silently in background.
- * - If no cache: fetches with loading=true, caches the result.
+ * - A cached response is shown immediately, including while it is being refreshed.
+ * - Realtime invalidation marks that same entry stale, so the next read cannot
+ *   keep the pre-change response until a separate timer expires.
  * - Retries up to maxRetries times on failure (exponential backoff).
  */
 export function useQuery<T>({
   key,
   fetcher,
   ttl = 60_000,
-  realtimeChannels = [],
   initialData,
   maxRetries = 3,
 }: UseQueryOptions<T>): UseQueryResult<T> {
-  // Seed from cache so we can skip loading=true when stale data is available
-  const getInitial = (): T | undefined => {
-    if (!key || ttl === 0) return initialData;
-    const cached = getCachedStale<T>(key);
-    return cached ? cached.data : initialData;
-  };
-
-  const [data, setDataState] = useState<T | undefined>(getInitial);
+  const initialEntry = cachedEndpointEntry(key, ttl);
+  const [data, setDataState] = useState<T | undefined>(initialEntry ? initialEntry.data as T : initialData);
   const [loading, setLoading] = useState(() => {
     if (!key) return false;
-    if (ttl === 0) return true;
-    const cached = getCachedStale<T>(key as string);
-    return !cached; // Only show spinner if there's no cached data at all
+    if (ttl <= 0) return true;
+    return !cachedEndpointEntry(key, ttl);
   });
   const [error, setError] = useState<Error | null>(null);
 
@@ -76,6 +79,7 @@ export function useQuery<T>({
   /** Full fetch with retry — shows loading only when there is no cached data. */
   const doFetch = useReactiveLoader(async (read, silent = false) => {
     if (!key) return;
+    const queryKey = key;
 
     if (!silent) {
       setError(null);
@@ -86,9 +90,10 @@ export function useQuery<T>({
     let lastErr: Error | null = null;
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
-        const result = await read(() => fetcherRef.current());
+        const result = await read(() => observeEndpointReads(() => fetcherRef.current(), endpointKey => {
+          endpointKeyByQueryKey.set(queryKey, endpointKey);
+        }));
         if (!mountedRef.current || read.cancelled) break;
-        if (key && ttl > 0) setCached(key, result, ttl);
         setDataState(result);
         setLoading(false);
         return;
@@ -96,7 +101,7 @@ export function useQuery<T>({
         if (read.cancelled) return;
         lastErr = err instanceof Error ? err : new Error(String(err));
         if ([401, 403].includes((err as { status?: number })?.status || 0)) {
-          invalidateCache(key);
+          endpointKeyByQueryKey.delete(queryKey);
           setDataState(undefined);
           break;
         }
@@ -109,7 +114,7 @@ export function useQuery<T>({
       setError(lastErr);
       setLoading(false);
     }
-  }, [key, ttl, maxRetries], true, silent => !!silent);
+  }, [key, ttl, maxRetries], true, silent => ttl > 0 && !!silent);
 
   // Main effect: run on mount and key changes
   useEffect(() => {
@@ -124,34 +129,29 @@ export function useQuery<T>({
         return;
       }
 
-      if (ttl > 0) {
-        const cached = getCachedStale<T>(key);
-        if (cached) {
-          // Show stale data immediately, revalidate silently if expired.
-          setDataState(cached.data);
-          setLoading(false);
-          // Reattach exact query dependencies even on a cached revisit. The
-          // endpoint cache serves unchanged reads without network traffic.
-          void doFetch(true);
-          return;
-        }
+      const cached = cachedEndpointEntry(key, ttl);
+      if (cached) {
+        // Show the shared entry immediately. A fresh entry is served from
+        // that cache; a realtime invalidation makes the same entry refetch.
+        setDataState(cached.data as T);
+        setLoading(false);
+        void doFetch(true);
+        return;
       }
 
-      // No cache — full fetch with loading state.
       setLoading(true);
-      void doFetch(false);
+      void doFetch(ttl > 0);
     });
     return () => { cancelled = true; };
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const refetch = useCallback(() => {
-    if (key) invalidateCache(key);
-    return doFetch(false);
-  }, [key, doFetch]);
+  const refetch = useCallback(() => doFetch(false), [doFetch]);
 
   const setData = useCallback((newData: T) => {
     setDataState(newData);
-    if (key && ttl > 0) setCached(key, newData, ttl);
+    if (!key || ttl <= 0) return;
+    const endpointKey = endpointKeyByQueryKey.get(key);
+    if (endpointKey) writeEndpointCacheEntry(endpointKey, newData);
   }, [key, ttl]);
 
   return { data, loading, error, refetch, setData };

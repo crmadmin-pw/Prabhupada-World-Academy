@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/lib/auth-sdk';
 import { getUserProfile, updateLastLogin } from '@/lib/endpoints-sdk';
 import type { ProfileSummary } from '@/types/models';
+import type { UserStatus } from '@/types/enums';
 import { toast } from 'sonner';
 import { useReactiveLoader } from '@/hooks/useReactiveLoader';
 import { getDepartmentLandingUrl, getUserDepartment, rememberUserDepartment } from '@/lib/userDashboardRoutes';
@@ -66,8 +67,9 @@ function buildProfile(userObj: any): ProfileData {
     fullName: userObj.fullName ?? userObj.full_name ?? '',
     isPrabhupadaWorldUser: !!userObj.isPrabhupadaWorldUser,
     role: role as 'USER' | 'GUIDE' | 'SUPER_GUIDE' | 'SUPER_ADMIN' | 'BVSL' | 'SADHANA_MENTOR',
-    status: (((userObj.status as string) || 'PENDING_APPROVAL').toUpperCase().replace(' ', '_').trim()) as
-      'PENDING_APPROVAL' | 'ACTIVE' | 'REJECTED',
+    status: (String(userObj.status || 'PENDING_APPROVAL').toUpperCase().replace(/[\s-]+/g, '_').trim()) as UserStatus,
+    deletionRequestedAt: userObj.deletionRequestedAt ?? null,
+    deletionPurgeAt: userObj.deletionPurgeAt ?? null,
     isBvsl,
     isSadhanaMentor,
     isServiceAllocator,

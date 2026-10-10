@@ -34,8 +34,8 @@ export default createEndpoint({
     const rawRgfId = Array.isArray(group.bvslLeader) ? group.bvslLeader[0] : (group.bvslLeader || group.bvslId || group.guide);
     let rgfUser: any = null;
     if (rawRgfId) {
-      rgfUser = await Users.findOne({ id: rawRgfId }).catch(() => null)
-             || await Users.findOne({ filters: { userId: rawRgfId } }).catch(() => null);
+      rgfUser = await Users.findOne({ id: rawRgfId })
+             || await Users.findOne({ filters: { userId: rawRgfId } });
     }
 
     const formatEmailToName = (nameStr: string, fallback: string) => {

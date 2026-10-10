@@ -48,7 +48,7 @@ export default createEndpoint({
     // A guide needs both sides of a transfer: the source guide must approve a
     // departure and the destination guide must approve the incoming transfer.
     const currentGuide = !isSuperGuide
-      ? await Guides.findOne({ filters: { email: context.user.email, isActive: true }, fields: ['id', 'guideId', 'fullName', 'email'] }).catch(() => undefined)
+      ? await Guides.findOne({ filters: { email: context.user.email, isActive: true }, fields: ['id', 'guideId', 'fullName', 'email'] })
       : undefined;
     const guideAliases = new Set([
       guideDbId, context.user.id, context.user.userId, context.user.email,
@@ -69,10 +69,10 @@ export default createEndpoint({
       const userIds = [...new Set(filtered.map((r: any) => Array.isArray(r.user) ? r.user[0] : r.user).filter(Boolean))] as string[];
       
       const [usersRes1, usersRes2, usersRes3, usersRes4] = await Promise.all([
-        userIds.length > 0 ? Users.findAll({ filters: { id: { in: userIds } }, fields: ['id', 'userId', 'fullName', 'email', 'phone', 'residency', 'residencyApproved', 'residencyClaimed', 'guide'], limit: 200 }).catch(() => ({ records: [] })) : { records: [] },
-        userIds.length > 0 ? Users.findAll({ filters: { userId: { in: userIds } }, fields: ['id', 'userId', 'fullName', 'email', 'phone', 'residency', 'residencyApproved', 'residencyClaimed', 'guide'], limit: 200 }).catch(() => ({ records: [] })) : { records: [] },
-        userIds.length > 0 ? Users.findAll({ filters: { fullName: { in: userIds } }, fields: ['id', 'userId', 'fullName', 'email', 'phone', 'residency', 'residencyApproved', 'residencyClaimed', 'guide'], limit: 200 }).catch(() => ({ records: [] })) : { records: [] },
-        userIds.length > 0 ? Users.findAll({ filters: { email: { in: userIds } }, fields: ['id', 'userId', 'fullName', 'email', 'phone', 'residency', 'residencyApproved', 'residencyClaimed', 'guide'], limit: 200 }).catch(() => ({ records: [] })) : { records: [] },
+        userIds.length > 0 ? Users.findAll({ filters: { id: { in: userIds } }, fields: ['id', 'userId', 'fullName', 'email', 'phone', 'residency', 'residencyApproved', 'residencyClaimed', 'guide'], limit: 200 }) : { records: [] },
+        userIds.length > 0 ? Users.findAll({ filters: { userId: { in: userIds } }, fields: ['id', 'userId', 'fullName', 'email', 'phone', 'residency', 'residencyApproved', 'residencyClaimed', 'guide'], limit: 200 }) : { records: [] },
+        userIds.length > 0 ? Users.findAll({ filters: { fullName: { in: userIds } }, fields: ['id', 'userId', 'fullName', 'email', 'phone', 'residency', 'residencyApproved', 'residencyClaimed', 'guide'], limit: 200 }) : { records: [] },
+        userIds.length > 0 ? Users.findAll({ filters: { email: { in: userIds } }, fields: ['id', 'userId', 'fullName', 'email', 'phone', 'residency', 'residencyApproved', 'residencyClaimed', 'guide'], limit: 200 }) : { records: [] },
       ]);
 
       const userMap: Record<string, any> = {};
@@ -87,7 +87,7 @@ export default createEndpoint({
       // Fetch all guides to resolve names
       const [guidesRes, residenciesRes] = await Promise.all([
         Guides.findAll({ fields: ['id', 'guideId', 'fullName', 'email'], limit: 500 }),
-        FolkResidencies.findAll({ fields: ['id', 'residencyName'], limit: 500 }).catch(() => ({ records: [] })),
+        FolkResidencies.findAll({ fields: ['id', 'residencyName'], limit: 500 }),
       ]);
       const guideNameMap = new Map<string, string>();
       guidesRes.records.forEach((g: any) => {
@@ -101,7 +101,7 @@ export default createEndpoint({
         filters: { status: 'Active' },
         fields: ['id', 'userId', 'fullName', 'email', 'role', 'segment'],
         limit: 2000,
-      }).catch(() => ({ records: [] }));
+      });
       guideUsers
         .filter((u: any) => ['GUIDE', 'SUPER_GUIDE'].includes(String(u.role || '').toUpperCase().replace(/[\s-]+/g, '_')))
         .forEach((u: any) => {

@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { getScopedHierarchyUserIds, isUserInHierarchy, isHierarchyAdmin } from '../lib/hierarchyUtils';
-import { createEndpoint, Users, AttendanceRecords, AttendanceSessions, AttendanceEvents, AttendanceVolunteers, AppError } from '@/lib/backend-sdk';
+import { getScopedHierarchyUserIds, isUserInHierarchy, isHierarchyAdmin, readScopedUsers } from '../lib/hierarchyUtils';
+import { createEndpoint, AttendanceRecords, AttendanceSessions, AttendanceEvents, AttendanceVolunteers, AppError } from '@/lib/backend-sdk';
 
 export default createEndpoint({
   description: 'Get attendance report for a guide (scoped to their residency users)',
@@ -31,7 +31,7 @@ export default createEndpoint({
       userFilters.ashrayLevel = input.ashrayLevel;
     }
 
-    const { records: users } = await Users.findAll({
+    const { records: users } = await readScopedUsers(context.user, {
       filters: userFilters,
       fields: ['id', 'fullName', 'phone', 'ashrayLevel', 'guide', 'residency'],
       limit: 2000,

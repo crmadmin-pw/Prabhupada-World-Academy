@@ -1,5 +1,5 @@
 import { useReactiveEffect } from '@/hooks/useReactiveEffect';
-import { useState, useEffect } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,11 +8,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 import { FileText, TrendingUp, Flame, Edit, Plus, Target, ArrowRight, GraduationCap } from 'lucide-react';
 import FieldTrendChart, { RESIDENT_FIELD_CONFIGS, NR_FIELD_CONFIGS, PW_FIELD_CONFIGS } from '@/components/stats/FieldTrendChart';
-import { format } from 'date-fns';
+import { format, subDays } from 'date-fns';
+import { getUserDashboardData, getUserProgressStats } from '@/lib/endpoints-sdk';
+import { DASHBOARD_RECENT_DAYS } from '@/lib/sadhanaHistoryWindow';
 import SectionErrorBoundary from '@/components/SectionErrorBoundary';
 import MiniCalendar from '@/components/dashboard/MiniCalendar';
 import EntryDetailModal from '@/components/dashboard/EntryDetailModal';
-import { getUserProgressStats } from '@/lib/endpoints-sdk';
 import GuideOneToOneCard from '@/components/dashboard/GuideOneToOneCard';
 import PersonalServiceAlert from '@/components/services/PersonalServiceAlert';
 
@@ -35,6 +36,8 @@ interface Props {
   isResident: boolean;
   /** Increments after this user saves Sadhana, triggering derived charts to refresh. */
   refreshVersion?: number;
+  /** Earliest day included in `history`. Older months load only after the member opens them. */
+  historyWindowStart?: string | null;
 }
 
 type Period = 'daily' | 'weekly' | 'monthly';
@@ -237,9 +240,75 @@ function ImprovementInsights({ insights, isResident, isScholar, period, onPeriod
   );
 }
 
-export default function SadhanaTab({ metrics, history, userId, residencyId, isResident, refreshVersion = 0 }: Props) {
+function toHistoryEntry(entry: HistoryEntry): HistoryEntry | null {
+  const entryDate = String(entry.entryDate || '').slice(0, 10);
+  if (!entryDate) return null;
+  return {
+    entryId: entry.entryId ?? '',
+    entryDate,
+    totalScore: entry.totalScore ?? 0,
+    scorePercent: entry.scorePercent ?? null,
+    submittedAt: entry.submittedAt ?? '',
+    flagSick: !!entry.flagSick,
+    flagOs: !!entry.flagOs,
+  };
+}
+
+export default function SadhanaTab({ metrics, history, userId, residencyId, isResident, refreshVersion = 0, historyWindowStart }: Props) {
   const navigate = useNavigate();
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [olderEntries, setOlderEntries] = useState<HistoryEntry[]>([]);
+  const loadedThroughRef = useRef<string | null>(historyWindowStart ?? null);
+  const loadingOlderRef = useRef(false);
+  if (historyWindowStart && !loadedThroughRef.current) loadedThroughRef.current = historyWindowStart;
+
+  const calendarHistory = useMemo(() => {
+    const byDate = new Map<string, HistoryEntry>();
+    for (const entry of olderEntries) {
+      const normalized = toHistoryEntry(entry);
+      if (normalized) byDate.set(normalized.entryDate, normalized);
+    }
+    for (const entry of history) {
+      const normalized = toHistoryEntry(entry);
+      if (normalized) byDate.set(normalized.entryDate, normalized);
+    }
+    return [...byDate.values()];
+  }, [history, olderEntries]);
+
+  const handleMonthChange = (monthStart: string) => {
+    if (!loadedThroughRef.current) {
+      loadedThroughRef.current = historyWindowStart
+        || format(subDays(new Date(), DASHBOARD_RECENT_DAYS), 'yyyy-MM-dd');
+    }
+    if (!userId || loadingOlderRef.current || monthStart >= loadedThroughRef.current) return;
+
+    loadingOlderRef.current = true;
+    void (async () => {
+      try {
+        let pages = 0;
+        while (loadedThroughRef.current && monthStart < loadedThroughRef.current && pages < 4) {
+          const cursor = loadedThroughRef.current;
+          const page = await getUserDashboardData({
+            userId,
+            days: DASHBOARD_RECENT_DAYS,
+            before: cursor,
+          }) as { recentEntries?: HistoryEntry[]; windowStart?: string };
+          const rows = (page.recentEntries || [])
+            .map(entry => toHistoryEntry(entry))
+            .filter((entry): entry is HistoryEntry => !!entry);
+          const nextStart = String(page.windowStart || '');
+          if (!nextStart || nextStart >= cursor) break;
+          if (rows.length > 0) setOlderEntries(prev => [...prev, ...rows]);
+          loadedThroughRef.current = nextStart;
+          pages += 1;
+        }
+      } catch {
+        // Leave the month blank; the next calendar click retries.
+      } finally {
+        loadingOlderRef.current = false;
+      }
+    })();
+  };
 
 
   // Trend chart state (independent)
@@ -330,7 +399,7 @@ export default function SadhanaTab({ metrics, history, userId, residencyId, isRe
       <GuideOneToOneCard />
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <MiniCalendar entries={history} onDayClick={(date) => navigate(`/sadhana?date=${date}`)} isResident={isResident} />
+        <MiniCalendar entries={calendarHistory} onDayClick={(date) => navigate(`/sadhana?date=${date}`)} isResident={isResident} onMonthChange={handleMonthChange} />
 
         {/* Multi-field Trend Chart */}
         <Card>

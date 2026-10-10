@@ -45,6 +45,8 @@ export interface ProfileSummary {
   isPrabhupadaWorldUser?: boolean;
   role: 'USER' | 'GUIDE' | 'SUPER_GUIDE' | 'SUPER_ADMIN' | 'BVSL' | 'SADHANA_MENTOR';
   status: UserStatus;
+  deletionRequestedAt?: string | null;
+  deletionPurgeAt?: string | null;
   /** BUG-1 FIX: BVSL is a flag not a role — any user can be BVSL */
   isBvsl: boolean;
   /** BUG-1 FIX: Sadhana Mentor is a flag not a role — any user can be a mentor */

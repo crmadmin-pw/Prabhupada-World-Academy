@@ -19,8 +19,8 @@ export default createEndpoint({
       throw new AppError({ code: 'FORBIDDEN', message: 'Only an Admin, Super Admin, Guide, or Super Guide can delete a group.' });
     }
 
-    const group = await BvGroups.findOne({ id: input.groupId, fields: ['id', 'groupId'] }).catch(() => null) ||
-      await BvGroups.findOne({ filters: { groupId: input.groupId }, fields: ['id', 'groupId'] }).catch(() => null);
+    const group = await BvGroups.findOne({ id: input.groupId, fields: ['id', 'groupId'] }) ||
+      await BvGroups.findOne({ filters: { groupId: input.groupId }, fields: ['id', 'groupId'] });
     if (!group) throw new AppError({ code: 'NOT_FOUND', message: 'Group not found.' });
 
     const groupKeys = new Set([group.id, group.groupId].filter(Boolean).map(String));
@@ -42,8 +42,8 @@ export default createEndpoint({
 
     let membersUnassigned = 0;
     for (const userKey of userKeys) {
-      const user = await Users.findOne({ id: userKey, fields: ['id', 'userId'] }).catch(() => null) ||
-        await Users.findOne({ filters: { userId: userKey }, fields: ['id', 'userId'] }).catch(() => null);
+      const user = await Users.findOne({ id: userKey, fields: ['id', 'userId'] }) ||
+        await Users.findOne({ filters: { userId: userKey }, fields: ['id', 'userId'] });
       if (!user) continue;
       await Users.update({
         id: user.id,

@@ -17,6 +17,7 @@ import { exportToCsv } from '@/utils/exportCsv';
 import { format } from 'date-fns';
 
 import { useUserProfile } from '@/contexts/UserProfileContext';
+import { isPrabhupadaWorldCategory } from '@/lib/residencyCategory';
 
 type RegRecord = GetJigyasaTrackerOutputType['registrations'][0];
 type SessionRecord = GetJigyasaTrackerOutputType['sessionRecords'][0];
@@ -189,7 +190,7 @@ export default function JigyasaTrackerTab({ centreFilter, affiliateFilter, canUp
                   <SelectTrigger className="h-9"><SelectValue>{centre ? centre : 'All Centres'}</SelectValue></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Centres</SelectItem>
-                    {(stats?.centres || []).filter(c => !c.includes('Prabhupada World') && !c.includes('PW')).map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    {(stats?.centres || []).filter(c => !isPrabhupadaWorldCategory(c)).map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>

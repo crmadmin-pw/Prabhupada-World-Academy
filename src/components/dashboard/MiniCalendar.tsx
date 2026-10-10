@@ -18,6 +18,8 @@ interface Props {
   onDayClick: (date: string) => void;
   isResident?: boolean;
   mode?: 'sadhana' | 'attendance';
+  /** Fired when the visible month changes, including the previous-month control. */
+  onMonthChange?: (monthStart: string) => void;
 }
 
 function getDayColor(entry: HistoryEntry | undefined, isResident = false): string {
@@ -41,9 +43,13 @@ function getDayEmoji(entry: HistoryEntry | undefined): string {
   return '';
 }
 
-function MiniCalendar({ entries, onDayClick, isResident = false, mode = 'sadhana' }: Props) {
+function MiniCalendar({ entries, onDayClick, isResident = false, mode = 'sadhana', onMonthChange }: Props) {
   const [month, setMonth] = useState(new Date());
   const today = format(new Date(), 'yyyy-MM-dd');
+  const showMonth = (next: Date) => {
+    setMonth(next);
+    onMonthChange?.(format(startOfMonth(next), 'yyyy-MM-dd'));
+  };
 
   // Normalize entryDate to date-only (strip time component if ISO string)
   const entryMap = useMemo(() => {
@@ -71,11 +77,11 @@ function MiniCalendar({ entries, onDayClick, isResident = false, mode = 'sadhana
             <Calendar className="w-4 h-4" />Monthly View
           </CardTitle>
           <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Previous month" onClick={() => setMonth(subMonths(month, 1))}>
+            <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Previous month" onClick={() => showMonth(subMonths(month, 1))}>
               <ChevronLeft className="w-3 h-3" />
             </Button>
             <span className="text-xs font-medium min-w-[90px] text-center">{format(month, 'MMM yyyy')}</span>
-            <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Next month" onClick={() => setMonth(addMonths(month, 1))} disabled={!canGoNext}>
+            <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Next month" onClick={() => showMonth(addMonths(month, 1))} disabled={!canGoNext}>
               <ChevronRight className="w-3 h-3" />
             </Button>
           </div>

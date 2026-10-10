@@ -7,6 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { AlertCircle, XCircle, Loader2, WifiOff, CheckCircle } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { resolveUserLogin } from '@/lib/endpoints-sdk';
+import { readAccountLinkHold, writeAccountLinkHold } from '@/lib/accountLinkHold';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { motion } from 'framer-motion';
 
@@ -33,7 +34,7 @@ export default function AuthCallbackPage() {
   // This guarantees the user is NEVER stuck on this page longer than 20 seconds.
   useEffect(() => {
     const hardTimeout = setTimeout(() => {
-      window.location.href = '/dashboard';
+      window.location.href = readAccountLinkHold() ? '/account-link-pending' : '/dashboard';
     }, 20_000);
     return () => clearTimeout(hardTimeout);
   }, []);
@@ -75,6 +76,7 @@ export default function AuthCallbackPage() {
       if (callIdRef.current !== myCallId) return;
 
       if (result.action === 'route' && result.route) {
+        writeAccountLinkHold(null);
         forceSetProfile(result.user);
         const overrideRedirect = typeof window !== 'undefined' ? localStorage.getItem('auth_redirect_after_callback') : null;
         if (overrideRedirect) {
@@ -84,8 +86,13 @@ export default function AuthCallbackPage() {
           navigate(result.route, { replace: true });
         }
       } else if (result.action === 'guide_email_detected') {
+        writeAccountLinkHold(null);
         navigate('/guide-login', { replace: true });
+      } else if (result.action === 'account_link_pending' || result.action === 'account_link_rejected') {
+        writeAccountLinkHold(result.action);
+        navigate('/account-link-pending', { replace: true });
       } else if (result.action === 'register') {
+        writeAccountLinkHold(null);
         navigate('/register', { replace: true });
       }
     } catch (err) {

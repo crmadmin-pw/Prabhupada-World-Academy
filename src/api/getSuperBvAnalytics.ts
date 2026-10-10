@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { createEndpoint, Users, BvslPreachingEntries, Guides, BvGroups, FolkResidencies } from '@/lib/backend-sdk';
 import { requireGuideRole, getRefId } from '../lib/userUtils';
 import getGuides from './getGuides';
-import { getScopedHierarchyUserIds, isUserInHierarchy, hierarchyAliases, hierarchyRefs, isHierarchyAdmin } from '../lib/hierarchyUtils';
+import { getScopedHierarchyUserIds, isUserInHierarchy, hierarchyAliases, hierarchyRefs, isHierarchyAdmin, readScopedUsers } from '../lib/hierarchyUtils';
 
 const NUM_KEYS = [
   'callingTime', 'oneOnOneTime', 'bookDistTime', 'rduaTime', 'planTime',
@@ -58,12 +58,12 @@ export default createEndpoint({
       { records: bvslCandidates },
       { records: bvGroups },
     ] = await Promise.all([
-      getGuides.execute({ input: {}, context }).catch(() => ({ guides: [] })),
-      Users.findAll({ fields: ['id', 'userId', 'fullName', 'email', 'role', 'segment', 'residency', 'guide', 'isBvAdmin', 'isBvSuperAdmin', 'bvReportingAdminId', 'bvSupervisorGuideId', 'bvReportingSupervisorId', 'bvReportingFacilitatorId'], limit: 2000 }),
-      Guides.findAll({ fields: ['id', 'guideId', 'fullName', 'name', 'abbreviation', 'folkResidencies', 'email'], limit: 500 }).catch(() => ({ records: [] })),
-      FolkResidencies.findAll({ fields: ['id', 'residencyId', 'residencyName', 'guide', 'guideName'], limit: 200 }).catch(() => ({ records: [] })),
-      Users.findAll({ filters: { isBvsl: true, status: 'Active' }, fields: ['id', 'userId', 'fullName', 'email', 'guide', 'residency', 'segment', 'isPrabhupadaWorldUser'], limit: 500 }),
-      BvGroups.findAll({ filters: { isActive: true }, fields: ['id', 'groupName', 'bvslLeader', 'guide', 'guideName', 'bvReportingAdminName', 'center'], limit: 500 }).catch(() => ({ records: [] })),
+      getGuides.execute({ input: {}, context }),
+      readScopedUsers(context.user, { fields: ['id', 'userId', 'fullName', 'email', 'role', 'segment', 'residency', 'guide', 'isBvAdmin', 'isBvSuperAdmin', 'bvReportingAdminId', 'bvSupervisorGuideId', 'bvReportingSupervisorId', 'bvReportingFacilitatorId'], limit: 2000 }),
+      Guides.findAll({ fields: ['id', 'guideId', 'fullName', 'name', 'abbreviation', 'folkResidencies', 'email'], limit: 500 }),
+      FolkResidencies.findAll({ fields: ['id', 'residencyId', 'residencyName', 'guide', 'guideName'], limit: 200 }),
+      readScopedUsers(context.user, { filters: { isBvsl: true, status: 'Active' }, fields: ['id', 'userId', 'fullName', 'email', 'guide', 'residency', 'segment', 'isPrabhupadaWorldUser'], limit: 500 }),
+      BvGroups.findAll({ filters: { isActive: true }, fields: ['id', 'groupName', 'bvslLeader', 'guide', 'guideName', 'bvReportingAdminName', 'center'], limit: 500 }),
     ]);
 
     const hierarchy = await getScopedHierarchyUserIds(context.user);

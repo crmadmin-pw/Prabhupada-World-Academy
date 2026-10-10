@@ -6,6 +6,7 @@ import {
   getAuth,
   onAuthStateChanged,
   signInWithPopup,
+  reauthenticateWithPopup,
   GoogleAuthProvider,
   signOut,
   connectAuthEmulator,
@@ -25,6 +26,7 @@ interface AuthContextType {
   isLoading: boolean;
   loginWithRedirect: (options?: { redirectUrl?: string }) => Promise<void>;
   logout: (options?: { returnTo?: string }) => Promise<void>;
+  reauthenticate: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -106,6 +108,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const reauthenticate = async () => {
+    if (!isFirebaseEnabled || !auth?.currentUser) {
+      throw new Error('Sign in again before deleting your account.');
+    }
+    const provider = new GoogleAuthProvider();
+    await reauthenticateWithPopup(auth.currentUser, provider);
+    const token = await auth.currentUser.getIdToken(true);
+    if (typeof window !== 'undefined') {
+      (window as any).__firebase_id_token = token;
+    }
+  };
+
   const logout = async (options?: { returnTo?: string }) => {
     if (isFirebaseEnabled && auth) {
       await signOut(auth);
@@ -125,7 +139,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, loginWithRedirect, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, loginWithRedirect, logout, reauthenticate }}>
       {children}
     </AuthContext.Provider>
   );

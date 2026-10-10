@@ -40,7 +40,7 @@ async function findUsersForAliases(aliases: string[]): Promise<any[]> {
   for (let i = 0; i < uniqueAliases.length; i += 30) {
     const chunk = uniqueAliases.slice(i, i + 30);
     const lookups = await Promise.all(USER_IDENTITY_FIELDS.map(field =>
-      Users.findAll({ filters: { [field]: { in: chunk } }, fields: USER_FIELDS, limit: 30 }).catch(() => ({ records: [] }))
+      Users.findAll({ filters: { [field]: { in: chunk } }, fields: USER_FIELDS, limit: 30 })
     ));
     for (const user of lookups.flatMap(result => result.records)) {
       users.set(user.id, user);
@@ -70,14 +70,14 @@ export default createEndpoint({
     // endpoint fetched 90 days of attendance for the entire application and
     // discarded almost all of those documents in memory.
     const [byId, byUserId] = await Promise.all([
-      Users.findOne({ id: lookupId, fields: USER_FIELDS }).catch(() => null),
-      Users.findOne({ filters: { userId: lookupId }, fields: USER_FIELDS }).catch(() => null),
+      Users.findOne({ id: lookupId, fields: USER_FIELDS }),
+      Users.findOne({ filters: { userId: lookupId }, fields: USER_FIELDS }),
     ]);
     let requestedUser = byId || byUserId;
     if (!requestedUser) {
       const matches = await Promise.all(USER_IDENTITY_FIELDS
         .filter(field => !['id', 'userId'].includes(field))
-        .map(field => Users.findOne({ filters: { [field]: lookupId }, fields: USER_FIELDS }).catch(() => null)));
+        .map(field => Users.findOne({ filters: { [field]: lookupId }, fields: USER_FIELDS })));
       requestedUser = matches.find(Boolean) || null;
     }
     // When a guide opens a member's profile, only the target member's aliases
@@ -121,7 +121,7 @@ export default createEndpoint({
       const { records: memberships } = await BvGroupMembers.findAll({
         fields: ['id', 'group', 'groupId', 'user', 'userId', 'memberId'],
         limit: 5000,
-      }).catch(() => ({ records: [] }));
+      });
       membership = memberships.find((member: any) =>
         referenceValues([member.id, member.user, member.userId, member.memberId])
           .some(value => lookupKeys.has(value.toLowerCase()))
@@ -146,11 +146,11 @@ export default createEndpoint({
 
     const groupFields = ['id', 'groupId', 'groupName'];
     const group = await BvGroups.findOne({ id: storedGroupId, fields: groupFields })
-      .catch(() => null)
+      
       || await BvGroups.findOne({ filters: { groupId: storedGroupId }, fields: groupFields })
-        .catch(() => null)
+        
       || await BvGroups.findOne({ filters: { groupName: storedGroupId }, fields: groupFields })
-        .catch(() => null);
+        ;
     const groupReferences = [...new Set([
       storedGroupId,
       group?.id,
@@ -181,12 +181,12 @@ export default createEndpoint({
         filters: { groupId: { in: groupReferences } },
         fields: ['id', 'group', 'groupId', 'user', 'present', 'attendanceDate'],
         limit: 5000,
-      }).catch(() => ({ records: [], hasMore: false })),
+      }),
       BvGroupMembers.findAll({
         filters: { groupId: { in: groupReferences } },
         fields: ['id', 'user', 'userId', 'memberId'],
         limit: 1000,
-      }).catch(() => ({ records: [], hasMore: false })),
+      }),
     ]);
 
     let attendanceRecords = [...attendanceByGroup.records, ...attendanceByGroupId.records]
@@ -196,7 +196,7 @@ export default createEndpoint({
       const { records } = await BvAttendance.findAll({
         fields: ['id', 'group', 'groupId', 'user', 'present', 'attendanceDate'],
         limit: 5000,
-      }).catch(() => ({ records: [] as any[] }));
+      });
       attendanceRecords = records.filter((record: any) =>
         referenceValues([record.group, record.groupId]).some(value => groupKeys.has(value.toLowerCase()))
       );

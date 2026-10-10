@@ -3,8 +3,6 @@ import { MotionConfig } from 'framer-motion';
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { registerServiceWorker } from './utils/sadhanaNotification';
-import { toast } from 'sonner';
-
 import { Toaster } from '@/components/ui/sonner';
 import UserProfileProvider, { useUserProfile } from './contexts/UserProfileContext';
 import RoleAcknowledgementHandler from '@/components/dashboard/RoleAcknowledgementHandler';
@@ -16,15 +14,18 @@ import UserDashboardRoute from './layouts/UserDashboardRoute';
 import { getUserDashboardPath } from './lib/userDashboardRoutes';
 import InstallBanner from './components/InstallBanner';
 import { GuestOnlyRoute, StatusRoute, AuthCallbackGuard } from './layouts/RouteGuards';
+import { startAppVersionChecks } from '@/lib/appVersion';
 
 // ── Auth pages ──
 import LandingPage from './spa-pages/LandingPage';
 import LoginPage from './spa-pages/LoginPage';
 import AuthCallbackPage from './spa-pages/AuthCallbackPage';
+import AccountLinkPendingPage from './spa-pages/AccountLinkPendingPage';
 const GuideLoginPage = lazy(() => import('./spa-pages/GuideLoginPage'));
 const RegistrationPage = lazy(() => import('./spa-pages/RegistrationPage'));
 const PendingApprovalPage = lazy(() => import('./spa-pages/PendingApprovalPage'));
 const RejectedPage = lazy(() => import('./spa-pages/RejectedPage'));
+const AccountDeletionPage = lazy(() => import('./spa-pages/AccountDeletionPage'));
 const InactivePage = lazy(() => import('./spa-pages/InactivePage'));
 const BvslEntryPage = lazy(() => import('./spa-pages/BvslEntryPage'));
 
@@ -64,89 +65,6 @@ const PublicAttendPage = lazy(() => import('./spa-pages/attendance/PublicAttendP
 const AttendanceManagePage = lazy(() => import('./spa-pages/attendance/AttendanceManagePage'));
 const AttendanceDashboardPage = lazy(() => import('./spa-pages/attendance/AttendanceDashboardPage'));
 
-// ─────────────────────────────────────────────────────────────────────────────
-// AUTO VERSION DETECTION
-// Works by comparing the hashed JS bundle filename that build process bakes into
-// index.html at publish time vs what the browser currently has loaded.
-// Every publish produces a NEW hash → detected automatically. No manual bumps.
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** Key to throttle reloads — stores the timestamp of last auto-reload */
-const RELOAD_TS_KEY = 'folk_last_auto_reload';
-/** Minimum ms between auto-reloads (30 s) — prevents infinite loops */
-const RELOAD_COOLDOWN_MS = 30_000;
-
-/** Get the /assets/index-*.js pathname currently loaded in this tab */
-function getLocalScriptPath(): string | null {
-  for (const el of Array.from(document.querySelectorAll<HTMLScriptElement>('script[src]'))) {
-    try {
-      const path = new URL(el.src, window.location.origin).pathname;
-      if (path.startsWith('/assets/index-') && path.endsWith('.js')) return path;
-    } catch {
-      // ignore
-    }
-  }
-  return null;
-}
-
-/** Fetch the live index.html and extract its hashed JS bundle path */
-async function fetchRemoteScriptPath(): Promise<string | null> {
-  const res = await fetch('/?_bust=' + Date.now(), {
-    cache: 'no-store',
-    headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', Pragma: 'no-cache' },
-  });
-  const html = await res.text();
-  const match = html.match(/src="(\/assets\/index-[^"]+\.js)"/);
-  return match ? match[1] : null;
-}
-
-/** Core check — returns true if a new version was detected and a reload was triggered */
-async function checkAndRefreshIfStale(isBackground: boolean): Promise<void> {
-  // Never reload during auth callbacks — the OAuth token is one-time use and a
-  // mid-callback reload consumes it without establishing a session, causing a
-  // permanent broken auth state (stuck spinner / redirect loop).
-  if (window.location.pathname === '/auth-callback') return;
-  try {
-    const [localPath, remotePath] = await Promise.all([
-      Promise.resolve(getLocalScriptPath()),
-      fetchRemoteScriptPath(),
-    ]);
-
-    if (!localPath || !remotePath) return;
-    if (localPath === remotePath) return; // ✅ Already on latest
-
-    // Guard: don't reload if we just did so recently (prevents loops)
-    const lastReload = parseInt(sessionStorage.getItem(RELOAD_TS_KEY) ?? '0', 10);
-    if (Date.now() - lastReload < RELOAD_COOLDOWN_MS) return;
-
-    // Clear stale local data before reload
-    for (const key of Object.keys(sessionStorage)) {
-      if (key !== RELOAD_TS_KEY) sessionStorage.removeItem(key);
-    }
-    for (const key of Object.keys(localStorage)) {
-      if (key.startsWith('pwa_') || key.startsWith('svc_') || key.startsWith('folk_cache_')) {
-        localStorage.removeItem(key);
-      }
-    }
-
-    sessionStorage.setItem(RELOAD_TS_KEY, String(Date.now()));
-
-    if (isBackground) {
-      toast('✨ New version available — refreshing in 3 seconds…');
-      setTimeout(() => {
-        window.location.href = window.location.origin + window.location.pathname + '?_v=' + Date.now();
-      }, 3000);
-    } else {
-      // Silent immediate reload on first page load
-      window.location.href = window.location.origin + window.location.pathname + '?_v=' + Date.now();
-    }
-  } catch {
-    // Network / parse error — don't reload, silently continue
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-
 // Roles that can access user-level pages (everyone except Guide/Super Guide)
 const USER_ROLES = ['USER', 'BVSL', 'SADHANA_MENTOR'] as const;
 
@@ -170,10 +88,12 @@ export default function App() {
             <Route path="/pw" element={<LandingPage isPw={true} />} />
             <Route path="/pw/signup" element={<LandingPage isPw={true} />} />
             <Route path="/auth-callback" element={<AuthCallbackGuard><AuthCallbackPage /></AuthCallbackGuard>} />
+            <Route path="/account-link-pending" element={<AccountLinkPendingPage />} />
             <Route path="/guide-login" element={<GuideLoginPage />} />
             <Route path="/register" element={<GuestOnlyRoute><RegistrationPage /></GuestOnlyRoute>} />
             <Route path="/pending" element={<StatusRoute required="PENDING_APPROVAL"><PendingApprovalPage /></StatusRoute>} />
             <Route path="/rejected" element={<StatusRoute required="REJECTED"><RejectedPage /></StatusRoute>} />
+            <Route path="/account-deletion" element={<AccountDeletionPage />} />
             <Route path="/inactive" element={<InactivePage />} />
             <Route path="/bvsl" element={<BvslEntryPage />} />
             <Route path="/join-group" element={<JoinGroupPage />} />
@@ -197,15 +117,18 @@ export default function App() {
             <Route path="/guide/field-setup" element={<ProtectedRoute allowedRoles={['GUIDE', 'SUPER_GUIDE', 'SUPER_ADMIN']}><GuideFieldSetupPage /></ProtectedRoute>} />
             <Route path="/guide/users/:userId" element={<ProtectedRoute allowedRoles={['GUIDE', 'SUPER_GUIDE', 'SUPER_ADMIN', 'BVSL', 'SADHANA_MENTOR', 'BV_MENTOR']}><GuideUserDetailPage /></ProtectedRoute>} />
             <Route path="/rgsf/users/:userId" element={<ProtectedRoute allowedRoles={['RGSF']}><GuideUserDetailPage /></ProtectedRoute>} />
-            <Route path="/guide/bv-group/:groupId" element={<ProtectedRoute allowedRoles={['GUIDE', 'SUPER_GUIDE', 'SUPER_ADMIN', 'BV_MENTOR', 'ADMIN', 'PW_ADMIN', 'USER']}><BvGroupDetailPage /></ProtectedRoute>} />
-            <Route path="/bvsl/groups/:groupId" element={<ProtectedRoute allowedRoles={['BVSL', 'SADHANA_MENTOR', 'SUPER_ADMIN', 'ADMIN', 'PW_ADMIN', 'GUIDE', 'SUPER_GUIDE', 'BV_MENTOR', 'USER']}><BvGroupDetailPage /></ProtectedRoute>} />
+            <Route path="/guide/bv-group/:groupId" element={<ProtectedRoute allowedRoles={['GUIDE', 'SUPER_GUIDE', 'SUPER_ADMIN', 'BV_MENTOR', 'ADMIN', 'PW_ADMIN']}><BvGroupDetailPage /></ProtectedRoute>} />
+            <Route path="/bvsl/groups/:groupId" element={<ProtectedRoute allowedRoles={['BVSL', 'RGSF', 'SADHANA_MENTOR', 'SUPER_ADMIN', 'ADMIN', 'PW_ADMIN', 'GUIDE', 'SUPER_GUIDE', 'BV_MENTOR']}><BvGroupDetailPage /></ProtectedRoute>} />
             <Route path="/guide/stats" element={<Navigate to="/folk-guide/dashboard" replace />} />
 
-            {/* Super Guide & Super Admin */}
+            {/* Management dashboards. Plain USER is intentionally absent: ProtectedRoute
+                treats USER as "any approved member", so listing it opened these shells to everyone.
+                Guide is included only on the FOLK guide dashboard, which that role actually uses.
+                Admin flags (isBvAdmin / isBvSuperAdmin) still pass via ProtectedRoute. */}
             <Route path="/super/dashboard" element={<ProtectedRoute allowedRoles={['SUPER_GUIDE', 'SUPER_ADMIN', 'ADMIN', 'PW_ADMIN']}><FolkGuideDashboard /></ProtectedRoute>} />
-            <Route path="/folk-guide/dashboard" element={<ProtectedRoute allowedRoles={['SUPER_GUIDE', 'SUPER_ADMIN', 'ADMIN', 'PW_ADMIN', 'USER']}><FolkGuideDashboard /></ProtectedRoute>} />
-            <Route path="/pw-admin/dashboard" element={<ProtectedRoute allowedRoles={['SUPER_GUIDE', 'SUPER_ADMIN', 'ADMIN', 'PW_ADMIN', 'USER']}><PwAdminDashboard /></ProtectedRoute>} />
-            <Route path="/super-admin/dashboard" element={<ProtectedRoute allowedRoles={['SUPER_GUIDE', 'SUPER_ADMIN', 'ADMIN', 'PW_ADMIN', 'USER']}><PwAdminDashboard /></ProtectedRoute>} />
+            <Route path="/folk-guide/dashboard" element={<ProtectedRoute allowedRoles={['GUIDE', 'SUPER_GUIDE', 'SUPER_ADMIN', 'ADMIN', 'PW_ADMIN']}><FolkGuideDashboard /></ProtectedRoute>} />
+            <Route path="/pw-admin/dashboard" element={<ProtectedRoute allowedRoles={['SUPER_GUIDE', 'SUPER_ADMIN', 'ADMIN', 'PW_ADMIN']}><PwAdminDashboard /></ProtectedRoute>} />
+            <Route path="/super-admin/dashboard" element={<ProtectedRoute allowedRoles={['SUPER_GUIDE', 'SUPER_ADMIN', 'ADMIN', 'PW_ADMIN']}><PwAdminDashboard /></ProtectedRoute>} />
 
             {/* Supervisor dashboard (formerly BV Mentor) — accessible by BV_MENTOR/isBvSupervisor, Guides, and Admins */}
             <Route path="/bv-supervisor/dashboard" element={<ProtectedRoute allowedRoles={['BV_MENTOR', 'GUIDE', 'SUPER_GUIDE', 'ADMIN']}><BvSupervisorDashboard /></ProtectedRoute>} />
@@ -252,32 +175,8 @@ function RouteLoadingFallback() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// VersionChecker — one delayed check plus a check when the app becomes visible.
-// Fully automatic: works for every future publish with ZERO manual changes
-// ─────────────────────────────────────────────────────────────────────────────
 function VersionChecker() {
-  const didRunRef = useRef(false);
-
-  useEffect(() => {
-    if (didRunRef.current) return;
-    didRunRef.current = true;
-
-    // Delay initial check so the app fully loads first (was 2s — too aggressive)
-    const initTimer = setTimeout(() => checkAndRefreshIfStale(false), 10_000);
-
-    // Also re-check when the user returns to the tab after being away
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') checkAndRefreshIfStale(true);
-    };
-    document.addEventListener('visibilitychange', onVisibilityChange);
-
-    return () => {
-      clearTimeout(initTimer);
-      document.removeEventListener('visibilitychange', onVisibilityChange);
-    };
-  }, []);
-
+  useEffect(() => startAppVersionChecks(), []);
   return null;
 }
 
@@ -309,6 +208,7 @@ function DashboardRouter() {
     </div>
   );
   if (!profile) return <Navigate to="/register" replace />;
+  if (profile.status === 'PENDING_DELETION') return <Navigate to="/account-deletion" replace />;
   if (profile.status === 'PENDING_APPROVAL') return <Navigate to="/pending" replace />;
   if (profile.status === 'REJECTED') return <Navigate to="/rejected" replace />;
   if ((profile.status as string) === 'INACTIVE') return <Navigate to="/inactive" replace />;
@@ -350,9 +250,15 @@ function DashboardRouter() {
     return <Navigate to={`/rgf/dashboard${suffix}`} replace />;
   }
 
-  // Guide / Mentor
+  // Guide. FOLK guides use the guide dashboard. A Prabhupada World account whose
+  // role is Guide, and who was not already routed as an admin above, is a member.
+  // Sending them to /pw-admin/dashboard would bounce: that shell no longer admits GUIDE or USER.
   const userRoleStr = (profile.role as string) || '';
-  if (userRoleStr === 'SUPER_GUIDE' || userRoleStr === 'GUIDE' || userRoleStr === 'Super Guide' || userRoleStr === 'Guide') {
+  const normalizedGuideRole = userRoleStr.trim().toUpperCase().replace(/[\s-]+/g, '_');
+  if (normalizedGuideRole === 'SUPER_GUIDE' || normalizedGuideRole === 'GUIDE') {
+    if (normalizedGuideRole === 'GUIDE' && isPw) {
+      return <Navigate to={`${getUserDashboardPath(profile)}${suffix}`} replace />;
+    }
     return isPw ? <Navigate to={`/pw-admin/dashboard${suffix}`} replace /> : <Navigate to={`/folk-guide/dashboard${suffix}`} replace />;
   }
 

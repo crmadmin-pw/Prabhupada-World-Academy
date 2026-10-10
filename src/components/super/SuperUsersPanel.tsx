@@ -17,6 +17,7 @@ import {
   tagUserAsTripCoordinator, tagUserAsBvMentor, tagUserAsSadhanaMentor, assignBvRole,
   getActiveSadhanaMentors, assignSadhanaMentor, getBvslGroups, getAllBvGroupsAdmin, transferBvGroupMember,
 } from '@/lib/endpoints-sdk';
+import { sendOrQueue } from '@/lib/offlineQueue';
 import type { GetGuideUsersOutputType, GetGuidesOutputType } from '@/lib/endpoints-sdk';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { ASHRAY_LEVELS } from '@/types/enums';
@@ -512,7 +513,15 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
 
   const handleAssignBvRole = async (userId: string, role: string, parentId?: string, parentName?: string) => {
     try {
-      const res = await assignBvRole({ userId, role: role as any, parentId, parentName });
+      const submission = { userId, role: role as any, parentId, parentName };
+      const outcome = await sendOrQueue({
+        type: 'role_update',
+        dedupeKey: `role:${userId}:${role}`,
+        payload: { endpoint: 'assignBvRole', input: submission },
+        send: () => assignBvRole(submission),
+      });
+      if (outcome.status === 'queued') return;
+      const res = outcome.result;
       toast.success('Bhakti Vriksha role updated');
       setUsers(prev => prev.map(u => {
         const matches = u.userId === userId || (u as any).userDbId === userId || u.id === userId;

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createEndpoint, FolkResidencies, Guides, Users, AppError } from '@/lib/backend-sdk';
 import { resolveGuideReference } from '../lib/guideResolution';
+import { isActiveFolkResidency } from '../lib/residencyCategory';
 
 const normalizeRole = (value: unknown) => String(value || '').trim().replace(/[\s-]+/g, '_').toUpperCase();
 const normalizeIds = (value: unknown): string[] => {
@@ -8,11 +9,6 @@ const normalizeIds = (value: unknown): string[] => {
   return values.flatMap(v => Array.isArray(v) ? v : [v]).map(v => String(v || '').trim()).filter(Boolean);
 };
 const key = (value: unknown) => String(value || '').trim().toLowerCase();
-const isFolkResidency = (record: any) => {
-  const name = key(record?.residencyName);
-  return record?.isActive !== false && record?.isActive !== 'false' &&
-    !name.includes('prabhupada world') && !name.startsWith('pw ');
-};
 
 function isFolkGuide(record: any): boolean {
   const role = normalizeRole(record?.role);
@@ -39,7 +35,7 @@ export default createEndpoint({
     if (!canAssign) throw new AppError({ code: 'FORBIDDEN', message: 'Only a FOLK Super Guide can assign hostel guides' });
 
     const residency = await FolkResidencies.findOne({ id: input.residencyId });
-    if (!residency || !isFolkResidency(residency)) {
+    if (!residency || !isActiveFolkResidency(residency)) {
       throw new AppError({ code: 'NOT_FOUND', message: 'FOLK residency not found' });
     }
 

@@ -59,7 +59,7 @@ export default createEndpoint({
     } else {
       // Synthetic registration — no BvMemberRegistrations doc exists; resolve user via id suffix
       const userDbId = input.registrationId.replace(/^BVREG-/, '');
-      const userRec = await Users.findOne({ id: userDbId }).catch(() => null);
+      const userRec = await Users.findOne({ id: userDbId });
       if (!userRec) throw new AppError({ code: 'NOT_FOUND', message: 'User record not found for synthetic registration' });
       reg = { userId: userRec.id, email: userRec.email || '' };
     }
@@ -69,12 +69,12 @@ export default createEndpoint({
     const userSearchId = reg.userId || reg.userDbId;
     let targetUser = null;
     if (userSearchId) {
-      targetUser = await Users.findOne({ id: userSearchId }).catch(() => null) ||
-                   await Users.findOne({ filters: { userId: userSearchId } }).catch(() => null);
+      targetUser = await Users.findOne({ id: userSearchId }) ||
+                   await Users.findOne({ filters: { userId: userSearchId } });
     }
     if (!targetUser && reg.email) {
-      targetUser = await Users.findOne({ filters: { email: reg.email } }).catch(() => null) ||
-                   await Users.findOne({ filters: { email: (reg.email || '').toLowerCase() } }).catch(() => null);
+      targetUser = await Users.findOne({ filters: { email: reg.email } }) ||
+                   await Users.findOne({ filters: { email: (reg.email || '').toLowerCase() } });
     }
 
     if (targetUser) {

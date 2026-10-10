@@ -56,7 +56,7 @@ export default createEndpoint({
       BvGroupMembers.findAll({
         limit: 5000,
         fields: ['id', 'group', 'groupId', 'user', 'userId', 'memberId'],
-      }).catch(() => ({ records: [] })),
+      }),
     ]);
 
     const departmentPairs = await Promise.all(allQuizzes.map(async quiz => ({
@@ -156,7 +156,7 @@ async function listPwQuizzes(user: any, groupId?: string) {
     BvGroupMembers.findAll({
       limit: 5000,
       fields: ['id', 'group', 'groupId', 'user', 'userId', 'memberId'],
-    }).catch(() => ({ records: [] })),
+    }),
   ]);
   const departmentPairs = await Promise.all(allQuizzes.map(async quiz => ({
     quiz,

@@ -351,8 +351,8 @@ export async function createBulkUser(row: NormalizedBulkUser, manager: Awaited<R
   // Recheck immediately before writing. The deterministic email document ID
   // also prevents two simultaneous imports from creating duplicate profiles.
   const [emailExisting, phoneExisting] = await Promise.all([
-    Users.findOne({ filters: { email: row.email } }).catch(() => null),
-    Users.findOne({ filters: { phone: row.phoneE164 } }).catch(() => null),
+    Users.findOne({ filters: { email: row.email } }),
+    Users.findOne({ filters: { phone: row.phoneE164 } }),
   ]);
   if (emailExisting || phoneExisting) return { status: 'existing' as const, userId: (emailExisting || phoneExisting).userId || (emailExisting || phoneExisting).id };
 
@@ -377,7 +377,7 @@ export async function createBulkUser(row: NormalizedBulkUser, manager: Awaited<R
     try {
       await BvMemberRegistrations.create({ record: registrationRecord });
     } catch (error) {
-      await Users.delete({ id: userDbId }).catch(() => undefined);
+      await Users.delete({ id: userDbId });
       throw error;
     }
   }

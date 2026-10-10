@@ -1,4 +1,5 @@
 import React from 'react';
+import { OFFLINE_QUEUE_STORAGE_KEY } from '@/lib/offlineQueue';
 
 const RELOAD_TS_KEY = 'folk_error_reload_ts';
 const RELOAD_COOLDOWN_MS = 30_000;
@@ -23,7 +24,7 @@ async function nukeAndReload() {
       if (key !== RELOAD_TS_KEY) sessionStorage.removeItem(key);
     }
     for (const key of Object.keys(localStorage)) {
-      if (key.startsWith('pwa_') || key.startsWith('svc_') || key.startsWith('folk_cache_')) {
+      if (key !== OFFLINE_QUEUE_STORAGE_KEY && (key.startsWith('pwa_') || key.startsWith('svc_') || key.startsWith('folk_cache_'))) {
         localStorage.removeItem(key);
       }
     }

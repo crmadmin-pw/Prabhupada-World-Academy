@@ -631,12 +631,25 @@ test('normal PW admins see only groups under their reporting RGFs', async () => 
   }
 });
 
-test('BV group detail resolves a legacy memberId membership', async () => {
+test('BV group detail resolves a legacy memberId membership for the group leader only', async () => {
+  const leader = {
+    id: 'BV-GROUP-DETAIL-LEGACY-LEADER-DOC',
+    userId: 'BV-GROUP-DETAIL-LEGACY-LEADER',
+    email: 'bv-group-detail-legacy-leader@example.invalid',
+    fullName: 'Legacy Detail Leader',
+    status: 'Active',
+    role: 'User',
+    isBvFacilitator: true,
+    isBvsl: true,
+  };
   const group = {
     id: 'BV-GROUP-DETAIL-LEGACY-DOC',
     groupId: 'BV-GROUP-DETAIL-LEGACY',
     groupName: 'Legacy Detail Group',
     isActive: true,
+    bvslId: leader.userId,
+    bvslLeader: leader.id,
+    joinToken: 'legacy-join-token',
   };
   const member = {
     id: 'BV-GROUP-DETAIL-LEGACY-USER-DOC',
@@ -649,6 +662,7 @@ test('BV group detail resolves a legacy memberId membership', async () => {
   const membershipId = 'BV-GROUP-DETAIL-LEGACY-MEMBERSHIP';
 
   try {
+    await Users.create({ record: leader });
     await Users.create({ record: member });
     await BvGroups.create({ record: group });
     await BvGroupMembers.create({
@@ -657,16 +671,26 @@ test('BV group detail resolves a legacy memberId membership', async () => {
 
     const detail = await getBvGroupDetail.execute({
       input: { groupId: group.groupId },
-      context: { user: member },
+      context: { user: leader },
     } as never);
 
     assert.equal(detail.members.length, 1);
     assert.equal(detail.members[0].fullName, member.fullName);
     assert.equal(detail.members[0].userId, member.userId);
+    assert.equal(detail.group.joinToken, group.joinToken);
+
+    await assert.rejects(
+      getBvGroupDetail.execute({
+        input: { groupId: group.groupId },
+        context: { user: member },
+      } as never),
+      (error: any) => error.code === 'FORBIDDEN',
+    );
   } finally {
     await BvGroupMembers.delete({ id: membershipId }).catch(() => undefined);
     await BvGroups.delete({ id: group.id }).catch(() => undefined);
     await Users.delete({ id: member.id }).catch(() => undefined);
+    await Users.delete({ id: leader.id }).catch(() => undefined);
   }
 });
 

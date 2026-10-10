@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { getScopedHierarchyUserIds, isUserInHierarchy } from '../lib/hierarchyUtils';
+import { getScopedHierarchyUserIds, isUserInHierarchy, readScopedUsers } from '../lib/hierarchyUtils';
 import { scopeRealtimeDependencies } from '@/lib/requestQueries';
 import { createEndpoint, AppError, Users, Guides, BvslPreachingEntries, SadhanaEntries } from '@/lib/backend-sdk';
 import { requireGuideRole } from '../lib/userUtils';
@@ -91,12 +91,12 @@ async function _fetchBvStats({ input, context }: { input: any; context: any }) {
       const bvslMap = new Map<string, any>();
       if (allGuideIds.length > 0) {
         const fetches = await Promise.all(allGuideIds.map(gid =>
-          Users.findAll({ filters: { isBvsl: true, status: 'Active', guide: gid }, fields: ['id', 'userId', 'fullName'], limit: 200 })
+          readScopedUsers(context.user, { filters: { isBvsl: true, status: 'Active', guide: gid }, fields: ['id', 'userId', 'fullName'], limit: 200 })
         ));
         for (const res of fetches) for (const u of res.records) bvslMap.set(u.id, u);
       }
       const resFetches = await Promise.all(residencyIds.map((rid: string) =>
-        Users.findAll({ filters: { isBvsl: true, status: 'Active', residency: rid }, fields: ['id', 'userId', 'fullName'], limit: 200 })
+        readScopedUsers(context.user, { filters: { isBvsl: true, status: 'Active', residency: rid }, fields: ['id', 'userId', 'fullName'], limit: 200 })
       ));
       for (const res of resFetches) for (const u of res.records) bvslMap.set(u.id, u);
       bvslUsers = Array.from(bvslMap.values());
@@ -104,7 +104,7 @@ async function _fetchBvStats({ input, context }: { input: any; context: any }) {
       const guideDbId = guideId === 'ALL' ? null : guideId;
       if (guideDbId) {
         // Fetch BVSL users: directly assigned to guide + from guide's center residencies
-        const { records: guideAssigned } = await Users.findAll({
+        const { records: guideAssigned } = await readScopedUsers(context.user, {
           filters: { isBvsl: true, status: 'Active', guide: guideDbId },
           fields: ['id', 'userId', 'fullName'],
           limit: 200,
@@ -115,7 +115,7 @@ async function _fetchBvStats({ input, context }: { input: any; context: any }) {
           : (guide?.folkResidencies ? [guide!.folkResidencies as string] : []);
         const centerFetches = rids.length > 0
           ? await Promise.all(rids.map(rid =>
-              Users.findAll({ filters: { isBvsl: true, status: 'Active', residency: rid }, fields: ['id', 'userId', 'fullName'], limit: 100 })
+              readScopedUsers(context.user, { filters: { isBvsl: true, status: 'Active', residency: rid }, fields: ['id', 'userId', 'fullName'], limit: 100 })
             ))
           : [];
         const bvslMap = new Map<string, any>();
@@ -126,7 +126,7 @@ async function _fetchBvStats({ input, context }: { input: any; context: any }) {
         bvslUsers = Array.from(bvslMap.values());
       } else {
         // ALL = show every BVSL
-        const { records } = await Users.findAll({
+        const { records } = await readScopedUsers(context.user, {
           filters: { isBvsl: true, status: 'Active' },
           fields: ['id', 'userId', 'fullName'],
           limit: 200,
