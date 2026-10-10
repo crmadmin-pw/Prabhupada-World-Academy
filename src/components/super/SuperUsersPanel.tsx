@@ -8,9 +8,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { ArrowUpDown, ArrowUp, ArrowDown, Search, Home, Star, StarOff, Users } from 'lucide-react';
+import { ArrowUpDown, ArrowUp, ArrowDown, ChevronDown, Search, Home, Star, StarOff, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   getGuideUsers, getGuides, tagUserAsBvsl, assignGuide, tagUserAsFolkLead,
@@ -161,56 +162,72 @@ function RgfGroupCell({
   onAdd: (group: BvGroupOption) => void;
   onRemove: (group: BvGroupOption) => void;
 }) {
-  const [pickerKey, setPickerKey] = useState(0);
+  const [open, setOpen] = useState(false);
   const led = groupsFacilitatedBy(user as any, groups);
   const ledKeys = new Set(led.flatMap(group => [group.id, group.groupId].filter(Boolean)));
   const available = addableGroups.filter(group => !ledKeys.has(group.id) && !ledKeys.has(group.groupId));
+  const names = led.map(group => group.groupName).filter(Boolean);
+  const label = names.length === 0 ? 'Add group' : names.join(', ');
+  if (!canEdit) {
+    return (
+      <span className="mx-auto block w-48 truncate text-center text-xs text-muted-foreground" title={names.join(', ')}>
+        {names.length === 0 ? '—' : label}
+      </span>
+    );
+  }
   return (
-    <div className="mx-auto flex w-full max-w-56 flex-col items-stretch gap-1">
-      {led.length === 0 && <span className="text-xs text-muted-foreground">No groups yet</span>}
-      {led.map(group => (
-        <div key={group.id || group.groupName} className="flex items-center gap-1 rounded-md bg-secondary px-2 py-1">
-          <span className="min-w-0 flex-1 break-words text-left text-[11px] leading-snug text-secondary-foreground">{group.groupName}</span>
-          {canEdit && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-7 shrink-0 px-2 text-[11px] text-destructive hover:text-destructive"
-              aria-label={`Remove ${group.groupName} from ${user.fullName}`}
-              onClick={() => onRemove(group)}
-            >
-              Remove
-            </Button>
-          )}
-        </div>
-      ))}
-      {canEdit && available.length > 0 && (
-        <Select
-          key={pickerKey}
-          onValueChange={(id: string) => {
-            const group = available.find(item => item.id === id || item.groupId === id);
-            if (!group) return;
-            setPickerKey(key => key + 1);
-            onAdd(group);
-          }}
-        >
-          <SelectTrigger className="h-7 text-xs" aria-label={`Add a reading group for ${user.fullName}`}>
-            <span className="truncate">Add group</span>
-          </SelectTrigger>
-          <SelectContent>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        data-slot="select-trigger"
+        aria-label={names.length === 0 ? `Add a reading group for ${user.fullName}` : `Reading groups for ${user.fullName}: ${label}`}
+        className="mx-auto flex h-7 w-48 items-center justify-between gap-1.5 rounded-lg border border-input bg-transparent px-2.5 text-xs outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+      >
+        <span className={`min-w-0 flex-1 truncate text-center ${names.length === 0 ? 'text-muted-foreground' : ''}`}>{label}</span>
+        <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+      </PopoverTrigger>
+      <PopoverContent align="center" className="w-64 gap-1 p-1.5">
+        {led.length > 0 && (
+          <div className="flex flex-col">
+            <p className="px-2 py-1 text-[11px] font-medium text-muted-foreground">Facilitating</p>
+            {led.map(group => (
+              <div key={group.id || group.groupName} className="flex items-center gap-2 rounded-md px-2 py-1.5">
+                <span className="min-w-0 flex-1 truncate text-left text-sm">{group.groupName}</span>
+                <button
+                  type="button"
+                  className="shrink-0 text-xs text-muted-foreground hover:text-destructive"
+                  aria-label={`Remove ${group.groupName} from ${user.fullName}`}
+                  onClick={() => { setOpen(false); onRemove(group); }}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {available.length > 0 && (
+          <div className="flex max-h-52 flex-col overflow-y-auto">
+            <p className="px-2 py-1 text-[11px] font-medium text-muted-foreground">{led.length > 0 ? 'Add another' : 'Add a group'}</p>
             {available.map(group => {
               const leader = people.find(person => groupsFacilitatedBy(person as any, [group]).length > 0 && !samePerson(person, user));
               return (
-                <SelectItem key={group.id} value={group.id}>
-                  {leader ? `${group.groupName} (${leader.fullName})` : group.groupName}
-                </SelectItem>
+                <button
+                  key={group.id}
+                  type="button"
+                  className="rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent"
+                  onClick={() => { setOpen(false); onAdd(group); }}
+                >
+                  <span className="block truncate">{group.groupName}</span>
+                  {leader && <span className="block truncate text-[11px] text-muted-foreground">{leader.fullName}</span>}
+                </button>
               );
             })}
-          </SelectContent>
-        </Select>
-      )}
-    </div>
+          </div>
+        )}
+        {led.length === 0 && available.length === 0 && (
+          <p className="px-2 py-2 text-xs text-muted-foreground">No reading groups to assign</p>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }
 
