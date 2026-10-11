@@ -17,6 +17,7 @@ service cloud.firestore {
     //   AccountLinkRequests
     // - Sadhana: SadhanaEntries, SadhanaFields, SadhanaMonthlySummaries,
     //   SadhanaPeriodSummaries, SadhanaPeriodSummaryMeta,
+    //   ReportPeriodSummaries,
     //   AshrayChecklist, AshrayLevels, AshrayUpgradeRequests
     // - Bhakti Vriksha: BvGroups, BvGroupMembers, BvGroupRequests,
     //   BvMemberRegistrations, BvSessions, BvAttendance, BvQuizzes,

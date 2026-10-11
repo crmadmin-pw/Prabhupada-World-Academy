@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { getScopedHierarchyUserIds, isUserInHierarchy, isHierarchyAdmin, readScopedUsers } from '../lib/hierarchyUtils';
-import { createEndpoint, AttendanceRecords, AttendanceSessions, AttendanceEvents, AttendanceVolunteers, AppError } from '@/lib/backend-sdk';
+import { createEndpoint, AttendanceSessions, AttendanceEvents, AttendanceVolunteers, AppError } from '@/lib/backend-sdk';
+import { loadStandardAttendance } from '../lib/reportPeriodSummary';
 
 export default createEndpoint({
   description: 'Get attendance report for a guide (scoped to their residency users)',
@@ -54,39 +55,28 @@ export default createEndpoint({
       return { records: [], stats: { totalCheckins: 0, uniqueParticipants: 0, levelBreakdown: [] }, events: [], sessions: [], pagination: { hasMore: false, totalCount: 0 } };
     }
 
-    // Fetch all events and sessions for filter dropdowns
-    const [eventsResult, sessionsResult] = await Promise.all([
+    const [eventsResult, sessionsResult, loadedRecords] = await Promise.all([
       AttendanceEvents.findAll({ filters: {}, limit: 200, fields: ['id', 'title'] }),
       AttendanceSessions.findAll({ filters: {}, limit: 500, fields: ['id', 'name', 'event'] }),
+      loadStandardAttendance(input.startDate, input.endDate),
     ]);
 
     const eventMap = new Map(eventsResult.records.map(e => [e.id, e.title || 'Untitled']));
     const sessionMap = new Map(sessionsResult.records.map(s => [s.id, { name: s.name || 'Untitled', eventId: Array.isArray(s.event) ? s.event[0] : s.event }]));
 
-    // Fetch attendance records
-    const recFilters: any = { user: { in: userIds } };
-    if (input.startDate) recFilters.date = { ...(recFilters.date || {}), gte: input.startDate };
-    if (input.endDate) recFilters.date = { ...(recFilters.date || {}), lte: input.endDate };
-    if (input.sessionId) recFilters.session = input.sessionId;
-
-    // If eventId filter, get session IDs for that event
-    if (input.eventId && !input.sessionId) {
+    const userIdSet = new Set(userIds);
+    let allRecords = loadedRecords.filter(record => userIdSet.has(String(Array.isArray(record.user) ? record.user[0] : record.user || '')));
+    if (input.sessionId) {
+      allRecords = allRecords.filter(record => String(Array.isArray(record.session) ? record.session[0] : record.session || '') === input.sessionId);
+    } else if (input.eventId) {
       const eventSessionIds = sessionsResult.records
-        .filter(s => {
-          const eid = Array.isArray(s.event) ? s.event[0] : s.event;
-          return eid === input.eventId;
-        })
+        .filter(s => (Array.isArray(s.event) ? s.event[0] : s.event) === input.eventId)
         .map(s => s.id);
       if (eventSessionIds.length > 0) {
-        recFilters.session = { in: eventSessionIds };
+        const allowedSessions = new Set(eventSessionIds);
+        allRecords = allRecords.filter(record => allowedSessions.has(String(Array.isArray(record.session) ? record.session[0] : record.session || '')));
       }
     }
-
-    const { records: allRecords } = await AttendanceRecords.findAll({
-      filters: recFilters,
-      limit: 2000,
-      fields: ['id', 'session', 'date', 'user', 'source'],
-    });
 
     // Sort by date desc
     allRecords.sort((a, b) => (b.date || '').localeCompare(a.date || ''));

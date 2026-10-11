@@ -1,8 +1,6 @@
 import { z } from 'zod';
-import {
-  createEndpoint, Users, Guides,
-  SadhanaEntries, OneToOneMeetings, BvslPreachingEntries,
-} from '@/lib/backend-sdk';
+import { createEndpoint, Users, Guides } from '@/lib/backend-sdk';
+import { loadPipelineIndexes } from '../lib/reportPeriodSummary';
 import { requireGuideRole } from '../lib/userUtils';
 
 const USER_FIELDS = [
@@ -14,21 +12,6 @@ const ASHRAY_ORDER = [
   'Harinam Diksha', 'Caranashraya', 'Upasaka',
   'Sadhaka', 'Sevak', 'Shraddhavan', 'Jigyasa',
 ];
-
-async function fetchAllPages<T>(
-  fn: (offset: number) => Promise<{ records: T[]; hasMore: boolean }>,
-  maxRecords = 10000,
-): Promise<T[]> {
-  const all: T[] = [];
-  let offset = 0;
-  while (all.length < maxRecords) {
-    const { records, hasMore } = await fn(offset);
-    all.push(...records);
-    if (!hasMore || records.length === 0) break;
-    offset += 2000;
-  }
-  return all;
-}
 
 export default createEndpoint({
   description: 'Pipeline report: last-6-month monthly metrics per user under guide scope',
@@ -52,13 +35,6 @@ export default createEndpoint({
       months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
     }
     months.reverse(); // latest month first
-
-    // Date range for fetching entries (oldest month start → latest month end)
-    const oldestMonth = months[months.length - 1];
-    const latestMonth = months[0];
-    const startDate = `${oldestMonth}-01`;
-    const [ly, lm] = latestMonth.split('-').map(Number);
-    const endDate = `${latestMonth}-${String(new Date(ly, lm, 0).getDate()).padStart(2, '0')}`;
 
     // Resolve guide DB ID (guide-assignment-only scoping, no residency lookups)
     let guideDbId: string | null = null;
@@ -95,90 +71,16 @@ export default createEndpoint({
     users = users.filter(u => u.userId && (u.fullName || '').trim() && u.role !== 'Guide');
     if (users.length === 0) return { months, sections: [] };
 
-    const userIds = new Set(users.map(u => u.id));
-
-    // Batch-fetch all metrics in parallel
-    const [sadhanaEntries, meetings, preachingEntries, { records: allGuides }] =
-      await Promise.all([
-        fetchAllPages(offset =>
-          SadhanaEntries.findAll({
-            filters: { entryDate: { gte: startDate, lte: endDate } } as any,
-            fields: [
-              'id', 'user', 'entryDate', 'templateMode',
-              'roundsCount', 'nrChantingRounds',
-              'spReadingMinutes', 'nrReadingMinutes',
-              'studyMinutes', 'nrHearingMinutes',
-              'booksDistributed', 'preachingMinutes',
-            ],
-            limit: 2000, offset,
-          })),
-        OneToOneMeetings.findAll({
-          filters: { meetingDate: { gte: startDate, lte: endDate } } as any,
-          fields: ['id', 'member', 'meetingDate'],
-          limit: 2000,
-        }).then(r => r.records),
-        BvslPreachingEntries.findAll({
-          filters: { entryDate: { gte: startDate, lte: endDate } } as any,
-          fields: ['id', 'user', 'entryDate', 'prUniqueOneOnOnes'],
-          limit: 2000,
-        }).then(r => r.records),
-        Guides.findAll({ filters: { isActive: true }, fields: ['id', 'fullName'], limit: 200 }),
-      ]);
+    const [{ sadhanaIdx, meetingsIdx, bvslMeetingsIdx }, { records: allGuides }] = await Promise.all([
+      loadPipelineIndexes(months),
+      Guides.findAll({ filters: { isActive: true }, fields: ['id', 'fullName'], limit: 200 }),
+    ]);
 
     const guideNameMap = new Map(allGuides.map(g => [g.id, (g as any).fullName || '']));
 
-    // Index sadhana entries: userId → month → { chanting[], reading[], hearing[], books, preachMins }
-    type SBucket = { chanting: number[]; reading: number[]; hearing: number[]; books: number; preachMins: number };
-    const sadhanaIdx = new Map<string, Map<string, SBucket>>();
-    for (const e of sadhanaEntries) {
-      const uid = (Array.isArray(e.user) ? e.user[0] : e.user) as string;
-      if (!uid || !userIds.has(uid) || !e.entryDate) continue;
-      const month = (e.entryDate as string).substring(0, 7);
-      if (!sadhanaIdx.has(uid)) sadhanaIdx.set(uid, new Map());
-      if (!sadhanaIdx.get(uid)!.has(month))
-        sadhanaIdx.get(uid)!.set(month, { chanting: [], reading: [], hearing: [], books: 0, preachMins: 0 });
-      const b = sadhanaIdx.get(uid)!.get(month)!;
-
-      const mode = String(e.templateMode || '').toUpperCase();
-      const isRes = mode.includes('RESIDENT') && !mode.includes('NON_RESIDENT');
-
-      if (isRes) {
-        if (e.roundsCount != null) b.chanting.push(e.roundsCount as number);
-        if (e.spReadingMinutes != null) b.reading.push(e.spReadingMinutes as number);
-        if (e.studyMinutes != null) b.hearing.push(e.studyMinutes as number);
-      } else {
-        if (e.nrChantingRounds != null) b.chanting.push(e.nrChantingRounds as number);
-        if (e.nrReadingMinutes != null) b.reading.push(e.nrReadingMinutes as number);
-        if (e.nrHearingMinutes != null) b.hearing.push(e.nrHearingMinutes as number);
-      }
-      b.books += (e.booksDistributed as number) ?? 0;
-      b.preachMins += (e.preachingMinutes as number) ?? 0;
-    }
-
-    // Index one-to-one meetings: userId → month → count
-    const meetingsIdx = new Map<string, Map<string, number>>();
-    for (const m of meetings) {
-      const uid = (Array.isArray(m.member) ? m.member[0] : m.member) as string;
-      if (!uid || !userIds.has(uid) || !m.meetingDate) continue;
-      const month = (m.meetingDate as string).substring(0, 7);
-      if (!meetingsIdx.has(uid)) meetingsIdx.set(uid, new Map());
-      meetingsIdx.get(uid)!.set(month, (meetingsIdx.get(uid)!.get(month) ?? 0) + 1);
-    }
-
-    // Index BVSL preaching entries: userId → month → meetings count only
-    const bvslMeetingsIdx = new Map<string, Map<string, number>>();
-    for (const p of preachingEntries) {
-      const uid = (Array.isArray(p.user) ? p.user[0] : p.user) as string;
-      if (!uid || !userIds.has(uid) || !p.entryDate) continue;
-      const month = (p.entryDate as string).substring(0, 7);
-      if (!bvslMeetingsIdx.has(uid)) bvslMeetingsIdx.set(uid, new Map());
-      const prev = bvslMeetingsIdx.get(uid)!.get(month) ?? 0;
-      bvslMeetingsIdx.get(uid)!.set(month, prev + ((p.prUniqueOneOnOnes as number) ?? 0));
-    }
-
-    function avg(arr: number[]): number | null {
-      if (!arr.length) return null;
-      return Math.round(arr.reduce((a, b) => a + b, 0) / arr.length * 10) / 10;
+    function avg(sum: number, count: number): number | null {
+      if (!count) return null;
+      return Math.round(sum / count * 10) / 10;
     }
 
     // Build member rows with monthly data
@@ -193,9 +95,9 @@ export default createEndpoint({
         const sb = sadhanaIdx.get(u.id)?.get(month);
         const bvslMtg = bvslMeetingsIdx.get(u.id)?.get(month) ?? null;
         monthlyData[month] = {
-          chanting: avg(sb?.chanting ?? []),
-          reading: avg(sb?.reading ?? []),
-          hearing: avg(sb?.hearing ?? []),
+          chanting: sb ? avg(sb.chantingSum, sb.chantingCount) : null,
+          reading: sb ? avg(sb.readingSum, sb.readingCount) : null,
+          hearing: sb ? avg(sb.hearingSum, sb.hearingCount) : null,
           oneOnOnes: meetingsIdx.get(u.id)?.get(month) ?? null,
           booksDistributed: sb?.books ? sb.books : null,
           preachingHrs: sb?.preachMins ? Math.round(sb.preachMins / 60 * 10) / 10 : null,

@@ -380,6 +380,46 @@ function outsideRange(actual: unknown, op: 'gte' | 'lte' | 'gt' | 'lt', expected
   return left >= right;
 }
 
+const REPORT_SOURCE_TABLES = new Set([
+  'SadhanaEntries',
+  'BvslPreachingEntries',
+  'BvAttendance',
+  'AttendanceRecords',
+  'OneToOneMeetings',
+  'Users',
+  'BvGroups',
+]);
+const USER_ROSTER_FIELDS = ['status', 'residency', 'residencyApproved', 'isB', 'isOtherCenter'];
+const GROUP_ROSTER_FIELDS = ['isActive', 'bvslLeader'];
+
+type ReportWriteEvent = {
+  table: string;
+  op: 'create' | 'update' | 'delete';
+  id: string;
+  before?: any;
+  after?: any;
+  changed?: Record<string, unknown>;
+};
+
+function reportWriteAffects(table: string, op: 'create' | 'update' | 'delete', changed?: Record<string, unknown>): boolean {
+  if (!REPORT_SOURCE_TABLES.has(table)) return false;
+  if (op !== 'update') return true;
+  if (table === 'Users') return USER_ROSTER_FIELDS.some(key => !!changed && Object.prototype.hasOwnProperty.call(changed, key));
+  if (table === 'BvGroups') return GROUP_ROSTER_FIELDS.some(key => !!changed && Object.prototype.hasOwnProperty.call(changed, key));
+  return true;
+}
+
+let reportWriteHook: Promise<(event: ReportWriteEvent) => Promise<void>> | null = null;
+
+async function notifyReportWrite(event: ReportWriteEvent): Promise<void> {
+  try {
+    reportWriteHook ??= import('./reportPeriodSummary').then(mod => mod.handleReportSourceWrite);
+    await (await reportWriteHook)(event);
+  } catch (error) {
+    console.warn('[report] summary refresh failed', error instanceof Error ? error.message : error);
+  }
+}
+
 export class Table {
   tableName: string;
 
@@ -598,6 +638,9 @@ export class Table {
     if (fullRecord.userId) store.set(fullRecord.userId, fullRecord);
     if (fullRecord.email) store.set(fullRecord.email.toLowerCase(), fullRecord);
     await noteHierarchyWrite(this.tableName, fullRecord);
+    if (reportWriteAffects(this.tableName, 'create', fullRecord)) {
+      await notifyReportWrite({ table: this.tableName, op: 'create', id, after: fullRecord, changed: fullRecord });
+    }
     return fullRecord;
   }
 
@@ -615,6 +658,9 @@ export class Table {
         data[key] = record[key];
       }
     }
+    const refresh = reportWriteAffects(this.tableName, 'update', data);
+    const previous = refresh ? await this.findOne({ id }) : undefined;
+    const before = previous ? { ...previous } : undefined;
 
     const db = activeDb();
     if (db) {
@@ -648,6 +694,16 @@ export class Table {
     if (existing.email) store.set(existing.email.toLowerCase(), existing);
 
     await noteHierarchyWrite(this.tableName, data);
+    if (refresh) {
+      await notifyReportWrite({
+        table: this.tableName,
+        op: 'update',
+        id: existing.id || id,
+        before,
+        after: { ...existing },
+        changed: data,
+      });
+    }
     return existing;
   }
 
@@ -679,6 +735,7 @@ export class Table {
     const existing = store.get(id) || Array.from(store.values()).find((r: any) =>
       r.id === id || r.userId === id || (r.email || '').toLowerCase() === String(id).toLowerCase()
     );
+    const before = existing ? { ...existing } : (record ? { ...record } : undefined);
     if (existing) {
       for (const [key, val] of store.entries()) {
         if (val === existing) {
@@ -689,6 +746,9 @@ export class Table {
       store.delete(id);
     }
     await noteHierarchyWrite(this.tableName);
+    if (reportWriteAffects(this.tableName, 'delete')) {
+      await notifyReportWrite({ table: this.tableName, op: 'delete', id, before });
+    }
     return existing || record;
   }
 
@@ -851,6 +911,7 @@ export const SadhanaFieldsTable = SadhanaFields;
 export const SadhanaMonthlySummaries = new Table('SadhanaMonthlySummaries');
 export const SadhanaPeriodSummaries = new Table('SadhanaPeriodSummaries');
 export const SadhanaPeriodSummaryMeta = new Table('SadhanaPeriodSummaryMeta');
+export const ReportPeriodSummaries = new Table('ReportPeriodSummaries');
 export const ServiceAllocations = new Table('ServiceAllocations');
 export const ServiceAvailability = new Table('ServiceAvailability');
 export const ServicePreferences = new Table('ServicePreferences');

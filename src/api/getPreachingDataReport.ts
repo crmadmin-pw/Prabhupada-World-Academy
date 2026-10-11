@@ -1,8 +1,6 @@
 import { z } from 'zod';
-import {
-  createEndpoint, FolkResidencies, Users, BvslPreachingEntries,
-  BvAttendance, BvGroups, SadhanaEntries, PreachingReportGoals,
-} from '@/lib/backend-sdk';
+import { createEndpoint, FolkResidencies, PreachingReportGoals } from '@/lib/backend-sdk';
+import { loadPreachingDays, loadPreachingRoster } from '../lib/reportPeriodSummary';
 import { requireGuideRole } from '../lib/userUtils';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -26,12 +24,6 @@ function computeWeeks(s: string, e: string) {
   return weeks;
 }
 
-async function fetchAll<T>(fn: (off: number) => Promise<{ records: T[]; hasMore: boolean }>): Promise<T[]> {
-  const all: T[] = []; let off = 0;
-  while (true) { const { records, hasMore } = await fn(off); all.push(...records); if (!hasMore || !records.length) break; off += records.length; }
-  return all;
-}
-
 type WMap = Map<string, number | null>;
 type Matrix = Map<string, WMap>;
 function findWk(d: string, weeks: { start: string; end: string; label: string }[]) { return weeks.find(w => d >= w.start && d <= w.end); }
@@ -47,17 +39,19 @@ export default createEndpoint({
     requireGuideRole(context.user.role, { isSadhanaMentor: context.user.isSadhanaMentor, isBvsl: context.user.isBvsl });
     const { startDate, endDate } = input;
 
-    // Centers
-    const { records: res } = await FolkResidencies.findAll({ filters: { isActive: true }, fields: ['id', 'residencyName'], limit: 200 });
+    const yr = new Date().getFullYear();
+    const [{ records: res }, roster, days, { records: goalRecs }] = await Promise.all([
+      FolkResidencies.findAll({ filters: { isActive: true }, fields: ['id', 'residencyName'], limit: 200 }),
+      loadPreachingRoster(),
+      loadPreachingDays(startDate, endDate),
+      PreachingReportGoals.findAll({ filters: { year: yr }, limit: 200 }),
+    ]);
     const centers = res.map(r => ({ id: r.id, name: r.residencyName || '', shortName: stripFOLK(r.residencyName || '') }));
     const cidSet = new Set(centers.map(c => c.id));
-
-    // All active users
-    const allUsers = await fetchAll(off => Users.findAll({ filters: { status: 'Active' }, fields: ['id', 'residency', 'residencyApproved', 'isB', 'isBvsl', 'isOtherCenter'], limit: 2000, offset: off }));
+    const allUsers = roster.users;
     const userResMap = new Map<string, string>();
     for (const u of allUsers) {
-      const rid = Array.isArray(u.residency) ? u.residency[0] : u.residency;
-      if (rid && cidSet.has(rid as string)) userResMap.set(u.id, rid as string);
+      if (u.residency && cidSet.has(u.residency)) userResMap.set(u.id, u.residency);
     }
 
     const weeks = computeWeeks(startDate, endDate);
@@ -65,75 +59,49 @@ export default createEndpoint({
 
     // M1: Bs residents (snapshot)
     const m1 = new Map<string, number>(); for (const c of centers) m1.set(c.id, 0);
-    for (const u of allUsers) { if (!u.isB || !u.residencyApproved || (u as any).isOtherCenter) continue; const rid = Array.isArray(u.residency) ? u.residency[0] : u.residency; if (rid && cidSet.has(rid as string)) m1.set(rid as string, (m1.get(rid as string) || 0) + 1); }
+    for (const u of allUsers) { if (!u.isB || !u.residencyApproved || u.isOtherCenter) continue; if (u.residency && cidSet.has(u.residency)) m1.set(u.residency, (m1.get(u.residency) || 0) + 1); }
 
     // M8: Folk strength (snapshot)
     const m8 = new Map<string, number>(); for (const c of centers) m8.set(c.id, 0);
-    for (const u of allUsers) { if (!u.residencyApproved || (u as any).isOtherCenter) continue; const rid = Array.isArray(u.residency) ? u.residency[0] : u.residency; if (rid && cidSet.has(rid as string)) m8.set(rid as string, (m8.get(rid as string) || 0) + 1); }
+    for (const u of allUsers) { if (!u.residencyApproved || u.isOtherCenter) continue; if (u.residency && cidSet.has(u.residency)) m8.set(u.residency, (m8.get(u.residency) || 0) + 1); }
 
-    // Sadhana entries (M2 + M9)
-    const sadh = await fetchAll(off => SadhanaEntries.findAll({ filters: { entryDate: { gte: startDate, lte: endDate } } as any, fields: ['id', 'user', 'entryDate', 'roundsCount'], limit: 2000, offset: off }));
-
-    // M2: Bs non-residents
     const nrBIds = new Set(allUsers.filter(u => u.isB && !u.residencyApproved).map(u => u.id));
     const m2 = initMx(); const m2Seen = new Map<string, Set<string>>(); for (const w of weeks) m2Seen.set(w.label, new Set());
-    for (const e of sadh) {
-      if (!e.entryDate) continue;
-      const uid = Array.isArray(e.user) ? e.user[0] : (e.user as string);
-      if (!uid || !nrBIds.has(uid)) continue;
-      const wk = findWk(e.entryDate, weeks); if (!wk) continue;
-      const seen = m2Seen.get(wk.label)!; if (seen.has(uid)) continue; seen.add(uid);
-      const rid = userResMap.get(uid); if (rid) addM(m2, rid, wk.label, 1);
-    }
-
-    // M9: Boys chanting 16 rounds
     const m9uw = new Map<string, Map<string, { sum: number; cnt: number }>>();
-    for (const e of sadh) {
-      if (!e.entryDate || e.roundsCount == null) continue;
-      const uid = Array.isArray(e.user) ? e.user[0] : (e.user as string);
-      if (!uid || !userResMap.has(uid)) continue;
-      const wk = findWk(e.entryDate, weeks); if (!wk) continue;
-      if (!m9uw.has(uid)) m9uw.set(uid, new Map());
-      const uw = m9uw.get(uid)!; if (!uw.has(wk.label)) uw.set(wk.label, { sum: 0, cnt: 0 });
-      const en = uw.get(wk.label)!; en.sum += Number(e.roundsCount) || 0; en.cnt++;
-    }
-    const m9 = initMx();
-    for (const [uid, wkMap] of m9uw) { const rid = userResMap.get(uid); if (!rid) continue; for (const [wl, { sum, cnt }] of wkMap) { if (cnt > 0 && sum / cnt >= 16) addM(m9, rid, wl, 1); } }
-
-    // Preaching entries (M3, M4, M6)
-    const prch = await fetchAll(off => BvslPreachingEntries.findAll({ filters: { entryDate: { gte: startDate, lte: endDate } } as any, fields: ['id', 'user', 'entryDate', 'prCallingTime', 'prOneOnOneTime', 'prBookDistTime', 'prRduaTime', 'prPlanTime', 'prBooksDistributed', 'prUniqueOneOnOnes'], limit: 2000, offset: off }));
     const m3Mins = new Map<string, Map<string, number>>(); const m3Boys = new Map<string, Map<string, Set<string>>>();
     for (const c of centers) { m3Mins.set(c.id, new Map(weeks.map(w => [w.label, 0]))); m3Boys.set(c.id, new Map(weeks.map(w => [w.label, new Set()]))); }
     const m4 = initMx(); const m6 = initMx();
-    for (const e of prch) {
-      if (!e.entryDate) continue;
-      const uid = Array.isArray(e.user) ? e.user[0] : (e.user as string); if (!uid) continue;
-      const rid = userResMap.get(uid); if (!rid) continue;
-      const wk = findWk(e.entryDate, weeks); if (!wk) continue;
-      const mins = (Number(e.prCallingTime) || 0) + (Number(e.prOneOnOneTime) || 0) + (Number(e.prBookDistTime) || 0) + (Number(e.prRduaTime) || 0) + (Number(e.prPlanTime) || 0);
-      m3Mins.get(rid)!.set(wk.label, (m3Mins.get(rid)!.get(wk.label) || 0) + mins);
-      m3Boys.get(rid)!.get(wk.label)!.add(uid);
-      if (e.prUniqueOneOnOnes) addM(m4, rid, wk.label, Number(e.prUniqueOneOnOnes) || 0);
-      if (e.prBooksDistributed) addM(m6, rid, wk.label, Number(e.prBooksDistributed) || 0);
-    }
-
-    // BV Groups (M5, M7)
-    const { records: grps } = await BvGroups.findAll({ filters: { isActive: true }, fields: ['id', 'bvslLeader'], limit: 2000 });
     const grpCtr = new Map<string, string>(); const m7 = new Map<string, number>(); for (const c of centers) m7.set(c.id, 0);
-    for (const g of grps) { const lid = Array.isArray(g.bvslLeader) ? g.bvslLeader[0] : (g.bvslLeader as string); if (!lid) continue; const rid = userResMap.get(lid); if (!rid) continue; grpCtr.set(g.id, rid); m7.set(rid, (m7.get(rid) || 0) + 1); }
+    for (const g of roster.groups) { const lid = g.bvslLeader; if (!lid) continue; const rid = userResMap.get(lid); if (!rid) continue; grpCtr.set(g.id, rid); m7.set(rid, (m7.get(rid) || 0) + 1); }
     const m5 = initMx();
-    const att = await fetchAll(off => BvAttendance.findAll({ filters: { attendanceDate: { gte: startDate, lte: endDate } } as any, fields: ['id', 'group', 'present', 'attendanceDate'], limit: 2000, offset: off }));
-    for (const a of att) {
-      if (!a.attendanceDate || !a.present) continue;
-      const gid = Array.isArray(a.group) ? a.group[0] : (a.group as string); if (!gid) continue;
-      const rid = grpCtr.get(gid); if (!rid) continue;
-      const wk = findWk(a.attendanceDate, weeks); if (!wk) continue;
-      addM(m5, rid, wk.label, 1);
+    for (const [date, fact] of days) {
+      const wk = findWk(date, weeks); if (!wk) continue;
+      for (const [uid, sample] of Object.entries(fact.sadhana)) {
+        if (nrBIds.has(uid)) {
+          const seen = m2Seen.get(wk.label)!;
+          if (!seen.has(uid)) { seen.add(uid); const rid = userResMap.get(uid); if (rid) addM(m2, rid, wk.label, 1); }
+        }
+        if (sample.roundsCount > 0 && userResMap.has(uid)) {
+          if (!m9uw.has(uid)) m9uw.set(uid, new Map());
+          const uw = m9uw.get(uid)!; if (!uw.has(wk.label)) uw.set(wk.label, { sum: 0, cnt: 0 });
+          const en = uw.get(wk.label)!; en.sum += sample.roundsSum; en.cnt += sample.roundsCount;
+        }
+      }
+      for (const [uid, activity] of Object.entries(fact.preaching)) {
+        const rid = userResMap.get(uid); if (!rid) continue;
+        m3Mins.get(rid)!.set(wk.label, (m3Mins.get(rid)!.get(wk.label) || 0) + activity.minutes);
+        m3Boys.get(rid)!.get(wk.label)!.add(uid);
+        if (activity.oneOnOnes) addM(m4, rid, wk.label, activity.oneOnOnes);
+        if (activity.books) addM(m6, rid, wk.label, activity.books);
+      }
+      for (const [gid, count] of Object.entries(fact.attendance)) {
+        if (!count) continue;
+        const rid = grpCtr.get(gid); if (!rid) continue;
+        addM(m5, rid, wk.label, count);
+      }
     }
-
-    // Goals
-    const yr = new Date().getFullYear();
-    const { records: goalRecs } = await PreachingReportGoals.findAll({ filters: { year: yr }, limit: 200 });
+    const m9 = initMx();
+    for (const [uid, wkMap] of m9uw) { const rid = userResMap.get(uid); if (!rid) continue; for (const [wl, { sum, cnt }] of wkMap) { if (cnt > 0 && sum / cnt >= 16) addM(m9, rid, wl, 1); } }
     const goals = goalRecs.map(g => ({ metricName: g.metricName || '', centerId: (Array.isArray(g.center) ? g.center[0] : g.center) || '', yearlyGoal: Number(g.yearlyGoal) || 0, initialValue: Number(g.initialValue) || 0 }));
     const gMap = new Map<string, { yearlyGoal: number; initial: number }>();
     for (const g of goals) gMap.set(`${g.metricName}::${g.centerId}`, { yearlyGoal: g.yearlyGoal, initial: g.initialValue });

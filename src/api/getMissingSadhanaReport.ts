@@ -1,7 +1,8 @@
 import { getSadhanaMentorResidencyScope } from '@/lib/sadhanaMentorResidencyScope';
 import { z } from 'zod';
 import { scopeRealtimeDependencies } from '@/lib/requestQueries';
-import { createEndpoint, Users, Guides, SadhanaEntries, FolkResidencies } from '@/lib/backend-sdk';
+import { createEndpoint } from '@/lib/backend-sdk';
+import { loadMissingSubmissions } from '../lib/reportPeriodSummary';
 import { requireGuideRole } from '../lib/userUtils';
 import { getDashboardHierarchyScope, readScopedUsers } from '../lib/hierarchyUtils';
 import { getGuideScope } from '../lib/guideScope';
@@ -148,45 +149,11 @@ export default createEndpoint({
 
     // Load entry pages alongside parent display names, instead of delaying
     // the parent query until every page has arrived.
-    const [allEntries, { records: guideUsers }, { reference, availableGuides }] = await Promise.all([
-      (async () => {
-        const entries: any[] = [];
-        let offset = 0;
-        while (true) {
-          const { records, hasMore } = await SadhanaEntries.findAll({
-            filters: { entryDate: { gte: input.startDate, lte: input.endDate } },
-            fields: ['id', 'user', 'entryDate', 'submittedAt'], limit: 2000, offset,
-          });
-          entries.push(...records);
-          if (!hasMore) break;
-          offset += 2000;
-        }
-        return entries;
-      })(),
+    const [submissionMap, { records: guideUsers }, { reference, availableGuides }] = await Promise.all([
+      loadMissingSubmissions(input.startDate, input.endDate),
       readScopedUsers(context.user, { filters: { status: 'Active' }, fields: ['id', 'userId', 'fullName', 'email', 'role', 'isBvAdmin', 'isBvSuperAdmin'], limit: 2000 }),
       displayPromise,
     ]);
-
-    // 6. Build submission lookup map: "userId|date" -> "filled" | "late"
-    // Late = submittedAt date is strictly after entryDate
-    const submissionMap = new Map<string, 'filled' | 'late'>();
-    for (const e of allEntries) {
-      const uid = Array.isArray(e.user) ? e.user[0] : e.user;
-      if (!uid || !e.entryDate) continue;
-      const entryDateStr = String(e.entryDate).split('T')[0];
-      const key = `${uid}|${entryDateStr}`;
-      let status: 'filled' | 'late' = 'filled';
-      if (e.submittedAt) {
-        const submittedDateStr = String(e.submittedAt).split('T')[0];
-        if (submittedDateStr > entryDateStr) {
-          status = 'late';
-        }
-      }
-      // If there's already a "filled" entry for this key, keep it (on-time wins)
-      if (!submissionMap.has(key) || submissionMap.get(key) === 'late') {
-        submissionMap.set(key, status);
-      }
-    }
 
     // 7. Fetch residency names (batch)
     const resIds = [...new Set(

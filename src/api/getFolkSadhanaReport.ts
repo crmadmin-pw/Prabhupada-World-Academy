@@ -1,17 +1,13 @@
 import { z } from 'zod';
 import { getScopedHierarchyUserIds, isUserInHierarchy, readScopedUsers } from '../lib/hierarchyUtils';
-import { createEndpoint, Users, FolkResidencies, SadhanaEntries } from '@/lib/backend-sdk';
+import { createEndpoint, FolkResidencies } from '@/lib/backend-sdk';
+import { folkScoreFromTotals, loadFolkTotals, mergeFolkTotals, type FolkTotals } from '../lib/reportPeriodSummary';
 import { requireGuideRole } from '../lib/userUtils';
 import { getGuideScope } from '../lib/guideScope';
 import { bvUserAliases, resolveBvGroupMemberUsers } from '../lib/bvGroupMemberScope';
 import { resolveBvAdminFacilitators } from '../lib/bvAdminFacilitatorScope';
 
 const MEMBER_USER_FIELDS = ['id', 'userId', 'email', 'residency', 'residencyApproved', 'temporaryResidencyEnabled', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
-
-function parseFieldValues(json: string | null | undefined): Record<string, any> {
-  if (!json) return {};
-  try { return JSON.parse(json); } catch { return {}; }
-}
 
 const RESIDENT_FIELD_DEFS = [
   { key: 'quotes_tulasi',    shortLabel: 'Quotes/Pranam', maxPoints: 1,    isScoring: true,  forResident: true, forNR: false },
@@ -44,22 +40,6 @@ function numAvgNonZero(vals: (number | null | undefined)[]): number | null {
   const valid = vals.filter((v): v is number => v != null && !isNaN(v) && v > 0);
   if (valid.length === 0) return null;
   return Math.round(valid.reduce((a, b) => a + b, 0) / valid.length * 10) / 10;
-}
-
-function fieldAvgAll(entries: any[], field: string): number | null {
-  return numAvgAll(entries.map(e => e[field] != null ? Number(e[field]) : null));
-}
-
-function fieldAvgNonZero(entries: any[], field: string): number | null {
-  return numAvgNonZero(entries.map(e => e[field] != null ? Number(e[field]) : null));
-}
-
-function parseHHMM(timeStr: any): number | null {
-  if (!timeStr || typeof timeStr !== 'string') return null;
-  const m = timeStr.match(/^(\d{1,2}):(\d{2})/);
-  if (!m) return null;
-  const mins = parseInt(m[1]) * 60 + parseInt(m[2]);
-  return mins > 0 ? mins : null;
 }
 
 export default createEndpoint({
@@ -147,42 +127,13 @@ export default createEndpoint({
     const residentAliasToId = new Map<string, string>();
     residents.forEach(user => bvUserAliases(user).forEach(alias => residentAliasToId.set(alias, user.id)));
 
-    // 2. Fetch entries for the date range
-    const isDaily = effectiveStart === effectiveEnd;
-    const dateFilter = isDaily
-      ? { entryDate: effectiveStart }
-      : ({ entryDate: { gte: effectiveStart, lte: effectiveEnd } } as any);
-
-    const allEntries: any[] = [];
-    let eOffset = 0;
-    while (true) {
-      const { records, hasMore } = await SadhanaEntries.findAll({
-        filters: dateFilter,
-        fields: [
-          'id', 'user', 'entryDate', 'scorePercent', 'totalScore', 'maxScore', 'flagSick', 'flagOs',
-          'roundsPoints', 'roundsCount', 'sbPoints',
-          'spReadingPoints', 'spReadingMinutes',
-          'maNaGvPoints', 'quotesTulasiPoints', 'japaVisiblePoints',
-          'cleanlinessPoints', 'reportSendingPoints', 'dailyServicePoints', 'sleepQualityPoints',
-          'japaFinishTime', 'sleepMinutes', 'studyMinutes', 'preachingMinutes', 'booksDistributed',
-          'fieldValuesJson',
-        ],
-        limit: 2000,
-        offset: eOffset,
-      });
-      allEntries.push(...records);
-      if (!hasMore) break;
-      eOffset += 2000;
-    }
-
-    // 3. Map entries by user DB ID
-    const entriesByUser = new Map<string, any[]>();
-    for (const e of allEntries) {
-      const rawUid = String(Array.isArray(e.user) ? e.user[0] : e.user || '').trim().toLowerCase();
+    const totalsByAlias = await loadFolkTotals(effectiveStart, effectiveEnd);
+    const totalsByUser = new Map<string, FolkTotals>();
+    for (const [rawUid, totals] of totalsByAlias) {
       const uid = residentAliasToId.get(rawUid);
       if (!uid) continue;
-      if (!entriesByUser.has(uid)) entriesByUser.set(uid, []);
-      entriesByUser.get(uid)!.push(e);
+      const existing = totalsByUser.get(uid);
+      totalsByUser.set(uid, existing ? mergeFolkTotals(existing, totals) : totals);
     }
 
     // 4. Group residents by residencyId
@@ -225,57 +176,9 @@ export default createEndpoint({
       const submitted: UserScore[] = [];
 
       for (const u of members) {
-        const entries = entriesByUser.get(u.id);
-        if (!entries || entries.length === 0) continue;
-
-        const flagSick = entries.some(e => e.flagSick);
-        const flagOs   = entries.some(e => e.flagOs);
-        const normalEs = entries.filter(e => !e.flagSick && !e.flagOs);
-        const normSrc  = normalEs.length > 0 ? normalEs : entries;
-
-        // japa_finish_time: average time-of-day from normal entries (exclude 00:00)
-        const japaTimeMins = numAvgNonZero(normSrc.map(e => parseHHMM(e.japaFinishTime)));
-        // sleep: avg from normal entries, exclude 0
-        const sleepMins = fieldAvgNonZero(normSrc, 'sleepMinutes');
-        // study: avg excluding 0
-        const studyMins = fieldAvgNonZero(entries, 'studyMinutes');
-        // preaching/books: SUM per user across all entries in range, then FOLK avg of those sums
-        const preachingTotal = entries.reduce((s, e) => s + (Number(e.preachingMinutes) || 0), 0) || null;
-        const booksTotal     = entries.reduce((s, e) => s + (Number(e.booksDistributed) || 0), 0) || null;
-
-        const getBathPts = (e: any): number => {
-          const fv = parseFieldValues(e.fieldValuesJson);
-          const val = fv.bath === true || fv.bath === 'true' || Number(fv.bath) === 1;
-          return val ? -1 : 0;
-        };
-
-        submitted.push({
-          flagSick, flagOs,
-          roundsCount:         fieldAvgAll(entries, 'roundsCount'),
-          spReadingMinutes:    fieldAvgAll(entries, 'spReadingMinutes'),
-          roundsPoints:        fieldAvgAll(entries, 'roundsPoints'),
-          spReadingPoints:     fieldAvgAll(entries, 'spReadingPoints'),
-          reportSendingPoints: fieldAvgAll(entries, 'reportSendingPoints'),
-          sbPoints:            fieldAvgAll(normSrc, 'sbPoints'),
-          maNaGvPoints:        fieldAvgAll(normSrc, 'maNaGvPoints'),
-          quotesTulasiPoints:  fieldAvgAll(normSrc, 'quotesTulasiPoints'),
-          japaVisiblePoints:   fieldAvgAll(normSrc, 'japaVisiblePoints'),
-          cleanlinessPoints:   fieldAvgAll(normSrc, 'cleanlinessPoints'),
-          dailyServicePoints:  fieldAvgAll(normSrc, 'dailyServicePoints'),
-          sleepQualityPoints:  fieldAvgAll(normSrc, 'sleepQualityPoints'),
-          bathPoints:          numAvgAll(normSrc.map(getBathPts)),
-          japaTimeMins, sleepMins, studyMins, preachingTotal, booksTotal,
-          // Weighted % = sum(totalScore) / sum(maxScore) — prevents Sick/OS day
-          // inflation (max=8 easy days vs normal max=20 days in weekly/monthly views)
-          scorePercent: (() => {
-            if (entries.length === 1) return entries[0].scorePercent ?? null;
-            const earned = entries.reduce((s: number, e: any) => s + (Number(e.totalScore) || 0), 0);
-            const maxSum = entries.reduce((s: number, e: any) => s + (Number(e.maxScore) || 0), 0);
-            return maxSum > 0
-              ? Math.min(100, Math.round((earned / maxSum) * 100))
-              : numAvgAll(entries.map((e: any) => e.scorePercent ?? null)); // fallback
-          })(),
-        });
+        const totals = totalsByUser.get(u.id);
+        if (!totals || totals.entryCount === 0) continue;
+        submitted.push(folkScoreFromTotals(totals));
       }
 
       const nonSickOs = submitted.filter(s => !s.flagSick && !s.flagOs);

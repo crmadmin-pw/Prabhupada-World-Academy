@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { getScopedHierarchyUserIds, isUserInHierarchy, isHierarchySuperAdmin, readScopedUsers } from '../lib/hierarchyUtils';
-import { createEndpoint, Users, AttendanceRecords, AttendanceSessions, AttendanceEvents, BvAttendance, Guides, FolkResidencies, AppError } from '@/lib/backend-sdk';
+import { createEndpoint, Users, AttendanceSessions, AttendanceEvents, Guides, FolkResidencies, AppError } from '@/lib/backend-sdk';
+import { loadBvAttendance, loadStandardAttendance } from '../lib/reportPeriodSummary';
 import { bvUserAliases, resolveBvDepartmentGroups, resolveBvScopedGroups, resolveBvUsersByAliases } from '@/lib/bvGroupMemberScope';
 
 import getGuides from './getGuides';
@@ -53,12 +54,13 @@ export default createEndpoint({
     const limit = Math.min(input.limit || 50, 200);
     const offset = input.offset || 0;
 
-    // Fetch lookup data in parallel
-    const [eventsRes, sessionsRes, guidesListRes, centersRes] = await Promise.all([
+    const [eventsRes, sessionsRes, guidesListRes, centersRes, stdLoaded, bvLoaded] = await Promise.all([
       AttendanceEvents.findAll({ filters: {}, limit: 200, fields: ['id', 'title'] }),
       AttendanceSessions.findAll({ filters: {}, limit: 500, fields: ['id', 'name', 'event', 'shareToken'] }),
       getGuides.execute({ input: { segment: input.segment }, context }),
       FolkResidencies.findAll({ filters: { isActive: true } as any, limit: 100, fields: ['id', 'residencyName', 'category', 'segment'] }),
+      loadStandardAttendance(input.startDate, input.endDate),
+      (input.eventId || input.sessionId) ? Promise.resolve([]) : loadBvAttendance(input.startDate, input.endDate),
     ]);
 
     const guideOptions = (guidesListRes.guides || []).map((g: any) => ({ id: g.guideId, name: g.name }));
@@ -68,20 +70,6 @@ export default createEndpoint({
     const guideMap = new Map((guidesListRes.guides || []).map((g: any) => [g.guideId, g.name]));
     const centerMap = new Map(centersRes.records.map(c => [c.id, c.residencyName || '']));
 
-    // Build record filters
-    const recFilters: any = {};
-    if (input.startDate) recFilters.date = { ...(recFilters.date || {}), gte: input.startDate };
-    if (input.endDate) recFilters.date = { ...(recFilters.date || {}), lte: input.endDate };
-    if (input.sessionId) recFilters.session = input.sessionId;
-
-    if (input.eventId && !input.sessionId) {
-      const eventSessionIds = sessionsRes.records
-        .filter(s => (Array.isArray(s.event) ? s.event[0] : s.event) === input.eventId)
-        .map(s => s.id);
-      if (eventSessionIds.length > 0) recFilters.session = { in: eventSessionIds };
-    }
-
-    // If guideId or residencyId filter, scope user IDs first
     let scopedUserIds: string[] | undefined;
     if (guideDbId || input.residencyId || input.ashrayLevel || input.search) {
       const userFilters: any = {};
@@ -104,7 +92,20 @@ export default createEndpoint({
         );
       }
       scopedUserIds = filtered.map(u => u.id);
-      recFilters.user = { in: scopedUserIds };
+    }
+
+    const scopedUserIdSet = scopedUserIds ? new Set(scopedUserIds) : null;
+    let stdRecords = stdLoaded.filter(record => !scopedUserIdSet || scopedUserIdSet.has(String(Array.isArray(record.user) ? record.user[0] : record.user || '')));
+    if (input.sessionId) {
+      stdRecords = stdRecords.filter(record => String(Array.isArray(record.session) ? record.session[0] : record.session || '') === input.sessionId);
+    } else if (input.eventId) {
+      const eventSessionIds = sessionsRes.records
+        .filter(s => (Array.isArray(s.event) ? s.event[0] : s.event) === input.eventId)
+        .map(s => s.id);
+      if (eventSessionIds.length > 0) {
+        const allowedSessions = new Set(eventSessionIds);
+        stdRecords = stdRecords.filter(record => allowedSessions.has(String(Array.isArray(record.session) ? record.session[0] : record.session || '')));
+      }
     }
 
     // Generic attendance is scoped by the Users.guide relation. BV attendance
@@ -116,28 +117,7 @@ export default createEndpoint({
       ? await resolveBvDepartmentGroups(bvSegment)
       : await resolveBvScopedGroups(context.user, { segment: bvSegment });
     const bvGroupAliases = new Set(bvGroups.flatMap(group => [group.id, group.groupId]).map(value => String(value).toLowerCase()));
-    const bvAttFilters: any = { present: true };
-    if (input.startDate) bvAttFilters.attendanceDate = { ...(bvAttFilters.attendanceDate || {}), gte: input.startDate };
-    if (input.endDate) bvAttFilters.attendanceDate = { ...(bvAttFilters.attendanceDate || {}), lte: input.endDate };
-
-    const [stdRes, bvRes] = await Promise.all([
-      AttendanceRecords.findAll({
-        filters: recFilters,
-        limit: 2000,
-        fields: ['id', 'session', 'date', 'user', 'source'],
-      }),
-      // BV rows do not use AttendanceEvents/AttendanceSessions, so an Event
-      // or Session filter intentionally limits this report to generic check-ins.
-      (input.eventId || input.sessionId || bvGroupAliases.size === 0)
-        ? Promise.resolve({ records: [] })
-        : BvAttendance.findAll({
-        filters: bvAttFilters as any,
-        limit: 2000,
-        fields: ['id', 'attendanceDate', 'user', 'sessionTopic', 'group', 'groupId'],
-      }),
-    ]);
-
-    const scopedBvRows = (bvRes.records || []).filter((record: any) => {
+    const scopedBvRows = (input.eventId || input.sessionId || bvGroupAliases.size === 0 ? [] : bvLoaded).filter((record: any) => {
       const groupReferences = [record.group, record.groupId].flatMap(value => Array.isArray(value) ? value : [value]);
       return groupReferences.some(value => bvGroupAliases.has(String(value || '').trim().toLowerCase()));
     });
@@ -176,7 +156,7 @@ export default createEndpoint({
       }];
     });
 
-    const allRecords = [...stdRes.records, ...formattedBvRecords];
+    const allRecords = [...stdRecords, ...formattedBvRecords];
 
     allRecords.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
