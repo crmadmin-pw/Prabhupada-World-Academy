@@ -1584,9 +1584,8 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
               const leaders = users.filter(person =>
                 groupsFacilitatedBy(person as any, [rgfGroupDialog.group]).length > 0 && !samePerson(person, rgfGroupDialog.user));
               const names = leaders.map(leader => leader.fullName).join(', ');
-              const verb = leaders.length === 1 ? 'facilitates' : 'facilitate';
               return leaders.length > 0
-                ? `Add ${rgfGroupDialog.group.groupName} to ${rgfGroupDialog.user.fullName}? ${names} already ${verb} it and will keep facilitating it too.`
+                ? `Add ${rgfGroupDialog.group.groupName} to ${rgfGroupDialog.user.fullName}? ${names} will keep facilitating ${rgfGroupDialog.group.groupName} as well.`
                 : `Add ${rgfGroupDialog.group.groupName} to ${rgfGroupDialog.user.fullName}? This is in addition to any reading groups they already facilitate.`;
             })()
         ) : ''}
