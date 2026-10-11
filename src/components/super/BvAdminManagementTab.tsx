@@ -7,10 +7,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { toast } from 'sonner';
-import { Loader2, Plus, Users, ShieldCheck, Clock, BookOpen, ChevronRight } from 'lucide-react';
+import { Check, ChevronsUpDown, Loader2, Plus, Users, ShieldCheck, Clock, BookOpen, ChevronRight } from 'lucide-react';
 import { createBvGroup, getBvslGroups, getAllBvGroupsAdmin, getGuideUsers, updateBvGroup, getClientCachedQuery } from '@/lib/app-endpoints-sdk';
 import MeetingScheduleFields from '@/components/bv/MeetingScheduleFields';
 import { formatMeetingSchedule, meetingScheduleError, type MeetingDayKey } from '@/lib/meetingSchedule';
@@ -72,7 +72,8 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
   // Group creation modal state
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
-  const [newGroupBvslId, setNewGroupBvslId] = useState('');
+  const [newGroupBvslIds, setNewGroupBvslIds] = useState<string[]>([]);
+  const [rgfPickerOpen, setRgfPickerOpen] = useState(false);
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [meetingDays, setMeetingDays] = useState<MeetingDayKey[]>([]);
@@ -170,8 +171,8 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
       toast.error('Please enter a group name');
       return;
     }
-    if (!newGroupBvslId) {
-      toast.error('Please select an RGF');
+    if (newGroupBvslIds.length === 0) {
+      toast.error('Please select at least one RGF');
       return;
     }
     const scheduleError = meetingScheduleError(startTime, endTime, meetingDays);
@@ -183,14 +184,16 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
     try {
       await createBvGroup({
         groupName: newGroupName.trim(),
-        bvslId: newGroupBvslId,
+        bvslId: newGroupBvslIds[0],
+        bvslIds: newGroupBvslIds,
         meetingTime: formatMeetingSchedule(startTime, endTime, meetingDays),
       });
       toast.success(`Created Reading Group "${newGroupName}"`);
       window.dispatchEvent(new Event('pwa:member-directory-changed'));
       setCreateGroupOpen(false);
       setNewGroupName('');
-      setNewGroupBvslId('');
+      setNewGroupBvslIds([]);
+      setRgfPickerOpen(false);
       setStartTime('');
       setEndTime('');
       setMeetingDays([]);
@@ -342,6 +345,8 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
           setStartTime('');
           setEndTime('');
           setMeetingDays([]);
+          setNewGroupBvslIds([]);
+          setRgfPickerOpen(false);
         }
       }}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
@@ -350,7 +355,7 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
               <Plus className="w-5 h-5 text-primary" /> Create New Reading Group
             </DialogTitle>
             <DialogDescription>
-              Add a new Bhakti Vriksha reading group and assign an RGF. One RGF can facilitate more than one group.
+              Add a new Bhakti Vriksha reading group and assign one or more RGFs. A group can have more than one RGF, and one RGF can facilitate more than one group.
             </DialogDescription>
           </DialogHeader>
 
@@ -365,24 +370,39 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">Assign RGF *</Label>
-              <Select value={newGroupBvslId || undefined} onValueChange={(val: string | null) => setNewGroupBvslId(val || '')}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select RGF...">
-                    {newGroupBvslId ? (guides.find(g => g.guideId === newGroupBvslId)?.name || newGroupBvslId) : null}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {guides.map(g => {
-                    const displayName = `${g.name || g.abbr} (${g.email || 'Guide'})`;
-                    return (
-                      <SelectItem key={g.guideId} value={g.guideId}>
-                        {displayName}
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
+              <Label className="text-xs font-semibold">Assign RGFs *</Label>
+              <Popover open={rgfPickerOpen} onOpenChange={setRgfPickerOpen}>
+                <PopoverTrigger className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-transparent px-3 text-sm">
+                  <span className={newGroupBvslIds.length === 0 ? 'text-muted-foreground' : 'truncate text-left'}>
+                    {newGroupBvslIds.length === 0
+                      ? 'Select RGFs...'
+                      : newGroupBvslIds.map(id => guides.find(guide => guide.guideId === id)?.name || id).join(', ')}
+                  </span>
+                  <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+                </PopoverTrigger>
+                <PopoverContent className="w-[--radix-popover-trigger-width] p-1" align="start">
+                  <div className="max-h-60 overflow-y-auto">
+                    {guides.length === 0 ? (
+                      <p className="px-2 py-3 text-center text-sm text-muted-foreground">No RGFs found</p>
+                    ) : guides.map(guide => {
+                      const selected = newGroupBvslIds.includes(guide.guideId);
+                      return (
+                        <button
+                          key={guide.guideId}
+                          type="button"
+                          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent"
+                          onClick={() => setNewGroupBvslIds(current =>
+                            selected ? current.filter(id => id !== guide.guideId) : [...current, guide.guideId],
+                          )}
+                        >
+                          <Check className={`size-4 shrink-0 ${selected ? 'opacity-100 text-primary' : 'opacity-0'}`} />
+                          <span className="min-w-0 flex-1 truncate">{guide.name || guide.abbr} ({guide.email || 'Guide'})</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
 
             <MeetingScheduleFields

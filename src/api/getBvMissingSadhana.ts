@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, Users, Guides, SadhanaEntries } from '@/lib/backend-sdk';
 import { requireGuideRole } from '../lib/userUtils';
+import { joinFacilitatorNames, textList } from '@/lib/bvGroupFacilitators';
 
 function isSadhanaExemptLeadershipRole(role: unknown): boolean {
   const normalized = String(role || '')
@@ -65,7 +66,7 @@ export default createEndpoint({
 
     // ── 3. Fetch BVSL leader info ────────────────────────────────────────────
     const bvslLeaderIds = [...new Set(
-      groups.map(g => (Array.isArray(g.bvslLeader) ? g.bvslLeader[0] : g.bvslLeader) as string).filter(Boolean)
+      groups.flatMap(g => textList(g.bvslLeader))
     )];
     const bvslMap: Record<string, string> = {};
     if (bvslLeaderIds.length > 0) {
@@ -153,8 +154,7 @@ export default createEndpoint({
     // ── 9. Build member result rows ──────────────────────────────────────────
     const members: any[] = [];
     for (const group of groups) {
-      const bvslId = (Array.isArray(group.bvslLeader) ? group.bvslLeader[0] : group.bvslLeader) as string | undefined;
-      const bvslName = bvslId ? (bvslMap[bvslId] || '') : '';
+      const bvslName = joinFacilitatorNames(textList(group.bvslLeader).map(id => bvslMap[id]));
       const memberIds = groupMembershipsMap[group.id] || [];
 
       for (const uid of memberIds) {
@@ -190,7 +190,8 @@ export default createEndpoint({
           groupName: group.groupName || '',
           groupId: group.id,
           bvslName,
-          bvslId: bvslId || '',
+          bvslId: textList(group.bvslLeader)[0] || '',
+          bvslIds: textList(group.bvslLeader),
           missingDays,
           lateDays,
           lastFilledDate,

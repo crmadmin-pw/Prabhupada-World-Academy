@@ -1,3 +1,4 @@
+import { joinFacilitatorNames, textList } from '@/lib/bvGroupFacilitators';
 import { z } from 'zod';
 import { createEndpoint, Users, Guides, FolkResidencies, SadhanaEntries, BvGroups, BvGroupMembers } from '@/lib/backend-sdk';
 import { getTodayIST, daysAgo } from '../lib/streakUtils';
@@ -191,6 +192,43 @@ export default createEndpoint({
       });
     }
 
+    // History only needs the member ids already in hand. Guide and residency
+    // labels are display data, so start this read before those lookups.
+    const historyPromise = (async () => {
+      if (input.minimal || users.length === 0) return [];
+      const cutoffStr = daysAgo(todayStr, 100);
+      const entries: any[] = [];
+      const scopedEntryUserIds = Array.from(new Set(users.map(user => user.id).filter(Boolean)));
+      if (scopedEntryUserIds.length > 0 && scopedEntryUserIds.length <= 300) {
+        const chunks = Array.from({ length: Math.ceil(scopedEntryUserIds.length / 30) }, (_, index) =>
+          scopedEntryUserIds.slice(index * 30, index * 30 + 30)
+        );
+        const batches = await Promise.all(chunks.map(ids => SadhanaEntries.findAll({
+          filters: { user: { in: ids }, entryDate: { gte: cutoffStr } } as any,
+          fields: ['id', 'user', 'entryDate', 'scorePercent', 'submittedAt'],
+          limit: 2000,
+        })));
+        batches.forEach(batch => entries.push(...(batch.records || [])));
+      } else {
+        // A full super-admin catalogue is cheaper as one paged query than many
+        // dozens of small `in` queries. It remains bounded to the last 100 days.
+        let entryOffset = 0;
+        while (true) {
+          const { records, hasMore } = await SadhanaEntries.findAll({
+            filters: { entryDate: { gte: cutoffStr } } as any,
+            fields: ['id', 'user', 'entryDate', 'scorePercent', 'submittedAt'],
+            limit: 2000,
+            offset: entryOffset,
+          });
+          entries.push(...records);
+          if (!hasMore || entries.length > 6000) break;
+          entryOffset += 2000;
+        }
+      }
+
+      return entries;
+    })();
+
     // Full directories stay inside one department. A Prabhupada World admin sees
     // every Prabhupada World member. Assignment to a FOLK guide keeps a member
     // on the FOLK dashboard even when a PW flag was stored on the same row.
@@ -231,40 +269,6 @@ export default createEndpoint({
       users = users.filter(user => memberDirectoryDepartment(user) === 'FOLK');
     }
 
-    const historyPromise = (async () => {
-      if (input.minimal || users.length === 0) return [];
-      const cutoffStr = daysAgo(todayStr, 100);
-      const entries: any[] = [];
-      const scopedEntryUserIds = Array.from(new Set(users.map(user => user.id).filter(Boolean)));
-      if (scopedEntryUserIds.length > 0 && scopedEntryUserIds.length <= 300) {
-        const chunks = Array.from({ length: Math.ceil(scopedEntryUserIds.length / 30) }, (_, index) =>
-          scopedEntryUserIds.slice(index * 30, index * 30 + 30)
-        );
-        const batches = await Promise.all(chunks.map(ids => SadhanaEntries.findAll({
-          filters: { user: { in: ids }, entryDate: { gte: cutoffStr } } as any,
-          fields: ['id', 'user', 'entryDate', 'scorePercent', 'submittedAt'],
-          limit: 2000,
-        })));
-        batches.forEach(batch => entries.push(...(batch.records || [])));
-      } else {
-        // A full super-admin catalogue is cheaper as one paged query than many
-        // dozens of small `in` queries. It remains bounded to the last 100 days.
-        let entryOffset = 0;
-        while (true) {
-          const { records, hasMore } = await SadhanaEntries.findAll({
-            filters: { entryDate: { gte: cutoffStr } } as any,
-            fields: ['id', 'user', 'entryDate', 'scorePercent', 'submittedAt'],
-            limit: 2000,
-            offset: entryOffset,
-          });
-          entries.push(...records);
-          if (!hasMore || entries.length > 6000) break;
-          entryOffset += 2000;
-        }
-      }
-
-      return entries;
-    })();
     const [entries, [sadhanaRes, groupsRes, membersRes, reference]] = await Promise.all([historyPromise, metadataPromise]);
 
     const todayEntries: any[] = sadhanaRes?.records || [];
@@ -311,8 +315,8 @@ export default createEndpoint({
       for (const id of [g.id, g.groupId]) {
         if (id && g.groupName) groupNameMap.set(String(id), g.groupName);
       }
-      const rawRgfId = Array.isArray(g.bvslLeader) ? g.bvslLeader[0] : (g.bvslLeader || g.bvslId || g.guide || '');
-      const rgfName = g.bvslName || '';
+      const rawRgfId = textList(g.bvslLeader)[0] || textList(g.bvslId)[0] || textList(g.guide)[0] || '';
+      const rgfName = joinFacilitatorNames(textList(g.bvslName));
       if (g.id) groupRgfMap.set(String(g.id), { id: String(rawRgfId), name: rgfName });
       if (g.groupId) groupRgfMap.set(String(g.groupId), { id: String(rawRgfId), name: rgfName });
     });

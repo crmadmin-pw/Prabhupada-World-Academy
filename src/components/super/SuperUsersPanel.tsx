@@ -208,7 +208,7 @@ function RgfGroupCell({
           <div className="flex max-h-52 flex-col overflow-y-auto">
             <p className="px-2 py-1 text-[11px] font-medium text-muted-foreground">{led.length > 0 ? 'Add another' : 'Add a group'}</p>
             {available.map(group => {
-              const leader = people.find(person => groupsFacilitatedBy(person as any, [group]).length > 0 && !samePerson(person, user));
+              const leaders = people.filter(person => groupsFacilitatedBy(person as any, [group]).length > 0 && !samePerson(person, user));
               return (
                 <button
                   key={group.id}
@@ -217,7 +217,9 @@ function RgfGroupCell({
                   onClick={() => { setOpen(false); onAdd(group); }}
                 >
                   <span className="block truncate">{group.groupName}</span>
-                  {leader && <span className="block truncate text-[11px] text-muted-foreground">{leader.fullName}</span>}
+                  {leaders.length > 0 && (
+                    <span className="block truncate text-[11px] text-muted-foreground">{leaders.map(leader => leader.fullName).join(', ')}</span>
+                  )}
                 </button>
               );
             })}
@@ -622,26 +624,38 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
   const handleRgfGroupChange = async () => {
     if (!rgfGroupDialog) return;
     const { user, group, action } = rgfGroupDialog;
-    const facilitatorId = action === 'remove'
-      ? ''
-      : String(user.userId || (user as any).userDbId || user.id || user.email || '');
+    const facilitatorId = String(user.userId || (user as any).userDbId || user.id || user.email || '');
+    if (!facilitatorId) {
+      toast.error('Could not identify this RGF');
+      return;
+    }
     try {
-      await updateBvGroup({ groupId: group.groupId || group.id, bvslId: facilitatorId });
+      await updateBvGroup({
+        groupId: group.groupId || group.id,
+        bvslId: facilitatorId,
+        facilitatorAction: action === 'remove' ? 'remove' : 'add',
+      });
     } catch (error: any) {
       toast.error(error?.message || 'Could not update the reading group');
       throw error;
     }
     const aliases = [user.userId, user.id, (user as any).userDbId, user.email, user.fullName].filter(Boolean).map(String);
+    const aliasKeys = new Set(aliases.map(alias => alias.toLowerCase()));
     setBvGroups(current => current.map(item => {
       if (item.id !== group.id && item.groupId !== group.groupId) return item;
-      return { ...item, facilitatorIds: action === 'add' ? aliases : [] };
+      const existing = item.facilitatorIds || [];
+      const facilitatorIds = action === 'add'
+        ? [...new Set([...existing, ...aliases])]
+        : existing.filter(id => !aliasKeys.has(String(id).toLowerCase()));
+      return { ...item, facilitatorIds };
     }));
     setUsers(current => current.map(row => {
+      if (!samePerson(row, user)) return row;
       const names = (Array.isArray((row as any).facilitatedGroupNames) ? (row as any).facilitatedGroupNames : [])
         .filter((name: string) => name !== group.groupName);
       const ids = (Array.isArray((row as any).facilitatedGroupIds) ? (row as any).facilitatedGroupIds : [])
         .filter((id: string) => id !== group.id && id !== group.groupId);
-      if (action === 'add' && samePerson(row, user)) {
+      if (action === 'add') {
         return {
           ...row,
           facilitatedGroupNames: [...names, group.groupName],
@@ -1567,10 +1581,12 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
           rgfGroupDialog.action === 'remove'
             ? `Remove ${rgfGroupDialog.group.groupName} from ${rgfGroupDialog.user.fullName}? They will no longer facilitate that group. Its members stay in the group.`
             : (() => {
-              const leader = users.find(person =>
+              const leaders = users.filter(person =>
                 groupsFacilitatedBy(person as any, [rgfGroupDialog.group]).length > 0 && !samePerson(person, rgfGroupDialog.user));
-              return leader
-                ? `Add ${rgfGroupDialog.group.groupName} to ${rgfGroupDialog.user.fullName}? ${leader.fullName} currently facilitates it and will no longer do so. The groups ${rgfGroupDialog.user.fullName} already facilitates stay with them.`
+              const names = leaders.map(leader => leader.fullName).join(', ');
+              const verb = leaders.length === 1 ? 'facilitates' : 'facilitate';
+              return leaders.length > 0
+                ? `Add ${rgfGroupDialog.group.groupName} to ${rgfGroupDialog.user.fullName}? ${names} already ${verb} it and will keep facilitating it too.`
                 : `Add ${rgfGroupDialog.group.groupName} to ${rgfGroupDialog.user.fullName}? This is in addition to any reading groups they already facilitate.`;
             })()
         ) : ''}

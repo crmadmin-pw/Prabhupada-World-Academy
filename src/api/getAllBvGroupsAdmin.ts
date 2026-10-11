@@ -3,10 +3,10 @@ import { createEndpoint, BvGroups, BvGroupMembers, BvAttendance, Users, Guides }
 import { serverCacheGetOrFetch, serverCacheInvalidate } from '../lib/serverCache';
 import { isBvDepartmentAdmin, isBvSuperAdminUser, resolveBvDepartmentGroups } from '../lib/bvGroupMemberScope';
 import { callerDirectoryDepartment, getScopedHierarchyUserIds, isUserInHierarchy, hierarchyRefs, readScopedUsers } from '../lib/hierarchyUtils';
+import { joinFacilitatorNames, readGroupFacilitators, textList } from '@/lib/bvGroupFacilitators';
 
 export function facilitatorIdentityRefs(group: { bvslLeader?: unknown; bvslId?: unknown; bvslName?: unknown }): string[] {
-  const storedName = String(group.bvslName || '').trim();
-  return [...new Set([...groupFacilitatorRefs(group), ...(storedName ? [storedName] : [])])];
+  return [...new Set([...groupFacilitatorRefs(group), ...textList(group.bvslName)])];
 }
 
 export function groupFacilitatorRefs(group: { bvslLeader?: unknown; bvslId?: unknown }): string[] {
@@ -32,13 +32,14 @@ export function indexFacilitatorUsers(users: readonly any[], into = new Map<stri
 
 /** The reading-group RGF may be stored as a document id, public user id, or email. */
 export function facilitatorDisplayName(group: { bvslLeader?: unknown; bvslId?: unknown; bvslName?: unknown }, usersByAlias: Map<string, any>): string | null {
-  const user = groupFacilitatorRefs(group)
-    .map(ref => usersByAlias.get(aliasKey(ref)))
-    .find(match => String(match?.fullName || '').trim());
-  const resolved = String(user?.fullName || '').trim();
-  if (resolved) return resolved;
-  const stored = String(group.bvslName || '').trim();
-  return stored || null;
+  const resolved = readGroupFacilitators(group).map(item => {
+    const user = [item.id, item.userId]
+      .map(ref => usersByAlias.get(aliasKey(ref)))
+      .find(Boolean);
+    return String(user?.fullName || item.name || '').trim();
+  });
+  const joined = joinFacilitatorNames(resolved);
+  return joined || null;
 }
 
 export default createEndpoint({
@@ -219,8 +220,9 @@ async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<strin
         return hierarchyRefs([g.guide, g.bvslLeader, g.bvslId, g.subFacilitatorId, g.rgsfId]).some(ref => hierarchy.has(ref));
       }
       const groupGuide = Array.isArray(g.guide) ? g.guide[0] : g.guide;
-      const facilitator = Array.isArray(g.bvslLeader) ? g.bvslLeader[0] : (g.bvslLeader || g.bvslId);
-      return guideAliases.has(String(groupGuide || '').toLowerCase()) || rgfAliases.has(String(facilitator || '').toLowerCase());
+      const facilitatorRefs = textList(g.bvslLeader).concat(textList(g.bvslId));
+      return guideAliases.has(String(groupGuide || '').toLowerCase()) ||
+        facilitatorRefs.some(ref => rgfAliases.has(ref.toLowerCase()));
     });
 
     // ── Batch all member + attendance queries in 2 round-trips ──────────────
@@ -274,7 +276,7 @@ async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<strin
     }
 
     const groups = groupRecords.map((g: any) => {
-      const bvslDbId = Array.isArray(g.bvslLeader) ? g.bvslLeader[0] : (g.bvslLeader || g.bvslId) as string | undefined;
+      const bvslDbId = textList(g.bvslLeader)[0] || textList(g.bvslId)[0];
 
       const memberCount = memberCountByGroup.get(g.id) ?? 0;
       const attRecords = attByGroup.get(g.id) ?? [];
@@ -290,13 +292,19 @@ async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<strin
         ? Math.round((totalPresent / totalPossible) * 100)
         : 0;
 
-      const bvslUser = groupFacilitatorRefs(g).map(ref => usersByAlias.get(aliasKey(ref))).find(Boolean);
+      const matchedUsers: any[] = [];
+      const seenUsers = new Set<string>();
+      for (const ref of groupFacilitatorRefs(g)) {
+        const user = usersByAlias.get(aliasKey(ref));
+        if (!user?.id || seenUsers.has(user.id)) continue;
+        seenUsers.add(user.id);
+        matchedUsers.push(user);
+      }
+      const bvslUser = matchedUsers[0];
       const bvslName = facilitatorDisplayName(g, usersByAlias);
       const facilitatorIds = [...new Set([
         ...facilitatorIdentityRefs(g),
-        bvslUser?.id,
-        bvslUser?.userId,
-        bvslUser?.email,
+        ...matchedUsers.flatMap(user => [user.id, user.userId, user.email, user.fullName]),
       ].map(value => String(value || '').trim()).filter(Boolean))];
 
       return {

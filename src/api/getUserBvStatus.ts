@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroupMembers, BvGroupRequests, BvGroups, BvAttendance, Users, Guides } from '@/lib/backend-sdk';
 import { getTodayIST } from '../lib/streakUtils';
+import { joinFacilitatorNames, readGroupFacilitators, textList } from '@/lib/bvGroupFacilitators';
 
 function firstValue(value: unknown): string {
   if (Array.isArray(value)) return String(value[0] || '');
@@ -145,7 +146,7 @@ export default createEndpoint({
         }));
       }
 
-      const leaderIds = [...new Set(groups.map((g: any) => Array.isArray(g.bvslLeader) ? g.bvslLeader[0] : (g.bvslLeader || g.bvslId)).filter(Boolean))] as string[];
+      const leaderIds = [...new Set(groups.flatMap((g: any) => textList(g.bvslLeader)))] as string[];
       const leaderMap: Record<string, { fullName: string; segment?: string }> = {};
       if (leaderIds.length > 0) {
         const leaderRecords = await Users.findAll({ filters: { id: { in: leaderIds } }, fields: ['id', 'fullName', 'segment'] });
@@ -161,17 +162,18 @@ export default createEndpoint({
 
       const availableGroupsMapped = groups
         .filter((g: any) => {
-          const leaderId = Array.isArray(g.bvslLeader) ? g.bvslLeader[0] : (g.bvslLeader || g.bvslId);
+          const leaderId = textList(g.bvslLeader)[0] || textList(g.bvslId)[0];
           const groupSegment = g.segment || leaderMap[leaderId || '']?.segment || 'PW';
           return groupSegment === userSegment;
         })
         .map((g: any) => {
-          const leaderId = Array.isArray(g.bvslLeader) ? g.bvslLeader[0] : (g.bvslLeader || g.bvslId);
           return {
             groupId: g.groupId || g.id,
             groupName: g.groupName || '',
             description: g.description || '',
-            bvslName: leaderMap[leaderId || '']?.fullName || g.bvslName || 'Unassigned',
+            bvslName: joinFacilitatorNames(textList(g.bvslLeader).map(id => leaderMap[id]?.fullName))
+              || joinFacilitatorNames(textList(g.bvslName))
+              || 'Unassigned',
             memberCount: memberCountMap[g.id] ?? 0,
           };
         });
@@ -267,29 +269,38 @@ export default createEndpoint({
 
     const presentCount = myAtt.filter((a: any) => a.present).length;
 
-    const leaderId = Array.isArray(group?.bvslLeader) ? group.bvslLeader[0] : (group?.bvslLeader || group?.bvslId);
-    let bvslName = '';
-    if (leaderId) {
+    const leaders = readGroupFacilitators(group);
+    const leaderNames: string[] = [];
+    for (const leader of leaders) {
+      const leaderId = leader.id || leader.userId;
+      if (!leaderId) {
+        if (leader.name) leaderNames.push(leader.name);
+        continue;
+      }
       let leaderRec = await Users.findOne({ id: leaderId, fields: ['id', 'fullName'] });
-      if (!leaderRec) {
-        leaderRec = await Users.findOne({ filters: { userId: leaderId }, fields: ['id', 'fullName'] });
+      if (!leaderRec && leader.userId) {
+        leaderRec = await Users.findOne({ filters: { userId: leader.userId }, fields: ['id', 'fullName'] });
       }
-      if (leaderRec) {
-        bvslName = leaderRec.fullName || '';
-      } else {
-        const gRec = await Guides.findOne({ id: leaderId, fields: ['id', 'fullName'] }) ||
-                     await Guides.findOne({ filters: { guideId: leaderId }, fields: ['id', 'fullName'] });
-        if (gRec) {
-          bvslName = gRec.fullName || '';
-        }
+      if (!leaderRec && leader.id && leader.id !== leaderId) {
+        leaderRec = await Users.findOne({ id: leader.id, fields: ['id', 'fullName'] });
       }
-      if (!bvslName) {
-        bvslName = (typeof leaderId === 'string' && !leaderId.startsWith('USER-') && !leaderId.startsWith('REC') ? leaderId : '');
+      if (leaderRec?.fullName) {
+        leaderNames.push(leaderRec.fullName);
+        continue;
       }
+      const gRec = await Guides.findOne({ id: leaderId, fields: ['id', 'fullName'] }) ||
+        await Guides.findOne({ filters: { guideId: leaderId }, fields: ['id', 'fullName'] });
+      if (gRec?.fullName) {
+        leaderNames.push(gRec.fullName);
+        continue;
+      }
+      if (leader.name) leaderNames.push(leader.name);
+      else if (!leaderId.startsWith('USER-') && !leaderId.startsWith('REC')) leaderNames.push(leaderId);
     }
+    const bvslName = joinFacilitatorNames(leaderNames);
 
     const groupName = group?.groupName || userRecord?.bvGroupName || '';
-    const finalFacilitator = bvslName || group?.bvslName || groupName || '';
+    const finalFacilitator = bvslName || joinFacilitatorNames(textList(group?.bvslName)) || groupName || '';
 
     let rgsfName = 'None';
     const memberUserIds = groupMembersRes.records.map((m: any) => Array.isArray(m.user) ? m.user[0] : (m.user || m.userId)).filter(Boolean);

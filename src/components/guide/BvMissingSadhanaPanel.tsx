@@ -328,7 +328,7 @@ export default function BvMissingSadhanaPanel({ guideId }: Props) {
     if (!data) return [];
     let m = data.members;
     if (groupFilter !== 'all') m = m.filter((x: any) => x.groupId === groupFilter);
-    if (bvslFilter !== 'all') m = m.filter((x: any) => x.bvslId === bvslFilter);
+    if (bvslFilter !== 'all') m = m.filter((x: any) => x.bvslId === bvslFilter || (Array.isArray(x.bvslIds) && x.bvslIds.includes(bvslFilter)));
     if (statusFilter === 'active') m = m.filter((x: any) => x.status === 'Active');
     else if (statusFilter === 'inactive') m = m.filter((x: any) => x.status !== 'Active');
     const minM = parseInt(minMissing, 10);

@@ -2,6 +2,13 @@ import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, BvAttendance, BvGroupRequests, Guides, Users, AppError } from '@/lib/backend-sdk';
 import { getTodayIST } from '../lib/streakUtils';
 import { isBvSuperAdminUser, resolveBvScopedGroups } from '../lib/bvGroupMemberScope';
+import { joinFacilitatorNames, textList } from '@/lib/bvGroupFacilitators';
+
+function ownerKeys(group: any): string[] {
+  return [group?.bvslLeader, group?.bvslId, group?.bvslName]
+    .flatMap(value => textList(value))
+    .map(value => value.toLowerCase());
+}
 
 const groupSchema = z.object({
   id: z.string(),
@@ -95,9 +102,7 @@ export default createEndpoint({
       groupRecords = records.filter((g: any) => {
         if (g.isActive === false) return false;
 
-        const leader = String(g.bvslLeader || '').toLowerCase();
-        const bId = String(g.bvslId || '').toLowerCase();
-        const facilitatorName = String(g.bvslName || '').toLowerCase();
+        const owners = ownerKeys(g);
         const groupRefs = [g.id, g.groupId, g.groupName].filter(Boolean).map((value: unknown) => String(value).toLowerCase());
         const assignedToCaller = groupRefs.some((value: string) => assignedGroupRefs.has(value));
         const subFacilitatorValues = [
@@ -109,25 +114,16 @@ export default createEndpoint({
           .map((value) => String(value).toLowerCase());
 
         if (isRgsfView) {
-          const ownerValues = [g.bvslLeader, g.bvslId]
-            .flatMap((value) => Array.isArray(value) ? value : [value])
-            .filter(Boolean)
-            .map((value) => String(value).toLowerCase());
-          const isParentGroup = ownerValues.some((value) => parentRgfKeys.has(value));
-          const isCallerOwnedLegacyGroup = ownerValues.some((value) => callerKeys.has(value));
-          return isParentGroup || isCallerOwnedLegacyGroup || subFacilitatorValues.some((value) => callerKeys.has(value)) || assignedToCaller || callerKeys.has(facilitatorName);
+          const isParentGroup = owners.some((value) => parentRgfKeys.has(value));
+          const isCallerOwnedLegacyGroup = owners.some((value) => callerKeys.has(value));
+          return isParentGroup || isCallerOwnedLegacyGroup || subFacilitatorValues.some((value) => callerKeys.has(value)) || assignedToCaller;
         }
 
         return (
-          callerKeys.has(leader) ||
-          callerKeys.has(bId) ||
-          callerKeys.has(facilitatorName) ||
+          owners.some(value => callerKeys.has(value)) ||
           assignedToCaller ||
           subFacilitatorValues.some((value) => callerKeys.has(value)) ||
-          (parentRgfId && (
-            leader === String(parentRgfId).toLowerCase() ||
-            bId === String(parentRgfId).toLowerCase()
-          ))
+          (!!parentRgfId && owners.some(value => value === String(parentRgfId).toLowerCase()))
         );
       });
     }
@@ -195,7 +191,9 @@ export default createEndpoint({
       // IMPORTANT: g.bvslId values are custom app userId strings,
       // NOT Firestore row ids. We must query by userId field, then map by BOTH
       // the row id and the userId so lookups work with either value.
-      const facilitatorUserIds = [...new Set(groupRecords.map((g: any) => g.bvslId || g.bvslLeader).filter(Boolean))] as string[];
+      const facilitatorUserIds = [...new Set(groupRecords.flatMap((g: any) =>
+        textList(g.bvslId).concat(textList(g.bvslLeader)),
+      ))] as string[];
       const facilitatorMap = new Map<string, any>();
       if (facilitatorUserIds.length > 0) {
         const batches: string[][] = [];
@@ -411,14 +409,20 @@ export default createEndpoint({
     ]);
 
     const groups = await Promise.all(groupRecords.map(async (g) => {
-      const facilitatorRefs = [g.bvslId, g.bvslLeader]
-        .flatMap((value: unknown) => Array.isArray(value) ? value : [value])
-        .filter(Boolean)
-        .map((value: unknown) => String(value));
-      const facilitatorUser = facilitatorRefs
-        .flatMap(ref => [facilitatorMap.get(ref), facilitatorMap.get(ref.toLowerCase())])
-        .find(user => user?.fullName)
-        || facilitatorRefs.flatMap(ref => [facilitatorMap.get(ref), facilitatorMap.get(ref.toLowerCase())]).find(Boolean);
+      const facilitatorRefs = textList(g.bvslId).concat(textList(g.bvslLeader));
+      const matchedFacilitators: any[] = [];
+      const seenFacilitators = new Set<string>();
+      for (const ref of facilitatorRefs) {
+        const user = facilitatorMap.get(ref) || facilitatorMap.get(ref.toLowerCase());
+        if (!user?.id || seenFacilitators.has(user.id)) continue;
+        seenFacilitators.add(user.id);
+        matchedFacilitators.push(user);
+      }
+      const facilitatorUser = matchedFacilitators.find(user => user?.fullName) || matchedFacilitators[0];
+      const facilitatorName = joinFacilitatorNames([
+        ...matchedFacilitators.map(user => user?.fullName),
+        ...textList(g.bvslName),
+      ]);
       const guideRes = guideMap.get(Array.isArray(g.guide) ? g.guide[0] : g.guide);
       
       let totalSessions = 0;
@@ -445,7 +449,7 @@ export default createEndpoint({
         totalSessions,
         presentToday,
         joinToken: g.joinToken || null,
-        bvslName: facilitatorUser?.fullName || g.bvslName || defaultBvslName || null,
+        bvslName: facilitatorName || defaultBvslName || null,
         guideName: guideRes?.fullName || null,
         meetingTime: g.meetingTime || g.preferredTimeSlot || null,
         // Facilitator ownership is authoritative. This also repairs the
@@ -453,9 +457,14 @@ export default createEndpoint({
         segment: String(facilitatorUser?.segment || g.segment || 'PW').toUpperCase() === 'FOLK' ? 'FOLK' : 'PW',
         isActive: g.isActive ?? true,
         facilitatorIds: [...new Set(
-          [g.bvslLeader, g.bvslId, g.bvslName, facilitatorUser?.id, facilitatorUser?.userId, facilitatorUser?.email, facilitatorUser?.fullName]
-            .flatMap((value: unknown) => Array.isArray(value) ? value : [value])
-            .map((value: unknown) => String(value || '').trim())
+          [
+            g.bvslLeader,
+            g.bvslId,
+            g.bvslName,
+            ...matchedFacilitators.flatMap(user => [user?.id, user?.userId, user?.email, user?.fullName]),
+          ]
+            .flatMap((value: unknown) => textList(value))
+            .map((value: string) => value.trim())
             .filter(Boolean),
         )],
       };

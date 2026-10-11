@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroupRequests, BvGroups, Users } from '@/lib/backend-sdk';
+import { groupHasFacilitator } from '@/lib/bvGroupFacilitators';
 
 export default createEndpoint({
   description: 'Get pending BV group join requests for a specific BVSL or group',
@@ -18,13 +19,18 @@ export default createEndpoint({
       if (group) filter.group = group.id;
     } else if (input.bvslId) {
       // FIX: Filter to only this BVSL's groups
-      const userRecord = await Users.findOne({ filters: { userId: input.bvslId }, fields: ['id'] });
+      const userRecord = await Users.findOne({ filters: { userId: input.bvslId }, fields: ['id', 'userId', 'email', 'fullName'] })
+        || await Users.findOne({ id: input.bvslId, fields: ['id', 'userId', 'email', 'fullName'] });
       if (userRecord) {
-        const { records: bvslGroups } = await BvGroups.findAll({
-          filters: { bvslLeader: userRecord.id, isActive: true },
-          fields: ['id'],
-          limit: 100,
+        const aliases = new Set([userRecord.id, userRecord.userId, userRecord.email, userRecord.fullName]
+          .map(value => String(value || '').trim().toLowerCase())
+          .filter(Boolean));
+        const { records: activeGroups } = await BvGroups.findAll({
+          filters: { isActive: true },
+          fields: ['id', 'bvslLeader', 'bvslId', 'bvslName'],
+          limit: 1000,
         });
+        const bvslGroups = activeGroups.filter(group => groupHasFacilitator(group, aliases));
         if (bvslGroups.length === 0) return { requests: [] };
         const groupDbIds = bvslGroups.map((g: any) => g.id);
         // Filter requests to only this BVSL's groups

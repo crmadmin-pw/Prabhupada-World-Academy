@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, BvMemberRegistrations, BvAttendance, Users, AppError } from '@/lib/backend-sdk';
 import { getScopedHierarchyUserIds } from '../lib/hierarchyUtils';
 import { getTodayIST } from '../lib/streakUtils';
+import { joinFacilitatorNames, readGroupFacilitators, textList } from '@/lib/bvGroupFacilitators';
 
 function normalizedRefs(value: unknown): string[] {
   if (Array.isArray(value)) return value.flatMap(normalizedRefs);
@@ -126,9 +127,11 @@ export default createEndpoint({
     // One group can carry both the current facilitator ID and a legacy leader
     // alias for the same person. Count one canonical facilitator per group
     // instead of treating those two references as two different RGFs.
-    const uniqueRgfs = new Set(groups.map((g: any) =>
-      normalizedRefs(g.bvslId)[0] || normalizedRefs(g.bvslLeader)[0] || ''
-    ).filter(Boolean));
+    const uniqueRgfs = new Set(groups.flatMap((group: any) =>
+      readGroupFacilitators(group)
+        .map(facilitator => (facilitator.id || facilitator.userId || facilitator.name).toLowerCase())
+        .filter(Boolean),
+    ));
 
     const today = getTodayIST();
     const mappedGroups = await Promise.all(groups.map(async (g: any) => {
@@ -146,8 +149,8 @@ export default createEndpoint({
         groupId: g.groupId || g.id,
         groupName: g.groupName || 'Unnamed Group',
         description: g.description || '',
-        bvslId: g.bvslId || g.bvslLeader || '',
-        bvslName: g.bvslName || 'Unassigned',
+        bvslId: textList(g.bvslId)[0] || textList(g.bvslLeader)[0] || '',
+        bvslName: joinFacilitatorNames(textList(g.bvslName)) || 'Unassigned',
         guideName: g.guideName || null,
         meetingTime: g.meetingTime || g.preferredTimeSlot || null,
         memberCount: membershipsByGroup.get(groupKey)?.size || 0,

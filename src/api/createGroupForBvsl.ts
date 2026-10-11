@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, Users, Guides, AppError } from '@/lib/backend-sdk';
+import { facilitatorWrite, type GroupFacilitator } from '@/lib/bvGroupFacilitators';
 import { nameForWhatsAppInvite } from '@/lib/userUtils';
 
 function generateToken(): string {
@@ -14,6 +15,7 @@ export default createEndpoint({
   authenticated: true,
   inputSchema: z.object({
     bvslUserId: z.string(),         // DB record ID of the user who will be BVSL leader
+    bvslUserIds: z.array(z.string().min(1)).max(20).optional(),
     guideId: z.string(),            // Guide's custom ID or DB UUID
     groupName: z.string().min(1).max(200),
     description: z.string().max(500).optional(),
@@ -47,18 +49,30 @@ export default createEndpoint({
 
     if (!guideDbId) throw new AppError({ code: 'NOT_FOUND', message: 'Guide not found' });
 
-    const bvslUser = await Users.findOne({ id: input.bvslUserId, fields: ['id', 'fullName'] });
-    if (!bvslUser) throw new AppError({ code: 'NOT_FOUND', message: 'BVSL user not found' });
+    const requestedIds = [...new Set([input.bvslUserId, ...(input.bvslUserIds || [])].map((id: string) => id.trim()).filter(Boolean))];
+    const facilitators: GroupFacilitator[] = [];
+    for (const userId of requestedIds) {
+      const bvslUser = await Users.findOne({ id: userId, fields: ['id', 'userId', 'fullName'] });
+      if (!bvslUser) throw new AppError({ code: 'NOT_FOUND', message: 'BVSL user not found' });
+      facilitators.push({
+        id: String(bvslUser.id),
+        userId: String(bvslUser.userId || bvslUser.id),
+        name: String(bvslUser.fullName || ''),
+      });
+    }
 
     const joinToken = generateToken();
     const joinUrl = `${process.env.APP_APP_URL}/join-group?token=${joinToken}`;
-    const leaderName = nameForWhatsAppInvite(bvslUser.fullName);
+    const leaderName = facilitators
+      .map(person => nameForWhatsAppInvite(person.name))
+      .filter(Boolean)
+      .join(' and ');
     const inviteText = `Hare Krishna!\n\nYou are invited to join *${input.groupName}*${leaderName ? ` led by *${leaderName}*` : ''}.\n\nClick to join: ${joinUrl}`;
 
     const group = await BvGroups.create({
       record: {
         groupName: input.groupName,
-        bvslLeader: input.bvslUserId,
+        ...facilitatorWrite(facilitators),
         guide: guideDbId,
         description: input.description || '',
         meetingTime: input.meetingTime || '',
@@ -70,7 +84,7 @@ export default createEndpoint({
     });
 
     // Auto-tag as BVSL if not already
-    await Users.update({ id: input.bvslUserId, record: { isBvsl: true } });
+    await Promise.all(facilitators.map(person => Users.update({ id: person.id, record: { isBvsl: true } })));
 
     return { success: true, groupId: group.groupId || group.id, groupDbId: group.id, joinToken };
   },

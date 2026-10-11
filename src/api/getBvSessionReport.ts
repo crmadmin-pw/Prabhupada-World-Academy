@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createEndpoint, Users, BvGroups, BvSessions, BvAttendance, BvGroupMembers } from '@/lib/backend-sdk';
 import { requireGuideRole } from '../lib/userUtils';
 import { getGuideIdsForResidencies } from '../lib/guideScope';
+import { joinFacilitatorNames, textList } from '@/lib/bvGroupFacilitators';
 
 export default createEndpoint({
   description: 'BV session/attendance report for guide — attendance by group+date with session topic/notes from BvSessions',
@@ -49,8 +50,7 @@ export default createEndpoint({
     // Get BVSL leader names
     const bvslIds = new Set<string>();
     for (const g of groups) {
-      const lid = Array.isArray(g.bvslLeader) ? g.bvslLeader[0] : g.bvslLeader;
-      if (lid) bvslIds.add(lid as string);
+      textList(g.bvslLeader).forEach(lid => bvslIds.add(lid));
     }
     const bvslNameMap = new Map<string, string>();
     if (bvslIds.size > 0) {
@@ -131,7 +131,7 @@ export default createEndpoint({
       const [gid, date] = key.split('::');
       const group = groupMap.get(gid);
       if (!group) continue;
-      const bvslId = Array.isArray(group.bvslLeader) ? group.bvslLeader[0] : group.bvslLeader;
+      const leaderIds = textList(group.bvslLeader);
       const totalMembers = memberCountByGroup.get(gid) || bucket.total;
       const meta = sessionMetaMap.get(key) || { topic: '', notes: '' };
       const attendancePercent = totalMembers > 0 ? Math.round((bucket.presentCount / totalMembers) * 100) : 0;
@@ -140,7 +140,7 @@ export default createEndpoint({
         sessionDate: date,
         groupName: group.groupName || '—',
         groupId: gid,
-        bvslName: bvslId ? (bvslNameMap.get(bvslId as string) || '—') : '—',
+        bvslName: joinFacilitatorNames(leaderIds.map(id => bvslNameMap.get(id))) || '—',
         topic: meta.topic,
         notes: meta.notes,
         presentCount: bucket.presentCount,

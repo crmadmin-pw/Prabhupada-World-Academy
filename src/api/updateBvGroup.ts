@@ -1,6 +1,12 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, Users, AppError } from '@/lib/backend-sdk';
 import { bvGroupFacilitatorAliases, bvUserAliases } from '@/lib/bvGroupMemberScope';
+import {
+  facilitatorIdentityKeys,
+  facilitatorWrite,
+  readGroupFacilitators,
+  type GroupFacilitator,
+} from '@/lib/bvGroupFacilitators';
 import { isHierarchyAdmin } from '@/lib/hierarchyUtils';
 import { generateBvJoinToken } from '@/lib/bvJoinToken';
 import { serverCacheInvalidate } from '../lib/serverCache';
@@ -29,6 +35,23 @@ function renameStoredInvite(link: string | undefined, previousName: string, next
   }
   if (link.includes(previousName)) return link.split(previousName).join(nextName);
   return undefined;
+}
+
+async function resolveReadingGroupFacilitator(rawId: string) {
+  const facilitatorFields = ['id', 'userId', 'fullName', 'email', 'role', 'isBvFacilitator', 'isBvsl'];
+  const facilitator = await Users.findOne({ id: rawId, fields: facilitatorFields })
+    || await Users.findOne({ filters: { userId: rawId }, fields: facilitatorFields })
+    || await Users.findOne({ filters: { email: rawId.toLowerCase() }, fields: facilitatorFields });
+  if (!facilitator) throw new AppError({ code: 'NOT_FOUND', message: 'Selected RGF was not found' });
+  const facilitatorRole = String(facilitator.role || '').trim().replace(/[\s-]+/g, '_').toUpperCase();
+  const isRgf = facilitator.isBvFacilitator === true || facilitator.isBvsl === true || ['RGF', 'BVSL', 'FACILITATOR'].includes(facilitatorRole);
+  if (!isRgf) throw new AppError({ code: 'BAD_REQUEST', message: 'Choose someone who is already an RGF' });
+  return {
+    id: String(facilitator.id || ''),
+    userId: String(facilitator.userId || facilitator.id || ''),
+    name: String(facilitator.fullName || facilitator.email || ''),
+    email: String(facilitator.email || ''),
+  };
 }
 
 async function syncAssignedGroupNames(groupKeys: Set<string>, groupName: string) {
@@ -86,9 +109,11 @@ export default createEndpoint({
     subFacilitatorId: z.string().optional(),
     isActive: z.boolean().optional(),
     ensureJoinToken: z.boolean().optional(),
-    // A user id, public user id, or email assigns that RGF. An empty string
-    // removes the facilitator and leaves the group's members in place.
+    // A user id, public user id, or email. `add` keeps the RGFs already on the
+    // group. `remove` takes only this RGF off the group. An empty string
+    // clears every RGF and leaves the group's members in place.
     bvslId: z.string().max(200).optional(),
+    facilitatorAction: z.enum(['add', 'remove']).optional(),
   }),
   outputSchema: z.any(),
   execute: async ({ input, context }: any) => {
@@ -96,7 +121,7 @@ export default createEndpoint({
       throw new AppError({ code: 'FORBIDDEN', message: 'Only an Admin or Super Admin can rename a reading group.' });
     }
 
-    const groupFields = ['id', 'groupId', 'groupName', 'whatsAppLink', 'joinToken', 'isActive', 'bvslLeader', 'bvslId', 'segment', 'subFacilitatorId', 'rgsfId', 'subFacilitator'];
+    const groupFields = ['id', 'groupId', 'groupName', 'whatsAppLink', 'joinToken', 'isActive', 'bvslLeader', 'bvslId', 'bvslName', 'segment', 'subFacilitatorId', 'rgsfId', 'subFacilitator'];
     const group = await BvGroups.findOne({ filters: { groupId: input.groupId }, fields: groupFields })
       ?? await BvGroups.findOne({ id: input.groupId, fields: groupFields });
     if (!group) throw new AppError({ code: 'NOT_FOUND', message: 'Group not found' });
@@ -121,22 +146,23 @@ export default createEndpoint({
         throw new AppError({ code: 'FORBIDDEN', message: 'Only an Admin can change who facilitates a reading group.' });
       }
       const nextFacilitatorId = String(input.bvslId || '').trim();
+      const action = input.facilitatorAction || (nextFacilitatorId ? 'add' : 'remove');
       if (!nextFacilitatorId) {
-        updates.bvslLeader = '';
-        updates.bvslId = '';
-        updates.bvslName = '';
+        Object.assign(updates, facilitatorWrite([]));
       } else {
-        const facilitatorFields = ['id', 'userId', 'fullName', 'email', 'role', 'isBvFacilitator', 'isBvsl'];
-        const facilitator = await Users.findOne({ id: nextFacilitatorId, fields: facilitatorFields })
-          || await Users.findOne({ filters: { userId: nextFacilitatorId }, fields: facilitatorFields })
-          || await Users.findOne({ filters: { email: nextFacilitatorId.toLowerCase() }, fields: facilitatorFields });
-        if (!facilitator) throw new AppError({ code: 'NOT_FOUND', message: 'Selected RGF was not found' });
-        const facilitatorRole = String(facilitator.role || '').trim().replace(/[\s-]+/g, '_').toUpperCase();
-        const isRgf = facilitator.isBvFacilitator === true || facilitator.isBvsl === true || ['RGF', 'BVSL', 'FACILITATOR'].includes(facilitatorRole);
-        if (!isRgf) throw new AppError({ code: 'BAD_REQUEST', message: 'Choose someone who is already an RGF' });
-        updates.bvslLeader = facilitator.id;
-        updates.bvslId = facilitator.userId || facilitator.id;
-        updates.bvslName = facilitator.fullName || facilitator.email || '';
+        const facilitator = await resolveReadingGroupFacilitator(nextFacilitatorId);
+        const current = readGroupFacilitators(group);
+        const incoming = new Set(facilitatorIdentityKeys(facilitator));
+        const alreadyThere = (item: GroupFacilitator) =>
+          facilitatorIdentityKeys(item).some(key => incoming.has(key));
+        const next = action === 'remove'
+          ? current.filter(item => !alreadyThere(item))
+          : (current.some(alreadyThere) ? current : [...current, {
+              id: facilitator.id,
+              userId: facilitator.userId,
+              name: facilitator.name,
+            }]);
+        Object.assign(updates, facilitatorWrite(next));
       }
     }
     if (input.subFacilitatorId !== undefined) {

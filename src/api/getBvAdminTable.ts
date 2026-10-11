@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, BvAttendance, Users, Guides } from '@/lib/backend-sdk';
+import { joinFacilitatorNames, textList } from '@/lib/bvGroupFacilitators';
 
 export default createEndpoint({
   description: 'Get BV attendance matrix table — members and attendance dates, scoped to a guide',
@@ -34,7 +35,7 @@ export default createEndpoint({
 
     // Get BVSL leader names
     const bvslIds = [...new Set(
-      groups.map((g: any) => Array.isArray(g.bvslLeader) ? g.bvslLeader[0] : g.bvslLeader).filter(Boolean) as string[]
+      groups.flatMap((g: any) => textList(g.bvslLeader))
     )];
     const bvslMap: Record<string, string> = {};
     if (bvslIds.length > 0) {
@@ -49,10 +50,9 @@ export default createEndpoint({
     // Build group info map
     const groupInfoMap: Record<string, { groupName: string; bvslName: string }> = {};
     for (const g of groups) {
-      const bvslId = (Array.isArray(g.bvslLeader) ? g.bvslLeader[0] : g.bvslLeader) as string | undefined;
       groupInfoMap[g.id] = {
         groupName: (g.groupName as string) || '',
-        bvslName: bvslId ? (bvslMap[bvslId] || '') : '',
+        bvslName: joinFacilitatorNames(textList(g.bvslLeader).map(id => bvslMap[id])),
       };
     }
 

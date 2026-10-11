@@ -72,6 +72,59 @@ test('facilitator identity keeps every stored id, and a name only when no id exi
   );
 });
 
+test('one reading group can be facilitated by more than one RGF', async () => {
+  const first = {
+    id: 'SHARED-RGF-ONE-DB',
+    userId: 'SHARED-RGF-ONE',
+    email: 'shared-rgf-one@example.invalid',
+    fullName: 'First Shared RGF',
+    role: 'User',
+    status: 'Active',
+    segment: 'PW',
+    isBvFacilitator: true,
+    isBvsl: true,
+  };
+  const second = {
+    id: 'SHARED-RGF-TWO-DB',
+    userId: 'SHARED-RGF-TWO',
+    email: 'shared-rgf-two@example.invalid',
+    fullName: 'Second Shared RGF',
+    role: 'User',
+    status: 'Active',
+    segment: 'PW',
+    isBvFacilitator: true,
+    isBvsl: true,
+  };
+  const shared = {
+    id: 'MULTI-SHARED-DB',
+    groupId: 'MULTI-SHARED',
+    groupName: 'Shared Reading Group',
+    bvslLeader: [first.id, second.id],
+    bvslId: [first.userId, second.userId],
+    bvslName: [first.fullName, second.fullName],
+    segment: 'PW',
+    isActive: true,
+  };
+  await Users.create({ record: first });
+  await Users.create({ record: second });
+  await BvGroups.create({ record: shared });
+  try {
+    for (const leader of [first, second]) {
+      const listed = await getBvslGroups.execute({
+        input: { bvslId: leader.userId },
+        context: { user: leader },
+      } as never);
+      assert.ok(listed.groups.some((group: any) => group.groupId === shared.groupId));
+      const row = listed.groups.find((group: any) => group.groupId === shared.groupId);
+      assert.equal(row.bvslName, 'First Shared RGF, Second Shared RGF');
+    }
+  } finally {
+    await BvGroups.delete({ id: shared.id }).catch(() => undefined);
+    await Users.delete({ id: first.id }).catch(() => undefined);
+    await Users.delete({ id: second.id }).catch(() => undefined);
+  }
+});
+
 test('one RGF can facilitate more than one reading group', async () => {
   await Users.create({ record: rgf });
   await Users.create({ record: member });

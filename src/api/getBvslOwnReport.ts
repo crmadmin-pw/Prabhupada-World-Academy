@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createEndpoint, BvslPreachingEntries, BvSessions, BvAttendance, BvGroups, BvGroupMembers } from '@/lib/backend-sdk';
+import { groupHasFacilitator } from '@/lib/bvGroupFacilitators';
 
 export default createEndpoint({
   description: "BVSL's own BV preaching + session report (attendance queried by group+date directly)",
@@ -22,12 +23,19 @@ export default createEndpoint({
       limit: 500,
     });
 
-    // Get groups led by this BVSL
-    const { records: groups } = await BvGroups.findAll({
-      filters: { bvslLeader: userId, isActive: true } as any,
-      fields: ['id', 'groupName'],
-      limit: 50,
+    // Get groups led by this BVSL, including groups they facilitate with others.
+    const callerAliases = new Set([
+      context.user!.id,
+      context.user!.userId,
+      context.user!.email,
+      context.user!.fullName,
+    ].map(value => String(value || '').trim().toLowerCase()).filter(Boolean));
+    const { records: activeGroups } = await BvGroups.findAll({
+      filters: { isActive: true } as any,
+      fields: ['id', 'groupName', 'bvslLeader', 'bvslId', 'bvslName'],
+      limit: 1000,
     });
+    const groups = activeGroups.filter(group => groupHasFacilitator(group, callerAliases));
 
     const groupIds = groups.map(g => g.id);
     const groupMap = new Map(groups.map(g => [g.id, g.groupName || '']));

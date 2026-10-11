@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, Users, Guides, SadhanaEntries } from '@/lib/backend-sdk';
 import { getTodayIST, daysAgo } from '../lib/streakUtils';
+import { joinFacilitatorNames, textList } from '@/lib/bvGroupFacilitators';
 
 const EMPTY_SUMMARY = { totalGroups: 0, totalMembers: 0, filledToday: 0, pendingToday: 0, fillRate: 0, weeklyAvgRate: 0 };
 
@@ -41,7 +42,7 @@ export default createEndpoint({
 
     // --- Fetch BVSL leader info ---
     const bvslLeaderIds = [...new Set(
-      groups.map(g => (Array.isArray(g.bvslLeader) ? g.bvslLeader[0] : g.bvslLeader) as string).filter(Boolean)
+      groups.flatMap(g => textList(g.bvslLeader))
     )];
     const bvslMap: Record<string, { fullName: string; phone: string }> = {};
     if (bvslLeaderIds.length > 0) {
@@ -71,13 +72,13 @@ export default createEndpoint({
         targetDate,
         summary: { ...EMPTY_SUMMARY, totalGroups: groups.length },
         groups: groups.map(g => {
-          const bvslId = (Array.isArray(g.bvslLeader) ? g.bvslLeader[0] : g.bvslLeader) as string | undefined;
-          const bvslInfo = bvslId ? bvslMap[bvslId] : null;
+          const bvslPeople = textList(g.bvslLeader).map(id => bvslMap[id]).filter(Boolean);
+          const bvslInfo = bvslPeople[0];
           return {
             groupId: g.groupId || g.id,
             groupDbId: g.id,
             groupName: g.groupName || '',
-            bvslName: bvslInfo?.fullName || '',
+            bvslName: joinFacilitatorNames(bvslPeople.map(person => person.fullName)),
             bvslPhone: bvslInfo?.phone || '',
             memberCount: 0, filledCount: 0, pendingCount: 0, fillPercent: 0, weeklyAvgPercent: 0, members: [],
           };
@@ -135,8 +136,8 @@ export default createEndpoint({
 
     // --- Compute per-group stats ---
     const groupResults = groups.map(g => {
-      const bvslId = (Array.isArray(g.bvslLeader) ? g.bvslLeader[0] : g.bvslLeader) as string | undefined;
-      const bvslInfo = bvslId ? bvslMap[bvslId] : null;
+      const bvslPeople = textList(g.bvslLeader).map(id => bvslMap[id]).filter(Boolean);
+      const bvslInfo = bvslPeople[0];
       const memberIds = groupMembershipsMap[g.id] || [];
       const filledCount = memberIds.filter(uid => filledTodaySet.has(uid)).length;
       const fillPercent = memberIds.length > 0 ? Math.round((filledCount / memberIds.length) * 100) : 0;
@@ -169,7 +170,7 @@ export default createEndpoint({
         groupId: g.groupId || g.id,
         groupDbId: g.id,
         groupName: g.groupName || '',
-        bvslName: bvslInfo?.fullName || '',
+        bvslName: joinFacilitatorNames(bvslPeople.map(person => person.fullName)),
         bvslPhone: bvslInfo?.phone || '',
         memberCount: memberIds.length,
         filledCount,

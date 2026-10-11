@@ -19,3 +19,15 @@ test('approval keeps the name saved on the group when the user record is missing
   }, new Map());
   assert.equal(name, 'Asha');
 });
+
+test('a group with two RGFs shows both names', () => {
+  const asha = { id: 'asha-doc', userId: 'ASHA-1', email: 'asha@example.invalid', fullName: 'Asha' };
+  const ram = { id: 'ram-doc', userId: 'RAM-1', email: 'ram@example.invalid', fullName: 'Ram' };
+  const users = indexFacilitatorUsers([asha, ram]);
+  const name = facilitatorDisplayName({
+    bvslLeader: ['asha-doc', 'ram-doc'],
+    bvslId: ['ASHA-1', 'RAM-1'],
+    bvslName: ['Asha', 'Ram'],
+  }, users);
+  assert.equal(name, 'Asha, Ram');
+});

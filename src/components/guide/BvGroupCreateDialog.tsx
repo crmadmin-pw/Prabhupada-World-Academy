@@ -20,7 +20,7 @@ interface Props {
 }
 
 export default function BvGroupCreateDialog({ open, onClose, onCreated, guideId, eligibleMembers }: Props) {
-  const [bvslUserId, setBvslUserId] = useState('');
+  const [bvslUserIds, setBvslUserIds] = useState<string[]>([]);
   const [groupName, setGroupName] = useState('');
   const [description, setDescription] = useState('');
   const [startTime, setStartTime] = useState('');
@@ -41,57 +41,58 @@ export default function BvGroupCreateDialog({ open, onClose, onCreated, guideId,
     return q ? sorted.filter(m => m.fullName.toLowerCase().includes(q)) : sorted;
   }, [sorted, searchQuery]);
 
-  const selectedMember = eligibleMembers.find(m => m.userId === bvslUserId);
+  const selectedMembers = eligibleMembers.filter(member => bvslUserIds.includes(member.userId));
 
   const handleSelect = (userId: string) => {
-    setBvslUserId(userId);
-    setComboOpen(false);
-    setSearchQuery('');
+    setBvslUserIds(current => current.includes(userId)
+      ? current.filter(id => id !== userId)
+      : [...current, userId]);
   };
 
   const handleCreate = async () => {
-    if (!bvslUserId) { toast.error('Please select an RGF leader'); return; }
+    if (bvslUserIds.length === 0) { toast.error('Please select at least one RGF'); return; }
     if (!groupName.trim()) { toast.error('Group name is required'); return; }
     const scheduleError = meetingScheduleError(startTime, endTime, meetingDays);
     if (scheduleError) { toast.error(scheduleError); return; }
     setSaving(true);
     try {
-      await createGroupForBvsl({ 
-        bvslUserId, 
-        guideId, 
-        groupName: groupName.trim(), 
+      await createGroupForBvsl({
+        bvslUserId: bvslUserIds[0],
+        bvslUserIds,
+        guideId,
+        groupName: groupName.trim(),
         description: description.trim(),
         meetingTime: formatMeetingSchedule(startTime, endTime, meetingDays),
       });
       toast.success(`Group "${groupName}" created!`);
-      setGroupName(''); setDescription(''); setBvslUserId(''); setSearchQuery(''); setStartTime(''); setEndTime(''); setMeetingDays([]);
+      setGroupName(''); setDescription(''); setBvslUserIds([]); setSearchQuery(''); setStartTime(''); setEndTime(''); setMeetingDays([]);
       onCreated();
     } catch { toast.error('Failed to create group'); }
     finally { setSaving(false); }
   };
 
   const handleClose = () => {
-    setGroupName(''); setDescription(''); setBvslUserId(''); setSearchQuery(''); setComboOpen(false); setStartTime(''); setEndTime(''); setMeetingDays([]);
+    setGroupName(''); setDescription(''); setBvslUserIds([]); setSearchQuery(''); setComboOpen(false); setStartTime(''); setEndTime(''); setMeetingDays([]);
     onClose();
   };
 
   return (
     <Dialog open={open} onOpenChange={v => !v && handleClose()}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader><DialogTitle>Create BV Group for RGF</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>Create BV Group</DialogTitle></DialogHeader>
         <div className="space-y-4 py-2">
 
           {/* Searchable RGF Facilitator combobox */}
           <div>
-            <label className="text-sm font-medium mb-1 block">Select RGF *</label>
+            <label className="text-sm font-medium mb-1 block">Select RGFs *</label>
             <Popover open={comboOpen} onOpenChange={setComboOpen}>
               <PopoverTrigger
                 className="w-full justify-between font-normal inline-flex items-center border rounded-md px-3 py-2 text-sm bg-background hover:bg-muted select-none cursor-pointer"
               >
-                <span className={selectedMember ? 'text-foreground' : 'text-muted-foreground'}>
-                  {selectedMember
-                    ? `${selectedMember.fullName}${selectedMember.isBvsl ? ' ★' : ''}${selectedMember.ashrayLevel ? ` · ${selectedMember.ashrayLevel}` : ''}`
-                    : 'Choose a person…'}
+                <span className={`min-w-0 truncate text-left ${selectedMembers.length > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>
+                  {selectedMembers.length > 0
+                    ? selectedMembers.map(member => member.fullName).join(', ')
+                    : 'Choose one or more people…'}
                 </span>
                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
               </PopoverTrigger>
@@ -118,7 +119,7 @@ export default function BvGroupCreateDialog({ open, onClose, onCreated, guideId,
                         onClick={() => handleSelect(m.userId)}
                         className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer transition-colors"
                       >
-                        <Check className={`h-4 w-4 shrink-0 ${bvslUserId === m.userId ? 'opacity-100 text-primary' : 'opacity-0'}`} />
+                        <Check className={`h-4 w-4 shrink-0 ${bvslUserIds.includes(m.userId) ? 'opacity-100 text-primary' : 'opacity-0'}`} />
                         <span className="flex-1 text-left">
                           {m.fullName}
                           {m.isBvsl && <span className="ml-1 text-primary">★</span>}
@@ -130,7 +131,7 @@ export default function BvGroupCreateDialog({ open, onClose, onCreated, guideId,
                 </div>
                 {sorted.length > 0 && (
                   <p className="border-t px-3 py-2 text-xs text-muted-foreground">
-                    ★ = already tagged as RGF · selecting anyone auto-tags them
+                    ★ = already tagged as RGF · a group can have more than one RGF · selecting anyone auto-tags them
                   </p>
                 )}
               </PopoverContent>
