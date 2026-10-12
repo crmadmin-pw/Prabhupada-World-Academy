@@ -6,6 +6,8 @@ import {
   getAuth,
   onAuthStateChanged,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   reauthenticateWithPopup,
   GoogleAuthProvider,
   signOut,
@@ -66,6 +68,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (isFirebaseEnabled && auth) {
+      // Completes a same-tab Google sign-in when the popup was blocked.
+      getRedirectResult(auth).catch(() => undefined);
       return onAuthStateChanged(auth, async (fbUser: FirebaseUser | null) => {
         setIsLoading(true);
         try {
@@ -108,9 +112,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const loginWithRedirect = async (options?: { redirectUrl?: string }) => {
     if (isFirebaseEnabled && auth) {
       const provider = new GoogleAuthProvider();
-      // Use signInWithPopup in both Emulator and Production.
-      // This works reliably across different hosting domains.
-      await withDeadline(signInWithPopup(auth, provider), 90_000, 'Sign-in is taking too long. Please try again.');
+      // Popup works across hosting domains. If the browser blocks the popup,
+      // continue in the same tab so sign-in can still finish.
+      try {
+        await withDeadline(signInWithPopup(auth, provider), 90_000, 'Sign-in is taking too long. Please try again.');
+      } catch (err: any) {
+        const code = err?.code || '';
+        if (code !== 'auth/popup-blocked' && code !== 'auth/popup-closed-by-user') throw err;
+        await signInWithRedirect(auth, provider);
+        return;
+      }
       if (options?.redirectUrl) {
         window.location.href = options.redirectUrl;
       }
