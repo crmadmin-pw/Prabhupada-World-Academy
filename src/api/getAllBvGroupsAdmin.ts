@@ -260,10 +260,15 @@ async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<strin
     }
 
     const usersByAlias = indexFacilitatorUsers(allBvslUsers);
+    const listedFacilitators = new Map(bvslUserRecords.map((user: any) => [String(user.id), user]));
+    const isCurrentFacilitator = (user: any) => {
+      const role = String(user?.role || '').toUpperCase().replace(/[\s-]+/g, '_');
+      return user?.isBvFacilitator === true || user?.isBvsl === true || ['RGF', 'BVSL', 'FACILITATOR'].includes(role);
+    };
     const missingFacilitators = [...new Set(groupRecords.flatMap(groupFacilitatorRefs))]
       .filter(ref => !usersByAlias.has(aliasKey(ref)));
     if (missingFacilitators.length > 0) {
-      const facilitatorFields = ['id', 'userId', 'fullName', 'email'];
+      const facilitatorFields = ['id', 'userId', 'fullName', 'email', 'role', 'isBvFacilitator', 'isBvsl'];
       for (let index = 0; index < missingFacilitators.length; index += 30) {
         const batch = missingFacilitators.slice(index, index + 30);
         const [byId, byUserId, byEmail] = await Promise.all([
@@ -299,6 +304,7 @@ async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<strin
         if (!user?.id || seenUsers.has(user.id)) continue;
         seenUsers.add(user.id);
         matchedUsers.push(user);
+        if (isCurrentFacilitator(user)) listedFacilitators.set(String(user.id), user);
       }
       const bvslUser = matchedUsers[0];
       const bvslName = facilitatorDisplayName(g, usersByAlias);
@@ -326,7 +332,7 @@ async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<strin
       };
     });
 
-    const bvsls = bvslUserRecords.map(u => {
+    const bvsls = [...listedFacilitators.values()].map(u => {
       const identity = new Set([u.userId, u.id, u.email, u.fullName]
         .map(value => String(value || '').trim().toLowerCase())
         .filter(Boolean));

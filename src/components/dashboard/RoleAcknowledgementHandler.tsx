@@ -4,6 +4,7 @@ import { acknowledgeBvRoleNotice, acknowledgeBvApprovalNotice, acknowledgeBvReje
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Sparkles, XCircle, CheckCircle } from 'lucide-react';
+import { parseRoleNotice } from '@/lib/roleNoticeText';
 
 export default function RoleAcknowledgementHandler() {
   const { profile, refreshProfile } = useUserProfile();
@@ -96,10 +97,9 @@ export default function RoleAcknowledgementHandler() {
   let icon = null;
   const greeting = `Hare Krishna, ${profile.fullName || 'Devotee'}!`;
   const roleNoticeText = String((profile as any).pendingRoleNotice || '');
-  // Accept the older "responsibility" notices too, so pending notices saved
-  // before this wording change continue to display correctly.
-  const roleRemoved = /removed (?:role|responsibility):/i.test(roleNoticeText);
-  const roleAssigned = /assigned (?:role|responsibility):/i.test(roleNoticeText);
+  const roleNotice = parseRoleNotice(roleNoticeText);
+  const roleRemoved = roleNotice.removed.length > 0;
+  const roleAssigned = roleNotice.assigned.length > 0;
 
   switch (popupType) {
     case 'ashray_notice_approved':
@@ -141,7 +141,7 @@ export default function RoleAcknowledgementHandler() {
         : roleRemoved
         ? 'The following role has been removed from your account.'
         : 'The following role has been added to your account.';
-      icon = roleRemoved
+      icon = roleRemoved && !roleAssigned
         ? <XCircle className="w-12 h-12 text-destructive mx-auto" />
         : <Sparkles className="w-12 h-12 text-primary mx-auto animate-bounce" />;
       break;
@@ -171,13 +171,24 @@ export default function RoleAcknowledgementHandler() {
         </DialogHeader>
 
         {popupType === 'bv_role_notice' && (
-          <div className={`border rounded-lg p-3 text-center text-sm my-1 ${roleRemoved ? 'bg-destructive/10 border-destructive/20' : 'bg-emerald-500/10 border-emerald-500/20'}`}>
-            <p className={`font-semibold ${roleRemoved ? 'text-destructive' : 'text-emerald-700 dark:text-emerald-400'}`}>
-              {roleRemoved && roleAssigned
-                ? 'Role changes:'
-                : roleRemoved ? 'Removed role:' : 'Assigned role:'}
-            </p>
-            <p className="mt-1 whitespace-pre-line">{roleNoticeText.replace(/(removed|assigned) (?:role|responsibility):\s*/gi, '') || 'Account role updated.'}</p>
+          <div className="space-y-2 text-sm">
+            {roleNotice.assigned.map(role => (
+              <div key={`assigned-${role}`} className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-3 text-center">
+                <p className="font-semibold text-emerald-700 dark:text-emerald-400">Assigned role:</p>
+                <p className="mt-1">{role}</p>
+              </div>
+            ))}
+            {roleNotice.removed.map(role => (
+              <div key={`removed-${role}`} className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-center">
+                <p className="font-semibold text-destructive">Removed role:</p>
+                <p className="mt-1">{role}</p>
+              </div>
+            ))}
+            {roleNotice.assigned.length === 0 && roleNotice.removed.length === 0 && (
+              <div className="rounded-lg border p-3 text-center">
+                <p>{roleNoticeText || 'Account role updated.'}</p>
+              </div>
+            )}
           </div>
         )}
 

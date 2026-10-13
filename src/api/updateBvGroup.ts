@@ -37,11 +37,15 @@ function renameStoredInvite(link: string | undefined, previousName: string, next
   return undefined;
 }
 
-async function resolveReadingGroupFacilitator(rawId: string) {
+async function findFacilitatorRecord(rawId: string) {
   const facilitatorFields = ['id', 'userId', 'fullName', 'email', 'role', 'isBvFacilitator', 'isBvsl'];
-  const facilitator = await Users.findOne({ id: rawId, fields: facilitatorFields })
+  return await Users.findOne({ id: rawId, fields: facilitatorFields })
     || await Users.findOne({ filters: { userId: rawId }, fields: facilitatorFields })
     || await Users.findOne({ filters: { email: rawId.toLowerCase() }, fields: facilitatorFields });
+}
+
+async function resolveReadingGroupFacilitator(rawId: string) {
+  const facilitator = await findFacilitatorRecord(rawId);
   if (!facilitator) throw new AppError({ code: 'NOT_FOUND', message: 'Selected RGF was not found' });
   const facilitatorRole = String(facilitator.role || '').trim().replace(/[\s-]+/g, '_').toUpperCase();
   const isRgf = facilitator.isBvFacilitator === true || facilitator.isBvsl === true || ['RGF', 'BVSL', 'FACILITATOR'].includes(facilitatorRole);
@@ -149,19 +153,31 @@ export default createEndpoint({
       const action = input.facilitatorAction || (nextFacilitatorId ? 'add' : 'remove');
       if (!nextFacilitatorId) {
         Object.assign(updates, facilitatorWrite([]));
+      } else if (action === 'remove') {
+        // A person who was just changed from RGF to RGSF is no longer an RGF,
+        // but their id can still be stored on the group. Removal has to match
+        // that stored id without requiring the old role.
+        const person = await findFacilitatorRecord(nextFacilitatorId);
+        const aliases = new Set(
+          [nextFacilitatorId, person?.id, person?.userId, person?.email, person?.fullName]
+            .map(value => String(value || '').trim().toLowerCase())
+            .filter(Boolean),
+        );
+        const next = readGroupFacilitators(group).filter(item =>
+          !facilitatorIdentityKeys(item).some(key => aliases.has(key)),
+        );
+        Object.assign(updates, facilitatorWrite(next));
       } else {
         const facilitator = await resolveReadingGroupFacilitator(nextFacilitatorId);
         const current = readGroupFacilitators(group);
         const incoming = new Set(facilitatorIdentityKeys(facilitator));
         const alreadyThere = (item: GroupFacilitator) =>
           facilitatorIdentityKeys(item).some(key => incoming.has(key));
-        const next = action === 'remove'
-          ? current.filter(item => !alreadyThere(item))
-          : (current.some(alreadyThere) ? current : [...current, {
-              id: facilitator.id,
-              userId: facilitator.userId,
-              name: facilitator.name,
-            }]);
+        const next = current.some(alreadyThere) ? current : [...current, {
+          id: facilitator.id,
+          userId: facilitator.userId,
+          name: facilitator.name,
+        }];
         Object.assign(updates, facilitatorWrite(next));
       }
     }

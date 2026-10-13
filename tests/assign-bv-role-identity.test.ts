@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { Users } from '../src/lib/app-backend-sdk';
+import { Users, BvGroups } from '../src/lib/app-backend-sdk';
 import assignBvRole from '../src/api/assignBvRole';
 
 const parent = {
@@ -97,4 +97,51 @@ test('a legacy profile whose only id is the member number is updated in place', 
   } as never);
 
   assert.deepEqual(updates.map(update => update.id), ['USER-088']);
+});
+
+test('changing an RGF to RGSF removes that person from the reading group', async (t) => {
+  const parentRgf = {
+    id: 'parent-rgf',
+    userId: 'PARENT-RGF',
+    email: 'parent-rgf@example.test',
+    fullName: 'Vedanarayana Dasa',
+    role: 'User',
+    isBvFacilitator: true,
+    isBvsl: true,
+  };
+  const former = {
+    id: 'former-doc',
+    userId: 'FORMER-1',
+    email: 'former@example.test',
+    fullName: 'F20190150H',
+    role: 'User',
+    isBvFacilitator: true,
+    isBvsl: true,
+  };
+  const group = {
+    id: 'vdn-doc',
+    bvslLeader: ['parent-rgf', 'former-doc'],
+    bvslId: ['PARENT-RGF', 'FORMER-1'],
+    bvslName: ['Vedanarayana Dasa', 'F20190150H'],
+  };
+  const updates = mockDirectory(t, [former, parentRgf]);
+  const groupUpdates: Array<{ id: string; record: any }> = [];
+  t.mock.method(BvGroups, 'findAll', async () => ({ records: [group, { id: 'other', bvslLeader: 'someone-else', bvslId: 'someone-else', bvslName: 'Someone Else' }], hasMore: false }));
+  t.mock.method(BvGroups, 'update', async (change: { id: string; record: any }) => {
+    groupUpdates.push(change);
+    return change;
+  });
+
+  await assignBvRole.execute({
+    input: { userId: 'FORMER-1', role: 'SUB_FACILITATOR', parentId: 'PARENT-RGF' },
+    context: superAdmin,
+  } as never);
+
+  assert.equal(updates[0].record.isBvFacilitator, false);
+  assert.equal(updates[0].record.isBvsl, false);
+  assert.equal(updates[0].record.isBvSubFacilitator, true);
+  assert.deepEqual(groupUpdates.map(change => change.id), ['vdn-doc']);
+  assert.equal(groupUpdates[0].record.bvslLeader, 'parent-rgf');
+  assert.equal(groupUpdates[0].record.bvslId, 'PARENT-RGF');
+  assert.equal(groupUpdates[0].record.bvslName, 'Vedanarayana Dasa');
 });

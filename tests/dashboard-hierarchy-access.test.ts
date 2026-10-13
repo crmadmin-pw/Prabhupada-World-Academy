@@ -353,6 +353,39 @@ test('preaching analytics aggregate only the current admin hierarchy and super a
   assert.ok(!ignored.groups.some((group: any) => group.groupName === 'Group B'));
 });
 
+test('the group RGF list includes a facilitator of a visible group who reports to another admin', async t => {
+  const outside = member('outside-rgf', {
+    isBvFacilitator: true,
+    isBvsl: true,
+    bvReportingAdminId: otherAdmin.id,
+    fullName: 'Outside RGF',
+  });
+  const previousUsers = fixture.Users;
+  const previousGroups = fixture.BvGroups;
+  fixture.Users = [...users, outside];
+  fixture.BvGroups = [...groups, {
+    id: 'group-outside',
+    groupId: 'public-group-outside',
+    groupName: 'Outside Led',
+    segment: 'PW',
+    isActive: true,
+    guide: admin.id,
+    bvslLeader: outside.id,
+    bvslId: outside.userId,
+    bvslName: outside.fullName,
+  }];
+  t.after(() => {
+    fixture.Users = previousUsers;
+    fixture.BvGroups = previousGroups;
+  });
+  mockDatabase(t);
+
+  const result = await call(getAllBvGroupsAdmin, { guideId: admin.id });
+  assert.ok(result.groups.some((group: any) => group.groupName === 'Outside Led'));
+  assert.ok(result.bvsls.some((row: any) => row.email === outside.email));
+  assert.ok(!result.bvsls.some((row: any) => row.fullName === 'rgf-b'));
+});
+
 test('FOLK administrators cannot read another guide users or residency statistics', async t => {
   const folkA = member('folk-a', { role: 'GUIDE', segment: 'FOLK', folkResidencies: ['res-a'] });
   const folkB = member('folk-b', { role: 'GUIDE', segment: 'FOLK', folkResidencies: ['res-b'] });

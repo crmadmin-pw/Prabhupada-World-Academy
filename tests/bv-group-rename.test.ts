@@ -138,3 +138,30 @@ test('an admin can add a second RGF to a group and remove one', async t => {
   );
   assert.equal(stores.BvGroups[1].bvslLeader, 'punya-doc');
 });
+
+test('an admin can remove a former RGF who is still listed on the group', async t => {
+  const stores = installMemory(t, {
+    BvGroups: [{
+      id: 'vdn-doc',
+      groupId: 'vdn',
+      groupName: 'VDN Group',
+      bvslLeader: ['dasa-doc', 'former-doc'],
+      bvslId: ['dasa', 'former'],
+      bvslName: ['Vedanarayana Dasa', 'F20190150H'],
+    }],
+    Users: [
+      { id: 'dasa-doc', userId: 'dasa', fullName: 'Vedanarayana Dasa', email: 'dasa@example.invalid', role: 'User', isBvFacilitator: true, isBvsl: true },
+      { id: 'former-doc', userId: 'former', fullName: 'F20190150H', email: 'former@example.invalid', role: 'User', isBvFacilitator: false, isBvsl: false, isBvSubFacilitator: true },
+    ],
+    BvGroupMembers: [],
+  });
+
+  await updateBvGroup.execute({
+    input: { groupId: 'vdn', bvslId: 'former', facilitatorAction: 'remove' },
+    context: { user: admin },
+  } as never);
+
+  assert.equal(stores.BvGroups[0].bvslLeader, 'dasa-doc');
+  assert.equal(stores.BvGroups[0].bvslId, 'dasa');
+  assert.equal(stores.BvGroups[0].bvslName, 'Vedanarayana Dasa');
+});

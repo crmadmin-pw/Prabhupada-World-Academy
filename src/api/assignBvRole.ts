@@ -2,6 +2,12 @@ import { z } from 'zod';
 import { createEndpoint, Users, BvGroups, BvGroupMembers, AppError } from '@/lib/backend-sdk';
 import { serverCacheInvalidate } from '../lib/serverCache';
 import { publishUsersRevision } from '../lib/publishUsersRevision';
+import {
+  facilitatorIdentityKeys,
+  facilitatorWrite,
+  groupHasFacilitator,
+  readGroupFacilitators,
+} from '@/lib/bvGroupFacilitators';
 
 const referenceValues = (value: unknown): string[] => {
   if (Array.isArray(value)) return value.flatMap(referenceValues);
@@ -58,6 +64,27 @@ async function resolveMemberRecord(key: string): Promise<any | null> {
     chosen = chooseMemberRecord(collected);
   }
   return chosen;
+}
+
+/** Drop a person from every reading group that still lists them as an RGF. */
+async function releaseFacilitatorAssignments(user: any) {
+  const aliases = new Set(
+    [user?.id, user?.userId, user?.email, user?.fullName]
+      .map(value => String(value || '').trim().toLowerCase())
+      .filter(Boolean),
+  );
+  if (aliases.size === 0) return;
+  const { records } = await BvGroups.findAll({
+    fields: ['id', 'bvslLeader', 'bvslId', 'bvslName'],
+    limit: 500,
+  });
+  const releases = (records || []).filter((group: any) => groupHasFacilitator(group, aliases));
+  await Promise.all(releases.map((group: any) => {
+    const remaining = readGroupFacilitators(group).filter(item =>
+      !facilitatorIdentityKeys(item).some(key => aliases.has(key)),
+    );
+    return BvGroups.update({ id: group.id, record: facilitatorWrite(remaining) });
+  }));
 }
 
 export default createEndpoint({
@@ -392,6 +419,13 @@ export default createEndpoint({
       updates.role = 'Admin';
     } else {
       updates.role = 'User';
+    }
+
+    // The group stores its own RGF list. Clearing the person's facilitator
+    // flags must take them off that list, or the group still names them as an RGF.
+    const remainsFacilitator = input.isBvMember !== false && !!(updates.isBvFacilitator || updates.isBvsl);
+    if (!remainsFacilitator) {
+      await releaseFacilitatorAssignments(targetUser);
     }
 
     await Users.update({ id: dbId, record: updates });
