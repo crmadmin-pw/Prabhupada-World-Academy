@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, Users, AppError } from '@/lib/backend-sdk';
+import { assertUniqueBvGroupName, bvGroupDepartment } from '@/lib/bvGroupName';
 
 function generateToken(): string {
   const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
@@ -54,14 +55,19 @@ export default createEndpoint({
       bvslDbId = context.user.id;
     }
 
+    const department = bvGroupDepartment(context.user.segment);
+    const groupName = String(input.groupName || '').trim().replace(/\s+/g, ' ');
+    await assertUniqueBvGroupName(groupName, department);
+
     const joinToken = generateToken();
     const appUrl = process.env.APP_APP_URL ?? 'https://pwac.app';
     const joinUrl = `${appUrl}/join-group?token=${joinToken}`;
-    const whatsAppLink = `https://wa.me/?text=${encodeURIComponent(`Hare Krishna!\n\nYou are invited to join *${input.groupName}*.\n\nClick to join: ${joinUrl}`)}`;
+    const whatsAppLink = `https://wa.me/?text=${encodeURIComponent(`Hare Krishna!\n\nYou are invited to join *${groupName}*.\n\nClick to join: ${joinUrl}`)}`;
 
     const group = await BvGroups.create({
       record: {
-        groupName: input.groupName,
+        groupName,
+        segment: department || undefined,
         bvslLeader: bvslDbId || undefined,
         guide: guideId || undefined,
         description: input.description || '',

@@ -71,9 +71,9 @@ export default function GroupsTab({ guideId }: GroupsTabProps) {
       setNewGroupDescription('');
       setCreateDialogOpen(false);
       loadData();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to create group:', error);
-      toast.error('Failed to create group');
+      toast.error(error?.message || 'Failed to create group');
     }
   };
 

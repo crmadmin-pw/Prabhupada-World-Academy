@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createEndpoint, BvGroups, Users, Guides, AppError } from '@/lib/backend-sdk';
 import { facilitatorWrite, type GroupFacilitator } from '@/lib/bvGroupFacilitators';
 import { nameForWhatsAppInvite } from '@/lib/userUtils';
+import { assertUniqueBvGroupName, bvGroupDepartment } from '@/lib/bvGroupName';
 
 function generateToken(): string {
   const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
@@ -51,15 +52,22 @@ export default createEndpoint({
 
     const requestedIds = [...new Set([input.bvslUserId, ...(input.bvslUserIds || [])].map((id: string) => id.trim()).filter(Boolean))];
     const facilitators: GroupFacilitator[] = [];
+    const departments = new Set<'PW' | 'FOLK'>();
     for (const userId of requestedIds) {
-      const bvslUser = await Users.findOne({ id: userId, fields: ['id', 'userId', 'fullName'] });
+      const bvslUser = await Users.findOne({ id: userId, fields: ['id', 'userId', 'fullName', 'segment', 'isPrabhupadaWorldUser'] });
       if (!bvslUser) throw new AppError({ code: 'NOT_FOUND', message: 'BVSL user not found' });
       facilitators.push({
         id: String(bvslUser.id),
         userId: String(bvslUser.userId || bvslUser.id),
         name: String(bvslUser.fullName || ''),
       });
+      const personDepartment = bvGroupDepartment(bvslUser.segment) || (bvslUser.isPrabhupadaWorldUser === true ? 'PW' : null);
+      if (personDepartment) departments.add(personDepartment);
     }
+
+    const department = departments.size === 1 ? [...departments][0] : bvGroupDepartment(context.user?.segment);
+    const groupName = String(input.groupName || '').trim().replace(/\s+/g, ' ');
+    await assertUniqueBvGroupName(groupName, department);
 
     const joinToken = generateToken();
     const joinUrl = `${process.env.APP_APP_URL}/join-group?token=${joinToken}`;
@@ -67,11 +75,12 @@ export default createEndpoint({
       .map(person => nameForWhatsAppInvite(person.name))
       .filter(Boolean)
       .join(' and ');
-    const inviteText = `Hare Krishna!\n\nYou are invited to join *${input.groupName}*${leaderName ? ` led by *${leaderName}*` : ''}.\n\nClick to join: ${joinUrl}`;
+    const inviteText = `Hare Krishna!\n\nYou are invited to join *${groupName}*${leaderName ? ` led by *${leaderName}*` : ''}.\n\nClick to join: ${joinUrl}`;
 
     const group = await BvGroups.create({
       record: {
-        groupName: input.groupName,
+        groupName,
+        segment: department || undefined,
         ...facilitatorWrite(facilitators),
         guide: guideDbId,
         description: input.description || '',

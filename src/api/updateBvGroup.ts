@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { createEndpoint, BvGroups, BvGroupMembers, Users, AppError } from '@/lib/backend-sdk';
+import { createEndpoint, BvGroups, BvGroupMembers, Guides, Users, AppError } from '@/lib/backend-sdk';
 import { bvGroupFacilitatorAliases, bvUserAliases } from '@/lib/bvGroupMemberScope';
 import {
   facilitatorIdentityKeys,
@@ -9,16 +9,61 @@ import {
 } from '@/lib/bvGroupFacilitators';
 import { isHierarchyAdmin } from '@/lib/hierarchyUtils';
 import { generateBvJoinToken } from '@/lib/bvJoinToken';
+import { assertUniqueBvGroupName, bvGroupDepartment } from '@/lib/bvGroupName';
 import { serverCacheInvalidate } from '../lib/serverCache';
 
 function firstValue(value: unknown): string {
   return Array.isArray(value) ? String(value[0] || '') : String(value || '');
 }
 
-function canMintJoinToken(user: any, group: any) {
+function rawFacilitatorRefs(group: any): string[] {
+  return [group?.bvslLeader, group?.bvslId, group?.subFacilitatorId, group?.rgsfId, group?.subFacilitator]
+    .flatMap(value => Array.isArray(value) ? value : [value])
+    .map(value => String(value ?? '').trim())
+    .filter(Boolean);
+}
+
+function sharesAlias(left: Iterable<string>, right: Set<string>): boolean {
+  for (const alias of left) {
+    if (right.has(alias)) return true;
+  }
+  return false;
+}
+
+/** Older groups stored the RGF as a display name or a Guides id. The groups
+ * list already treats those as this person's groups, so invite minting does too. */
+async function linkedFacilitatorAliases(rawId: string): Promise<string[]> {
+  const person = await findFacilitatorRecord(rawId);
+  if (person) return bvUserAliases(person);
+
+  const guideFields = ['id', 'guideId', 'email', 'fullName'];
+  const guide = await Guides.findOne({ id: rawId, fields: guideFields })
+    || await Guides.findOne({ filters: { guideId: rawId }, fields: guideFields });
+  if (!guide) return [];
+
+  const aliases = [guide.id, guide.guideId, guide.email, guide.fullName]
+    .map(value => String(value || '').trim().toLowerCase())
+    .filter(Boolean);
+  if (guide.email) {
+    const linked = await findFacilitatorRecord(String(guide.email));
+    if (linked) aliases.push(...bvUserAliases(linked));
+  }
+  return aliases;
+}
+
+async function canMintJoinToken(user: any, group: any): Promise<boolean> {
   if (isHierarchyAdmin(user)) return true;
   const aliases = new Set(bvUserAliases(user));
-  return bvGroupFacilitatorAliases(group).some(alias => aliases.has(alias));
+  const stored = [
+    ...bvGroupFacilitatorAliases(group),
+    ...readGroupFacilitators(group).flatMap(item => facilitatorIdentityKeys(item)),
+  ];
+  if (sharesAlias(stored, aliases)) return true;
+
+  for (const ref of rawFacilitatorRefs(group)) {
+    if (sharesAlias(await linkedFacilitatorAliases(ref), aliases)) return true;
+  }
+  return false;
 }
 
 function canRenameReadingGroup(user: any) {
@@ -137,7 +182,10 @@ export default createEndpoint({
       throw new AppError({ code: 'BAD_REQUEST', message: 'Please enter a group name' });
     }
     const nameChanged = nextName !== undefined && nextName !== previousName;
-    if (nameChanged) updates.groupName = nextName;
+    if (nameChanged) {
+      await assertUniqueBvGroupName(nextName, bvGroupDepartment(group.segment), [group.id, group.groupId]);
+      updates.groupName = nextName;
+    }
     if (input.description !== undefined) updates.description = input.description;
     if (input.whatsAppLink !== undefined) updates.whatsAppLink = input.whatsAppLink;
     else if (nameChanged) {
@@ -199,7 +247,7 @@ export default createEndpoint({
       if (group.isActive === false) {
         throw new AppError({ code: 'BAD_REQUEST', message: 'This group is no longer active' });
       }
-      if (!canMintJoinToken(context?.user, group)) {
+      if (!(await canMintJoinToken(context?.user, group))) {
         throw new AppError({ code: 'FORBIDDEN', message: 'Only this group\'s RGF or an admin can create an invite link' });
       }
       joinToken = String(group.joinToken || '').trim() || generateBvJoinToken();

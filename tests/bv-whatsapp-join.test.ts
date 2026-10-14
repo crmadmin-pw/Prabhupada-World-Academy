@@ -68,6 +68,7 @@ test('an RGF can mint a stable invite token and a member cannot', async t => {
   const stores = installMemory(t, {
     BvGroups: [{ id: 'group-doc', groupId: 'group-public', groupName: 'Gauranga 1.30', bvslLeader: 'rgf-doc', segment: 'PW', isActive: true }],
     Users: [],
+    Guides: [],
     BvGroupMembers: [],
   });
 
@@ -90,6 +91,31 @@ test('an RGF can mint a stable invite token and a member cannot', async t => {
     context: { user: rgf },
   } as never);
   assert.equal(again.joinToken, 'keep-me');
+});
+
+test('an RGF stored only by name or guide id can still mint an invite', async t => {
+  const stores = installMemory(t, {
+    BvGroups: [
+      { id: 'named-group', groupId: 'named-public', groupName: 'Gauranga', bvslName: 'Ramya Devi Dasi', segment: 'PW', isActive: true },
+      { id: 'guide-group', groupId: 'guide-public', groupName: 'Gauranga 1:30', bvslLeader: 'guide-doc', bvslName: 'Ramya Devi Dasi', segment: 'PW', isActive: true },
+    ],
+    Users: [],
+    Guides: [{ id: 'guide-doc', guideId: 'guide-public-id', email: 'ramya@example.test', fullName: 'Ramya Devi Dasi' }],
+    BvGroupMembers: [],
+  });
+
+  const byName = await updateBvGroup.execute({
+    input: { groupId: 'named-public', ensureJoinToken: true },
+    context: { user: { ...rgf, email: 'ramya@example.test' } },
+  } as never);
+  assert.equal(String(byName.joinToken).length, 16);
+  assert.equal(stores.BvGroups[0].joinToken, byName.joinToken);
+
+  const byGuide = await updateBvGroup.execute({
+    input: { groupId: 'guide-public', ensureJoinToken: true },
+    context: { user: { id: 'other-doc', userId: 'other-public', email: 'ramya@example.test', fullName: 'Someone Else', role: 'User', isBvFacilitator: true } },
+  } as never);
+  assert.equal(String(byGuide.joinToken).length, 16);
 });
 
 test('opening an invite adds the person to that Bhakti Vriksha group', async t => {

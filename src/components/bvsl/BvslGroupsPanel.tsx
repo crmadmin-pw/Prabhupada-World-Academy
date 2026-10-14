@@ -41,7 +41,7 @@ function EditGroupDialog({ group, onSave }: { group: Group; onSave: () => void }
       toast.success('Group updated!');
       setOpen(false);
       onSave();
-    } catch { toast.error('Failed to update group'); }
+    } catch (err: any) { toast.error(err?.message || 'Failed to update group'); }
     finally { setSaving(false); }
   };
 
@@ -130,6 +130,12 @@ export default function BvslGroupsPanel({
   const [creating, setCreating] = useState(false);
   const [invitingId, setInvitingId] = useState<string | null>(null);
 
+  const viewerAliases = new Set(
+    [profile?.userId, profile?.fullName, (profile as { email?: string; id?: string } | null)?.email, (profile as { id?: string } | null)?.id]
+      .map(value => String(value || '').trim().toLowerCase())
+      .filter(Boolean),
+  );
+
   const canManageGroups = !readOnly && !!(
     (profile?.role as string) === 'SUPER_GUIDE' ||
     (profile?.role as string) === 'GUIDE' ||
@@ -148,7 +154,7 @@ export default function BvslGroupsPanel({
       toast.success('Group created!');
       setOpen(false); setName(''); setDesc('');
       onRefresh();
-    } catch { toast.error('Failed to create group'); }
+    } catch (err: any) { toast.error(err?.message || 'Failed to create group'); }
     finally { setCreating(false); }
   };
 
@@ -254,7 +260,9 @@ export default function BvslGroupsPanel({
                     )}
                   </div>
 
-                  {/* WhatsApp Invite Button */}
+                  {/* WhatsApp Invite Button. Other groups on this page can belong
+                      to a different RGF; only this group's facilitators can mint a link. */}
+                  {((g.facilitatorIds || []).length === 0 || (g.facilitatorIds || []).some(id => viewerAliases.has(String(id).trim().toLowerCase())) || canManageGroups) && (
                   <Button
                     type="button"
                     size="sm"
@@ -320,6 +328,7 @@ export default function BvslGroupsPanel({
                     )}
                     {invitingId === g.groupId ? 'Opening…' : 'WhatsApp Invite'}
                   </Button>
+                  )}
                 </div>
               </div>
             </Card>

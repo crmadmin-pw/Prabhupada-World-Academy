@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createEndpoint, BvGroups, Users, Guides, AppError } from '@/lib/backend-sdk';
 import { facilitatorWrite, type GroupFacilitator } from '@/lib/bvGroupFacilitators';
 import { generateBvJoinToken } from '@/lib/bvJoinToken';
+import { assertUniqueBvGroupName, bvGroupDepartment } from '@/lib/bvGroupName';
 import { serverCacheInvalidate } from '../lib/serverCache';
 import { publishCollectionRevision } from '../lib/publishUsersRevision';
 
@@ -104,6 +105,8 @@ export default createEndpoint({
       context.user.userId ||
       context.user.id;
     const storedFacilitators = facilitatorWrite(resolved.map(match => match.stored));
+    const department = bvGroupDepartment(segment);
+    await assertUniqueBvGroupName(input.groupName, department);
 
     const groupId = `BV-GROUP-${Date.now()}`;
     const newGroup = {

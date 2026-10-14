@@ -67,7 +67,7 @@ export default function BvGroupCreateDialog({ open, onClose, onCreated, guideId,
       toast.success(`Group "${groupName}" created!`);
       setGroupName(''); setDescription(''); setBvslUserIds([]); setSearchQuery(''); setStartTime(''); setEndTime(''); setMeetingDays([]);
       onCreated();
-    } catch { toast.error('Failed to create group'); }
+    } catch (err: any) { toast.error(err?.message || 'Failed to create group'); }
     finally { setSaving(false); }
   };
 
