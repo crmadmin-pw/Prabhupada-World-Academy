@@ -9,6 +9,8 @@ import {
 import { Calendar, LogIn, Trash2, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { deleteAccount } from '@/lib/endpoints-sdk';
+import { useUserProfile } from '@/contexts/UserProfileContext';
+import { getDepartmentLandingUrl } from '@/lib/userDashboardRoutes';
 import { toast } from 'sonner';
 
 interface Props {
@@ -24,6 +26,7 @@ function safeDate(val: unknown, includeTime = false): string {
 
 export default function AccountCard({ createdAt, lastLoginAt }: Props) {
   const { logout } = useAuth();
+  const { profile } = useUserProfile();
   const [deleting, setDeleting] = useState(false);
 
   const handleDelete = () => {
@@ -31,8 +34,9 @@ export default function AccountCard({ createdAt, lastLoginAt }: Props) {
     void deleteAccount({})
       .then(() => {
         toast.success('Your account has been deleted.');
-        void logout({ returnTo: '/' });
-        window.setTimeout(() => window.location.replace('/'), 1500);
+        const returnTo = getDepartmentLandingUrl(profile);
+        void logout({ returnTo });
+        window.setTimeout(() => window.location.replace(returnTo), 1500);
       })
       .catch((err: any) => {
         toast.error(err?.message || 'Failed to delete your account');

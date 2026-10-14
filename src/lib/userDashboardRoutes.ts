@@ -67,7 +67,9 @@ export function getRememberedDepartmentLandingPath(): string {
     if (department === 'PW') return '/pw';
     if (department === 'FOLK') return '/';
   } catch {}
-  return window.location.pathname.startsWith('/pw') ? '/pw' : '/';
+  const path = window.location.pathname;
+  if (path === '/pw' || path.startsWith('/pw/') || path.startsWith('/pw-admin') || path.startsWith('/user/pw')) return '/pw';
+  return '/';
 }
 
 export function getDepartmentLandingUrl(profile?: DepartmentProfile | null): string {

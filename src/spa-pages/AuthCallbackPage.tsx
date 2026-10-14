@@ -10,8 +10,11 @@ import { resolveUserLogin } from '@/lib/endpoints-sdk';
 import { readAccountLinkHold, writeAccountLinkHold } from '@/lib/accountLinkHold';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { motion } from 'framer-motion';
+import { applyRegistrationFlowFromSearch, isPwRegistrationFlow, registrationPath } from '@/lib/registrationDepartment';
+import { getDepartmentLandingUrl } from '@/lib/userDashboardRoutes';
 
 export default function AuthCallbackPage() {
+  if (typeof window !== 'undefined') applyRegistrationFlowFromSearch(window.location.search);
   const { user, isLoading, loginWithRedirect, logout } = useAuth();
   const navigate = useNavigate();
   const { forceSetProfile } = useUserProfile();
@@ -93,7 +96,7 @@ export default function AuthCallbackPage() {
         navigate('/account-link-pending', { replace: true });
       } else if (result.action === 'register') {
         writeAccountLinkHold(null);
-        navigate('/register', { replace: true });
+        navigate(registrationPath(isPwRegistrationFlow(window.location.search) ? 'PW' : 'FOLK'), { replace: true });
       }
     } catch (err) {
       if (callIdRef.current !== myCallId) return;
@@ -186,7 +189,7 @@ export default function AuthCallbackPage() {
                   <Button className="w-full h-10 font-semibold cursor-pointer shadow-sm text-sm" onClick={() => { window.location.href = '/dashboard'; }}>
                     Go to Dashboard Now
                   </Button>
-                  <Button variant="outline" className="w-full h-10 font-semibold cursor-pointer text-sm" onClick={() => logout({ returnTo: window.location.origin })}>
+                  <Button variant="outline" className="w-full h-10 font-semibold cursor-pointer text-sm" onClick={() => logout({ returnTo: getDepartmentLandingUrl() })}>
                     Logout &amp; Start Over
                   </Button>
                 </div>
@@ -237,7 +240,7 @@ export default function AuthCallbackPage() {
               <Button variant="outline" className="w-full" onClick={() => { window.location.href = '/dashboard'; }}>
                 Go to Dashboard
               </Button>
-              <Button variant="outline" className="w-full" onClick={() => logout({ returnTo: window.location.origin })}>
+              <Button variant="outline" className="w-full" onClick={() => logout({ returnTo: getDepartmentLandingUrl() })}>
                 Logout &amp; Start Over
               </Button>
             </div>
@@ -249,7 +252,7 @@ export default function AuthCallbackPage() {
 
   // ── Not logged in ─────────────────────────────────────────────────────────
   if (!user) {
-    loginWithRedirect({ redirectUrl: `${window.location.origin}/auth-callback` });
+    loginWithRedirect({ redirectUrl: `${window.location.origin}/auth-callback${window.location.search}` });
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Loader2 className="w-8 h-8 text-muted-foreground animate-spin" />
@@ -276,7 +279,7 @@ export default function AuthCallbackPage() {
           <Button className="w-full" onClick={() => { window.location.href = '/dashboard'; }}>
             Continue to Dashboard
           </Button>
-          <Button variant="outline" className="w-full" onClick={() => logout({ returnTo: window.location.origin })}>
+          <Button variant="outline" className="w-full" onClick={() => logout({ returnTo: getDepartmentLandingUrl() })}>
             Logout &amp; Start Over
           </Button>
         </CardContent>

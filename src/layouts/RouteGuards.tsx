@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth-sdk';
 import { readAccountLinkHold } from '@/lib/accountLinkHold';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { AlertTriangle, WifiOff } from 'lucide-react';
+import { getRememberedDepartmentLandingPath } from '@/lib/userDashboardRoutes';
 
 /** Redirect users with any profile status away from /register */
 export function GuestOnlyRoute({ children }: { children: React.ReactNode }) {
@@ -71,7 +72,7 @@ export function StatusRoute({
   if (authLoading || profileLoading) return null;
   
   // Not authenticated at all — go to landing
-  if (!user) return <Navigate to="/" replace />;
+  if (!user) return <Navigate to={getRememberedDepartmentLandingPath()} replace />;
 
   if (profileError) {
     return (

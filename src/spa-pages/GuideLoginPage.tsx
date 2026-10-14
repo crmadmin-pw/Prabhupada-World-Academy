@@ -97,7 +97,7 @@ export default function GuideLoginPage() {
               }}>
                 Try Again
               </Button>
-              <Button variant="outline" className="w-full" onClick={() => logout({ returnTo: window.location.origin })}>
+              <Button variant="outline" className="w-full" onClick={() => logout({ returnTo: '/' })}>
                 Logout &amp; Try Different Account
               </Button>
               <Button variant="link" className="w-full" onClick={() => navigate('/')}>

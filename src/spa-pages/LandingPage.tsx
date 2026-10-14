@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useUserProfile } from '@/contexts/UserProfileContext';
+import { authCallbackPath, rememberRegistrationDepartment } from '@/lib/registrationDepartment';
 
 const PWA_LOGO = '/logo.png';
 
@@ -15,23 +16,19 @@ export default function LandingPage({ isPw = false }: { isPw?: boolean }) {
   const [signingIn, setSigningIn] = useState(false);
   const canCreateNewPwAccount = isPw && !profileLoading && profile?.status === 'REJECTED';
 
-  useEffect(() => {
-    if (isPw) {
-      localStorage.setItem('pwa_is_pw_flow', 'true');
-    } else {
-      localStorage.removeItem('pwa_is_pw_flow');
-    }
-  }, [isPw]);
+  const department = isPw ? 'PW' : 'FOLK';
+  if (typeof window !== 'undefined') rememberRegistrationDepartment(department);
 
   useEffect(() => {
-    if (user && !profileLoading && !canCreateNewPwAccount) navigate('/auth-callback', { replace: true });
-  }, [user, profileLoading, canCreateNewPwAccount, navigate]);
+    if (user && !profileLoading && !canCreateNewPwAccount) navigate(authCallbackPath(department), { replace: true });
+  }, [user, profileLoading, canCreateNewPwAccount, navigate, department]);
 
   const handleGoogleSignIn = async () => {
     setError(null);
     setSigningIn(true);
+    rememberRegistrationDepartment(department);
     try {
-      const redirectUrl = `${window.location.origin}/auth-callback`;
+      const redirectUrl = `${window.location.origin}${authCallbackPath(department)}`;
       await loginWithRedirect({ redirectUrl });
     } catch (err: any) {
       setError(err?.message || 'Failed to sign in with Google');

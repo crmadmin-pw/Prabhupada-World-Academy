@@ -6,6 +6,8 @@ import { readAccountLinkHold, writeAccountLinkHold, type AccountLinkHoldAction }
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, ShieldCheck } from 'lucide-react';
+import { getDepartmentLandingUrl, getRememberedDepartmentLandingPath } from '@/lib/userDashboardRoutes';
+import { registrationPath, isPwRegistrationFlow } from '@/lib/registrationDepartment';
 
 export default function AccountLinkPendingPage() {
   const { user, isLoading, logout } = useAuth();
@@ -16,7 +18,7 @@ export default function AccountLinkPendingPage() {
   useEffect(() => {
     if (isLoading) return;
     if (!user?.email) {
-      navigate('/', { replace: true });
+      navigate(getRememberedDepartmentLandingPath(), { replace: true });
       return;
     }
     const email = user.email;
@@ -33,7 +35,7 @@ export default function AccountLinkPendingPage() {
         writeAccountLinkHold(null);
         if (result.action === 'route' && result.route) navigate(result.route, { replace: true });
         else if (result.action === 'guide_email_detected') navigate('/guide-login', { replace: true });
-        else navigate('/register', { replace: true });
+        else navigate(registrationPath(isPwRegistrationFlow(window.location.search) ? 'PW' : 'FOLK'), { replace: true });
       })
       .catch(() => {
         if (!cancelled) setHold(current => current || readAccountLinkHold());
@@ -69,7 +71,7 @@ export default function AccountLinkPendingPage() {
           </p>
           <div className="flex flex-col gap-2 pt-2">
             <Button variant="outline" onClick={() => window.location.reload()}>Check again</Button>
-            <Button variant="outline" onClick={() => logout({ returnTo: window.location.origin })}>Log out</Button>
+            <Button variant="outline" onClick={() => logout({ returnTo: getDepartmentLandingUrl() })}>Log out</Button>
           </div>
         </CardContent>
       </Card>

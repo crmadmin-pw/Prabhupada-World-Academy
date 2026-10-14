@@ -1,6 +1,6 @@
 import { useReactiveLoader } from '@/hooks/useReactiveLoader';
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DateTimePicker } from '@/components/ui/date-time-picker';
@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { ArrowLeft, AlertCircle, Loader2, Link as LinkIcon, CheckCircle2 } from 'lucide-react';
 import { getGuides, registerUser, checkGuideEmail, getAllResidencies, GetGuidesOutputType, GetAllResidenciesOutputType } from '@/lib/endpoints-sdk';
 import { acceptStoredGroupInvite } from '@/lib/bvJoinInvite';
+import { applyRegistrationFlowFromSearch, isPwRegistrationFlow } from '@/lib/registrationDepartment';
 import { Link } from 'react-router-dom';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { useAuth } from '@/lib/auth-sdk';
@@ -37,6 +38,8 @@ const EXAM_TAKEN_LEVELS = [
 
 export default function RegistrationPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  if (typeof window !== 'undefined') applyRegistrationFlowFromSearch(searchParams.toString());
   const { user } = useAuth();
   const { forceSetProfile, refreshProfile } = useUserProfile();
   const [loading, setLoading] = useState(false);
@@ -50,7 +53,7 @@ export default function RegistrationPage() {
   const autoName = [(user as any)?.firstName, (user as any)?.lastName].filter(Boolean).join(' ').trim();
   const phonePrefillDone = useRef(false);
 
-  const isPwFlow = localStorage.getItem('pwa_is_pw_flow') === 'true';
+  const isPwFlow = isPwRegistrationFlow(searchParams.toString());
 
   const [formData, setFormData] = useState(() => {
     let pendingPhone = '';
@@ -248,7 +251,7 @@ export default function RegistrationPage() {
         {/* Back Button */}
         <div className="flex items-center text-left">
           <span 
-            onClick={() => navigate('/')} 
+            onClick={() => navigate(isPwFlow ? '/pw' : '/')} 
             className="text-gray-500 hover:text-gray-900 cursor-pointer text-sm font-semibold flex items-center gap-1.5 transition-colors"
           >
             <ArrowLeft className="w-4 h-4" /> Back

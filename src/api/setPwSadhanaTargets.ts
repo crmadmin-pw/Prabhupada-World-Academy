@@ -1,42 +1,85 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroupMembers, BvGroups, Users, AppError } from '@/lib/backend-sdk';
 import { bvGroupDepartment } from '@/lib/bvGroupName';
+import { bvUserAliases } from '@/lib/bvGroupMemberScope';
 import { getScopedHierarchyUserIds, isUserInHierarchy } from '@/lib/hierarchyUtils';
 import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
 import { pwTarget } from '@/lib/pwSadhana';
 import { serverCacheInvalidate } from '@/lib/serverCache';
 
-function identityKeys(user: any): string[] {
-  return [...new Set([user?.id, user?.userId, user?.email]
-    .flatMap(value => Array.isArray(value) ? value : [value])
-    .map(value => String(value || '').trim())
-    .filter(Boolean))];
+const MEMBER_FIELDS = ['id', 'userId', 'email', 'fullName', 'segment', 'isPrabhupadaWorldUser', 'role',
+  'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator', 'isBvAdmin',
+  'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
+
+function rawIdentity(user: any): string[] {
+  return [...new Set(bvUserAliases(user).concat(
+    ['id', 'userId', 'email', 'uid', 'authUid', 'firebaseUid', 'memberId']
+      .flatMap(field => {
+        const value = user?.[field];
+        return (Array.isArray(value) ? value : [value]).map(item => String(item || '').trim());
+      }),
+  ).filter(Boolean))];
 }
 
-/** A member can be in a Prabhupada World reading group before their profile
- * stores segment or isPrabhupadaWorldUser. That profile gap is what the
- * target save used to reject. */
-async function memberInPwGroup(member: any): Promise<boolean> {
-  const keys = identityKeys(member);
+async function relatedProfiles(member: any): Promise<any[]> {
+  const seeds = [member?.id, member?.userId, member?.email].filter(Boolean).map(value => String(value).trim());
+  const people = new Map<string, any>();
+  if (member?.id) people.set(String(member.id), member);
+  for (const seed of seeds) {
+    const [byId, byUserId, byEmail] = await Promise.all([
+      Users.findOne({ id: seed, fields: MEMBER_FIELDS }),
+      Users.findAll({ filters: { userId: seed }, fields: MEMBER_FIELDS, limit: 5 }),
+      seed.includes('@')
+        ? Users.findAll({ filters: { email: seed.toLowerCase() }, fields: MEMBER_FIELDS, limit: 5 })
+        : Promise.resolve({ records: [] }),
+    ]);
+    if (byId) people.set(String(byId.id), byId);
+    for (const row of [...(byUserId.records || []), ...(byEmail.records || [])]) {
+      if (row?.id) people.set(String(row.id), row);
+    }
+  }
+  return [...people.values()];
+}
+
+/** Older membership rows store a sign-in id, and some profiles never received
+ * segment or isPrabhupadaWorldUser. The member list still shows them. */
+async function memberInAssignableGroup(people: any[]): Promise<boolean> {
+  const keys = [...new Set(people.flatMap(rawIdentity))];
   if (keys.length === 0) return false;
-  const [byUser, byUserId, byMemberId] = await Promise.all([
-    BvGroupMembers.findAll({ filters: { user: { in: keys } } as any, fields: ['group', 'groupId'], limit: 20 }),
-    BvGroupMembers.findAll({ filters: { userId: { in: keys } } as any, fields: ['group', 'groupId'], limit: 20 }),
-    BvGroupMembers.findAll({ filters: { memberId: { in: keys } } as any, fields: ['group', 'groupId'], limit: 20 }),
-  ]);
-  const groupKeys = [...new Set(
-    [...byUser.records, ...byUserId.records, ...byMemberId.records]
-      .flatMap((membership: any) => [membership.group, membership.groupId])
-      .flatMap((value: unknown) => Array.isArray(value) ? value : [value])
-      .map((value: unknown) => String(value || '').trim())
-      .filter(Boolean),
-  )];
+  const aliasSet = new Set(keys.map(key => key.toLowerCase()));
+  const memberships: any[] = [];
+  for (let index = 0; index < keys.length; index += 10) {
+    const chunk = keys.slice(index, index + 10);
+    const pages = await Promise.all(['user', 'userId', 'memberId'].map(field =>
+      BvGroupMembers.findAll({
+        filters: { [field]: { in: chunk } } as any,
+        fields: ['user', 'userId', 'memberId', 'group', 'groupId'],
+        limit: 30,
+      }),
+    ));
+    pages.forEach(page => memberships.push(...(page.records || [])));
+  }
+  const matched = memberships.filter(membership =>
+    [membership.user, membership.userId, membership.memberId]
+      .flat()
+      .some(value => aliasSet.has(String(value || '').trim().toLowerCase())),
+  );
+  const groupKeys = [...new Set(matched.flatMap(membership =>
+    [membership.group, membership.groupId].flat().map(value => String(value || '').trim()).filter(Boolean),
+  ))];
   if (groupKeys.length === 0) return false;
-  const [byId, byGroupId] = await Promise.all([
-    BvGroups.findAll({ filters: { id: { in: groupKeys } } as any, fields: ['id', 'segment'], limit: 20 }),
-    BvGroups.findAll({ filters: { groupId: { in: groupKeys } } as any, fields: ['id', 'groupId', 'segment'], limit: 20 }),
-  ]);
-  return [...byId.records, ...byGroupId.records].some((group: any) => bvGroupDepartment(group.segment) === 'PW');
+  const groups: any[] = [];
+  for (let index = 0; index < groupKeys.length; index += 10) {
+    const chunk = groupKeys.slice(index, index + 10);
+    const [byId, byGroupId] = await Promise.all([
+      BvGroups.findAll({ filters: { id: { in: chunk } } as any, fields: ['id', 'groupId', 'segment'], limit: 20 }),
+      BvGroups.findAll({ filters: { groupId: { in: chunk } } as any, fields: ['id', 'groupId', 'segment'], limit: 20 }),
+    ]);
+    groups.push(...(byId.records || []), ...(byGroupId.records || []));
+  }
+  // A group with no department still belongs to this RGF's reading groups.
+  // Only an explicit FOLK group is out of scope for these targets.
+  return groups.some(group => bvGroupDepartment(group.segment) !== 'FOLK');
 }
 
 export default createEndpoint({
@@ -61,18 +104,14 @@ export default createEndpoint({
       throw new AppError({ code: 'FORBIDDEN', message: 'Only a reading group facilitator can assign sadhana targets' });
     }
 
-    const fields = ['id', 'userId', 'email', 'segment', 'isPrabhupadaWorldUser', 'role', 'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator', 'isBvAdmin'];
-    const member = await Users.findOne({ id: input.userId, fields })
-      || await Users.findOne({ filters: { userId: input.userId }, fields })
-      || await Users.findOne({ filters: { email: String(input.userId).toLowerCase() }, fields });
-    if (!member) throw new AppError({ code: 'NOT_FOUND', message: 'Member not found' });
-    const caller = isPwSadhanaUser(context.user)
-      ? context.user
-      : await Users.findOne({ id: context.user.id, fields })
-        || await Users.findOne({ filters: { userId: context.user.userId || context.user.id }, fields });
-    const explicitlyFolk = bvGroupDepartment(member.segment) === 'FOLK';
-    const inPwGroup = !isPwSadhanaUser(member) && await memberInPwGroup(member);
-    if (!isPwSadhanaUser(member) && !inPwGroup && (explicitlyFolk || !isPwSadhanaUser(caller))) {
+    const found = await Users.findOne({ id: input.userId, fields: MEMBER_FIELDS })
+      || await Users.findOne({ filters: { userId: input.userId }, fields: MEMBER_FIELDS })
+      || await Users.findOne({ filters: { email: String(input.userId).toLowerCase() }, fields: MEMBER_FIELDS });
+    if (!found) throw new AppError({ code: 'NOT_FOUND', message: 'Member not found' });
+    const profiles = await relatedProfiles(found);
+    const member = profiles.find(profile => profile.id && profile.userId && profile.id !== profile.userId) || found;
+    const inAssignableGroup = profiles.some(isPwSadhanaUser) || await memberInAssignableGroup(profiles);
+    if (!inAssignableGroup) {
       throw new AppError({ code: 'FORBIDDEN', message: 'Sadhana targets apply only to Prabhupada World members' });
     }
 

@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/auth-sdk';
 import { deleteAccount } from '@/lib/endpoints-sdk';
 import { Button } from '@/components/ui/button';
 import { useState } from 'react';
+import { getDepartmentLandingUrl } from '@/lib/userDashboardRoutes';
 
 export default function RejectedPage() {
   const { profile } = useUserProfile();
@@ -20,7 +21,7 @@ export default function RejectedPage() {
     void deleteAccount({})
       .then(() => {
         localStorage.removeItem('pwa_pending_registration');
-        const returnTo = isPwUser ? '/pw' : '/';
+        const returnTo = getDepartmentLandingUrl(profile);
         void logout({ returnTo });
         window.setTimeout(() => window.location.replace(returnTo), 1500);
       })

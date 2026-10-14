@@ -1,16 +1,20 @@
 import { useState } from 'react';
 import { format, addDays } from 'date-fns';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Plus, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
 import StatusButtons from './WeeklyPlanStatusButtons';
 
-type DayData = {
-  goal1: string; goal2: string;
-  status1: string; status2: string;
+export type PlanActivity = { goal: string; status: string };
+
+export type DayData = {
+  activities: PlanActivity[];
   duration: number; reason: string; success: string;
 };
+
+const MAX_ACTIVITIES = 12;
 
 const DAY_INDEX: Record<string, number> = { mon: 0, tue: 1, wed: 2, thu: 3, fri: 4, sat: 5, sun: 6 };
 
@@ -33,8 +37,15 @@ function statusColor(s: string) {
 export default function WeeklyPlanDayCard({ dayKey, label, short, data, weekStart, onChange }: Props) {
   const [expanded, setExpanded] = useState(true);
   const dateStr = format(addDays(new Date(weekStart + 'T00:00:00'), DAY_INDEX[dayKey]), 'd MMM');
-  const showReason = data.status1 === 'Red' || data.status2 === 'Red';
-  const hasGoals = !!(data.goal1 || data.goal2);
+  const activities = data.activities?.length ? data.activities : [
+    { goal: '', status: 'White' },
+    { goal: '', status: 'White' },
+  ];
+  const showReason = activities.some(activity => activity.status === 'Red');
+
+  const updateActivity = (index: number, patch: Partial<PlanActivity>) => {
+    onChange('activities', activities.map((activity, i) => i === index ? { ...activity, ...patch } : activity));
+  };
 
   return (
     <div className="bg-card border rounded-xl shadow-sm overflow-hidden">
@@ -48,58 +59,75 @@ export default function WeeklyPlanDayCard({ dayKey, label, short, data, weekStar
           <span className="font-semibold text-sm">{short}</span>
           <span className="text-xs text-muted-foreground">{dateStr}</span>
           {/* Mini status dots */}
-          <div className="flex gap-1 ml-1">
-            <div className={`w-2.5 h-2.5 rounded-full ${statusColor(data.status1)}`} />
-            <div className={`w-2.5 h-2.5 rounded-full ${statusColor(data.status2)}`} />
+          <div className="flex flex-wrap gap-1 ml-1 max-w-[7rem]">
+            {activities.map((activity, i) => (
+              <div key={i} className={`w-2.5 h-2.5 rounded-full ${statusColor(activity.status)}`} />
+            ))}
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {data.duration > 0 && <span className="text-xs text-muted-foreground">{data.duration}h</span>}
+          {data.duration > 0 && <span className="text-xs text-muted-foreground">{data.duration} min</span>}
           {expanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
         </div>
       </button>
 
       {expanded && (
         <div className="px-3 pb-3 space-y-3 border-t">
-          {/* Goal 1 */}
-          <div className="pt-3 space-y-1.5">
-            <div className="flex items-center justify-between">
-              <Label className="text-xs font-medium">Activity 1</Label>
-              <StatusButtons value={data.status1} onChange={v => onChange('status1', v)} />
+          {activities.map((activity, i) => (
+            <div key={i} className={i === 0 ? 'pt-3 space-y-1.5' : 'space-y-1.5'}>
+              <div className="flex items-center justify-between gap-2">
+                <Label className="text-xs font-medium">Activity {i + 1}</Label>
+                <div className="flex items-center gap-1">
+                  <StatusButtons value={activity.status} onChange={v => updateActivity(i, { status: v })} />
+                  {i >= 2 && (
+                    <button
+                      type="button"
+                      onClick={() => onChange('activities', activities.filter((_, index) => index !== i))}
+                      className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted"
+                      aria-label={`Remove activity ${i + 1}`}
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+              <Input
+                placeholder={i === 0 ? 'e.g. Book distribution at campus' : 'e.g. 1-on-1 meeting with contact'}
+                value={activity.goal}
+                onChange={e => updateActivity(i, { goal: e.target.value })}
+                className="h-9 text-sm"
+              />
             </div>
-            <Input
-              placeholder="e.g. Book distribution at campus"
-              value={data.goal1}
-              onChange={e => onChange('goal1', e.target.value)}
-              className="h-9 text-sm"
-            />
-          </div>
+          ))}
 
-          {/* Goal 2 */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <Label className="text-xs font-medium">Activity 2</Label>
-              <StatusButtons value={data.status2} onChange={v => onChange('status2', v)} />
-            </div>
-            <Input
-              placeholder="e.g. 1-on-1 meeting with contact"
-              value={data.goal2}
-              onChange={e => onChange('goal2', e.target.value)}
-              className="h-9 text-sm"
-            />
-          </div>
+          {activities.length < MAX_ACTIVITIES && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs"
+              onClick={() => onChange('activities', [...activities, { goal: '', status: 'White' }])}
+            >
+              <Plus className="w-3.5 h-3.5 mr-1" />
+              Add activity
+            </Button>
+          )}
 
           {/* Duration */}
           <div className="space-y-1">
-            <Label className="text-xs font-medium">Duration (Hours)</Label>
+            <Label className="text-xs font-medium">Time (minutes)</Label>
             <Input
               type="number"
-              step="0.5"
+              inputMode="numeric"
+              step="1"
               min="0"
-              max="24"
+              max="1440"
               placeholder="0"
               value={data.duration || ''}
-              onChange={e => onChange('duration', parseFloat(e.target.value) || 0)}
+              onChange={e => {
+                const raw = e.target.value.replace(/[^\d]/g, '');
+                onChange('duration', raw === '' ? 0 : Math.min(1440, parseInt(raw, 10)));
+              }}
               className="h-9 text-sm w-28"
             />
           </div>

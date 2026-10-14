@@ -11,6 +11,7 @@ import { getBvMentorData } from '@/lib/endpoints-sdk';
 import { toast } from 'sonner';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { Leaf, BookOpen } from 'lucide-react';
+import { getDepartmentLandingUrl } from '@/lib/userDashboardRoutes';
 
 export default function BvMentorDashboard() {
   const { profile } = useUserProfile();
@@ -67,7 +68,7 @@ export default function BvMentorDashboard() {
             <p className="text-sm text-muted-foreground">
               Please ask a Super Guide to assign you to a guide's BhaktiVriksha system from the Super Guide dashboard → Users panel.
             </p>
-            <Button variant="outline" onClick={() => logout()}>Logout</Button>
+            <Button variant="outline" onClick={() => logout({ returnTo: getDepartmentLandingUrl(profile) })}>Logout</Button>
           </CardContent>
         </Card>
       </div>

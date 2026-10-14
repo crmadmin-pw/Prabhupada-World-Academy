@@ -1,11 +1,44 @@
 import { z } from 'zod';
 import { createEndpoint, BvslWeeklyPlans } from '@/lib/backend-sdk';
 
-const dayOut = z.object({
-  goal1: z.string(), goal2: z.string(),
-  status1: z.string(), status2: z.string(),
-  duration: z.number(), reason: z.string(), success: z.string(),
+const activityOut = z.object({
+  goal: z.string(),
+  status: z.string(),
 });
+
+const dayOut = z.object({
+  activities: z.array(activityOut),
+  duration: z.number(),
+  reason: z.string(),
+  success: z.string(),
+});
+
+function readActivities(existing: any, day: string) {
+  const raw = existing[`${day}ActivitiesJson`];
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const activities = parsed.slice(0, 12).map((activity: any) => ({
+          goal: String(activity?.goal || ''),
+          status: String(activity?.status || 'White'),
+        }));
+        while (activities.length < 2) activities.push({ goal: '', status: 'White' });
+        return activities;
+      }
+    } catch { /* fall back to the original two slots */ }
+  }
+  return [
+    { goal: String(existing[`${day}Goal1`] || ''), status: String(existing[`${day}Status1`] || 'White') },
+    { goal: String(existing[`${day}Goal2`] || ''), status: String(existing[`${day}Status2`] || 'White') },
+  ];
+}
+
+function readMinutes(existing: any, day: string) {
+  const stored = existing[`${day}DurationMinutes`];
+  if (stored !== undefined && stored !== null && stored !== '') return Math.max(0, Math.round(Number(stored) || 0));
+  return Math.max(0, Math.round((Number(existing[`${day}Duration`]) || 0) * 60));
+}
 
 export default createEndpoint({
   authenticated: true,
@@ -41,11 +74,8 @@ export default createEndpoint({
 
     for (const d of days) {
       plan[d] = {
-        goal1: (existing as any)[`${d}Goal1`] || '',
-        goal2: (existing as any)[`${d}Goal2`] || '',
-        status1: (existing as any)[`${d}Status1`] || 'White',
-        status2: (existing as any)[`${d}Status2`] || 'White',
-        duration: (existing as any)[`${d}Duration`] || 0,
+        activities: readActivities(existing, d),
+        duration: readMinutes(existing, d),
         reason: (existing as any)[`${d}Reason`] || '',
         success: (existing as any)[`${d}Success`] || '',
       };

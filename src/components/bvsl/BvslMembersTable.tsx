@@ -24,10 +24,26 @@ interface Props {
   canAssignSadhana?: boolean;
 }
 
+function targetText(value: number | null | undefined): string {
+  return value == null ? '' : String(value);
+}
+
 function SadhanaTargetEditor({ member }: { member: Member }) {
-  const [rounds, setRounds] = useState(member.pwChantingTarget == null ? '' : String(member.pwChantingTarget));
-  const [minutes, setMinutes] = useState(member.pwReadingTarget == null ? '' : String(member.pwReadingTarget));
+  const savedRounds = targetText(member.pwChantingTarget);
+  const savedMinutes = targetText(member.pwReadingTarget);
+  const [rounds, setRounds] = useState(savedRounds);
+  const [minutes, setMinutes] = useState(savedMinutes);
+  const [committedRounds, setCommittedRounds] = useState(savedRounds);
+  const [committedMinutes, setCommittedMinutes] = useState(savedMinutes);
   const [saving, setSaving] = useState(false);
+  const dirty = rounds.trim() !== committedRounds || minutes.trim() !== committedMinutes;
+
+  useEffect(() => {
+    setRounds(savedRounds);
+    setMinutes(savedMinutes);
+    setCommittedRounds(savedRounds);
+    setCommittedMinutes(savedMinutes);
+  }, [member.userId, savedRounds, savedMinutes]);
 
   const save = async () => {
     const chantingRounds = rounds.trim() === '' ? null : Math.round(Number(rounds));
@@ -38,11 +54,17 @@ function SadhanaTargetEditor({ member }: { member: Member }) {
     }
     setSaving(true);
     try {
-      await setPwSadhanaTargets({
+      const saved = await setPwSadhanaTargets({
         userId: member.userId,
         chantingRounds,
         readingMinutes,
       });
+      const nextRounds = targetText(saved.pwChantingTarget);
+      const nextMinutes = targetText(saved.pwReadingTarget);
+      setRounds(nextRounds);
+      setMinutes(nextMinutes);
+      setCommittedRounds(nextRounds);
+      setCommittedMinutes(nextMinutes);
       toast.success(`Saved sadhana target for ${member.fullName}`);
     } catch (error: any) {
       toast.error(error?.message || 'Could not save the sadhana target');
@@ -57,7 +79,7 @@ function SadhanaTargetEditor({ member }: { member: Member }) {
         className="h-7 w-16 px-1.5 text-xs" onChange={event => setRounds(event.target.value)} />
       <Input value={minutes} inputMode="numeric" placeholder="Min" aria-label={`Reading minutes for ${member.fullName}`}
         className="h-7 w-16 px-1.5 text-xs" onChange={event => setMinutes(event.target.value)} />
-      <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={saving} onClick={() => void save()}>
+      <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={!dirty || saving} onClick={() => void save()}>
         {saving ? '...' : 'Save'}
       </Button>
     </div>

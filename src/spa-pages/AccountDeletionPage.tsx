@@ -9,6 +9,7 @@ import { useAuth } from '@/lib/auth-sdk';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { deleteAccount } from '@/lib/endpoints-sdk';
 import { ACCOUNT_DELETION_GRACE_DAYS } from '@/lib/accountDeletionPolicy';
+import { getDepartmentLandingUrl, getRememberedDepartmentLandingPath } from '@/lib/userDashboardRoutes';
 
 function purgeLabel(value?: string | null): string | null {
   if (!value) return null;
@@ -47,7 +48,7 @@ export default function AccountDeletionPage() {
       </div>
     );
   }
-  if (!user) return <Navigate to="/" replace />;
+  if (!user) return <Navigate to={getRememberedDepartmentLandingPath()} replace />;
   if (profileError) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -78,7 +79,7 @@ export default function AccountDeletionPage() {
             {cancelling && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Cancel deletion
           </Button>
-          <Button className="w-full" variant="outline" onClick={() => logout({ returnTo: '/' })} disabled={cancelling}>
+          <Button className="w-full" variant="outline" onClick={() => logout({ returnTo: getDepartmentLandingUrl(profile) })} disabled={cancelling}>
             Sign out
           </Button>
         </CardContent>

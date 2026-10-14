@@ -5,6 +5,7 @@ import { useUserProfile } from '@/contexts/UserProfileContext';
 import { AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
+import { authCallbackPath, registrationPath, rememberRegistrationDepartment } from '@/lib/registrationDepartment';
 
 export default function LoginPage({ mode = 'signin', isPw = false }: { mode?: 'signin' | 'signup', isPw?: boolean }) {
   const navigate = useNavigate();
@@ -15,20 +16,14 @@ export default function LoginPage({ mode = 'signin', isPw = false }: { mode?: 's
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Set or remove local storage flow flag on mount / prop change
-  useEffect(() => {
-    if (isPw) {
-      localStorage.setItem('pwa_is_pw_flow', 'true');
-    } else {
-      localStorage.removeItem('pwa_is_pw_flow');
-    }
-  }, [isPw]);
+  const department = isPw ? 'PW' as const : 'FOLK' as const;
+  if (typeof window !== 'undefined') rememberRegistrationDepartment(department);
 
   // Redirect users who are already authenticated
   useEffect(() => {
     if (user) {
       if (!profile) {
-        navigate('/register');
+        navigate(registrationPath(department));
       } else if (profile.status === 'ACTIVE') {
         navigate('/dashboard');
       } else if (profile.status === 'PENDING_APPROVAL') {
@@ -39,10 +34,10 @@ export default function LoginPage({ mode = 'signin', isPw = false }: { mode?: 's
         navigate('/account-deletion');
       }
     }
-  }, [user, profile, navigate]);
+  }, [user, profile, navigate, department]);
 
   // Get the redirectUrl from query parameters, default to /auth-callback
-  const redirectUrl = searchParams.get('redirectUrl') || `${window.location.origin}/auth-callback`;
+  const redirectUrl = searchParams.get('redirectUrl') || `${window.location.origin}${authCallbackPath(department)}`;
 
   return (
     <div className="min-h-dvh w-full bg-[#fefdfa] flex items-center justify-center p-4">

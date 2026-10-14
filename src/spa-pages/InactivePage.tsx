@@ -1,10 +1,13 @@
 import { useAuth } from '@/lib/auth-sdk';
+import { useUserProfile } from '@/contexts/UserProfileContext';
+import { getDepartmentLandingUrl } from '@/lib/userDashboardRoutes';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { UserX } from 'lucide-react';
 
 export default function InactivePage() {
   const { logout } = useAuth();
+  const { profile } = useUserProfile();
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -25,7 +28,7 @@ export default function InactivePage() {
         <CardContent>
           <Button
             variant="outline"
-            onClick={() => logout({ returnTo: window.location.origin })}
+            onClick={() => logout({ returnTo: getDepartmentLandingUrl(profile) })}
             className="w-full"
           >
             Sign Out

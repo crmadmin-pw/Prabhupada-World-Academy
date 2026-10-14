@@ -8,14 +8,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import { getBvslWeeklyPlan, saveBvslWeeklyPlan, getBvslBooksSummary } from '@/lib/endpoints-sdk';
 import type { GetBvslWeeklyPlanOutputType } from '@/lib/endpoints-sdk';
-import WeeklyPlanDayCard from './WeeklyPlanDayCard';
+import WeeklyPlanDayCard, { type DayData } from './WeeklyPlanDayCard';
 import { useUserProfile } from '@/contexts/UserProfileContext';
-
-type DayData = {
-  goal1: string; goal2: string;
-  status1: string; status2: string;
-  duration: number; reason: string; success: string;
-};
 
 type DayKey = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
 
@@ -30,7 +24,10 @@ const DAYS: { key: DayKey; label: string; short: string }[] = [
 ];
 
 const emptyDay = (): DayData => ({
-  goal1: '', goal2: '', status1: 'White', status2: 'White',
+  activities: [
+    { goal: '', status: 'White' },
+    { goal: '', status: 'White' },
+  ],
   duration: 0, reason: '', success: '',
 });
 
@@ -124,7 +121,7 @@ export default function BvslWeeklyPlanTab({ userEmail }: Props) {
 
   // Stats
   const totalDuration = DAYS.reduce((s, d) => s + (days[d.key]?.duration || 0), 0);
-  const allStatuses = DAYS.flatMap(d => [days[d.key]?.status1, days[d.key]?.status2]).filter(Boolean);
+  const allStatuses = DAYS.flatMap(d => (days[d.key]?.activities || []).map(activity => activity.status)).filter(Boolean);
   const greenCount = allStatuses.filter(s => s === 'Green').length;
   const redCount = allStatuses.filter(s => s === 'Red').length;
 
@@ -170,8 +167,8 @@ export default function BvslWeeklyPlanTab({ userEmail }: Props) {
       {/* Summary stats */}
       <div className="grid grid-cols-3 gap-2">
         <div className="bg-card border rounded-lg p-2 text-center">
-          <div className="text-lg font-bold text-primary">{totalDuration.toFixed(1)}</div>
-          <div className="text-xs text-muted-foreground">Total Hours</div>
+          <div className="text-lg font-bold text-primary">{Math.round(totalDuration)}</div>
+          <div className="text-xs text-muted-foreground">Total Minutes</div>
         </div>
         <div className="bg-card border rounded-lg p-2 text-center">
           <div className="text-lg font-bold text-green-600">{greenCount}</div>

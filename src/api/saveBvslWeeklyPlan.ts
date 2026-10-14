@@ -2,15 +2,38 @@ import { z } from 'zod';
 import { createEndpoint, BvslWeeklyPlans } from '@/lib/backend-sdk';
 import { format, startOfWeek } from 'date-fns';
 
+const STATUSES = ['White', 'Yellow', 'Green', 'Red'] as const;
+
+const activitySchema = z.object({
+  goal: z.string().optional().default(''),
+  status: z.enum(STATUSES).optional().default('White'),
+});
+
 const daySchema = z.object({
+  activities: z.array(activitySchema).max(12).optional(),
   goal1: z.string().optional().default(''),
   goal2: z.string().optional().default(''),
-  status1: z.enum(['White', 'Yellow', 'Green', 'Red']).optional().default('White'),
-  status2: z.enum(['White', 'Yellow', 'Green', 'Red']).optional().default('White'),
+  status1: z.enum(STATUSES).optional().default('White'),
+  status2: z.enum(STATUSES).optional().default('White'),
+  /** Minutes spent on the day's activities. */
   duration: z.number().optional().default(0),
   reason: z.string().optional().default(''),
   success: z.string().optional().default(''),
 });
+
+function activitiesForDay(day: z.infer<typeof daySchema>) {
+  const fromList = (day.activities || [])
+    .map(activity => ({
+      goal: activity.goal || '',
+      status: activity.status || 'White',
+    }))
+    .slice(0, 12);
+  if (fromList.length > 0) return fromList;
+  return [
+    { goal: day.goal1 || '', status: day.status1 || 'White' },
+    { goal: day.goal2 || '', status: day.status2 || 'White' },
+  ];
+}
 
 export default createEndpoint({
   authenticated: true,
@@ -40,11 +63,15 @@ export default createEndpoint({
     const days = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
     for (const d of days) {
       const day = input[d];
-      record[`${d}Goal1`] = day.goal1;
-      record[`${d}Goal2`] = day.goal2;
-      record[`${d}Status1`] = day.status1;
-      record[`${d}Status2`] = day.status2;
-      record[`${d}Duration`] = day.duration;
+      const activities = activitiesForDay(day);
+      const minutes = Math.max(0, Math.round(day.duration || 0));
+      record[`${d}Goal1`] = activities[0]?.goal || '';
+      record[`${d}Goal2`] = activities[1]?.goal || '';
+      record[`${d}Status1`] = activities[0]?.status || 'White';
+      record[`${d}Status2`] = activities[1]?.status || 'White';
+      record[`${d}ActivitiesJson`] = JSON.stringify(activities);
+      record[`${d}DurationMinutes`] = minutes;
+      record[`${d}Duration`] = Math.round((minutes / 60) * 100) / 100;
       record[`${d}Reason`] = day.reason;
       record[`${d}Success`] = day.success;
     }
