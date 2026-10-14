@@ -101,6 +101,11 @@ test('native Firestore write trigger delivers to two authenticated listeners wit
     await db.collection(REALTIME_SUBSCRIPTIONS).doc(rgf.queryToken).delete();
     await removedSignal;
     await rgf.read();
+    const renewed = db.collection(REALTIME_SUBSCRIPTIONS).doc(rgf.queryToken);
+    for (let attempt = 0; attempt < 50 && !(await renewed.get()).exists; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    assert.equal((await renewed.get()).exists, true, 'a fresh read registers again after the response');
     await expireQuery(db, rgf.queryToken, rgf.uid);
     assert.equal((await signal.get()).exists, true, 'delayed cleanup must not delete a renewed query');
     console.log(JSON.stringify({ result: 'passed', transport: 'native Firestore CDC to authenticated SDK listeners', operations: ['create', 'update', 'delete', 'notification'], commitRequestToListenerMs: measurements, listeners: 2 }));

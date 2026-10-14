@@ -4,6 +4,7 @@ import { Users, CheckSquare, BarChart3, Brain, ClipboardList, FileText, Calendar
 import { toast } from 'sonner';
 import { getBvslGroups } from '@/lib/endpoints-sdk';
 import { useNavigate } from 'react-router-dom';
+import { dashboardReturnPath } from '@/lib/bvGroupMemberProfileNavigation';
 import type { GetBvslGroupsOutputType } from '@/lib/endpoints-sdk';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { useAuth } from '@/lib/auth-sdk';
@@ -93,7 +94,7 @@ export default function RgsfDashboard() {
                 <BvslGroupsPanel
                   bvslId={bvslId}
                   groups={groups}
-                  onGroupSelect={(groupId) => navigate(`/bvsl/groups/${groupId}`)}
+                  onGroupSelect={(groupId) => navigate(`/bvsl/groups/${groupId}`, { state: { from: dashboardReturnPath() } })}
                   onRefresh={loadGroups}
                 />
               )}

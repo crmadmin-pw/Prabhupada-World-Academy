@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { firestoreVersion, type QueryDependency, type RealtimeRecordScope } from './realtimeQueryModel';
 
 type Metrics = { count: number; rows: number; durationMs: number; deduplicated: number };
-type RequestQueries = { pending: Map<string, Promise<unknown>>; metrics: Metrics; dependencies: Map<string, QueryDependency>; scopes: Map<string, RealtimeRecordScope>; readVersion: string; reactive: boolean };
+type RequestQueries = { pending: Map<string, Promise<unknown>>; hierarchyMemos: Map<string, Promise<unknown>>; metrics: Metrics; dependencies: Map<string, QueryDependency>; scopes: Map<string, RealtimeRecordScope>; readVersion: string; reactive: boolean };
 const context = new AsyncLocalStorage<RequestQueries>();
 function clone<T>(value: T): T {
   if (value instanceof Date) return new Date(value.getTime()) as T;
@@ -66,6 +66,12 @@ export function recordQueryReadTime(time: { seconds: number; nanoseconds: number
 
 export function isReactiveRequest(): boolean { return context.getStore()?.reactive === true; }
 
+/** Scope promises for this request only. Absent outside a request, so one
+ * caller's visibility cannot be reused for a later caller. */
+export function requestHierarchyMemos(): Map<string, Promise<unknown>> | null {
+  return context.getStore()?.hierarchyMemos ?? null;
+}
+
 /** Some legacy endpoints read broadly and filter in memory. Record that final
  * authorized scope without changing their historical database calculations.
  * Only use when every read of this table in the endpoint shares this scope. */
@@ -74,7 +80,7 @@ export function scopeRealtimeDependencies(table: string, scope: RealtimeRecordSc
 }
 
 export async function withRequestQueries<T>(run: () => Promise<T>, reactive = false) {
-  const request: RequestQueries = { pending: new Map(), dependencies: new Map(), scopes: new Map(), readVersion: '', reactive, metrics: { count: 0, rows: 0, durationMs: 0, deduplicated: 0 } };
+  const request: RequestQueries = { pending: new Map(), hierarchyMemos: new Map(), dependencies: new Map(), scopes: new Map(), readVersion: '', reactive, metrics: { count: 0, rows: 0, durationMs: 0, deduplicated: 0 } };
   const result = await context.run(request, run);
   return { result, metrics: request.metrics, dependencies: [...request.dependencies.values()].map(dependency => ({
     ...dependency, ...(request.scopes.has(dependency.table) ? { scope: request.scopes.get(dependency.table) } : {}),

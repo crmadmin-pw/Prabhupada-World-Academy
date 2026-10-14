@@ -228,7 +228,12 @@ test('supervisor groups include only groups led by reporting RGFs with RGF card 
       context: { user: supervisor },
     } as never);
     assert.equal(detail.group.groupName, supervisedGroup.groupName);
-    assert.equal(detail.members.length, 1);
+    assert.equal(detail.members.length, 2);
+    assert.deepEqual(
+      detail.members.map((row: any) => row.fullName).sort(),
+      [member.fullName, reportingRgf.fullName].sort(),
+    );
+    assert.deepEqual(detail.members.find((row: any) => row.userId === reportingRgf.userId).badges, ['RGF']);
     assert.equal(detail.quizzes.length, 1);
 
     const matrix = await getBvAttendanceMatrix.execute({
@@ -674,9 +679,10 @@ test('BV group detail resolves a legacy memberId membership for the group leader
       context: { user: leader },
     } as never);
 
-    assert.equal(detail.members.length, 1);
-    assert.equal(detail.members[0].fullName, member.fullName);
-    assert.equal(detail.members[0].userId, member.userId);
+    assert.equal(detail.members.length, 2);
+    const listedMember = detail.members.find((row: any) => row.fullName === member.fullName);
+    assert.equal(listedMember.userId, member.userId);
+    assert.deepEqual(detail.members.find((row: any) => row.fullName === leader.fullName).badges, ['RGF']);
     assert.equal(detail.group.joinToken, group.joinToken);
 
     await assert.rejects(
@@ -807,5 +813,92 @@ test('a supervisor who also facilitates a reading group sees that group', async 
     await BvGroups.delete({ id: unsegmentedGroup.id }).catch(() => undefined);
     await BvGroups.delete({ id: otherGroup.id }).catch(() => undefined);
     await Users.delete({ id: supervisorRgf.id }).catch(() => undefined);
+  }
+});
+
+test('a supervisor does not see groups led by members of the groups they supervise', async () => {
+  const supervisor = {
+    id: 'MEMBER-LEAK-SUPERVISOR-DB',
+    userId: 'MEMBER-LEAK-SUPERVISOR',
+    email: 'member-leak-supervisor@example.invalid',
+    fullName: 'Member Leak Supervisor',
+    role: 'User',
+    status: 'Active',
+    segment: 'PW',
+    isPrabhupadaWorldUser: true,
+    isBvSupervisor: true,
+  };
+  const reportingRgf = {
+    id: 'MEMBER-LEAK-RGF-DB',
+    userId: 'MEMBER-LEAK-RGF',
+    email: 'member-leak-rgf@example.invalid',
+    fullName: 'Reporting Facilitator',
+    role: 'User',
+    status: 'Active',
+    segment: 'PW',
+    isBvFacilitator: true,
+    isBvsl: true,
+    bvReportingSupervisorId: supervisor.id,
+  };
+  const memberWhoFacilitatesElsewhere = {
+    id: 'MEMBER-LEAK-MEMBER-DB',
+    userId: 'MEMBER-LEAK-MEMBER',
+    email: 'member-leak-member@example.invalid',
+    fullName: 'Member Who Facilitates Elsewhere',
+    role: 'User',
+    status: 'Active',
+    segment: 'PW',
+    isBvFacilitator: true,
+    isBvsl: true,
+    bvReportingSupervisorId: 'SOME-OTHER-SUPERVISOR',
+  };
+  const supervisedGroup = {
+    id: 'MEMBER-LEAK-SUPERVISED-DB',
+    groupId: 'MEMBER-LEAK-SUPERVISED',
+    groupName: 'Supervised Group',
+    bvslId: reportingRgf.userId,
+    bvslName: reportingRgf.fullName,
+    segment: 'PW',
+    isActive: true,
+  };
+  const memberLedGroup = {
+    id: 'MEMBER-LEAK-OTHER-DB',
+    groupId: 'MEMBER-LEAK-OTHER',
+    groupName: 'Group Led By a Member',
+    bvslId: memberWhoFacilitatesElsewhere.userId,
+    bvslName: memberWhoFacilitatesElsewhere.fullName,
+    segment: 'PW',
+    isActive: true,
+  };
+
+  await Users.create({ record: supervisor });
+  await Users.create({ record: reportingRgf });
+  await Users.create({ record: memberWhoFacilitatesElsewhere });
+  await BvGroups.create({ record: supervisedGroup });
+  await BvGroups.create({ record: memberLedGroup });
+  await BvGroupMembers.create({
+    record: {
+      id: 'MEMBER-LEAK-MEMBERSHIP',
+      group: supervisedGroup.id,
+      groupId: supervisedGroup.groupId,
+      user: memberWhoFacilitatesElsewhere.id,
+      userId: memberWhoFacilitatesElsewhere.userId,
+      role: 'Member',
+    },
+  });
+
+  try {
+    const result = await getBvSupervisorOverview.execute({
+      input: {},
+      context: { user: supervisor },
+    } as never);
+    assert.deepEqual(result.groups.map((group: any) => group.groupId), [supervisedGroup.groupId]);
+  } finally {
+    await BvGroupMembers.delete({ id: 'MEMBER-LEAK-MEMBERSHIP' }).catch(() => undefined);
+    await BvGroups.delete({ id: supervisedGroup.id }).catch(() => undefined);
+    await BvGroups.delete({ id: memberLedGroup.id }).catch(() => undefined);
+    await Users.delete({ id: supervisor.id }).catch(() => undefined);
+    await Users.delete({ id: reportingRgf.id }).catch(() => undefined);
+    await Users.delete({ id: memberWhoFacilitatesElsewhere.id }).catch(() => undefined);
   }
 });

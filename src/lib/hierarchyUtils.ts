@@ -1,5 +1,47 @@
-import { Users, Guides, FolkResidencies, BvGroups, BvGroupMembers, Config, getFirestoreDb, REPORTING_CHAINS_KEY, REPORTING_CHAINS_READY, reportingChainsLocallyStaleNow, clearReportingChainsLocalStale } from '@/lib/backend-sdk';
-import { invalidateRequestTable } from '@/lib/requestQueries';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { Users, Guides, FolkResidencies, BvGroups, BvGroupMembers, Config, getFirestoreDb, REPORTING_CHAINS_KEY, REPORTING_CHAINS_READY, reportingChainsLocallyStaleNow, clearReportingChainsLocalStale, setReportingChainMarkerInvalidator } from '@/lib/backend-sdk';
+import { invalidateRequestTable, requestHierarchyMemos } from '@/lib/requestQueries';
+
+const REPORTING_CHAIN_MARKER_TTL_MS = 5_000;
+const hierarchyDatabase = new AsyncLocalStorage<any>();
+let markerCache: { value: string; expiresAt: number } | null = null;
+let markerGeneration = 0;
+let markerInflight: Promise<string> | null = null;
+
+function firestore(): any {
+  const override = hierarchyDatabase.getStore();
+  return override !== undefined ? override : getFirestoreDb();
+}
+
+/** Run hierarchy reads against one database handle. Production uses the
+ * configured Firestore client. A test can pass a stand-in for a single call. */
+export function withHierarchyDatabase<T>(db: any, run: () => Promise<T>): Promise<T> {
+  return hierarchyDatabase.run(db, run);
+}
+
+export function invalidateReportingChainMarkerCache(): void {
+  markerCache = null;
+  markerGeneration += 1;
+}
+
+setReportingChainMarkerInvalidator(invalidateReportingChainMarkerCache);
+
+function rememberReportingChainMarker(value: string): void {
+  markerCache = { value, expiresAt: Date.now() + REPORTING_CHAIN_MARKER_TTL_MS };
+}
+
+function cachedMarkerValue(): Promise<string> {
+  if (reportingChainsLocallyStaleNow()) return markerValue();
+  if (markerCache && Date.now() < markerCache.expiresAt) return Promise.resolve(markerCache.value);
+  if (!markerInflight) {
+    const generation = markerGeneration;
+    markerInflight = markerValue().then(value => {
+      if (generation === markerGeneration && !reportingChainsLocallyStaleNow()) rememberReportingChainMarker(value);
+      return value;
+    }).finally(() => { markerInflight = null; });
+  }
+  return markerInflight;
+}
 
 export const HIERARCHY_IDENTITY_FIELDS = ['id', 'userId', 'email', 'uid', 'authUid', 'firebaseUid',
   'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
@@ -263,14 +305,25 @@ async function markerValue(): Promise<string> {
 }
 
 async function reportingChainsReady(): Promise<boolean> {
-  if (!getFirestoreDb() || reportingChainsLocallyStaleNow()) return false;
-  return (await markerValue()) === REPORTING_CHAINS_READY;
+  if (!firestore()) return false;
+  if (reportingChainsLocallyStaleNow()) {
+    invalidateReportingChainMarkerCache();
+    return false;
+  }
+  const generation = markerGeneration;
+  const value = await cachedMarkerValue();
+  if (reportingChainsLocallyStaleNow()) {
+    invalidateReportingChainMarkerCache();
+    return false;
+  }
+  if (generation !== markerGeneration) return false;
+  return value === REPORTING_CHAINS_READY;
 }
 
 let refreshInFlight: Promise<boolean> | null = null;
 
 async function persistReportingChains(users: any[], built: ReturnType<typeof buildReportingChains>) {
-  const db = getFirestoreDb();
+  const db = firestore();
   const list = users.filter(user => user?.id);
   for (let index = 0; index < list.length; index += 400) {
     const batch = db.batch();
@@ -286,7 +339,7 @@ async function persistReportingChains(users: any[], built: ReturnType<typeof bui
 }
 
 async function writeReadyIfUnchanged(expected: string): Promise<boolean> {
-  const db = getFirestoreDb();
+  const db = firestore();
   const ref = db.collection('Config').doc(REPORTING_CHAINS_KEY);
   const wrote = await db.runTransaction(async (tx: any) => {
     const snap = await tx.get(ref);
@@ -303,6 +356,8 @@ async function writeReadyIfUnchanged(expected: string): Promise<boolean> {
     return true;
   });
   invalidateRequestTable('Config');
+  if (wrote) rememberReportingChainMarker(REPORTING_CHAINS_READY);
+  else invalidateReportingChainMarkerCache();
   return wrote;
 }
 
@@ -310,13 +365,17 @@ async function writeReadyIfUnchanged(expected: string): Promise<boolean> {
  * the rebuild leaves the marker stale so the next request rebuilds again.
  */
 export async function refreshReportingChains(): Promise<boolean> {
-  if (!getFirestoreDb()) return false;
+  if (!firestore()) return false;
   if (refreshInFlight) return refreshInFlight;
   refreshInFlight = (async () => {
     const locallyStale = reportingChainsLocallyStaleNow();
     clearReportingChainsLocalStale();
+    invalidateReportingChainMarkerCache();
     const started = await markerValue();
-    if (started === REPORTING_CHAINS_READY && !locallyStale && !reportingChainsLocallyStaleNow()) return true;
+    if (started === REPORTING_CHAINS_READY && !locallyStale && !reportingChainsLocallyStaleNow()) {
+      rememberReportingChainMarker(started);
+      return true;
+    }
     const graph = await loadHierarchyGraph(true);
     if (reportingChainsLocallyStaleNow()) return false;
     await persistReportingChains(graph.users, buildReportingChains(graph.users, graph.groups, graph.memberships, graph.guides, graph.residencies));
@@ -370,9 +429,30 @@ async function queryVisibleUsers(keys: string[], fields?: string[]): Promise<any
   return [...seen.values()];
 }
 
-async function queryScope(caller: any): Promise<Set<string>> {
+function callerMemoKey(caller: any): string {
+  return JSON.stringify(HIERARCHY_IDENTITY_FIELDS.map(field => caller?.[field] ?? null));
+}
+
+function memoizeForRequest<T>(key: string, load: () => Promise<T>): Promise<T> {
+  const memos = requestHierarchyMemos();
+  if (!memos || reportingChainsLocallyStaleNow()) {
+    memos?.clear();
+    return Promise.resolve().then(load);
+  }
+  const found = memos.get(key) as Promise<T> | undefined;
+  if (found) return found;
+  const pending = new Promise<T>((resolve, reject) => {
+    Promise.resolve().then(load).then(resolve, (error: unknown) => {
+      if (memos.get(key) === pending) memos.delete(key);
+      reject(error);
+    });
+  });
+  memos.set(key, pending);
+  return pending;
+}
+
+function callerKeysFor(caller: any, stored: any | null): Set<string> {
   const callerKeys = new Set(hierarchyAliases(caller));
-  const stored = await findCallerRecord(caller);
   if (stored) {
     const storedKeys = Array.isArray(stored.reportingScopeKeys) && stored.reportingScopeKeys.length
       ? stored.reportingScopeKeys
@@ -380,14 +460,24 @@ async function queryScope(caller: any): Promise<Set<string>> {
     storedKeys.forEach((key: unknown) => callerKeys.add(String(key).toLowerCase()));
     hierarchyAliases(stored).forEach(key => callerKeys.add(key));
   }
+  return callerKeys;
+}
+
+async function queryCallerVisibility(caller: any): Promise<{ scope: Set<string>; visible: any[] }> {
+  const callerKeys = callerKeysFor(caller, await findCallerRecord(caller));
+  const visible = await queryVisibleUsers([...callerKeys]);
   const scope = new Set(callerKeys);
-  for (const user of await queryVisibleUsers([...callerKeys], ['reportingScopeKeys', ...HIERARCHY_IDENTITY_FIELDS])) {
+  for (const user of visible) {
     const keys = Array.isArray(user.reportingScopeKeys) && user.reportingScopeKeys.length
       ? user.reportingScopeKeys
       : hierarchyAliases(user);
     keys.forEach((key: unknown) => scope.add(String(key).toLowerCase()));
   }
-  return scope;
+  return { scope, visible };
+}
+
+function loadCallerVisibility(caller: any): Promise<{ scope: Set<string>; visible: any[] }> {
+  return memoizeForRequest(`hierarchy-visible:${callerMemoKey(caller)}`, () => queryCallerVisibility(caller));
 }
 
 function recordMatches(record: any, filters: any): boolean {
@@ -430,20 +520,25 @@ function presentUser(row: any, fields?: string[]) {
 /** Report rows for one caller. Without a ready chain this is the existing table read.
  * A ready chain reads only people who report to the caller, then applies the caller's filters.
  */
+function rowsForQuery(visible: any[], query: any): any[] {
+  if (!query.fields) return visible;
+  const fields = [...new Set([...query.fields, ...Object.keys(query.filters || {}), 'reportingScopeKeys'])];
+  return visible.map(row => {
+    const projected: any = { id: row.id };
+    for (const field of fields) projected[field] = row[field];
+    return projected;
+  });
+}
+
+/** Report rows for one caller. Without a ready chain this is the existing table read.
+ * A ready chain reads only people who report to the caller, then applies the caller's filters.
+ */
 export async function readScopedUsers(caller: any, query: any = {}): Promise<{ records: any[]; hasMore: boolean }> {
-  if (!caller || isHierarchySuperAdmin(caller) || !getFirestoreDb()) return Users.findAll(query);
+  if (!caller || isHierarchySuperAdmin(caller) || !firestore()) return Users.findAll(query);
   if (!(await reportingChainsReady())) await refreshReportingChains();
   if (!(await reportingChainsReady())) return Users.findAll(query);
-  const stored = await findCallerRecord(caller);
-  const keys = new Set(hierarchyAliases(caller));
-  if (stored) {
-    (Array.isArray(stored.reportingScopeKeys) ? stored.reportingScopeKeys : hierarchyAliases(stored))
-      .forEach((key: unknown) => keys.add(String(key).toLowerCase()));
-    hierarchyAliases(stored).forEach(key => keys.add(key));
-  }
-  const filterFields = Object.keys(query.filters || {});
-  const projection = query.fields ? [...new Set([...query.fields, ...filterFields, 'reportingScopeKeys'])] : undefined;
-  const filtered = (await queryVisibleUsers([...keys], projection)).filter(row => recordMatches(row, query.filters));
+  const { visible } = await loadCallerVisibility(caller);
+  const filtered = rowsForQuery(visible, query).filter(row => recordMatches(row, query.filters));
   const offset = Number(query.offset || 0);
   const limit = query.limit != null ? Number(query.limit) : filtered.length;
   const records = filtered.slice(offset, offset + limit).map(row => presentUser(row, query.fields));
@@ -479,16 +574,21 @@ async function findDashboardGuide(guideId: string): Promise<any | null> {
   return null;
 }
 
+async function computeScopedIds(caller: any): Promise<Set<string>> {
+  if (firestore()) {
+    if (!(await reportingChainsReady())) await refreshReportingChains();
+    if (await reportingChainsReady()) return (await loadCallerVisibility(caller)).scope;
+  }
+  const graph = await loadHierarchyGraph(department(caller) === 'FOLK');
+  return resolveHierarchyScope(caller, graph.users, graph.groups, graph.memberships, graph.guides, graph.residencies) ?? new Set();
+}
+
 /** Never fail open: a failed authorization lookup must fail the request. */
 export async function getScopedHierarchyUserIds(contextUser: any): Promise<Set<string> | null> {
   if (!contextUser) return new Set();
   if (isHierarchySuperAdmin(contextUser)) return null;
-  if (getFirestoreDb()) {
-    if (!(await reportingChainsReady())) await refreshReportingChains();
-    if (await reportingChainsReady()) return queryScope(contextUser);
-  }
-  const graph = await loadHierarchyGraph(department(contextUser) === 'FOLK');
-  return resolveHierarchyScope(contextUser, graph.users, graph.groups, graph.memberships, graph.guides, graph.residencies);
+  const scope = await memoizeForRequest(`hierarchy-scope:${callerMemoKey(contextUser)}`, () => computeScopedIds(contextUser));
+  return new Set(scope);
 }
 
 /** A selected guide narrows super-admin reports using the same hierarchy,
@@ -497,7 +597,7 @@ export async function getDashboardHierarchyScope(contextUser: any, guideId?: str
   if (!isHierarchySuperAdmin(contextUser) || !guideId || guideId.toUpperCase() === 'ALL') {
     return getScopedHierarchyUserIds(contextUser);
   }
-  if (getFirestoreDb()) {
+  if (firestore()) {
     const target = await findDashboardGuide(guideId);
     if (!target) return new Set();
     return getScopedHierarchyUserIds({ ...target, role: 'ADMIN', isBvAdmin: true, isBvSuperAdmin: false });

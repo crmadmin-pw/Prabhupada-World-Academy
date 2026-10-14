@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createEndpoint, Users, SadhanaEntries, BvAttendance } from '@/lib/backend-sdk';
+import { daysAgo, getTodayIST } from '../lib/streakUtils';
 import { fillingSameDayApplies } from '@/lib/userUtils';
 import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
 import { pwFieldPercent, pwOverallPercent, pwTarget } from '@/lib/pwSadhana';
@@ -340,6 +341,8 @@ const NR_FIELD_DEFS = [
 const PW_FIELD_DEFS = [
   { key: 'rounds', label: 'Chanting', unit: 'rounds' },
   { key: 'reading', label: 'Reading', unit: 'min' },
+  { key: 'preachingMinutes', label: 'Preaching', unit: 'min' },
+  { key: 'booksDistributed', label: 'Books Distributed', unit: '' },
 ];
 
 export default createEndpoint({
@@ -464,12 +467,8 @@ export default createEndpoint({
     const effectiveIsResident = !isPw && (isResident || isScholar);
 
     // ─── Trend chart: date-range based (unchanged) ───
-    const today = new Date();
-    const endD = new Date(today);
-    if (period === 'daily' && !includeToday) {
-      endD.setDate(endD.getDate() - 1);
-    }
-    const endDate = input.endDate || endD.toISOString().split('T')[0];
+    const todayIst = getTodayIST();
+    const endDate = input.endDate || (period === 'daily' && !includeToday ? daysAgo(todayIst, 1) : todayIst);
     const defaultDays = period === 'monthly' ? 30 : period === 'weekly' ? 7 : 1;
     let days = input.days ?? defaultDays;
     let startDate = input.startDate || '';

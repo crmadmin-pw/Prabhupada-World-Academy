@@ -256,18 +256,28 @@ export default createEndpoint({
     } else {
       // Approval without a group is still a completed approval. Attendance
       // remains unavailable until a real BvGroupMembers record is created.
+      // Activate the account and link it to the approving admin so the member
+      // leaves the pending queue and appears in that admin's directory.
+      const adminId = String(callerRecord.userId || callerRecord.id || '').trim();
+      const adminName = String(callerRecord.fullName || callerRecord.name || '').trim();
       await Users.update({
         id: targetUser.id,
         record: {
+          status: 'Active',
           bvRegistrationStatus: 'Approved',
           isBvMember: false,
           bvGroupId: '',
           bvGroupName: '',
+          guide: adminId,
+          selectedGuideId: adminId,
+          bvReportingAdminId: adminId,
+          bvReportingAdminName: adminName,
           // Do not show the “joined group” notice until a group is assigned.
           pendingBvApprovalNotice: false,
         },
       });
       serverCacheInvalidate(profileCacheKey(targetUser.id));
+      await publishUsersRevision(targetUser.id);
     }
 
     for (const identity of [targetUser.id, targetUser.userId, reg.userId, reg.userDbId]) {

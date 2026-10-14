@@ -368,7 +368,7 @@ export default function SadhanaMentorDashboard() {
 
   return (
     <DashboardLayout
-      title={isPwMentor ? 'Prabhupada World Sadhana Mentor Dashboard' : 'FOLK Sadhana Mentor Dashboard'}
+      title={isPwMentor ? `Hare Krishna, ${profile.fullName}!` : 'FOLK Sadhana Mentor Dashboard'}
       subtitle={subtitle}
       role="SADHANA_MENTOR"
       maxWidth="max-w-6xl"

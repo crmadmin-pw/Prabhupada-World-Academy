@@ -18,6 +18,11 @@ function refs(value: unknown): string[] {
   return value == null ? [] : [String(value).trim().toLowerCase()].filter(Boolean);
 }
 
+function isRgsfUser(user: any) {
+  const role = String(user?.role || '').toUpperCase();
+  return !!(user?.isBvSubFacilitator || role.includes('RGSF'));
+}
+
 export default createEndpoint({
   description: 'Get members for BV groups the caller manages',
   authenticated: true,
@@ -67,10 +72,16 @@ async function fetchBvslMembers({ input, context }: { input: any; context: any }
     if (!inChain) {
       throw new AppError({ code: 'FORBIDDEN', message: 'This group leader is outside your chain' });
     }
-    targetGroups = scopedGroups.filter(group =>
-      refs([group.record.bvslLeader, group.record.bvslId, group.record.subFacilitatorId, group.record.rgsfId, group.record.subFacilitator])
-        .some(alias => leaderAliases.has(alias)),
-    );
+    const viewingSelf = [...leaderAliases].some(alias => callerAliases.has(alias));
+    // An RGSF dashboard asks for its own id, but its groups belong to the
+    // reporting RGF. Keep the inherited group scope instead of requiring the
+    // RGSF to be stored as the group leader.
+    targetGroups = viewingSelf && isRgsfUser(caller)
+      ? scopedGroups
+      : scopedGroups.filter(group =>
+        refs([group.record.bvslLeader, group.record.bvslId, group.record.subFacilitatorId, group.record.rgsfId, group.record.subFacilitator])
+          .some(alias => leaderAliases.has(alias)),
+      );
   }
 
   if (targetGroups.length === 0) return { members: [] };
@@ -95,12 +106,12 @@ async function fetchBvslMembers({ input, context }: { input: any; context: any }
   const targetGroupKeys = [...new Set(targetGroups.flatMap(group => [group.id, group.groupId].filter(Boolean)))];
   const { records: memberships } = await BvGroupMembers.findAll({
     filters: { group: { in: groupIds } },
-    fields: ['id', 'user', 'group'],
+    fields: ['id', 'user', 'userId', 'memberId', 'group'],
     limit: 500,
   });
   const { records: membershipsByGroupId } = await BvGroupMembers.findAll({
     filters: { groupId: { in: targetGroupKeys } } as any,
-    fields: ['id', 'user', 'userId', 'group', 'groupId'],
+    fields: ['id', 'user', 'userId', 'memberId', 'group', 'groupId'],
     limit: 1000,
   });
   const membershipMap = new Map<string, any>();
@@ -111,9 +122,9 @@ async function fetchBvslMembers({ input, context }: { input: any; context: any }
   let memberUsers: any[] = [];
   if (userIds.length > 0) {
     const userQueries = await Promise.all([
-      Users.findAll({ filters: { id: { in: userIds } } as any, fields: ['id', 'userId', 'fullName', 'phone', 'ashrayLevel', 'email', 'residency', 'residencyApproved', 'role', 'roles', 'isRgsf', 'pwChantingTarget', 'pwReadingTarget'], limit: 500 }),
-      Users.findAll({ filters: { userId: { in: userIds } } as any, fields: ['id', 'userId', 'fullName', 'phone', 'ashrayLevel', 'email', 'residency', 'residencyApproved', 'role', 'roles', 'isRgsf', 'pwChantingTarget', 'pwReadingTarget'], limit: 500 }),
-      Users.findAll({ filters: { email: { in: userIds } } as any, fields: ['id', 'userId', 'fullName', 'phone', 'ashrayLevel', 'email', 'residency', 'residencyApproved', 'role', 'roles', 'isRgsf', 'pwChantingTarget', 'pwReadingTarget'], limit: 500 }),
+      Users.findAll({ filters: { id: { in: userIds } } as any, fields: ['id', 'userId', 'fullName', 'phone', 'ashrayLevel', 'email', 'residency', 'residencyApproved', 'role', 'roles', 'isRgsf', 'pwChantingTarget', 'pwReadingTarget', 'firebaseUid', 'uid', 'authUid'], limit: 500 }),
+      Users.findAll({ filters: { userId: { in: userIds } } as any, fields: ['id', 'userId', 'fullName', 'phone', 'ashrayLevel', 'email', 'residency', 'residencyApproved', 'role', 'roles', 'isRgsf', 'pwChantingTarget', 'pwReadingTarget', 'firebaseUid', 'uid', 'authUid'], limit: 500 }),
+      Users.findAll({ filters: { email: { in: userIds } } as any, fields: ['id', 'userId', 'fullName', 'phone', 'ashrayLevel', 'email', 'residency', 'residencyApproved', 'role', 'roles', 'isRgsf', 'pwChantingTarget', 'pwReadingTarget', 'firebaseUid', 'uid', 'authUid'], limit: 500 }),
     ]);
     const uniqueUsers = new Map<string, any>();
     userQueries.flatMap(result => result.records || []).forEach((user: any) => uniqueUsers.set(String(user.id), user));
@@ -122,7 +133,7 @@ async function fetchBvslMembers({ input, context }: { input: any; context: any }
 
   const userMap: Record<string, any> = {};
   memberUsers.forEach((u: any) => {
-    [u.id, u.userId, u.email].filter(Boolean).forEach((key: any) => { userMap[String(key).toLowerCase()] = u; });
+    bvUserAliases(u).forEach(key => { userMap[key] = u; });
   });
 
   const residencyIds = [...new Set(memberUsers.map((u: any) => Array.isArray(u.residency) ? u.residency[0] : u.residency).filter(Boolean))] as string[];
@@ -132,20 +143,10 @@ async function fetchBvslMembers({ input, context }: { input: any; context: any }
     residencies.forEach((r: any) => { residencyMap[r.id] = (r.residencyName as string) || ''; });
   }
 
-  const callerId = String(caller.id || '').toLowerCase();
-  const callerUserId = String(caller.userId || '').toLowerCase();
-  const callerEmail = String(caller.email || '').toLowerCase();
-
   const members = allMemberships.map((m: any) => {
-    const uid = Array.isArray(m.user) ? m.user[0] : m.user as string;
     const gid = Array.isArray(m.group) ? m.group[0] : (m.group || (Array.isArray(m.groupId) ? m.groupId[0] : m.groupId)) as string;
-    const u = userMap[String(uid || '').toLowerCase()] as any;
+    const u = refs([m.user, m.userId, m.memberId]).map(alias => userMap[alias]).find(Boolean) as any;
     if (!u) return null;
-
-    const uId = String(u.id || '').toLowerCase();
-    const uUserId = String(u.userId || '').toLowerCase();
-    const uEmail = String(u.email || '').toLowerCase();
-    if (uId === callerId || uUserId === callerUserId || (callerEmail && uEmail === callerEmail)) return null;
 
     const uRole = (u.role || '').toUpperCase();
     if (u.isBvSuperAdmin || uRole === 'SUPER ADMIN' || uRole === 'SUPER_ADMIN') return null;
@@ -153,7 +154,7 @@ async function fetchBvslMembers({ input, context }: { input: any; context: any }
     const showContacts = refs(gid).some(alias => ownGroupIds.has(alias));
     const residencyId = Array.isArray(u.residency) ? u.residency[0] : u.residency;
     return {
-      userId: u.userId || uid || '',
+      userId: u.userId || u.id || '',
       fullName: (u.fullName as string) || '',
       phone: showContacts ? formatPhone(u.phone) : '',
       ashrayLevel: (u.ashrayLevel as string) || null,

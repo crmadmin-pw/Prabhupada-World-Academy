@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as sdk from '../src/lib/app-backend-sdk';
-import { resolveHierarchyScope, isUserInHierarchy, getScopedHierarchyUserIds } from '../src/lib/hierarchyUtils';
+import { resolveHierarchyScope, isUserInHierarchy, getScopedHierarchyUserIds, readScopedUsers, buildReportingChains, scopeFromReportingChains, withHierarchyDatabase, invalidateReportingChainMarkerCache } from '../src/lib/hierarchyUtils';
+import { withRequestQueries } from '../src/lib/requestQueries';
 import { serverCacheInvalidate } from '../src/lib/serverCache';
 import { resolveBvScopedGroups } from '../src/lib/bvGroupMemberScope';
 import getGuides from '../src/api/getGuides';
@@ -460,6 +461,131 @@ test('hierarchy lookup failures never grant full access', async t => {
   await assert.rejects(getScopedHierarchyUserIds(admin), /database unavailable/);
   await assert.rejects(call(getGuideUsers, { guideId: 'ALL', minimal: true }, supervisor), /database unavailable/);
   await assert.rejects(call(getGuideUsers, { guideId: 'ALL', minimal: true, forMeetingInvitees: true }), /database unavailable/);
+});
+
+test('a request resolves one caller scope once, and a stale marker still rebuilds', async t => {
+  const built = buildReportingChains(users, groups, memberships);
+  const chained = users.map(user => {
+    const id = String(user.id);
+    return {
+      ...user,
+      reportingChain: [...(built.reportingChain.get(id) || [])],
+      reportingScopeKeys: [...(built.scopeKeys.get(id) || [])],
+    };
+  });
+  const oracle = (caller: any) => scopeFromReportingChains(caller, users, built.reportingChain, built.scopeKeys);
+  const state = { marker: sdk.REPORTING_CHAINS_READY, rebuilds: 0, transactions: 0 };
+  const counts = { marker: 0, caller: 0, chunked: 0 };
+  let failLookups = false;
+  const db = {
+    batch() {
+      state.rebuilds += 1;
+      return { set() {}, async commit() {} };
+    },
+    collection() { return { doc() { return {}; } }; },
+    async runTransaction(run: (tx: any) => Promise<unknown>) {
+      state.transactions += 1;
+      return run({
+        async get() { return { exists: true, data: () => ({ configValue: state.marker }) }; },
+        set(_ref: unknown, data: { configValue?: string }) { if (data?.configValue) state.marker = data.configValue; },
+      });
+    },
+  };
+  t.mock.method(sdk.Config, 'findOne', async () => {
+    counts.marker += 1;
+    return { configKey: sdk.REPORTING_CHAINS_KEY, configValue: state.marker };
+  });
+  t.mock.method(sdk.Users, 'findOne', async (options: any) => {
+    counts.caller += 1;
+    if (failLookups) throw new Error('database unavailable');
+    return chained.find(user => user.id === options?.id);
+  });
+  t.mock.method(sdk.Users, 'findAll', async (options: any) => {
+    const chunk = options?.filters?.reportingChain?.arrayContainsAny;
+    if (Array.isArray(chunk)) {
+      counts.chunked += 1;
+      const wanted = new Set(chunk.map((key: string) => String(key).toLowerCase()));
+      const records = chained.filter(user => (user.reportingChain || []).some((key: string) => wanted.has(String(key).toLowerCase())));
+      return { records, hasMore: false };
+    }
+    return { records: chained, hasMore: false };
+  });
+  t.after(() => {
+    sdk.clearReportingChainsLocalStale();
+    invalidateReportingChainMarkerCache();
+  });
+
+  const sameScope = (actual: Set<string> | null, caller: any) => {
+    const expected = oracle(caller);
+    assert.ok(actual && expected);
+    assert.deepEqual([...actual].sort(), [...expected].sort());
+  };
+  const inRequest = async <T>(run: () => Promise<T>) => (await withRequestQueries(run)).result;
+
+  await withHierarchyDatabase(db, async () => {
+    await inRequest(async () => {
+      const [adminScope, named, mailed, otherScope, superScope] = await Promise.all([
+        getScopedHierarchyUserIds(admin),
+        readScopedUsers(admin, { fields: ['fullName'] }),
+        readScopedUsers(admin, { fields: ['email'] }),
+        getScopedHierarchyUserIds(otherAdmin),
+        getScopedHierarchyUserIds(superAdmin),
+      ]);
+      assert.equal(counts.marker, 1);
+      assert.equal(counts.caller, 2);
+      assert.equal(counts.chunked, 2);
+      assert.equal(state.rebuilds, 0);
+      assert.equal(superScope, null);
+      sameScope(adminScope, admin);
+      sameScope(otherScope, otherAdmin);
+      assert.equal(adminScope?.has('direct-a'), true);
+      assert.equal(adminScope?.has('member-b'), false);
+      assert.equal(adminScope?.has('unassigned'), false);
+      assert.equal(adminScope?.has('folk-outsider'), false);
+      assert.equal(otherScope?.has('member-b'), true);
+      assert.equal(otherScope?.has('direct-a'), false);
+      assert.ok(named.records.length > 0);
+      assert.ok(named.records.every((row: any) => adminScope?.has(String(row.id))));
+      assert.equal(named.records.some((row: any) => row.id === 'member-b'), false);
+      assert.equal(named.records.find((row: any) => row.id === 'direct-a')?.fullName, 'direct-a');
+      assert.equal('email' in (named.records[0] || {}), false);
+      assert.equal(mailed.records.find((row: any) => row.id === 'direct-a')?.email, 'direct-a@example.test');
+      adminScope?.add('member-b');
+      const reread = await getScopedHierarchyUserIds(admin);
+      assert.equal(reread?.has('member-b'), false);
+      assert.equal(counts.chunked, 2);
+      assert.equal(counts.caller, 2);
+    });
+
+    await inRequest(() => Promise.all([
+      getScopedHierarchyUserIds(admin),
+      readScopedUsers(admin, { fields: ['fullName'] }),
+    ]));
+    assert.equal(counts.marker, 1);
+    assert.equal(counts.caller, 3);
+    assert.equal(counts.chunked, 3);
+    assert.equal(state.rebuilds, 0);
+
+    state.marker = 'stale:1';
+    await sdk.markReportingChainsStale();
+    try {
+      const rebuilt = await inRequest(() => getScopedHierarchyUserIds(admin));
+      sameScope(rebuilt, admin);
+      assert.equal(rebuilt?.has('member-b'), false);
+      assert.ok(state.rebuilds >= 1);
+      assert.ok(state.transactions >= 1);
+      assert.ok(counts.marker > 1);
+      assert.equal(state.marker, sdk.REPORTING_CHAINS_READY);
+    } finally {
+      sdk.clearReportingChainsLocalStale();
+    }
+
+    failLookups = true;
+    await inRequest(async () => {
+      await assert.rejects(getScopedHierarchyUserIds(admin), /database unavailable/);
+      await assert.rejects(readScopedUsers(admin, { fields: ['fullName'] }), /database unavailable/);
+    });
+  });
 });
 
 test('ordinary admins see meetings they created or were invited to; super admins can view all', () => {

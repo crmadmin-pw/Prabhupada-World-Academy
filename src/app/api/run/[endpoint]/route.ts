@@ -15,7 +15,7 @@ import {
 import { isReadOnlyEndpoint } from '@/lib/realtimeChannels';
 import { withRequestQueries } from '@/lib/requestQueries';
 import { whenServerCacheShared } from '@/lib/serverCache';
-import { registerRealtimeQuery } from '@/lib/realtimeQueryRegistration';
+import { scheduleRealtimeQuery } from '@/lib/realtimeQueryRegistration';
 import { registerRealtimeIdentity } from '@/lib/realtimeIdentityRegistration';
 import { caughtApiError } from '@/lib/caughtApiError';
 import { isRateLimited, RATE_LIMIT_MESSAGE } from '@/utils/rateLimit';
@@ -291,17 +291,11 @@ export async function POST(
         .catch(error => console.warn('[Realtime] Notification routing registration unavailable', error));
     }
 
-    let realtimeQuery: { token: string; version: string } | undefined;
-    if (reactive && context.user) {
-      const realtimeStartedAt = Date.now();
-      try {
-        realtimeQuery = await registerRealtimeQuery(context.user, endpoint, validatedInput, dependencies, readVersion);
-      } catch (error) {
-        // Reading business data must still work during a transport outage.
-        console.warn('[Realtime] Query registration unavailable', error);
-      }
-      realtimeDurationMs = Date.now() - realtimeStartedAt;
-    }
+    // The token is a hash of this read. Registration checks collection clocks
+    // after the response, so a write that wins the race is still signaled.
+    const realtimeQuery = reactive && context.user
+      ? scheduleRealtimeQuery(context.user, endpoint, validatedInput, dependencies, readVersion)
+      : undefined;
 
     // Native Firestore write events cover committed mutations, including
     // imports and background jobs, with durable managed retries. No broad

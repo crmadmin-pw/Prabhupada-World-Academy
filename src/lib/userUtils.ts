@@ -143,6 +143,7 @@ export function requireGuideRole(
   flags?: {
     isSadhanaMentor?: boolean | null;
     isBvsl?: boolean | null;
+    isBvFacilitator?: boolean | null;
     isBvMentor?: boolean | null;
     isBvAdmin?: boolean | null;
     isPwAdmin?: boolean | null;
@@ -152,11 +153,12 @@ export function requireGuideRole(
   },
 ): void {
   const normRole = (userRole || '').toUpperCase().replace(/\s+/g, '_');
-  const ALLOWED_ROLES = ['GUIDE', 'SUPER_GUIDE', 'ADMIN', 'SUPER_ADMIN', 'PW_ADMIN', 'BVSL', 'RGSF', 'SUB_FACILITATOR', 'SADHANA_MENTOR'];
+  const ALLOWED_ROLES = ['GUIDE', 'SUPER_GUIDE', 'ADMIN', 'SUPER_ADMIN', 'PW_ADMIN', 'BVSL', 'RGF', 'FACILITATOR', 'RGSF', 'SUB_FACILITATOR', 'SADHANA_MENTOR'];
   const roleOk = !!(normRole && ALLOWED_ROLES.includes(normRole));
   const flagOk = !!(
     flags?.isSadhanaMentor ||
     flags?.isBvsl ||
+    flags?.isBvFacilitator ||
     flags?.isBvMentor ||
     flags?.isBvAdmin ||
     flags?.isPwAdmin ||

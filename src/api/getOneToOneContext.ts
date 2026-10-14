@@ -23,11 +23,22 @@ function parseFieldValues(value: unknown): Record<string, unknown> {
   try { return JSON.parse(String(value)); } catch { return {}; }
 }
 
+/** Calendar date from a YYYY-MM-DD string. UTC keeps the week bucket on the
+ * IST day stored with the entry, instead of shifting it with the server zone. */
+function calendarDate(dateStr: string): Date {
+  const [year, month, day] = dateStr.split('T')[0].split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+function formatCalendarDate(date: Date): string {
+  return date.toISOString().split('T')[0];
+}
+
 function getMondayOfWeek(dateStr: string): string {
-  const d = new Date(dateStr.split('T')[0] + 'T00:00:00');
-  const day = d.getDay();
-  d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
-  return d.toISOString().split('T')[0];
+  const d = calendarDate(dateStr);
+  const day = d.getUTCDay();
+  d.setUTCDate(d.getUTCDate() + (day === 0 ? -6 : 1 - day));
+  return formatCalendarDate(d);
 }
 
 export default createEndpoint({
@@ -122,9 +133,9 @@ export default createEndpoint({
     // Generate last 4 Mondays (oldest → newest)
     const currMonday = getMondayOfWeek(today);
     const mondays = Array.from({ length: 4 }, (_, i) => {
-      const d = new Date(currMonday + 'T00:00:00');
-      d.setDate(d.getDate() - (3 - i) * 7);
-      return d.toISOString().split('T')[0];
+      const d = calendarDate(currMonday);
+      d.setUTCDate(d.getUTCDate() - (3 - i) * 7);
+      return formatCalendarDate(d);
     });
 
     const weeks = mondays.map(monday => {

@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, Flame, TrendingUp, Phone, Leaf, Star, Calendar, BarChart3, ArrowUp, ArrowDown, Minus } from 'lucide-react';
+import { ArrowLeft, Flame, TrendingUp, Phone, MessageCircle, Leaf, Star, Calendar, BarChart3, ArrowUp, ArrowDown, Minus } from 'lucide-react';
 import { toast } from 'sonner';
 import { getUserDetailForGuide, getAshrayUpgradePath, getBvAttendance, getAshrayChecklist, getUserProgressStats, getUserCrmData } from '@/lib/endpoints-sdk';
 import type { GetAshrayUpgradePathOutputType, GetUserCrmDataOutputType } from '@/lib/endpoints-sdk';
@@ -22,6 +22,7 @@ import MiniCalendar from '@/components/dashboard/MiniCalendar';
 import EntryDetailModal from '@/components/dashboard/EntryDetailModal';
 import FieldTrendChart, { RESIDENT_FIELD_CONFIGS, NR_FIELD_CONFIGS, PW_FIELD_CONFIGS } from '@/components/stats/FieldTrendChart';
 import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
+import { profileBackNavigation, viewerDetailHome } from '@/lib/bvGroupMemberProfileNavigation';
 
 type Period = 'daily' | 'weekly' | 'monthly';
 const PERIOD_LABELS: Record<Period, string> = { daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly' };
@@ -41,9 +42,8 @@ export default function GuideUserDetailPage() {
   const canEditRent = ['GUIDE', 'SUPER_GUIDE'].includes(viewerRole) || !!viewerUser?.isFolkLead;
 
   const goBack = () => {
-    const referrer = (location.state as any)?.from as string | undefined;
-    if (referrer) { navigate(referrer); return; }
-    navigate(-1);
+    const target = profileBackNavigation(location.state, viewerDetailHome(viewerUser));
+    navigate(target.to, { replace: true, state: target.state });
   };
 
   const [loading, setLoading] = useState(true);
@@ -215,11 +215,18 @@ export default function GuideUserDetailPage() {
           </div>
           <div className="flex gap-2 flex-wrap shrink-0">
             {data.user.phone && (
-              <a href={`tel:+${normalizePhoneForLinks(data.user.phone)}`}>
-                <Button variant="outline" className="border-blue-400 text-blue-600">
-                  <Phone className="w-4 h-4 mr-2" />Call
+              <>
+                <Button variant="outline" className="border-blue-400 text-blue-600" asChild>
+                  <a href={`tel:+${normalizePhoneForLinks(data.user.phone)}`}>
+                    <Phone className="w-4 h-4 mr-2" />Call
+                  </a>
                 </Button>
-              </a>
+                <Button variant="outline" className="border-green-500 text-green-700" asChild>
+                  <a href={`https://wa.me/${normalizePhoneForLinks(data.user.phone)}`} target="_blank" rel="noopener noreferrer">
+                    <MessageCircle className="w-4 h-4 mr-2" />WhatsApp
+                  </a>
+                </Button>
+              </>
             )}
           </div>
         </div>

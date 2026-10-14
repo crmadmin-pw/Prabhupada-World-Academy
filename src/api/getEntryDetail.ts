@@ -4,6 +4,13 @@ import { NON_RESIDENT_FIELDS, RESIDENT_FIELDS } from '../config/sadhanaFields';
 import { isPwSadhanaUser, PW_SADHANA_FORM_KEYS } from '@/lib/sadhanaDepartment';
 import { formatPwProgress, pwScoreFromFieldValues, pwTarget } from '@/lib/pwSadhana';
 
+// Personalized PW scoring only covers chanting and reading. Preaching and book
+// distribution are still stored on the entry and belong in the detail view.
+const PW_ACTIVITY_KEYS = new Set([
+  'preaching_raw', 'preaching_minutes', 'preachingMinutes',
+  'distribution_raw', 'books_distributed', 'booksDistributed',
+]);
+
 // Human-readable labels for common field keys
 const FIELD_LABEL_MAP: Record<string, string> = {
   rounds: 'Rounds of Japa', chanting: 'Rounds of Japa',
@@ -113,7 +120,7 @@ export default createEndpoint({
     // still exist for history, but must not relabel a resident's entry using
     // the retired resident form.
     const fieldDefs = (isNREntry ? NON_RESIDENT_FIELDS : RESIDENT_FIELDS)
-      .filter(field => !isPw || PW_SADHANA_FORM_KEYS.has(field.fieldKey))
+      .filter(field => !isPw || PW_SADHANA_FORM_KEYS.has(field.fieldKey) || PW_ACTIVITY_KEYS.has(field.fieldKey))
       .slice()
       .sort((a, b) => a.displayOrder - b.displayOrder);
     // For NR entries, seva and bhaktiVriksha may be leaderboard-only (no direct pts).
@@ -126,7 +133,7 @@ export default createEndpoint({
       if (!key || key.startsWith('_')) continue;
       const val = rawFieldValues[key];
       if (val === undefined || val === null) continue;
-      const displayValue = isPw
+      const displayValue = isPw && PW_SADHANA_FORM_KEYS.has(key)
         ? formatPwProgress(Number(val), pwTarget(key === 'chanting' ? meta.pwChantingTarget : meta.pwReadingTarget))
         : formatDisplayValue(key, val);
       const points = isPw ? undefined : rawFieldValues[`_pts_${key}`] ?? rawFieldValues[`_nr_pts_${key}`];
@@ -138,7 +145,7 @@ export default createEndpoint({
         : rawMaxPoints;
       fields.push({
         fieldKey: key,
-        fieldLabel: isPw
+        fieldLabel: isPw && PW_SADHANA_FORM_KEYS.has(key)
           ? (key === 'chanting' ? 'Chanting (rounds)' : 'Reading (minutes)')
           : (def.fieldLabel || FIELD_LABEL_MAP[key] || key),
         displayValue,
@@ -152,7 +159,7 @@ export default createEndpoint({
     // Skip keys ending with _points — they are derived scoring values already shown
     // as a badge next to the raw field row (e.g. rounds_points, sp_reading_points)
     for (const [key, val] of Object.entries(rawFieldValues)) {
-      if (isPw && !PW_SADHANA_FORM_KEYS.has(key)) continue;
+      if (isPw && !PW_SADHANA_FORM_KEYS.has(key) && !PW_ACTIVITY_KEYS.has(key)) continue;
       if (key.startsWith('_') || fieldKeySet.has(key)) continue;
       if (key.endsWith('_points')) continue;
       if (val === null || val === undefined) continue;
@@ -175,7 +182,7 @@ export default createEndpoint({
       entry: {
         entryId: entry.entryId || entry.id,
         entryDate: entry.entryDate || '',
-        totalScore: isPw ? null : (entry.totalScore ?? 0),
+        totalScore: entry.totalScore ?? (isPw ? null : 0),
         maxScore: isPw ? null : (entry.maxScore ?? meta.maxScore ?? null),
         scorePercent: isPw ? pwScored!.scorePercent : (entry.scorePercent ?? null),
         isPw,

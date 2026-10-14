@@ -3,7 +3,7 @@
 # See: https://firebase.google.com/docs/app-hosting/configure
 
 runConfig:
-  minInstances: 0
+  minInstances: 1
   maxInstances: 10
   concurrency: 80
 
@@ -65,3 +65,28 @@ env:
     secret: ziteVapidPrivateKey
     availability:
       - RUNTIME
+
+  # Transactional mail. Create these in Secret Manager before the next rollout,
+  # then uncomment the bindings. Email.send refuses to report success until
+  # APP_SMTP_HOST, APP_SMTP_PORT, APP_SMTP_USER, APP_SMTP_PASSWORD, and
+  # APP_SMTP_FROM are present at runtime.
+  # - variable: APP_SMTP_HOST
+  #   secret: smtpHost
+  #   availability:
+  #     - RUNTIME
+  # - variable: APP_SMTP_PORT
+  #   secret: smtpPort
+  #   availability:
+  #     - RUNTIME
+  # - variable: APP_SMTP_USER
+  #   secret: smtpUser
+  #   availability:
+  #     - RUNTIME
+  # - variable: APP_SMTP_PASSWORD
+  #   secret: smtpPassword
+  #   availability:
+  #     - RUNTIME
+  # - variable: APP_SMTP_FROM
+  #   secret: smtpFrom
+  #   availability:
+  #     - RUNTIME

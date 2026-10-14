@@ -1,7 +1,9 @@
-// Shared abuse-prevention counters.
-// Every server reads and writes the same Firestore document, so an extra
-// instance does not grant another allowance. Closed windows are deleted here,
-// and Firestore TTL on `expiresAt` removes anything the sweep misses.
+// Abuse-prevention counters.
+// The per-request limiter decides from a process-local bucket and syncs that
+// bucket to Firestore afterward, so a burst does not wait on one shared
+// document. Abuse-prone endpoints still update that document before they
+// continue. Closed windows are deleted here, and Firestore TTL on `expiresAt`
+// removes anything the sweep misses.
 
 import { createHash } from 'crypto';
 import { AppError, getFirestoreDb } from '@/lib/app-backend-sdk';
@@ -11,10 +13,21 @@ export const RATE_LIMIT_MESSAGE = 'Too many requests. Please wait a moment and t
 const RATE_LIMITS = 'RateLimits';
 const SWEEP_INTERVAL_MS = 30_000;
 const SWEEP_LIMIT = 50;
+const INSTANCE_SYNC_DELAY_MS = 10;
+const SYNC_RETRY_MS = 1_000;
 
 type Counter = { count: number; resetAt: number };
+type InstanceBucket = {
+  count: number;
+  resetAt: number;
+  pending: number;
+  flushing: boolean;
+  blocked: boolean;
+  timer?: ReturnType<typeof setTimeout>;
+};
 
 const memoryLimits = new Map<string, Counter>();
+const instanceBuckets = new Map<string, InstanceBucket>();
 let sweepAfter = 0;
 let sweeping: Promise<void> | null = null;
 
@@ -59,6 +72,94 @@ async function consumeShared(db: any, id: string, maxCalls: number, windowMs: nu
   });
 }
 
+function clearBucketTimer(entry: InstanceBucket) {
+  if (!entry.timer) return;
+  clearTimeout(entry.timer);
+  entry.timer = undefined;
+}
+
+function consumeInstance(id: string, maxCalls: number, windowMs: number, now: number): boolean {
+  for (const [key, entry] of instanceBuckets) {
+    if (now >= entry.resetAt && !entry.blocked && !entry.flushing && !entry.timer) instanceBuckets.delete(key);
+  }
+  const entry = instanceBuckets.get(id);
+  if (entry?.blocked) return true;
+  if (!entry || now >= entry.resetAt) {
+    if (entry) clearBucketTimer(entry);
+    instanceBuckets.set(id, { count: 1, resetAt: now + windowMs, pending: 1, flushing: false, blocked: false });
+    return false;
+  }
+  if (entry.count >= maxCalls) return true;
+  entry.count += 1;
+  entry.pending += 1;
+  return false;
+}
+
+/** Add a burst of local allows to the shared window in one transaction. */
+async function addSharedDelta(db: any, id: string, delta: number, windowMs: number, now: number): Promise<Counter> {
+  const ref = db.collection(RATE_LIMITS).doc(id);
+  return db.runTransaction(async (tx: any) => {
+    const data = (await tx.get(ref)).data() as Partial<Counter> | undefined;
+    if (!windowOpen(data, now)) {
+      const resetAt = now + windowMs;
+      tx.set(ref, { count: delta, resetAt, expiresAt: new Date(resetAt) });
+      return { count: delta, resetAt };
+    }
+    const count = data.count + delta;
+    tx.update(ref, { count });
+    return { count, resetAt: data.resetAt };
+  });
+}
+
+async function flushInstance(db: any, id: string, windowMs: number): Promise<void> {
+  const entry = instanceBuckets.get(id);
+  if (!entry || entry.pending <= 0) return;
+  const delta = entry.pending;
+  try {
+    const shared = await addSharedDelta(db, id, delta, windowMs, Date.now());
+    const current = instanceBuckets.get(id);
+    if (!current) return;
+    current.pending = Math.max(0, current.pending - delta);
+    const now = Date.now();
+    if (now < shared.resetAt) {
+      current.count = shared.count + current.pending;
+      current.resetAt = shared.resetAt;
+    }
+    current.blocked = false;
+  } catch (error) {
+    const current = instanceBuckets.get(id);
+    const message = error instanceof Error ? error.message : 'unknown error';
+    if (process.env.NODE_ENV === 'production') {
+      console.error('[RateLimit] Shared counter update failed', message);
+      if (current) current.blocked = true;
+      return;
+    }
+    console.warn('[RateLimit] Shared counter update failed; using a process-local window', message);
+    if (current) current.pending = Math.max(0, current.pending - delta);
+  }
+}
+
+function scheduleInstanceSync(db: any, id: string, maxCalls: number, windowMs: number, delayMs = INSTANCE_SYNC_DELAY_MS) {
+  const entry = instanceBuckets.get(id);
+  if (!entry || entry.timer || entry.flushing || entry.pending <= 0) return;
+  const timer = setTimeout(() => {
+    const current = instanceBuckets.get(id);
+    if (!current) return;
+    current.timer = undefined;
+    if (current.flushing || current.pending <= 0) return;
+    current.flushing = true;
+    void flushInstance(db, id, windowMs).finally(() => {
+      const latest = instanceBuckets.get(id);
+      if (!latest) return;
+      latest.flushing = false;
+      if (latest.blocked) scheduleInstanceSync(db, id, maxCalls, windowMs, SYNC_RETRY_MS);
+      else if (latest.pending > 0) scheduleInstanceSync(db, id, maxCalls, windowMs);
+    });
+  }, delayMs);
+  if (typeof timer.unref === 'function') timer.unref();
+  entry.timer = timer;
+}
+
 /** Delete counters whose window has already closed. A refresh that won the race is left in place. */
 export async function sweepExpiredRateLimits(db: any, now = Date.now()): Promise<number> {
   const snap = await db.collection(RATE_LIMITS).where('resetAt', '<', now).limit(SWEEP_LIMIT).get();
@@ -96,6 +197,11 @@ type ConsumeOptions = {
   db?: any;
   now?: number;
   sweep?: boolean;
+  /**
+   * Decide from the process-local bucket and sync Firestore afterward.
+   * The per-request limiter uses this so the handler does not wait on a transaction.
+   */
+  background?: boolean;
 };
 
 /**
@@ -119,6 +225,15 @@ export async function consumeRateLimit(
       return true;
     }
     return consumeMemory(id, maxCalls, windowMs, now);
+  }
+
+  if (options.background) {
+    const limited = consumeInstance(id, maxCalls, windowMs, now);
+    const bucket = instanceBuckets.get(id);
+    if (!limited) scheduleInstanceSync(db, id, maxCalls, windowMs);
+    else if (bucket?.blocked) scheduleInstanceSync(db, id, maxCalls, windowMs, SYNC_RETRY_MS);
+    if (options.sweep !== false) scheduleExpiredSweep(db);
+    return limited;
   }
 
   try {
@@ -162,5 +277,5 @@ export async function enforceRateLimit(
 }
 
 export async function isRateLimited(key: string, maxCalls: number, windowMs: number): Promise<boolean> {
-  return consumeRateLimit(key, maxCalls, windowMs);
+  return consumeRateLimit(key, maxCalls, windowMs, { background: true });
 }

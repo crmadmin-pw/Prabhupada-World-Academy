@@ -45,6 +45,32 @@ export default createEndpoint({
     }
     if (input.residencyId) updates.residency = input.residencyId;
 
+    if (input.email !== undefined) {
+      const requested = input.email.trim().toLowerCase();
+      const verified = String(context.user.email || '').trim().toLowerCase();
+      // The login email is already verified by the auth token. A different
+      // address must not succeed silently, and it must not be written.
+      if (!verified || requested !== verified || context.user.emailVerified === false) {
+        throw new AppError({
+          code: 'FORBIDDEN',
+          message: 'Email can only be saved when it matches your verified login email.',
+        });
+      }
+      const { records } = await Users.findAll({ filters: { email: requested }, limit: 10 });
+      const takenBySomeoneElse = (records || []).some((record: { id?: string }) =>
+        record?.id && record.id !== context.user.id
+      );
+      if (takenBySomeoneElse) {
+        throw new AppError({
+          code: 'CONFLICT',
+          message: 'That email already belongs to another profile.',
+        });
+      }
+      const stored = await Users.findOne({ id: context.user.id, fields: ['email'] });
+      const current = String(stored?.email || '').trim().toLowerCase();
+      if (current !== requested) updates.email = requested;
+    }
+
     if (Object.keys(updates).length === 0) return { success: true };
 
     // Primary write: use App user sync record ID (guaranteed to match the right row)

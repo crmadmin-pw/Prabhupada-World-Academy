@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { getBvslGroups, getCurrentGuide } from '@/lib/endpoints-sdk';
 import { useNavigate } from 'react-router-dom';
+import { dashboardReturnPath } from '@/lib/bvGroupMemberProfileNavigation';
 import type { GetBvslGroupsOutputType } from '@/lib/endpoints-sdk';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { useAuth } from '@/lib/auth-sdk';
@@ -116,7 +117,7 @@ export default function BvslDashboard() {
               {activeTab === 'weekplan' && <BvslWeeklyPlanTab userEmail={authUser?.email || ''} />}
               {activeTab === 'groups' && (
                 <BvslGroupsPanel bvslId={bvslId} groups={groups}
-                  onGroupSelect={(groupId) => navigate(`/bvsl/groups/${groupId}`)}
+                  onGroupSelect={(groupId) => navigate(`/bvsl/groups/${groupId}`, { state: { from: dashboardReturnPath() } })}
                   onRefresh={loadGroups} />
               )}
               {activeTab === 'session' && <BvslSessionPanel bvslId={bvslId} groups={groups} />}

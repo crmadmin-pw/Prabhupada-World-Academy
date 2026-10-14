@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { assignBvRole } from '@/lib/endpoints-sdk';
 import { sendOrQueue } from '@/lib/offlineQueue';
 import { bvRolePatch, type PendingDirectoryPatch } from '@/lib/pendingDirectoryPatch';
+import type { PwGroupRole, PwGroupRoleOption } from '@/lib/pwGroupRoles';
 
 interface OptionItem {
   id: string;
@@ -23,6 +24,7 @@ interface Props {
   adminsList: OptionItem[];
   supervisorsList: OptionItem[];
   facilitatorsList: OptionItem[];
+  readingGroups?: Array<PwGroupRoleOption & { role: PwGroupRole }>;
   onClose: () => void;
   onSaved: (update: { user: any; patch: PendingDirectoryPatch }) => void;
 }
@@ -49,6 +51,7 @@ export default function MultiRoleAssignModal({
   adminsList,
   supervisorsList,
   facilitatorsList,
+  readingGroups = [],
   onClose,
   onSaved,
 }: Props) {
@@ -72,6 +75,12 @@ export default function MultiRoleAssignModal({
   const [isSupervisor, setIsSupervisor] = useState(!!(user?.isBvSupervisor || user?.isBvMentor));
   const [isFacilitator, setIsFacilitator] = useState(!!(user?.isBvFacilitator || user?.isBvsl));
   const [isSubFacilitator, setIsSubFacilitator] = useState(!!user?.isBvSubFacilitator);
+  const groupScoped = readingGroups.length > 1;
+  const [groupRoles, setGroupRoles] = useState<Record<string, PwGroupRole>>(() =>
+    Object.fromEntries(readingGroups.map(group => [group.id, group.role])),
+  );
+  const facilitatorInAGroup = groupScoped && Object.values(groupRoles).includes('FACILITATOR');
+  const subFacilitatorInAGroup = groupScoped && Object.values(groupRoles).includes('SUB_FACILITATOR');
 
   const [adminParentId, setAdminParentId] = useState(() => resolveInitialParentId(user?.bvReportingAdminId, filteredAdminsList));
   const [supervisorParentId, setSupervisorParentId] = useState(() => resolveInitialParentId(user?.bvReportingSupervisorId, filteredSupervisorsList));
@@ -83,6 +92,8 @@ export default function MultiRoleAssignModal({
     setSaving(true);
     try {
       // Determine primary role to assign via assignBvRole API while keeping multi-role flags
+      const effectiveFacilitator = groupScoped ? facilitatorInAGroup : isFacilitator;
+      const effectiveSubFacilitator = groupScoped ? subFacilitatorInAGroup : isSubFacilitator;
       let primaryRole = 'MEMBER';
       let parentId = '';
       let parentName = '';
@@ -93,26 +104,39 @@ export default function MultiRoleAssignModal({
         primaryRole = 'SUPERVISOR';
         parentId = adminParentId;
         parentName = filteredAdminsList.find(a => a.id === adminParentId)?.name || '';
-      } else if (isFacilitator) {
+      } else if (effectiveFacilitator) {
         primaryRole = 'FACILITATOR';
         parentId = supervisorParentId;
         parentName = filteredSupervisorsList.find(s => s.id === supervisorParentId)?.name || '';
-      } else if (isSubFacilitator) {
+      } else if (effectiveSubFacilitator) {
         primaryRole = 'SUB_FACILITATOR';
         parentId = facilitatorParentId;
         parentName = filteredFacilitatorsList.find(f => f.id === facilitatorParentId)?.name || '';
       }
+
+      const changedGroupRoles = readingGroups
+        .filter(group => groupRoles[group.id] && groupRoles[group.id] !== group.role)
+        .map(group => ({ groupId: group.id, role: groupRoles[group.id] }));
 
       const submission = {
         userId: user.userId || user.id,
         role: primaryRole as any,
         parentId: parentId || undefined,
         parentName: parentName || undefined,
+        ...(changedGroupRoles.length > 0 ? { groupRoles: changedGroupRoles } : {}),
+        ...(groupScoped && effectiveFacilitator && supervisorParentId ? {
+          rgfReportsToId: supervisorParentId,
+          rgfReportsToName: filteredSupervisorsList.find(s => s.id === supervisorParentId)?.name || '',
+        } : {}),
+        ...(groupScoped && effectiveSubFacilitator && facilitatorParentId ? {
+          rgsfReportsToId: facilitatorParentId,
+          rgsfReportsToName: filteredFacilitatorsList.find(f => f.id === facilitatorParentId)?.name || '',
+        } : {}),
         multiRoles: {
           isAdmin,
           isSupervisor,
-          isFacilitator,
-          isSubFacilitator,
+          isFacilitator: effectiveFacilitator,
+          isSubFacilitator: effectiveSubFacilitator,
         },
       };
       const outcome = await sendOrQueue({
@@ -129,8 +153,8 @@ export default function MultiRoleAssignModal({
         patch: bvRolePatch({
           isAdmin,
           isSupervisor,
-          isFacilitator,
-          isSubFacilitator,
+          isFacilitator: effectiveFacilitator,
+          isSubFacilitator: effectiveSubFacilitator,
           primaryRole,
           parentId,
           parentName,
@@ -152,7 +176,9 @@ export default function MultiRoleAssignModal({
             <Shield className="w-5 h-5 text-primary" /> Assign Roles for {user?.fullName}
           </DialogTitle>
           <DialogDescription className="text-xs">
-            Select one or more Bhakti Vriksha roles for this user. Multiple roles can be assigned simultaneously.
+            {groupScoped
+              ? 'This person is in more than one reading group. Choose the role for each group. A change applies only to that group.'
+              : 'Select one or more Bhakti Vriksha roles for this user. Multiple roles can be assigned simultaneously.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -212,6 +238,80 @@ export default function MultiRoleAssignModal({
             )}
           </div>
 
+          {groupScoped ? (
+            <div className="p-3 border rounded-lg bg-card space-y-3">
+              <div>
+                <p className="font-semibold text-sm flex items-center gap-1.5 text-purple-600">
+                  <UserCheck className="w-4 h-4" /> Reading group role
+                </p>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  The same person can be an RGF in one group and an RGSF in another. Each choice stays on that group.
+                </p>
+              </div>
+              {readingGroups.map(group => (
+                <div key={group.id} className="space-y-1">
+                  <Label className="text-xs font-medium">{group.groupName}</Label>
+                  <Select
+                    value={groupRoles[group.id] || group.role}
+                    onValueChange={(value) => {
+                      if (value !== 'FACILITATOR' && value !== 'SUB_FACILITATOR' && value !== 'MEMBER') return;
+                      setGroupRoles(current => ({ ...current, [group.id]: value }));
+                    }}
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue>
+                        {groupRoles[group.id] === 'SUB_FACILITATOR' ? 'RGSF' : groupRoles[group.id] === 'MEMBER' ? 'Member' : 'RGF'}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="FACILITATOR">RGF</SelectItem>
+                      <SelectItem value="SUB_FACILITATOR">RGSF</SelectItem>
+                      <SelectItem value="MEMBER">Member</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              ))}
+              {facilitatorInAGroup && (
+                <div className="space-y-1">
+                  <Label className="text-xs font-medium">RGF reports to Supervisor:</Label>
+                  <Select value={supervisorParentId} onValueChange={(v) => setSupervisorParentId(v || 'all')}>
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue>
+                        {filteredSupervisorsList.find(s => s.id === supervisorParentId)?.name || 'Default Supervisor'}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {filteredSupervisorsList.length > 0 ? (
+                        filteredSupervisorsList.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)
+                      ) : (
+                        <SelectItem value="default_supervisor">Default Supervisor</SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {subFacilitatorInAGroup && (
+                <div className="space-y-1">
+                  <Label className="text-xs font-medium">RGSF reports to RGF:</Label>
+                  <Select value={facilitatorParentId} onValueChange={(v) => setFacilitatorParentId(v || 'all')}>
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue>
+                        {filteredFacilitatorsList.find(f => f.id === facilitatorParentId)?.name || 'Default RGF'}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {filteredFacilitatorsList.length > 0 ? (
+                        filteredFacilitatorsList.map(f => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)
+                      ) : (
+                        <SelectItem value="default_rgf">Default RGF</SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+          ) : (
+          <>
           {/* 3. Facilitator (RGF) */}
           <div className="p-3 border rounded-lg bg-card space-y-2">
             <div className="flex items-center space-x-2">
@@ -283,6 +383,8 @@ export default function MultiRoleAssignModal({
               </div>
             )}
           </div>
+          </>
+          )}
         </div>
 
         <DialogFooter className="gap-2 sm:gap-0">

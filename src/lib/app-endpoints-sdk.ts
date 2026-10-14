@@ -53,6 +53,8 @@ export const subscribeEndpointCache = (listener: () => void) => {
   return () => { cacheListeners.delete(listener); };
 };
 function notifyCacheListeners() { cacheListeners.forEach(listener => listener()); }
+/** `scope` is the signed-in user plus authorization (see `dashboardScope`).
+ * Display-only profile updates must pass the same scope and keep cached reads. */
 export function setEndpointPermissionScope(scope: string) {
   if (scope === permissionScope) return;
   permissionScope = scope;

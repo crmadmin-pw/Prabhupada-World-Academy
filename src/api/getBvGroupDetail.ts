@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, BvSessions, BvAttendance, BvQuizzes, Users, AppError } from '@/lib/backend-sdk';
 import { legacyQuizMatchesGroup, normalizeQuizDepartment } from '@/lib/bvQuizAccess';
-import { bvUserAliases, resolveBvScopedGroups } from '@/lib/bvGroupMemberScope';
+import { bvUserAliases, resolveBvScopedGroups, resolveBvUsersByAliases } from '@/lib/bvGroupMemberScope';
 import { isHierarchyAdmin } from '@/lib/hierarchyUtils';
 
 function normalizeKey(value: unknown): string {
@@ -77,6 +77,49 @@ async function findUsersForKeys(keys: string[]): Promise<any[]> {
   return [...results.values()];
 }
 
+function textValues(value: unknown): string[] {
+  if (Array.isArray(value)) return value.flatMap(textValues);
+  const text = String(value ?? '').trim();
+  if (!text) return [];
+  return text.split(',').map(item => item.trim()).filter(Boolean);
+}
+
+function aliasSet(values: unknown[]): Set<string> {
+  return new Set(values.flatMap(textValues).map(value => value.toLowerCase()));
+}
+
+type FacilitatorBadge = 'RGF' | 'RGSF';
+
+const GROUP_FIELDS = [
+  'id', 'groupId', 'groupName', 'description', 'isActive', 'joinToken', 'whatsAppLink',
+  'bvslLeader', 'bvslId', 'bvslName', 'segment', 'subFacilitatorId', 'rgsfId', 'subFacilitator',
+];
+
+/** The group's assigned facilitators, even when they have no membership row. */
+async function loadGroupFacilitators(group: any): Promise<Array<{ user: any; badges: FacilitatorBadge[] }>> {
+  const rgfIds = aliasSet([group?.bvslLeader, group?.bvslId]);
+  const rgfNames = aliasSet([group?.bvslName]);
+  const rgsfIds = aliasSet([group?.subFacilitatorId, group?.rgsfId, group?.subFacilitator]);
+  const lookupAliases = [...rgfIds, ...(rgfIds.size > 0 ? [] : [...rgfNames]), ...rgsfIds];
+  if (lookupAliases.length === 0) return [];
+
+  const users = await resolveBvUsersByAliases(lookupAliases, [
+    'id', 'userId', 'fullName', 'email', 'phone', 'ashrayLevel', 'status',
+    'bvGroupId', 'isBvMember',
+  ]);
+  const rgfAliases = rgfIds.size > 0 ? rgfIds : rgfNames;
+  const roster: Array<{ user: any; badges: FacilitatorBadge[] }> = [];
+  for (const user of users) {
+    if (user?.status && String(user.status).toLowerCase() !== 'active') continue;
+    const aliases = new Set(bvUserAliases(user));
+    const badges: FacilitatorBadge[] = [];
+    if ([...rgfAliases].some(alias => aliases.has(alias))) badges.push('RGF');
+    if ([...rgsfIds].some(alias => aliases.has(alias))) badges.push('RGSF');
+    if (badges.length > 0) roster.push({ user, badges });
+  }
+  return roster;
+}
+
 function leaderAliases(group: any): string[] {
   return [...new Set([group?.bvslLeader, group?.bvslId]
     .flatMap(value => Array.isArray(value) ? value : [value])
@@ -108,12 +151,12 @@ export default createEndpoint({
     // Try finding by the custom groupId field first, then fall back to DB record ID
     let group = await BvGroups.findOne({
       filters: { groupId: input.groupId },
-      fields: ['id', 'groupId', 'groupName', 'description', 'isActive', 'joinToken', 'whatsAppLink', 'bvslLeader', 'bvslId', 'segment'],
+      fields: GROUP_FIELDS,
     });
     if (!group) {
       group = await BvGroups.findOne({
         id: input.groupId,
-        fields: ['id', 'groupId', 'groupName', 'description', 'isActive', 'joinToken', 'whatsAppLink', 'bvslLeader', 'bvslId', 'segment'],
+        fields: GROUP_FIELDS,
       });
     }
     if (!group) throw new AppError({ code: 'NOT_FOUND', message: 'Group not found' });
@@ -159,6 +202,22 @@ export default createEndpoint({
 
     const userMap: Record<string, any> = {};
     userRecords.forEach((u: any) => addUserToMap(userMap, u));
+    const facilitatorRoster = await loadGroupFacilitators(group);
+    facilitatorRoster.forEach(entry => addUserToMap(userMap, entry.user));
+    const badgesByAlias = new Map<string, FacilitatorBadge[]>();
+    for (const entry of facilitatorRoster) {
+      for (const alias of bvUserAliases(entry.user)) {
+        const existing = badgesByAlias.get(alias) || [];
+        badgesByAlias.set(alias, [...new Set([...existing, ...entry.badges])]);
+      }
+    }
+    const badgesForUser = (user: any): FacilitatorBadge[] => {
+      const found = new Set<FacilitatorBadge>();
+      for (const alias of bvUserAliases(user)) {
+        for (const badge of badgesByAlias.get(alias) || []) found.add(badge);
+      }
+      return [...found];
+    };
 
     const resolveMember = (record: any) => {
       const rawKeys = getRecordUserKeys(record);
@@ -181,14 +240,37 @@ export default createEndpoint({
         // render its leftover legacy membership row. Missing values remain
         // supported for pre-migration records.
         const isBvMember = resolved.user?.isBvMember !== false;
-        const isActiveMember = !!resolved.user && isActiveUser && isBvMember && isCurrentGroup;
+        const facilitatorBadges = badgesForUser(resolved.user);
+        // A group's RGF/RGSF stays on this roster even when their personal
+        // profile points at another group or is not flagged as a member.
+        const isActiveMember = !!resolved.user && isActiveUser && (
+          facilitatorBadges.length > 0 || (isBvMember && isCurrentGroup)
+        );
         return { record: m, resolved, isActiveMember };
       })
       .filter(item => item.isActiveMember);
 
+    const coveredAliases = new Set(
+      activeMemberships.flatMap(item => bvUserAliases(item.resolved.user)),
+    );
+    for (const entry of facilitatorRoster) {
+      if (bvUserAliases(entry.user).some(alias => coveredAliases.has(alias))) continue;
+      const record = {
+        id: `facilitator-${entry.user.id || entry.user.userId}`,
+        user: entry.user.id,
+        userId: entry.user.userId,
+        role: entry.badges[0],
+        joinedAt: '',
+      };
+      activeMemberships.push({ record, resolved: resolveMember(record), isActiveMember: true });
+      bvUserAliases(entry.user).forEach(alias => coveredAliases.add(alias));
+    }
+
     const memberKeyToCanonical = new Map<string, string>();
     for (const { resolved } of activeMemberships) {
-      for (const key of resolved.rawKeys) memberKeyToCanonical.set(normalizeKey(key), resolved.canonicalId);
+      for (const key of [...resolved.rawKeys, ...bvUserAliases(resolved.user)]) {
+        memberKeyToCanonical.set(normalizeKey(key), resolved.canonicalId);
+      }
     }
 
     const attendanceStats = new Map<string, { presentCount: number; totalCount: number; lastPresent: string }>();
@@ -222,7 +304,40 @@ export default createEndpoint({
         lastPresent: stats.lastPresent || null,
         role: (m.role as string) || 'Member',
         joinedAt: (m.joinedAt as string) || '',
+        badges: badgesForUser(u),
       };
+    });
+
+    const listedNames = new Set(members.map(member => member.fullName.trim().toLowerCase()));
+    const namedOnly = (values: unknown, badge: FacilitatorBadge) => {
+      if (facilitatorRoster.some(entry => entry.badges.includes(badge))) return [];
+      return textValues(values)
+        .filter(name => name.includes(' ') && !listedNames.has(name.toLowerCase()))
+        .map(name => ({
+          membershipId: `facilitator-name-${badge}-${name.toLowerCase()}`,
+          userId: '',
+          fullName: name,
+          phone: '',
+          ashrayLevel: null,
+          presentCount: 0,
+          totalCount: 0,
+          attendanceRate: 0,
+          lastPresent: null,
+          role: badge,
+          joinedAt: '',
+          badges: [badge],
+        }));
+    };
+    const rgfNameOnly = aliasSet([group.bvslLeader, group.bvslId]).size === 0
+      ? namedOnly(group.bvslName, 'RGF')
+      : [];
+    const rgsfNameOnly = aliasSet([group.subFacilitatorId, group.rgsfId]).size === 0
+      ? namedOnly(group.subFacilitator, 'RGSF')
+      : [];
+    members.push(...rgfNameOnly, ...rgsfNameOnly);
+    members.sort((left, right) => {
+      const rank = (badges: FacilitatorBadge[]) => (badges.includes('RGF') ? 0 : badges.includes('RGSF') ? 1 : 2);
+      return rank(left.badges) - rank(right.badges) || left.fullName.localeCompare(right.fullName);
     });
 
     const sessions = sessionRecords.map((s: any) => ({

@@ -328,7 +328,7 @@ export default function SadhanaTab({ metrics, history, userId, residencyId, isRe
     if (!userId) return;
     !read.background && !read.cancelled && setProgressLoading(true);
     const days = trendPeriod === 'monthly' ? 365 : trendPeriod === 'weekly' ? 84 : 45;
-    read(() => getUserProgressStats({ userId, days, period: trendPeriod }))
+    read(() => getUserProgressStats({ userId, days, period: trendPeriod, includeToday: true }))
       .then(res => !read.cancelled && setProgressData(res as any))
       .catch(() => {})
       .finally(() => !read.cancelled && setProgressLoading(false));
@@ -379,7 +379,7 @@ export default function SadhanaTab({ metrics, history, userId, residencyId, isRe
           <CardHeader className="pb-3"><CardTitle className="text-sm font-medium text-muted-foreground">Current Streak</CardTitle></CardHeader>
           <CardContent>
             <div className="flex items-center gap-2"><Flame className="w-8 h-8 text-orange-500" /><div className="text-3xl font-bold">{metrics.currentStreak}</div></div>
-            <p className="text-xs text-muted-foreground mt-1">{metrics.currentStreak === 0 ? 'Start your streak today!' : `${metrics.currentStreak} consecutive day${metrics.currentStreak !== 1 ? 's' : ''}`}</p>
+            <p className="text-xs text-muted-foreground mt-1">{metrics.currentStreak === 0 ? (metrics.todaySubmitted ? 'Submitted today' : 'Start your streak today!') : `${metrics.currentStreak} consecutive day${metrics.currentStreak !== 1 ? 's' : ''}`}</p>
             {!progressData?.isPw && <p className="text-xs text-muted-foreground/70 mt-0.5">Sadhana Score {isResident ? '≥ 95%' : '≥ 75%'}</p>}
             {metrics.streakAtRisk && (
               <p className="text-xs text-orange-500 mt-1 font-medium">⚠️ Submit today to keep your streak!</p>
@@ -449,7 +449,7 @@ export default function SadhanaTab({ metrics, history, userId, residencyId, isRe
                 data={trendEntries}
                 fieldConfigs={fieldConfigs}
                 isResident={isResident}
-                defaultSelected="scorePercent"
+                defaultSelected={progressData?.isPw ? 'rounds' : 'scorePercent'}
                 height={210}
                 showThreshold={!progressData?.isPw}
               />

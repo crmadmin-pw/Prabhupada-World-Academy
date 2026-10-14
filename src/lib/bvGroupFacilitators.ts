@@ -41,7 +41,31 @@ export function readGroupFacilitators(group: {
     if (!id && !userId && !name) continue;
     facilitators.push({ id, userId, name });
   }
-  return facilitators;
+  return expandCommaSeparatedFacilitator(facilitators);
+}
+
+/** Older groups stored several facilitators in one comma-separated string. */
+function splitStoredList(value: string): string[] {
+  return value.split(',').map(part => part.trim()).filter(Boolean);
+}
+
+function expandCommaSeparatedFacilitator(facilitators: GroupFacilitator[]): GroupFacilitator[] {
+  if (facilitators.length !== 1) return facilitators;
+  const one = facilitators[0];
+  const ids = splitStoredList(one.id);
+  const userIds = splitStoredList(one.userId);
+  const names = splitStoredList(one.name);
+  const count = Math.max(ids.length, userIds.length, names.length);
+  if (count <= 1) return facilitators;
+  const expanded: GroupFacilitator[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const id = ids.length === count ? ids[index] : '';
+    const userId = userIds.length === count ? userIds[index] : '';
+    const name = names.length === count ? names[index] : '';
+    if (!id && !userId && !name) continue;
+    expanded.push({ id, userId, name });
+  }
+  return expanded.length > 0 ? expanded : facilitators;
 }
 
 export function facilitatorIdentityKeys(facilitator: {
@@ -53,6 +77,61 @@ export function facilitatorIdentityKeys(facilitator: {
   return [facilitator.id, facilitator.userId, facilitator.email, facilitator.name]
     .map(value => String(value || '').trim().toLowerCase())
     .filter(Boolean);
+}
+
+/**
+ * Sub-facilitators use the same parallel-field shape as facilitators.
+ * One RGSF stays a string. Several RGSFs stay aligned arrays.
+ */
+export function readGroupSubFacilitators(group: {
+  subFacilitatorId?: unknown;
+  rgsfId?: unknown;
+  subFacilitator?: unknown;
+} | null | undefined): GroupFacilitator[] {
+  if (!group) return [];
+  const leaders = slotList(group.subFacilitatorId);
+  const ids = slotList(group.rgsfId);
+  const names = slotList(group.subFacilitator);
+  const count = Math.max(leaders.length, ids.length, names.length);
+  const facilitators: GroupFacilitator[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const id = leaders[index] || '';
+    const userId = ids[index] || '';
+    const name = names[index] || '';
+    if (!id && !userId && !name) continue;
+    facilitators.push({ id, userId, name });
+  }
+  return facilitators;
+}
+
+export function subFacilitatorWrite(facilitators: GroupFacilitator[]): {
+  subFacilitatorId: string | string[];
+  rgsfId: string | string[];
+  subFacilitator: string | string[];
+} {
+  if (facilitators.length === 0) return { subFacilitatorId: '', rgsfId: '', subFacilitator: '' };
+  if (facilitators.length === 1) {
+    const one = facilitators[0];
+    return {
+      subFacilitatorId: one.id,
+      rgsfId: one.userId || one.id,
+      subFacilitator: one.name,
+    };
+  }
+  return {
+    subFacilitatorId: facilitators.map(item => item.id),
+    rgsfId: facilitators.map(item => item.userId || item.id),
+    subFacilitator: facilitators.map(item => item.name),
+  };
+}
+
+export function groupHasSubFacilitator(
+  group: { subFacilitatorId?: unknown; rgsfId?: unknown; subFacilitator?: unknown },
+  aliases: Set<string>,
+): boolean {
+  return readGroupSubFacilitators(group).some(item =>
+    facilitatorIdentityKeys(item).some(key => aliases.has(key)),
+  );
 }
 
 export function facilitatorWrite(facilitators: GroupFacilitator[]): {

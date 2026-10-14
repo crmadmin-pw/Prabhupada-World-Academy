@@ -23,7 +23,7 @@ function setup() {
   const sdk = load('app-endpoints-sdk');
   const flush = () => new Promise(resolve => setImmediate(resolve));
   const reply = (index, value, status = 200, headers = {}) => pending[index].resolve({ ok: status === 200, status, json: async () => value, headers: { get: name => headers[name] || null } });
-  return { sdk, auth, pending, flush, reply };
+  return { sdk, auth, pending, flush, reply, load };
 }
 
 test('equivalent filters and concurrent consumers share one read; cached revisit has no network', async () => {
@@ -98,6 +98,107 @@ test('an older in-flight response cannot roll back a reconciled query watermark'
   assert.equal(sdk.getEndpointCacheSnapshot('getMeetings', {}).data.value, 3);
   assert.ok(sdk.isEndpointQueryFresh('getMeetings', {}));
   assert.equal(sdk.getEndpointQueryRevision('getMeetings', {}), 1);
+});
+
+test('display-only profile updates keep cached queries; identity and authorization changes drop them', async () => {
+  const { sdk, pending, flush, reply, load } = setup();
+  const { dashboardScope } = load('dashboardScope');
+  const profile = {
+    userId: 'user-1',
+    email: 'member@example.com',
+    fullName: 'Devotee',
+    phone: '999',
+    guideName: 'Guide One',
+    residencyName: 'Mayapur',
+    bvGroupName: 'Group',
+    bvReportingFacilitatorName: 'Facilitator',
+    ashrayLevel: 'Sevak',
+    folkResidencyCustomId: 'RES-001',
+    pendingRoleNotice: null,
+    lastLoginAt: '2026-10-01T00:00:00Z',
+    role: 'USER',
+    roles: ['USER'],
+    status: 'ACTIVE',
+    segment: 'PW',
+    selectedGuideId: 'guide-1',
+    guide: { id: 'guide-1', fullName: 'Guide One', email: 'guide@example.com' },
+    selectedFolkResidency: 'res-1',
+    folkResidencies: [{ id: 'res-1', residencyName: 'Mayapur', residencyId: 'RES-001' }],
+    bvGroupId: null,
+    isBvAdmin: false,
+  };
+  const displayOnly = {
+    ...profile,
+    fullName: 'New Name',
+    phone: '111',
+    guideName: 'Renamed Guide',
+    residencyName: 'Vrindavan',
+    bvGroupName: 'Renamed Group',
+    bvReportingFacilitatorName: 'New Facilitator',
+    ashrayLevel: 'Sadhaka',
+    folkResidencyCustomId: 'RES-999',
+    pendingRoleNotice: 'Welcome',
+    lastLoginAt: '2026-10-11T00:00:00Z',
+    email: 'Member@Example.com',
+    role: 'user',
+    roles: [{ role: 'user', label: 'Member' }],
+    status: 'Active',
+    segment: 'pw',
+    guide: { id: 'guide-1', fullName: 'Renamed Guide', email: 'guide@example.com' },
+    folkResidencies: [{ residencyName: 'Vrindavan', id: 'res-1', residencyId: 'RES-999' }],
+    bvGroupId: '',
+    isBvAdmin: undefined,
+  };
+  assert.equal(dashboardScope(profile, 'uid-1'), dashboardScope(displayOnly, ' uid-1 '));
+  assert.equal(
+    dashboardScope({ ...profile, email: null, selectedGuideId: null, folkResidencies: [] }, 'uid-1'),
+    dashboardScope({ ...profile, email: undefined, selectedGuideId: '', folkResidencies: undefined }, 'uid-1'),
+  );
+  assert.notEqual(dashboardScope(profile, 'uid-1'), dashboardScope(profile, 'uid-2'));
+  assert.notEqual(dashboardScope(profile, 'uid-1'), dashboardScope({ ...profile, role: 'GUIDE' }, 'uid-1'));
+  assert.notEqual(dashboardScope(profile, 'uid-1'), dashboardScope({ ...profile, status: 'REJECTED' }, 'uid-1'));
+  assert.notEqual(dashboardScope(profile, 'uid-1'), dashboardScope({ ...profile, selectedGuideId: 'guide-2', guide: { id: 'guide-2', fullName: 'Guide One' } }, 'uid-1'));
+  assert.notEqual(dashboardScope(profile, 'uid-1'), dashboardScope({ ...profile, bvGroupId: 'group-1' }, 'uid-1'));
+
+  const useScope = (next, identity = 'uid-1') => sdk.setEndpointPermissionScope(dashboardScope(next, identity));
+  const loadMeetings = async () => {
+    const before = pending.length;
+    const request = sdk.queryEndpoint('getMeetings', { department: 'PW', bypassCache: true });
+    await flush();
+    assert.equal(pending.length, before + 1);
+    reply(before, { meetings: ['kept'] });
+    assert.deepEqual(await request, { meetings: ['kept'] });
+  };
+
+  useScope(profile);
+  const meetings = sdk.queryEndpoint('getMeetings', { department: 'PW' });
+  const report = sdk.queryEndpoint('getGuideDetailedReport', { guideId: 'ALL' });
+  await flush();
+  reply(0, { meetings: ['kept'] });
+  reply(1, { users: ['kept'] });
+  await Promise.all([meetings, report]);
+
+  useScope(displayOnly);
+  assert.equal(sdk.getEndpointCacheSnapshot('getMeetings', { department: 'PW' }).data.meetings[0], 'kept');
+  assert.equal(sdk.isEndpointQueryFresh('getGuideDetailedReport', { guideId: 'ALL' }), true);
+  const revisit = sdk.queryEndpoint('getMeetings', { department: 'PW' });
+  await flush();
+  assert.equal(pending.length, 2);
+  assert.deepEqual(await revisit, { meetings: ['kept'] });
+
+  const dropped = async (next, identity) => {
+    useScope(next, identity);
+    assert.equal(sdk.getEndpointCacheSnapshot('getMeetings', { department: 'PW' }), undefined);
+    assert.equal(sdk.getEndpointCacheSnapshot('getGuideDetailedReport', { guideId: 'ALL' }), undefined);
+    useScope(profile);
+    assert.equal(sdk.getEndpointCacheSnapshot('getMeetings', { department: 'PW' }), undefined);
+    await loadMeetings();
+  };
+  await dropped({ ...profile, role: 'GUIDE' });
+  await dropped({ ...profile, status: 'PENDING_APPROVAL' });
+  await dropped({ ...profile, selectedGuideId: 'guide-2' });
+  await dropped({ ...profile, bvReportingFacilitatorId: 'fac-2' });
+  await dropped(profile, 'uid-2');
 });
 
 test('identity and role changes isolate caches and prevent old responses repopulating them', async () => {

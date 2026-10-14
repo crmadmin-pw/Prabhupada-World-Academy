@@ -215,9 +215,15 @@ export default function BvslGroupsPanel({
                         <h4 className="text-base font-bold text-foreground truncate group-hover:text-primary transition-colors">
                           {g.groupName}
                         </h4>
-                        {g.bvslName && (
+                        {(g.rgsfName || g.bvslName) && (
                           <p className="text-xs text-muted-foreground mt-0.5">
-                            RGF: <span className="font-semibold text-foreground/80">{g.bvslName}</span>
+                            {g.rgsfName && (
+                              <>RGSF: <span className="font-semibold text-foreground/80">{g.rgsfName}</span></>
+                            )}
+                            {g.rgsfName && g.bvslName && ' · '}
+                            {g.bvslName && (
+                              <>RGF: <span className="font-semibold text-foreground/80">{g.bvslName}</span></>
+                            )}
                           </p>
                         )}
                         {g.description ? (
@@ -290,7 +296,7 @@ export default function BvslGroupsPanel({
                           return;
                         }
                         const joinUrl = bvWhatsAppJoinUrl(window.location.origin, token, isPwInvite);
-                        const leaderName = nameForWhatsAppInvite(g.bvslName);
+                        const leaderName = nameForWhatsAppInvite(g.bvslName || g.rgsfName);
                         const guideName = nameForWhatsAppInvite(g.guideName);
                         const inviteText = [
                           `Hare Krishna!`,

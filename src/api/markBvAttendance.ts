@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, BvSessions, BvAttendance, BvGroupMembers, Users, AppError } from '@/lib/backend-sdk';
+import { callerFacilitatesReadingGroup } from '@/lib/bvAttendanceAccess';
 
 const referenceValues = (value: unknown): string[] =>
   (Array.isArray(value) ? value : [value]).filter(Boolean).map(String);
@@ -10,24 +11,11 @@ const normalizedValues = (value: unknown): string[] =>
 async function requireAssignedFacilitator(groupId: string, context: any) {
   const group = await BvGroups.findOne({
     id: groupId,
-    fields: ['id', 'bvslLeader', 'bvslId', 'rgsfId', 'subFacilitatorId', 'subFacilitator'],
+    fields: ['id', 'bvslLeader', 'bvslId', 'bvslName', 'rgsfId', 'subFacilitatorId', 'subFacilitator'],
   });
   if (!group) throw new AppError({ code: 'NOT_FOUND', message: 'Reading Group not found' });
 
-  const callerIds = new Set([
-    context.user?.id,
-    context.user?.userId,
-    context.user?.email,
-  ].filter(Boolean).map((value: any) => String(value).toLowerCase()));
-  const facilitatorIds = [
-    ...referenceValues(group.bvslLeader),
-    ...referenceValues(group.bvslId),
-    ...referenceValues(group.rgsfId),
-    ...referenceValues(group.subFacilitatorId),
-    ...referenceValues(group.subFacilitator),
-  ];
-
-  if (!facilitatorIds.some(id => callerIds.has(id.toLowerCase()))) {
+  if (!(await callerFacilitatesReadingGroup(group, context.user))) {
     throw new AppError({ code: 'FORBIDDEN', message: 'Only this Reading Group\'s facilitator can mark attendance' });
   }
   return group;

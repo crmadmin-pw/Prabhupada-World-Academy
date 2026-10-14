@@ -7,22 +7,31 @@
  *
  * Rules:
  *  - A day qualifies if scorePercent >= 75 (threshold).
+ *  - A submitted day with no percentage also qualifies. That is a Prabhupada
+ *    World day saved before a chanting or reading target was assigned.
  *  - Counts consecutive qualifying days backwards from today (IST).
  *  - If today has no qualifying entry yet, counts from yesterday so the
  *    streak stays alive until end-of-day even if not yet submitted.
  *  - Uses pure UTC date arithmetic — no local timezone drift.
  */
 export function computeStreak(
-  entries: Array<{ entryDate?: string | null; scorePercent?: number | null }>,
+  entries: Array<{ entryDate?: string | null; scorePercent?: number | null; maxScore?: number | null }>,
   todayIST: string,
   threshold = 75,
 ): number {
   if (!entries.length) return 0;
 
-  // Build a set of YYYY-MM-DD strings that meet the threshold
+  // Build a set of YYYY-MM-DD strings that meet the threshold.
+  // No percentage means the day was submitted without a target, so it counts.
+  // A stored 0 with maxScore 0 is that same case. A real 0% keeps maxScore.
   const qualifying = new Set(
     entries
-      .filter(e => e.entryDate && (e.scorePercent ?? 0) >= threshold)
+      .filter(e => {
+        if (!e.entryDate) return false;
+        if (e.scorePercent == null) return true;
+        if (Number(e.scorePercent) === 0 && Number(e.maxScore) === 0) return true;
+        return e.scorePercent >= threshold;
+      })
       .map(e => (e.entryDate as string).slice(0, 10))
   );
 

@@ -169,6 +169,84 @@ test('the API returns 429 and a friendly message when the request allowance is u
   });
 });
 
+test('the request limiter does not wait on the shared transaction', async () => {
+  let release: () => void = () => {};
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const db = {
+    collection() {
+      return { doc() { return { path: 'RateLimits/held' }; } };
+    },
+    runTransaction(fn: (tx: {
+      get: () => Promise<{ data: () => undefined }>;
+      set: () => void;
+      update: () => void;
+    }) => Promise<unknown>) {
+      return gate.then(() => fn({
+        get: async () => ({ data: () => undefined }),
+        set: () => {},
+        update: () => {},
+      }));
+    },
+  };
+  try {
+    const decision = consumeRateLimit('ip:203.0.113.40', 5, 60_000, { db, background: true, sweep: false, now: 0 });
+    const winner = await Promise.race([
+      decision.then(limited => ({ kind: 'decision' as const, limited })),
+      new Promise<{ kind: 'timeout' }>(resolve => setTimeout(() => resolve({ kind: 'timeout' }), 50)),
+    ]);
+    assert.equal(winner.kind, 'decision');
+    if (winner.kind === 'decision') assert.equal(winner.limited, false);
+  } finally {
+    release();
+  }
+});
+
+test('a burst syncs once after the local decision', async () => {
+  const store = sharedDatabase();
+  let transactions = 0;
+  const original = store.serverA.runTransaction.bind(store.serverA);
+  store.serverA.runTransaction = ((fn: Parameters<typeof original>[0]) => {
+    transactions += 1;
+    return original(fn);
+  }) as typeof store.serverA.runTransaction;
+  const limited = await Promise.all(Array.from({ length: 5 }, () =>
+    consumeRateLimit('ip:203.0.113.70', 10, 60_000, { db: store.serverA, background: true, sweep: false, now: 0 }),
+  ));
+  assert.deepEqual(limited, [false, false, false, false, false]);
+  assert.equal(transactions, 0);
+
+  const synced = await waitFor(() => store.documents.size === 1 && transactions === 1);
+  assert.equal(synced, true);
+  const stored = [...store.documents.values()][0];
+  assert.equal(stored.count, 5);
+  assert.equal(JSON.stringify([...store.documents.entries()]).includes('203.0.113.70'), false);
+});
+
+test('a failed background sync denies later requests in production', async () => {
+  const db = {
+    collection() {
+      return { doc() { return { path: 'RateLimits/down' }; } };
+    },
+    runTransaction() {
+      return Promise.reject(new Error('unavailable'));
+    },
+  };
+  await withNodeEnv('production', async () => {
+    assert.equal(await consumeRateLimit('ip:203.0.113.71', 10, 60_000, { db, background: true, sweep: false, now: 10_000 }), false);
+    await new Promise(resolve => setTimeout(resolve, 40));
+    assert.equal(await consumeRateLimit('ip:203.0.113.71', 10, 60_000, { db, background: true, sweep: false, now: 10_100 }), true);
+  });
+});
+
+async function waitFor(ready: () => boolean | Promise<boolean>, timeoutMs = 500): Promise<boolean> {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    if (await ready()) return true;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  return false;
+}
+
 test('without shared storage, production denies and other environments drop closed windows', async () => {
   await withNodeEnv('production', async () => {
     assert.equal(await consumeRateLimit('ip:203.0.113.9', 10, 1_000, { db: null, now: 0, sweep: false }), true);

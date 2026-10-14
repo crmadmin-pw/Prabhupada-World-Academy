@@ -6,7 +6,11 @@ import {
   facilitatorIdentityKeys,
   facilitatorWrite,
   groupHasFacilitator,
+  groupHasSubFacilitator,
   readGroupFacilitators,
+  readGroupSubFacilitators,
+  subFacilitatorWrite,
+  type GroupFacilitator,
 } from '@/lib/bvGroupFacilitators';
 
 const referenceValues = (value: unknown): string[] => {
@@ -66,6 +70,113 @@ async function resolveMemberRecord(key: string): Promise<any | null> {
   return chosen;
 }
 
+const GROUP_ROLE_FIELDS = [
+  'id', 'groupId', 'groupName', 'segment', 'isActive',
+  'bvslLeader', 'bvslId', 'bvslName',
+  'subFacilitatorId', 'rgsfId', 'subFacilitator',
+];
+
+function isPwDepartment(user: any): boolean {
+  const segment = String(user?.segment || '').trim().toUpperCase().replace(/[\s_-]+/g, '');
+  if (segment === 'FOLK') return false;
+  if (segment === 'PW' || segment === 'PRABHUPADAWORLD') return true;
+  return user?.isPrabhupadaWorldUser === true;
+}
+
+function personAliases(user: any): Set<string> {
+  return new Set(
+    [user?.id, user?.userId, user?.email, user?.fullName]
+      .map(value => String(value || '').trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
+function desiredReadingRoles(input: any, user: any): { fac: boolean; sub: boolean } {
+  if (input.isBvMember === false) return { fac: false, sub: false };
+  if (input.multiRoles) {
+    return { fac: !!input.multiRoles.isFacilitator, sub: !!input.multiRoles.isSubFacilitator };
+  }
+  if (input.role === 'FACILITATOR') return { fac: true, sub: false };
+  if (input.role === 'SUB_FACILITATOR') return { fac: false, sub: true };
+  return { fac: false, sub: false };
+}
+
+function personInReadingGroup(group: any, user: any, aliases: Set<string>): boolean {
+  if (groupHasFacilitator(group, aliases) || groupHasSubFacilitator(group, aliases)) return true;
+  const memberIds = new Set(referenceValues(user?.bvGroupId));
+  return referenceValues([group.id, group.groupId]).some(key => memberIds.has(key));
+}
+
+function withoutPerson(list: GroupFacilitator[], aliases: Set<string>): GroupFacilitator[] {
+  return list.filter(item => !facilitatorIdentityKeys(item).some(key => aliases.has(key)));
+}
+
+/** PW reading-group roles stay on the group. A change names one group and leaves the others alone. */
+async function applyPwGroupScopedRoles(
+  user: any,
+  input: any,
+): Promise<{ isFacilitator: boolean; isSubFacilitator: boolean } | null> {
+  if (!isPwDepartment(user) || input.isBvMember === false) return null;
+
+  const explicit = Array.isArray(input.groupRoles) && input.groupRoles.length > 0
+    ? input.groupRoles
+    : input.groupId && ['FACILITATOR', 'SUB_FACILITATOR', 'MEMBER'].includes(input.role)
+      ? [{ groupId: input.groupId, role: input.role }]
+      : null;
+
+  const hadFac = !!(user.isBvFacilitator || user.isBvsl);
+  const hadSub = !!user.isBvSubFacilitator;
+  const desired = desiredReadingRoles(input, user);
+  if (!explicit && desired.fac === hadFac && desired.sub === hadSub) return null;
+
+  const { records } = await BvGroups.findAll({ fields: GROUP_ROLE_FIELDS, limit: 500 });
+  const aliases = personAliases(user);
+  const involved = (records || []).filter((group: any) => personInReadingGroup(group, user, aliases));
+  const assignments = explicit || (
+    involved.length === 1 && (input.role === 'FACILITATOR' || input.role === 'SUB_FACILITATOR')
+      ? [{ groupId: involved[0].id, role: input.role }]
+      : null
+  );
+
+  if (!assignments) {
+    if (involved.length > 1) {
+      const names = involved.map((group: any) => group.groupName || 'Reading Group').join(', ');
+      throw new AppError({
+        code: 'CONFLICT',
+        message: `This person belongs to more than one Reading Group (${names}). Choose which group this role applies to.`,
+      });
+    }
+    return null;
+  }
+
+  const person: GroupFacilitator = {
+    id: String(user.id || ''),
+    userId: String(user.userId || user.id || ''),
+    name: String(user.fullName || user.email || ''),
+  };
+  for (const assignment of assignments) {
+    const requested = String(assignment.groupId || '').trim().toLowerCase();
+    const group = (records || []).find((item: any) =>
+      referenceValues([item.id, item.groupId]).includes(requested),
+    );
+    if (!group) {
+      throw new AppError({ code: 'NOT_FOUND', message: 'That Reading Group was not found.' });
+    }
+    let facilitators = withoutPerson(readGroupFacilitators(group), aliases);
+    let subs = withoutPerson(readGroupSubFacilitators(group), aliases);
+    if (assignment.role === 'FACILITATOR') facilitators = [...facilitators, person];
+    if (assignment.role === 'SUB_FACILITATOR') subs = [...subs, person];
+    const record = { ...facilitatorWrite(facilitators), ...subFacilitatorWrite(subs) };
+    await BvGroups.update({ id: group.id, record });
+    Object.assign(group, record);
+  }
+
+  return {
+    isFacilitator: (records || []).some((group: any) => groupHasFacilitator(group, aliases)),
+    isSubFacilitator: (records || []).some((group: any) => groupHasSubFacilitator(group, aliases)),
+  };
+}
+
 /** Drop a person from every reading group that still lists them as an RGF. */
 async function releaseFacilitatorAssignments(user: any) {
   const aliases = new Set(
@@ -101,7 +212,17 @@ export default createEndpoint({
     parentId: z.string().optional(),
     parentName: z.string().optional(),
     // Required when the chosen RGF already facilitates more than one group.
+    // For a PW user who already belongs to more than one reading group, this
+    // chooses the only group the RGF/RGSF change applies to.
     groupId: z.string().optional(),
+    groupRoles: z.array(z.object({
+      groupId: z.string().min(1),
+      role: z.enum(['FACILITATOR', 'SUB_FACILITATOR', 'MEMBER']),
+    })).max(20).optional(),
+    rgfReportsToId: z.string().optional(),
+    rgfReportsToName: z.string().optional(),
+    rgsfReportsToId: z.string().optional(),
+    rgsfReportsToName: z.string().optional(),
     isBvMember: z.boolean().optional(),
     multiRoles: z.object({
       isAdmin: z.boolean().optional(),
@@ -173,6 +294,10 @@ export default createEndpoint({
       pName = parts.map((p: string) => p.charAt(0).toUpperCase() + p.slice(1)).join(' ') + ' Prabhu';
     }
     if (!pName) pName = 'Admin';
+
+    // PW keeps RGF and RGSF on the reading group. Throw before any profile
+    // write when the person is in several groups and no group was chosen.
+    const pwGroupRoles = await applyPwGroupScopedRoles(targetUser, input);
 
     // Multi-role support: preserve existing role flags and enable new assigned role
     const updates: any = {
@@ -253,6 +378,14 @@ export default createEndpoint({
         updates.isBvsl = false;
         updates.isBvSubFacilitator = false;
       }
+    }
+
+    if (pwGroupRoles) {
+      // Flags follow the groups that still name this person. RGF in one group
+      // and RGSF in another both stay on the profile.
+      updates.isBvFacilitator = pwGroupRoles.isFacilitator;
+      updates.isBvsl = pwGroupRoles.isFacilitator;
+      updates.isBvSubFacilitator = pwGroupRoles.isSubFacilitator;
     }
 
     // Role change notice & popup trigger summary
@@ -414,6 +547,15 @@ export default createEndpoint({
       }
     }
 
+    if (input.rgfReportsToId) {
+      updates.bvReportingSupervisorId = input.rgfReportsToId;
+      if (input.rgfReportsToName) updates.bvReportingSupervisorName = input.rgfReportsToName;
+    }
+    if (input.rgsfReportsToId) {
+      updates.bvReportingFacilitatorId = input.rgsfReportsToId;
+      if (input.rgsfReportsToName) updates.bvReportingFacilitatorName = input.rgsfReportsToName;
+    }
+
     // Sync base role field — only set to 'Admin' for explicit admin assignment
     if (input.role === 'ADMIN') {
       updates.role = 'Admin';
@@ -424,7 +566,8 @@ export default createEndpoint({
     // The group stores its own RGF list. Clearing the person's facilitator
     // flags must take them off that list, or the group still names them as an RGF.
     const remainsFacilitator = input.isBvMember !== false && !!(updates.isBvFacilitator || updates.isBvsl);
-    if (!remainsFacilitator) {
+    // A PW group-scoped change already rewrote only the chosen groups.
+    if (!pwGroupRoles && !remainsFacilitator) {
       await releaseFacilitatorAssignments(targetUser);
     }
 

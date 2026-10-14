@@ -20,15 +20,16 @@ export default createEndpoint({
   async execute({ input }) {
     const supabaseUrl = process.env.APP_SUPABASE_URL;
     const supabaseKey = process.env.APP_SUPABASE_ANON_KEY;
-    if (!supabaseUrl || !supabaseKey) throw new Error('Book distribution integration is not configured');
+    // The weekly plan still loads when book distribution is not connected.
+    if (!supabaseUrl || !supabaseKey) return { books: [], totalBooks: 0 };
 
     // Step 1: Look up volunteer by email
     const volRes = await fetch(
       `${supabaseUrl}/rest/v1/volunteers?email=eq.${encodeURIComponent(input.email)}&select=id`,
       { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
     );
-    const volunteers = await volRes.json();
-    if (!Array.isArray(volunteers) || volunteers.length === 0) {
+    const volunteers = await volRes.json().catch(() => null);
+    if (!volRes.ok || !Array.isArray(volunteers) || volunteers.length === 0) {
       return { books: [], totalBooks: 0 };
     }
 
@@ -39,9 +40,9 @@ export default createEndpoint({
       `${supabaseUrl}/rest/v1/book_distribution_log?volunteer_id=eq.${volunteerId}&distribution_date=gte.${input.startDate}&distribution_date=lte.${input.endDate}&select=distribution_date,book_name,quantity`,
       { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
     );
-    const booksData = await booksRes.json();
+    const booksData = await booksRes.json().catch(() => null);
 
-    if (!Array.isArray(booksData)) {
+    if (!booksRes.ok || !Array.isArray(booksData)) {
       return { books: [], totalBooks: 0 };
     }
 

@@ -145,3 +145,152 @@ test('changing an RGF to RGSF removes that person from the reading group', async
   assert.equal(groupUpdates[0].record.bvslId, 'PARENT-RGF');
   assert.equal(groupUpdates[0].record.bvslName, 'Vedanarayana Dasa');
 });
+
+test('a PW role change for someone in several groups asks which group and leaves the others', async (t) => {
+  const person = {
+    id: 'pw-user',
+    userId: 'PW-USER',
+    email: 'pw@example.test',
+    fullName: 'Pw User',
+    role: 'User',
+    segment: 'PW',
+    isBvFacilitator: true,
+    isBvsl: true,
+  };
+  const morning = {
+    id: 'group-morning',
+    groupId: 'group-morning',
+    groupName: 'Morning',
+    bvslLeader: 'pw-user',
+    bvslId: 'PW-USER',
+    bvslName: 'Pw User',
+  };
+  const evening = {
+    id: 'group-evening',
+    groupId: 'group-evening',
+    groupName: 'Evening',
+    bvslLeader: ['other', 'pw-user'],
+    bvslId: ['OTHER', 'PW-USER'],
+    bvslName: ['Other Das', 'Pw User'],
+  };
+  const updates = mockDirectory(t, [person, parent]);
+  const groupUpdates: Array<{ id: string; record: any }> = [];
+  t.mock.method(BvGroups, 'findAll', async () => ({ records: [morning, evening], hasMore: false }));
+  t.mock.method(BvGroups, 'update', async (change: { id: string; record: any }) => {
+    groupUpdates.push(change);
+    return change;
+  });
+
+  await assert.rejects(
+    () => assignBvRole.execute({
+      input: { userId: 'PW-USER', role: 'SUB_FACILITATOR', parentId: 'USER-001' },
+      context: superAdmin,
+    } as never),
+    (error: any) => error.code === 'CONFLICT' && /Morning/.test(error.message) && /Evening/.test(error.message),
+  );
+  assert.equal(groupUpdates.length, 0);
+  assert.equal(updates.length, 0);
+  assert.equal(morning.bvslLeader, 'pw-user');
+});
+
+test('a PW user can be RGF of one group and RGSF of another', async (t) => {
+  const person = {
+    id: 'pw-user',
+    userId: 'PW-USER',
+    email: 'pw@example.test',
+    fullName: 'Pw User',
+    role: 'User',
+    segment: 'PW',
+    isBvFacilitator: true,
+    isBvsl: true,
+  };
+  const morning = {
+    id: 'group-morning',
+    groupId: 'group-morning',
+    groupName: 'Morning',
+    bvslLeader: 'pw-user',
+    bvslId: 'PW-USER',
+    bvslName: 'Pw User',
+  };
+  const evening = {
+    id: 'group-evening',
+    groupId: 'group-evening',
+    groupName: 'Evening',
+    bvslLeader: ['other', 'pw-user'],
+    bvslId: ['OTHER', 'PW-USER'],
+    bvslName: ['Other Das', 'Pw User'],
+  };
+  const updates = mockDirectory(t, [person, parent]);
+  const groupUpdates: Array<{ id: string; record: any }> = [];
+  t.mock.method(BvGroups, 'findAll', async () => ({ records: [morning, evening], hasMore: false }));
+  t.mock.method(BvGroups, 'update', async (change: { id: string; record: any }) => {
+    groupUpdates.push(change);
+    return change;
+  });
+
+  await assignBvRole.execute({
+    input: {
+      userId: 'PW-USER',
+      role: 'SUB_FACILITATOR',
+      parentId: 'USER-001',
+      groupRoles: [{ groupId: 'group-evening', role: 'SUB_FACILITATOR' }],
+    },
+    context: superAdmin,
+  } as never);
+
+  assert.equal(morning.bvslLeader, 'pw-user');
+  assert.deepEqual(groupUpdates.map(change => change.id), ['group-evening']);
+  assert.equal(groupUpdates[0].record.bvslLeader, 'other');
+  assert.equal(groupUpdates[0].record.bvslId, 'OTHER');
+  assert.equal(groupUpdates[0].record.subFacilitatorId, 'pw-user');
+  assert.equal(groupUpdates[0].record.rgsfId, 'PW-USER');
+  assert.equal(updates[0].record.isBvFacilitator, true);
+  assert.equal(updates[0].record.isBvsl, true);
+  assert.equal(updates[0].record.isBvSubFacilitator, true);
+});
+
+test('changing an RGF to RGSF removes them when the group stored facilitators as comma-separated text', async (t) => {
+  const parentRgf = {
+    id: 'parent-rgf',
+    userId: 'PARENT-RGF',
+    email: 'parent-rgf@example.test',
+    fullName: 'Punya',
+    role: 'User',
+    isBvFacilitator: true,
+    isBvsl: true,
+  };
+  const former = {
+    id: 'former-doc',
+    userId: 'FORMER-1',
+    email: 'richa@example.test',
+    fullName: 'Richa Dewan',
+    role: 'User',
+    isBvFacilitator: true,
+    isBvsl: true,
+  };
+  const group = {
+    id: 'nityananda-doc',
+    bvslLeader: 'parent-rgf,former-doc',
+    bvslId: 'PARENT-RGF,FORMER-1',
+    bvslName: 'Punya, Richa Dewan',
+  };
+  const updates = mockDirectory(t, [former, parentRgf]);
+  const groupUpdates: Array<{ id: string; record: any }> = [];
+  t.mock.method(BvGroups, 'findAll', async () => ({ records: [group], hasMore: false }));
+  t.mock.method(BvGroups, 'update', async (change: { id: string; record: any }) => {
+    groupUpdates.push(change);
+    return change;
+  });
+
+  await assignBvRole.execute({
+    input: { userId: 'FORMER-1', role: 'SUB_FACILITATOR', parentId: 'PARENT-RGF' },
+    context: superAdmin,
+  } as never);
+
+  assert.equal(updates[0].record.isBvSubFacilitator, true);
+  assert.equal(updates[0].record.isBvsl, false);
+  assert.deepEqual(groupUpdates.map(change => change.id), ['nityananda-doc']);
+  assert.equal(groupUpdates[0].record.bvslLeader, 'parent-rgf');
+  assert.equal(groupUpdates[0].record.bvslId, 'PARENT-RGF');
+  assert.equal(groupUpdates[0].record.bvslName, 'Punya');
+});

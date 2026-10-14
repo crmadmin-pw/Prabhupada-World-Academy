@@ -3,7 +3,7 @@ import { useReactiveLoader } from '@/hooks/useReactiveLoader';
 import { useEndpointQuery } from '@/hooks/useEndpointQuery';
 import TableScrollArea from '@/components/mobile/TableScrollArea';
 import { useEffect, useState, useMemo, useRef } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useParams, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,7 +24,7 @@ import { format, startOfWeek, endOfWeek, subWeeks } from 'date-fns';
 import { Calendar } from 'lucide-react';
 import { DashboardLayout } from '@/layouts';
 import { useUserProfile } from '@/contexts/UserProfileContext';
-import { canOpenBvGroupMemberProfile, getBvGroupMemberProfileBasePath } from '@/lib/bvGroupMemberProfileNavigation';
+import { canOpenBvGroupMemberProfile, detailBackTarget, getBvGroupMemberProfileBasePath, memberProfileNavigationState, viewerDetailHome } from '@/lib/bvGroupMemberProfileNavigation';
 
 type GroupDetail = GetBvGroupDetailOutputType;
 type MatrixData = GetBvAttendanceMatrixOutputType;
@@ -104,6 +104,12 @@ function AttendanceMatrix({ matrix, dates }: { matrix: MatrixData; dates: string
   );
 }
 
+function roleBadgeClass(badge: string) {
+  if (badge === 'RGF') return 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800';
+  if (badge === 'RGSF') return 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800';
+  return 'bg-primary/10 text-primary border-primary/20';
+}
+
 function MembersTab({ members, onUserClick }: { members: GroupDetail['members']; onUserClick?: (userId: string) => void }) {
   if (members.length === 0) {
     return (
@@ -128,22 +134,32 @@ function MembersTab({ members, onUserClick }: { members: GroupDetail['members'];
           </tr>
         </thead>
         <tbody>
-          {members.map((m: any) => (
+          {members.map((m: any) => {
+            const openProfile = onUserClick && m.userId ? () => onUserClick(m.userId) : undefined;
+            const roleBadges: string[] = Array.isArray(m.badges) ? m.badges : [];
+            return (
             <tr
-              key={m.userId}
-              className={`border-b ${onUserClick ? 'hover:bg-muted/40 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary' : ''}`}
-              onClick={onUserClick ? () => onUserClick(m.userId) : undefined}
-              onKeyDown={onUserClick ? (event) => {
+              key={m.membershipId || m.userId}
+              className={`border-b ${openProfile ? 'hover:bg-muted/40 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary' : ''}`}
+              onClick={openProfile}
+              onKeyDown={openProfile ? (event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault();
-                  onUserClick(m.userId);
+                  openProfile();
                 }
               } : undefined}
-              role={onUserClick ? 'link' : undefined}
-              tabIndex={onUserClick ? 0 : undefined}
-              aria-label={onUserClick ? `Open ${m.fullName}'s profile` : undefined}
+              role={openProfile ? 'link' : undefined}
+              tabIndex={openProfile ? 0 : undefined}
+              aria-label={openProfile ? `Open ${m.fullName}'s profile` : undefined}
             >
-              <td className="px-3 py-2.5 font-medium">{m.fullName}</td>
+              <td className="px-3 py-2.5 font-medium">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span>{m.fullName}</span>
+                  {roleBadges.map(badge => (
+                    <Badge key={badge} variant="outline" className={`text-[10px] font-semibold ${roleBadgeClass(badge)}`}>{badge}</Badge>
+                  ))}
+                </div>
+              </td>
               <td className="px-3 py-2.5 hidden sm:table-cell">
                 {m.ashrayLevel
                   ? <Badge variant="outline" className="text-xs">{m.ashrayLevel}</Badge>
@@ -160,12 +176,17 @@ function MembersTab({ members, onUserClick }: { members: GroupDetail['members'];
                 {m.lastPresent ? format(new Date((m.lastPresent as string).slice(0, 10) + 'T00:00:00'), 'MMM d, yyyy') : '—'}
               </td>
               <td className="px-3 py-2.5 hidden lg:table-cell">
-                {m.role === 'Leader'
+                {roleBadges.length > 0
+                  ? roleBadges.map(badge => (
+                    <Badge key={badge} variant="outline" className={`mr-1 text-xs ${roleBadgeClass(badge)}`}>{badge}</Badge>
+                  ))
+                  : m.role === 'Leader'
                   ? <Badge className="text-xs bg-primary/10 text-primary border-primary/20">Leader</Badge>
                   : <span className="text-xs text-muted-foreground">Member</span>}
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </TableScrollArea>
@@ -346,7 +367,10 @@ export default function BvGroupDetailPage() {
   const { groupId } = useParams<{ groupId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { profile } = useUserProfile();
+  const homePath = viewerDetailHome(profile);
+  const goBack = () => navigate(detailBackTarget(location.state, homePath));
   const canViewUserProfile = canOpenBvGroupMemberProfile(profile);
   const [detail, setDetail] = useState<GroupDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -420,7 +444,7 @@ export default function BvGroupDetailPage() {
       <DashboardLayout title="BV Group" maxWidth="max-w-5xl">
         <div className="text-center py-12 text-muted-foreground">
           <p>Group not found.</p>
-          <Button variant="link" onClick={() => navigate(-1)}>Go back</Button>
+          <Button variant="link" onClick={goBack}>Go back</Button>
         </div>
       </DashboardLayout>
     );
@@ -468,7 +492,7 @@ export default function BvGroupDetailPage() {
     try {
       const result = await deleteBvGroup({ groupId });
       toast.success(`Group deleted. ${result.membersUnassigned} member${result.membersUnassigned === 1 ? '' : 's'} unassigned.`, { id: 'bv-group-deleted' });
-      navigate(-1);
+      navigate(detailBackTarget(location.state, homePath));
     } catch (error: any) {
       toast.error(error?.message || 'Failed to delete group.');
       isDeletingRef.current = false;
@@ -480,7 +504,7 @@ export default function BvGroupDetailPage() {
   return (
     <DashboardLayout title="BV Group" maxWidth="max-w-5xl">
       <div className="space-y-5">
-        <Button variant="ghost" size="sm" onClick={() => navigate(-1)} className="gap-2 -ml-2">
+        <Button variant="ghost" size="sm" onClick={goBack} className="gap-2 -ml-2">
           <ArrowLeft className="w-4 h-4" /> Back
         </Button>
 
@@ -564,7 +588,18 @@ export default function BvGroupDetailPage() {
           {isFolkGroup && <StatCard icon={Brain} label="Quizzes" value={quizzes.length} sub="assigned quizzes" color="text-purple-600" />}
         </div>
 
-        <Tabs defaultValue={isFolkGroup ? 'quizzes' : 'attendance'}>
+        <Tabs
+          value={(() => {
+            const requested = searchParams.get('tab');
+            const available = isFolkGroup ? ['quizzes', 'attendance', 'members'] : ['attendance', 'members'];
+            return requested && available.includes(requested) ? requested : available[0];
+          })()}
+          onValueChange={(value) => {
+            const next = new URLSearchParams(searchParams);
+            next.set('tab', value);
+            setSearchParams(next, { replace: true, state: location.state });
+          }}
+        >
           <TabsList className="w-full md:w-auto">
             {isFolkGroup && <TabsTrigger value="quizzes" className="flex items-center gap-1.5">
               <Brain className="w-4 h-4" />Quizzes
@@ -661,7 +696,7 @@ export default function BvGroupDetailPage() {
               onUserClick={canViewUserProfile ? (uid) => {
                 const detailBasePath = getBvGroupMemberProfileBasePath(profile);
                 navigate(`${detailBasePath}/${encodeURIComponent(uid)}`, {
-                  state: { from: `${location.pathname}${location.search}` },
+                  state: memberProfileNavigationState(location, homePath),
                 });
               } : undefined}
             />

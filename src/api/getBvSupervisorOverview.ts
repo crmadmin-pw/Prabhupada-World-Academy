@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, BvMemberRegistrations, BvAttendance, Users, AppError } from '@/lib/backend-sdk';
-import { getScopedHierarchyUserIds } from '../lib/hierarchyUtils';
+import { getScopedHierarchyUserIds, isHierarchyAdmin, isHierarchySuperAdmin } from '../lib/hierarchyUtils';
+import { resolveBvScopedGroups } from '../lib/bvGroupMemberScope';
 import { getTodayIST } from '../lib/streakUtils';
 import { joinFacilitatorNames, readGroupFacilitators, textList } from '@/lib/bvGroupFacilitators';
 
@@ -81,7 +82,16 @@ export default createEndpoint({
     // Groups without an isActive flag are still running. A Firestore equality
     // filter on true would hide them from the supervisor who facilitates them.
     const { records: rawGroups } = await BvGroups.findAll({ limit: 1000 });
+    // A supervisor sees groups led by RGFs who report to them, plus groups they
+    // personally facilitate. People further down the chain — members and
+    // sub-facilitators — are not group owners, so their other groups stay hidden.
+    const plainSupervisor = !isHierarchyAdmin(caller) && !isHierarchySuperAdmin(caller);
+    const supervisedIds = plainSupervisor
+      ? new Set((await resolveBvScopedGroups(caller, { segment: userSegment }))
+        .flatMap(group => normalizedRefs([group.id, group.groupId, group.record?.id, group.record?.groupId])))
+      : null;
     let groups = rawGroups.filter((g: any) => g.isActive !== false).filter((g: any) => {
+      if (supervisedIds) return normalizedRefs([g.id, g.groupId]).some(ref => supervisedIds.has(ref));
       const ownerRefs = normalizedRefs([g.bvslId, g.bvslLeader, g.bvslName]);
       const ledByCaller = ownerRefs.some(owner => callerAliases.has(owner));
       const assignedToCaller = callerIsRgf && (

@@ -14,6 +14,7 @@ test('actual API authorization registers only successful scoped reads for PW adm
   const { POST } = await import('../src/app/api/run/[endpoint]/route');
   const { publishQueryChange } = await import('../functions/src/publishQueryChange');
   const { firestoreVersion } = await import('../src/lib/realtimeQueryModel');
+  const { REALTIME_SUBSCRIPTIONS } = await import('../src/lib/realtimeCollections');
   const db = getFirestoreDb();
   const suffix = Date.now();
   const apps: ReturnType<typeof initializeApp>[] = [];
@@ -49,6 +50,15 @@ test('actual API authorization registers only successful scoped reads for PW adm
     const forbidden = await call(rgf.token, 'FOLK');
     assert.equal(forbidden.status, 403);
     assert.equal(forbidden.headers.get('X-Realtime-Token'), null);
+
+    await Promise.all([responses[0], responses[1]].map(async response => {
+      const token = response.headers.get('X-Realtime-Token')!;
+      const subscription = db.collection(REALTIME_SUBSCRIPTIONS).doc(token);
+      for (let attempt = 0; attempt < 50 && !(await subscription.get()).exists; attempt += 1) {
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      assert.equal((await subscription.get()).exists, true, 'registration commits after the response');
+    }));
 
     const reference = db.collection('Meetings').doc(`api-meeting-${suffix}`);
     const meeting = { title: 'Scoped fixture', segment: 'PW', status: 'SCHEDULED', inviteeUserIds: [rgf.uid], scheduledAt: '2026-09-10T10:00:00Z' };

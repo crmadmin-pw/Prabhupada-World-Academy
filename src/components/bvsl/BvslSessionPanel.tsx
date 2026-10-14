@@ -18,6 +18,16 @@ import type { GetAttendanceForDateOutputType, GetBvslGroupsOutputType } from '@/
 type Group = GetBvslGroupsOutputType['groups'][0];
 type AttendanceMember = GetAttendanceForDateOutputType['members'][0];
 
+const MIN_MEETING_MINUTES = 15;
+const MAX_MEETING_MINUTES = 300;
+
+/** Clamp a finished duration into 15–300. An empty draft keeps the previous value. */
+function commitMeetingMinutes(raw: string, fallback: number): number {
+  const parsed = parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(MAX_MEETING_MINUTES, Math.max(MIN_MEETING_MINUTES, parsed));
+}
+
 interface Props {
   bvslId: string;
   groups: Group[];
@@ -27,6 +37,8 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
   const [selectedGroupId, setSelectedGroupId] = useState(() => groups[0]?.id || '');
   const [sessionDate, setSessionDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [totalMeetingMinutes, setTotalMeetingMinutes] = useState(60);
+  // String while typing so clearing "60" or replacing the first digit is not snapped back to 60.
+  const [durationDraft, setDurationDraft] = useState('60');
   const [members, setMembers] = useState<AttendanceMember[]>([]);
   const [presentIds, setPresentIds] = useState<Set<string>>(new Set());
   const [attendedMinutesMap, setAttendedMinutesMap] = useState<Record<string, number>>({});
@@ -44,7 +56,9 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
       const res = await read(() => getAttendanceForDate({ groupId, date }));
       setMembers(res.members);
       setSessionExists(res.sessionExists);
-      if (res.totalMeetingMinutes) setTotalMeetingMinutes(res.totalMeetingMinutes);
+      const loadedMinutes = res.totalMeetingMinutes || 60;
+      setTotalMeetingMinutes(loadedMinutes);
+      setDurationDraft(String(loadedMinutes));
 
       const minutesMap: Record<string, number> = {};
       res.members.forEach((m: any) => {
@@ -115,21 +129,56 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
     handleAttendedMinutesChange(userDbId, clamped);
   };
 
+  const applyMeetingMinutes = (next: number) => {
+    setTotalMeetingMinutes(next);
+    setAttendedMinutesMap(map => {
+      let changed = false;
+      const updated = { ...map };
+      for (const id of Object.keys(updated)) {
+        if (updated[id] > next) {
+          updated[id] = next;
+          changed = true;
+        }
+      }
+      return changed ? updated : map;
+    });
+    setLocalMinutesMap(map => {
+      let changed = false;
+      const updated = { ...map };
+      for (const id of Object.keys(updated)) {
+        const n = parseInt(updated[id], 10);
+        if (Number.isFinite(n) && n > next) {
+          updated[id] = String(next);
+          changed = true;
+        }
+      }
+      return changed ? updated : map;
+    });
+  };
+
+  const commitDurationDraft = (raw: string) => {
+    const next = commitMeetingMinutes(raw, totalMeetingMinutes);
+    setDurationDraft(String(next));
+    applyMeetingMinutes(next);
+    return next;
+  };
+
   const handleSave = async () => {
     if (!selectedGroupId) { toast.error('Select a group'); return; }
+    const minutes = commitDurationDraft(durationDraft);
     setSaving(true);
     try {
       const memberAttendance = members.map(m => ({
         userDbId: m.userDbId,
         present: presentIds.has(m.userDbId),
-        attendedMinutes: presentIds.has(m.userDbId) ? (attendedMinutesMap[m.userDbId] ?? totalMeetingMinutes) : 0,
+        attendedMinutes: presentIds.has(m.userDbId) ? Math.min(attendedMinutesMap[m.userDbId] ?? minutes, minutes) : 0,
       }));
 
       const res = await conductBvSession({
         bvslId,
         groupId: selectedGroupId,
         sessionDate,
-        totalMeetingMinutes,
+        totalMeetingMinutes: minutes,
         memberAttendance,
         presentUserIds: Array.from(presentIds),
       } as any);
@@ -189,11 +238,23 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
             <div className="flex items-center gap-2">
               <label className="text-xs font-semibold text-muted-foreground whitespace-nowrap">Total Meeting Duration</label>
               <Input
-                type="number"
-                min={15}
-                max={300}
-                value={totalMeetingMinutes}
-                onChange={e => { setHasUnsavedChanges(true); setTotalMeetingMinutes(Math.max(1, parseInt(e.target.value) || 60)); }}
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                aria-label="Total meeting duration in minutes"
+                value={durationDraft}
+                onChange={e => {
+                  const raw = e.target.value.replace(/\D/g, '').slice(0, 3);
+                  setHasUnsavedChanges(true);
+                  setDurationDraft(raw);
+                  if (raw === '') return;
+                  const parsed = parseInt(raw, 10);
+                  if (parsed >= MIN_MEETING_MINUTES && parsed <= MAX_MEETING_MINUTES) {
+                    applyMeetingMinutes(parsed);
+                  }
+                }}
+                onBlur={() => { commitDurationDraft(durationDraft); }}
+                onKeyDown={e => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur(); }}
                 className="h-9 w-20 text-center font-bold"
               />
               <span className="text-xs text-muted-foreground font-medium">mins</span>

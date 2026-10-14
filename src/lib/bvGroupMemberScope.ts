@@ -446,18 +446,50 @@ export async function resolveBvGroupMemberUsers(
       bvGroupFacilitatorAliases(group.record).forEach(alias => facilitatorAliases.add(alias));
     }
   }
-  return users
+  const visibleUsers = users
     .filter(user => isUserInHierarchy(user, hierarchy))
     .filter(user => !options.excludeCaller || !bvUserAliases(user).some(alias =>
       callerAliases.has(alias) || facilitatorAliases.has(alias)
-    ))
-    .map(user => {
+    ));
+  const claimedAliases = new Set<string>([
+    ...users.flatMap(user => bvUserAliases(user)),
+    ...(options.excludeCaller ? [...callerAliases, ...facilitatorAliases] : []),
+  ]);
+  // A group card counts every membership. The report has to count it too,
+  // even when the member's Users document was removed.
+  const unresolvedMembers = new Map<string, UserRecord>();
+  for (const membership of memberships) {
+    const membershipGroupRefs = refs([membership.group, membership.groupId]);
+    if (!membershipGroupRefs.some(ref => scopedGroupAliases.has(ref))) continue;
+    const memberRefs = refs([membership.user, membership.userId, membership.memberId]);
+    if (memberRefs.length === 0 || memberRefs.some(ref => claimedAliases.has(ref))) continue;
+    const existing = [...unresolvedMembers.values()].find(member =>
+      bvUserAliases(member).some(alias => memberRefs.includes(alias))
+    );
+    const memberId = String(membership.user || membership.userId || membership.memberId);
+    const member = existing || {
+      id: memberId,
+      userId: String(membership.userId || membership.memberId || membership.user || memberId),
+      uid: membership.user ? String(membership.user) : undefined,
+      fullName: String(membership.fullName || membership.memberName || membership.name || '').trim() || 'Devotee',
+      __bvScopedGroupIds: [] as string[],
+    };
+    const scopedGroupIds = new Set<string>(member.__bvScopedGroupIds as string[]);
+    membershipGroupRefs.forEach(groupRef => scopedGroupIds.add(groupRef));
+    member.__bvScopedGroupIds = [...scopedGroupIds];
+    unresolvedMembers.set(String(member.id), member);
+    memberRefs.forEach(ref => claimedAliases.add(ref));
+  }
+  return [
+    ...visibleUsers.map(user => {
       const scopedGroupIds = new Set<string>();
       bvUserAliases(user).forEach(alias => {
         groupRefsByMemberAlias.get(alias)?.forEach(groupRef => scopedGroupIds.add(groupRef));
       });
       return { ...user, __bvScopedGroupIds: [...scopedGroupIds] };
-    });
+    }),
+    ...unresolvedMembers.values(),
+  ];
 }
 
 /** Resolve canonical RGF/RGSF profiles attached to the caller's scoped groups. */

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, BvSessions, BvAttendance, AppError } from '@/lib/backend-sdk';
+import { callerFacilitatesReadingGroup } from '@/lib/bvAttendanceAccess';
 
 export default createEndpoint({
   description: 'Save BV session attendance for a group and date. Idempotent — creates the session if needed, updates existing attendance. Also writes attendanceDate and group directly to attendance records.',
@@ -21,31 +22,20 @@ export default createEndpoint({
     // Resolve group — try custom groupId first, then DB UUID
     let group = await BvGroups.findOne({
       filters: { groupId: input.groupId },
-      fields: ['id', 'groupId', 'groupName', 'bvslLeader', 'bvslId', 'rgsfId', 'subFacilitatorId'],
+      fields: ['id', 'groupId', 'groupName', 'bvslLeader', 'bvslId', 'bvslName', 'rgsfId', 'subFacilitatorId', 'subFacilitator'],
     });
     if (!group) {
       group = await BvGroups.findOne({
         id: input.groupId,
-        fields: ['id', 'groupId', 'groupName', 'bvslLeader', 'bvslId', 'rgsfId', 'subFacilitatorId'],
+        fields: ['id', 'groupId', 'groupName', 'bvslLeader', 'bvslId', 'bvslName', 'rgsfId', 'subFacilitatorId', 'subFacilitator'],
       });
     }
     if (!group) throw new AppError({ code: 'NOT_FOUND', message: 'Group not found' });
 
-    // Attendance is authoritative only when saved by this group's assigned
-    // facilitator. Do not allow a member (or another group's facilitator) to
-    // submit attendance for the group through the endpoint directly.
-    const callerIds = new Set([
-      context.user?.id,
-      context.user?.userId,
-      context.user?.email,
-    ].filter(Boolean).map((value: any) => String(value).toLowerCase()));
-    const facilitatorIds = [
-      ...(Array.isArray(group.bvslLeader) ? group.bvslLeader : [group.bvslLeader]),
-      ...(Array.isArray(group.bvslId) ? group.bvslId : [group.bvslId]),
-      ...(Array.isArray((group as any).rgsfId) ? (group as any).rgsfId : [(group as any).rgsfId]),
-      ...(Array.isArray((group as any).subFacilitatorId) ? (group as any).subFacilitatorId : [(group as any).subFacilitatorId]),
-    ].filter(Boolean).map(String);
-    if (!facilitatorIds.some(id => callerIds.has(id.toLowerCase()))) {
+    // Every RGF assigned to this group can save attendance. A second RGF is
+    // stored beside the first, and her sign-in id may differ from the id
+    // written on the group.
+    if (!(await callerFacilitatesReadingGroup(group, context.user))) {
       throw new AppError({ code: 'FORBIDDEN', message: 'Only this Reading Group\'s facilitator can save attendance' });
     }
 

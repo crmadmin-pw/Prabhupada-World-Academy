@@ -1,10 +1,11 @@
 import { getApps, initializeApp, cert, applicationDefault } from 'firebase-admin/app';
 import { getFirestore, FieldPath } from 'firebase-admin/firestore';
+import { randomUUID } from 'node:crypto';
 import fs from 'fs';
 import path from 'path';
 import { requestQuery, invalidateRequestTable, recordQueryReadTime } from './requestQueries';
 import { attachSharedCacheDatabase, serverCacheInvalidate } from './serverCache';
-import { escapeEmailHtml, escapeHtml } from './sanitize';
+import { deliverEmail } from './mailer';
 import type { z } from 'zod';
 import type { ApiCapability, ApiUserContext } from './apiAuthorization';
 
@@ -616,7 +617,7 @@ export class Table {
 
   private async createUncached({ record }: { record: any }): Promise<any> {
     ensureFirestoreInProduction();
-    const id = record.id || `rec_${Math.random().toString(36).substring(2, 15)}`;
+    const id = record.id || randomUUID();
     const fullRecord = { ...record, id };
 
     const db = activeDb();
@@ -775,6 +776,12 @@ export const REPORTING_CHAINS_KEY = 'reportingChainsVersion';
 export const REPORTING_CHAINS_READY = 'ready:1';
 
 let reportingChainsLocallyStale = false;
+let reportingChainMarkerInvalidator: (() => void) | undefined;
+
+/** Drops a process-local copy of the readiness marker held by hierarchy reads. */
+export function setReportingChainMarkerInvalidator(invalidate: () => void): void {
+  reportingChainMarkerInvalidator = invalidate;
+}
 
 export function reportingChainsLocallyStaleNow(): boolean {
   return reportingChainsLocallyStale;
@@ -786,6 +793,7 @@ export function clearReportingChainsLocalStale(): void {
 
 export async function markReportingChainsStale(): Promise<void> {
   reportingChainsLocallyStale = true;
+  reportingChainMarkerInvalidator?.();
   try {
     await Config.update({
       id: REPORTING_CHAINS_KEY,
@@ -822,48 +830,8 @@ async function noteHierarchyWrite(tableName: string, record?: Record<string, unk
   await markReportingChainsStale();
 }
 
-function safeMailHeader(value: unknown): string {
-  return String(value ?? '').replace(/[\r\n]+/g, ' ').trim();
-}
-
-function safeMailHref(value: unknown): string {
-  const href = String(value ?? '').trim();
-  if (/[\r\n\0]/.test(href)) return '';
-  if (/^https?:\/\//i.test(href)) return href;
-  if (/^\/[A-Za-z0-9]/.test(href)) return href;
-  return '';
-}
-
-function safeMailBody(body: unknown): unknown[] {
-  if (!Array.isArray(body)) return [];
-  return body.map(part => {
-    if (!part || typeof part !== 'object') return part;
-    const next = { ...(part as Record<string, unknown>) };
-    if (typeof next.content === 'string') next.content = escapeEmailHtml(next.content);
-    if (typeof next.label === 'string') next.label = escapeHtml(sanitizeMailLabel(next.label));
-    if (typeof next.href === 'string') next.href = safeMailHref(next.href);
-    return next;
-  });
-}
-
-function sanitizeMailLabel(label: string): string {
-  return label.replace(/[\r\n\0]/g, ' ');
-}
-
-// ─── EMAIL CLIENT MOCK ────────────────────────────────────────────────────────
 export const Email = {
-  send: async (params: { to: string; subject: string; body: any[] }) => {
-    const message = {
-      to: safeMailHeader(params.to),
-      subject: safeMailHeader(params.subject),
-      body: safeMailBody(params.body),
-    };
-    console.log(`[Email Mock] Sending to: ${message.to}`);
-    console.log(`[Email Mock] Subject: ${message.subject}`);
-    console.log(`[Email Mock] Body:`, JSON.stringify(message.body, null, 2));
-    // In production, configure nodemailer/SMTP here.
-    return { success: true };
-  }
+  send: (params: { to: string; subject: string; body: any[] }) => deliverEmail(params),
 };
 
 // ─── INSTANTIATE & EXPORT ALL TABLES ──────────────────────────────────────────

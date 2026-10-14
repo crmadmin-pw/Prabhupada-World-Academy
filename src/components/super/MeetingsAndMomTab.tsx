@@ -1284,7 +1284,7 @@ export default function MeetingsAndMomTab({ allowSchedule = false, department: r
                   {/* Meeting Card Footer Actions */}
                   <div className="pt-4 mt-4 border-t flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      {m.locationOrLink && (
+                      {m.locationOrLink && m.status !== 'completed' && (
                         <a
                           href={m.locationOrLink.startsWith('http') ? m.locationOrLink : `https://${m.locationOrLink}`}
                           target="_blank"
@@ -1301,7 +1301,7 @@ export default function MeetingsAndMomTab({ allowSchedule = false, department: r
                       const hasEditRights = canManageMeetings;
                       return hasEditRights ? (
                         <div className="flex items-center gap-2">
-                          {m.status !== 'cancelled' && (
+                          {m.status !== 'cancelled' && m.status !== 'completed' && (
                             <button
                               onClick={() => handleCancelMeeting(m.id)}
                               className="text-xs text-destructive hover:text-destructive/80 px-2 py-1"

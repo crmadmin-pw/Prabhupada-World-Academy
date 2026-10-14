@@ -23,6 +23,7 @@ type QueueStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 type SyncHandler = (item: PendingQueueItem) => Promise<void>;
 
 const SAVED_LOCALLY_MESSAGE = 'Saved locally. Will auto-sync when network connection is restored.';
+const RETRY_ON_PHONE_MESSAGE = 'Saved on this phone. Sending again automatically.';
 
 let storageOverride: QueueStorage | null = null;
 let installedHandler: SyncHandler | null = null;
@@ -57,16 +58,21 @@ export function isPermanentSyncError(error: unknown): boolean {
   return status >= 400 && status < 500;
 }
 
+function isTransportFailure(error: unknown): boolean {
+  const name = (error as { name?: string } | null)?.name || '';
+  const message = String((error as { message?: string } | null)?.message || error || '');
+  if (name === 'TypeError' || name === 'TimeoutError' || name === 'AbortError') return true;
+  return /failed to fetch|networkerror|network request failed|load failed|this is taking too long/i.test(message);
+}
+
 export function isRetryableSyncError(error: unknown): boolean {
-  if (browserIsOffline()) return true;
   if (isPermanentSyncError(error)) return false;
   const status = errorStatus(error);
   if (status === 401 || status === 408 || status === 429 || (status !== undefined && status >= 500)) return true;
-  const name = (error as { name?: string } | null)?.name || '';
-  const message = String((error as { message?: string } | null)?.message || error || '');
-  if (name === 'TypeError') return true;
-  if (/failed to fetch|networkerror|network request failed|load failed|offline|not authenticated|unavailable/i.test(message)) return true;
-  return status === undefined;
+  if (isTransportFailure(error)) return true;
+  // The browser flag is a hint only. A response with no status while that
+  // flag is false is an application error, not a dropped connection.
+  return browserIsOffline() && status === undefined;
 }
 
 function notify(level: 'info' | 'success' | 'error', message: string, id?: string) {
@@ -236,20 +242,21 @@ export async function sendOrQueue<T>(options: {
   toastId?: string;
 }): Promise<{ status: 'sent'; result: T } | { status: 'queued'; id: string }> {
   const outcome = await withOfflineDedupeLock(options.dedupeKey, async () => {
-    if (!browserIsOffline()) {
-      try {
-        const result = await options.send();
-        removeWhere(item => item.dedupeKey === options.dedupeKey);
-        return { status: 'sent' as const, result };
-      } catch (error) {
-        if (!isRetryableSyncError(error)) throw error;
-      }
+    // Always try the server. navigator.onLine is often false on a phone that
+    // still has a working connection, and skipping the request showed the
+    // offline message for a save that could have succeeded.
+    try {
+      const result = await options.send();
+      removeWhere(item => item.dedupeKey === options.dedupeKey);
+      return { status: 'sent' as const, result };
+    } catch (error) {
+      if (!isRetryableSyncError(error)) throw error;
     }
     const id = enqueueOfflinePayload(options.type, options.payload, {
       dedupeKey: options.dedupeKey,
       silent: true,
     });
-    notify('info', SAVED_LOCALLY_MESSAGE, options.toastId);
+    notify('info', browserIsOffline() ? SAVED_LOCALLY_MESSAGE : RETRY_ON_PHONE_MESSAGE, options.toastId);
     return { status: 'queued' as const, id };
   });
 

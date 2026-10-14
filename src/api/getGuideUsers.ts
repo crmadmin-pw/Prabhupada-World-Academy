@@ -192,8 +192,8 @@ export default createEndpoint({
       });
     }
 
-    // History only needs the member ids already in hand. Guide and residency
-    // labels are display data, so start this read before those lookups.
+    // History only needs the member ids already in hand. Guide labels are
+    // display data, so this read stays in flight while those resolve.
     const historyPromise = (async () => {
       if (input.minimal || users.length === 0) return [];
       const cutoffStr = daysAgo(todayStr, 100);
@@ -240,12 +240,24 @@ export default createEndpoint({
     const directoryDepartment = !forMeetingInvitees
       ? requestedDepartment || ((seesEntireDirectory || isHierarchySuperAdmin(context.user)) ? callerDepartment : null)
       : null;
+    // Member, history, and metadata reads are already running. Guide labels
+    // resolve alongside that join, and department filtering uses them after.
+    const guideLabelPromise = directoryDepartment === 'PW'
+      ? Guides.findAll({
+          fields: ['id', 'guideId', 'email', 'fullName', 'name', 'segment'],
+          limit: 500,
+        })
+      : Promise.resolve({ records: [] as any[] });
+    void guideLabelPromise.catch(() => {});
+
+    const [entries, [sadhanaRes, groupsRes, membersRes, reference], { records: guideRecords }] = await Promise.all([
+      historyPromise,
+      metadataPromise,
+      guideLabelPromise,
+    ]);
+
     if (directoryDepartment === 'PW') {
       const folkGuideRefs = folkGuideIdentityRefs(users);
-      const { records: guideRecords } = await Guides.findAll({
-        fields: ['id', 'guideId', 'email', 'fullName', 'name', 'segment'],
-        limit: 500,
-      });
       const folkGuideEmails = new Set<string>();
       for (const user of users) {
         const role = normalizeDepartmentToken(user?.role);
@@ -268,8 +280,6 @@ export default createEndpoint({
     } else if (directoryDepartment === 'FOLK') {
       users = users.filter(user => memberDirectoryDepartment(user) === 'FOLK');
     }
-
-    const [entries, [sadhanaRes, groupsRes, membersRes, reference]] = await Promise.all([historyPromise, metadataPromise]);
 
     const todayEntries: any[] = sadhanaRes?.records || [];
     const allBvGroups: any[] = groupsRes?.records || [];

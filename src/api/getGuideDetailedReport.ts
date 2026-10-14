@@ -1009,7 +1009,7 @@ export default createEndpoint({
     const entriesPromise = Promise.all([
       readPages(dateFilter, ENTRY_FIELDS),
       guideDbId !== null
-        ? readPages({ entryDate: { gte: daysAgo(todayStr, 100), lte: todayStr } }, ['id', 'user', 'entryDate', 'scorePercent'])
+        ? readPages({ entryDate: { gte: daysAgo(todayStr, 100), lte: todayStr } }, ['id', 'user', 'entryDate', 'scorePercent', 'maxScore'])
         : Promise.resolve([]),
     ]);
     void entriesPromise.catch(() => {});
@@ -1036,7 +1036,7 @@ export default createEndpoint({
     scopeRealtimeDependencies('SadhanaEntries', { kind: 'references', fields: ['user'], values: [...userDbIdSet], caseSensitive: true, firstArrayValue: true });
     const [allEntries, streakEntries] = await entriesPromise;
     availableResidencies = await availableResidenciesPromise;
-    const streakEntriesByUser = new Map<string, { entryDate: string; scorePercent: number | null }[]>();
+    const streakEntriesByUser = new Map<string, { entryDate: string; scorePercent: number | null; maxScore: number | null }[]>();
     for (const e of streakEntries) {
       const rawUid = Array.isArray(e.user) ? e.user[0] : (e.user as string);
       const entryOwner = String(rawUid || '').trim();
@@ -1046,6 +1046,7 @@ export default createEndpoint({
       streakEntriesByUser.get(uid)!.push({
         entryDate: (e.entryDate as string) || '',
         scorePercent: (e.scorePercent as number) ?? null,
+        maxScore: (e.maxScore as number) ?? null,
       });
     }
 

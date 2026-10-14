@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { connection } from "next/server";
 import { Inter } from "next/font/google";
 import "../index.css";
 import "../mobile.css";
@@ -22,11 +23,14 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Nonces are minted per request in proxy.ts. A static shell would ship
+  // scripts that do not match that nonce.
+  await connection();
   return (
     <html
       lang="en"

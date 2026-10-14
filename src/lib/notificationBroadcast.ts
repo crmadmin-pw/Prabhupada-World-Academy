@@ -73,11 +73,25 @@ export async function storeBroadcast(
     segment,
   };
 
+  _memCache = [..._memCache.filter(item => item.id !== broadcast.id && item.sentAt > Date.now() - DELIVERY_WINDOW_MS), broadcast];
+  _memCacheTime = 0; // reread other instances' concurrent dispatches
+
+  // Write the local fallback before Firestore. A failed commit must not drop
+  // the broadcast for members who have no push subscription and no realtime inbox.
+  let localWritten = false;
+  try {
+    fs.writeFileSync(BROADCAST_FILE, JSON.stringify({ ...broadcast, recent: _memCache }), 'utf8');
+    localWritten = true;
+  } catch {
+    // Non-critical when Firestore is the primary store.
+  }
+
   // Await shared persistence before the request ends. App Hosting can stop
   // background work once a response is sent.
   const db = getDb();
-  let inAppDelivery: NotificationDeliveryResult = { count: 0, userIds: [] };
-  if (db) {
+  if (!db) return { count: 0, userIds: [] };
+
+  try {
     const batch = db.batch();
     // Remove optional undefined properties for Firestore configurations that
     // do not enable ignoreUndefinedProperties.
@@ -89,18 +103,12 @@ export async function storeBroadcast(
     // meeting reminders working even when the optional Firestore-trigger
     // worker has not been provisioned. The deterministic notification ID
     // makes a later trigger delivery idempotent.
-    inAppDelivery = await publishNotification(db, record);
+    return await publishNotification(db, record);
+  } catch (error) {
+    if (!localWritten) throw error;
+    console.warn('[Notifications] Firestore broadcast failed, kept local fallback:', error);
+    return { count: 0, userIds: [] };
   }
-  _memCache = [..._memCache.filter(item => item.id !== broadcast.id && item.sentAt > Date.now() - DELIVERY_WINDOW_MS), broadcast];
-  _memCacheTime = 0; // reread other instances' concurrent dispatches
-
-  // Also write /tmp as local fallback
-  try {
-    fs.writeFileSync(BROADCAST_FILE, JSON.stringify({ ...broadcast, recent: _memCache }), 'utf8');
-  } catch {
-    // Non-critical — Firestore is the primary store
-  }
-  return inAppDelivery;
 }
 
 export async function getRecentBroadcasts(): Promise<BroadcastData[]> {

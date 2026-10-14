@@ -207,3 +207,72 @@ test('one RGF can facilitate more than one reading group', async () => {
     await Users.delete({ id: member.id }).catch(() => undefined);
   }
 });
+
+test('a former RGF who is now an RGSF is not labeled RGF on the group card', async () => {
+  const punya = {
+    id: 'NITYA-PUNYA-DB',
+    userId: 'NITYA-PUNYA',
+    email: 'nitya-punya@example.invalid',
+    fullName: 'Punya',
+    role: 'User',
+    status: 'Active',
+    segment: 'PW',
+    isBvFacilitator: true,
+    isBvsl: true,
+  };
+  const asha = {
+    id: 'NITYA-ASHA-DB',
+    userId: 'NITYA-ASHA',
+    email: 'nitya-asha@example.invalid',
+    fullName: 'Asha N',
+    role: 'User',
+    status: 'Active',
+    segment: 'PW',
+    isBvFacilitator: true,
+    isBvsl: true,
+  };
+  const richa = {
+    id: 'NITYA-RICHA-DB',
+    userId: 'NITYA-RICHA',
+    email: 'nitya-richa@example.invalid',
+    fullName: 'Richa Dewan',
+    role: 'User',
+    status: 'Active',
+    segment: 'PW',
+    isBvFacilitator: false,
+    isBvsl: false,
+    isBvSubFacilitator: true,
+    bvReportingFacilitatorId: punya.userId,
+    bvReportingFacilitatorName: punya.fullName,
+  };
+  const nityananda = {
+    id: 'NITYA-GROUP-DB',
+    groupId: 'NITYA-GROUP',
+    groupName: 'Nityananda new',
+    bvslLeader: [richa.id, asha.id],
+    bvslId: [richa.userId, asha.userId],
+    bvslName: [richa.fullName, asha.fullName],
+    segment: 'PW',
+    isActive: true,
+  };
+  await Users.create({ record: punya });
+  await Users.create({ record: asha });
+  await Users.create({ record: richa });
+  await BvGroups.create({ record: nityananda });
+  try {
+    const listed = await getBvslGroups.execute({
+      input: { bvslId: richa.userId, viewRole: 'RGSF' },
+      context: { user: richa },
+    } as never);
+    const row = listed.groups.find((group: any) => group.groupId === nityananda.groupId);
+    assert.ok(row);
+    assert.equal(row.rgsfName, 'Richa Dewan');
+    assert.equal(row.bvslName, 'Asha N');
+    assert.equal(String(row.bvslName).includes('Richa Dewan'), false);
+  } finally {
+    await BvGroups.delete({ id: nityananda.id }).catch(() => undefined);
+    await Users.delete({ id: punya.id }).catch(() => undefined);
+    await Users.delete({ id: asha.id }).catch(() => undefined);
+    await Users.delete({ id: richa.id }).catch(() => undefined);
+  }
+});

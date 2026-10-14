@@ -84,12 +84,25 @@ test('sendOrQueue stores the payload while offline and a later flush delivers it
     type: 'sadhana_entry',
     dedupeKey: 'sadhana:user:2026-10-05',
     payload: { userId: 'user', entryDate: '2026-10-05', totalScore: 12 },
-    send: async () => { sendCalls++; return { entryId: 'should-not-run' }; },
+    send: async () => {
+      sendCalls++;
+      throw new TypeError('Failed to fetch');
+    },
   });
 
   assert.equal(outcome.status, 'queued');
-  assert.equal(sendCalls, 0);
+  assert.equal(sendCalls, 1);
   assert.equal(getOfflineQueue()[0].payload.totalScore, 12);
+
+  const reached = await sendOrQueue({
+    type: 'sadhana_entry',
+    dedupeKey: 'sadhana:user:2026-10-06',
+    payload: { userId: 'user', entryDate: '2026-10-06', totalScore: 16 },
+    send: async () => ({ entryId: 'E-while-flag-offline' }),
+  });
+  assert.equal(reached.status, 'sent');
+  if (reached.status === 'sent') assert.equal(reached.result.entryId, 'E-while-flag-offline');
+  assert.equal(getOfflineQueue().length, 1);
 
   Object.defineProperty(globalThis, 'navigator', { value: { onLine: true }, configurable: true });
   const delivered: any[] = [];
@@ -115,6 +128,15 @@ test('sendOrQueue stores the payload while offline and a later flush delivers it
       send: async () => { throw Object.assign(new Error('Invalid date of birth'), { status: 400 }); },
     }),
     /Invalid date of birth/,
+  );
+  await assert.rejects(
+    sendOrQueue({
+      type: 'sadhana_entry',
+      dedupeKey: 'sadhana:rejected',
+      payload: { userId: 'user', entryDate: '2026-10-05' },
+      send: async () => { throw new Error('Submitted scores do not match the recorded sadhana'); },
+    }),
+    /Submitted scores do not match/,
   );
   assert.equal(getOfflineQueue().length, 0);
 

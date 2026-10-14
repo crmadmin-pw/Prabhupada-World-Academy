@@ -33,6 +33,7 @@ import { bvRolePatch, mergePendingDirectoryPatches, mergePendingMentors, type Pe
 import { EmptyState, ConfirmDialog } from '@/shared';
 
 import MultiRoleAssignModal from './MultiRoleAssignModal';
+import { pwReadingGroups } from '@/lib/pwGroupRoles';
 import BulkUserManagement from '@/components/guide/BulkUserManagement';
 
 function NaLabel() {
@@ -79,7 +80,7 @@ function mergePendingGroupAssignments(list: User[], pending: Map<string, Pending
   });
 }
 type GuideEntry = GetGuidesOutputType['guides'][0];
-type BvGroupOption = { id: string; groupId: string; groupName: string; segment?: string | null; isActive?: boolean; facilitatorIds?: string[] };
+type BvGroupOption = { id: string; groupId: string; groupName: string; segment?: string | null; isActive?: boolean; facilitatorIds?: string[]; rgfIds?: string[]; rgsfIds?: string[] };
 
 function groupsLedBy(
   parentId: string,
@@ -95,10 +96,11 @@ function groupsLedBy(
       .filter(Boolean)
       .map(value => String(value).trim().toLowerCase()),
   );
-  return groups.filter(group =>
-    group.isActive !== false &&
-    (group.facilitatorIds || []).some(ref => refs.has(String(ref).trim().toLowerCase())),
-  );
+  return groups.filter(group => {
+    if (group.isActive === false) return false;
+    const leaderIds = Array.isArray(group.rgfIds) ? group.rgfIds : (group.facilitatorIds || []);
+    return leaderIds.some(ref => refs.has(String(ref).trim().toLowerCase()));
+  });
 }
 
 function samePerson(
@@ -138,8 +140,10 @@ function groupsFacilitatedBy(
       .filter(Boolean),
   );
   return groups.filter(group => {
-    const facilitatorIds = (group.facilitatorIds || []).map(ref => String(ref).trim().toLowerCase()).filter(Boolean);
-    if (facilitatorIds.length > 0) return facilitatorIds.some(ref => refs.has(ref));
+    const leaderIds = (Array.isArray(group.rgfIds) ? group.rgfIds : (group.facilitatorIds || []))
+      .map(ref => String(ref).trim().toLowerCase())
+      .filter(Boolean);
+    if (Array.isArray(group.rgfIds) || leaderIds.length > 0) return leaderIds.some(ref => refs.has(ref));
     const ids = [group.id, group.groupId].map(value => String(value || '').trim().toLowerCase());
     return ids.some(id => storedIds.has(id)) || storedNames.has(String(group.groupName || '').trim().toLowerCase());
   });
@@ -496,6 +500,8 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
           group.bvslName,
           group.bvslLeaderName,
         ].map((value: unknown) => String(value || '').trim()).filter(Boolean))],
+        rgfIds: Array.isArray(group.rgfIds) ? group.rgfIds : undefined,
+        rgsfIds: Array.isArray(group.rgsfIds) ? group.rgsfIds : undefined,
       })));
 
       setSadhanaMentors(mergePendingMentors(mentorsList || [], pendingMentors.current));
@@ -1769,6 +1775,7 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
           adminsList={bvAdminsList}
           supervisorsList={bvSupervisorsList}
           facilitatorsList={bvFacilitatorsList}
+          readingGroups={isPwMode ? pwReadingGroups(multiRoleUser, bvGroups) : []}
           onClose={() => setMultiRoleUser(null)}
           onSaved={(update) => {
             rememberDirectoryPatch(update.user, update.patch);

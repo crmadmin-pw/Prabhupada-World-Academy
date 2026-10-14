@@ -12,6 +12,11 @@ const BV_FIELDS = [
   'prBooksDistributed', 'prContactsCollected', 'prUniqueOneOnOnes', 'totalPreachingMinutes',
 ];
 
+function calendarDate(dateStr: string): Date {
+  const [year, month, day] = String(dateStr || '').slice(0, 10).split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
 export default createEndpoint({
   description: 'Aggregate BV preaching stats for a guide over a date range',
   authenticated: true,
@@ -205,21 +210,23 @@ async function _fetchBvStats({ input, context }: { input: any; context: any }) {
     }
 
     const dailyTrend: any[] = [];
-    const cur = new Date(startDate + 'T00:00:00');
-    const endD = new Date(endDate + 'T00:00:00');
+    // Walk the requested calendar dates. Local midnight plus toISOString()
+    // shifts the bucket a day earlier on IST and leaves the card metric null.
+    const cur = calendarDate(startDate);
+    const endD = calendarDate(endDate);
     while (cur <= endD) {
       const ds = cur.toISOString().split('T')[0];
       const d = byDate.get(ds);
       const point: any = {
         date: ds,
-        label: new Date(ds + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        label: new Date(ds + 'T00:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }),
         submittedCount: d?.count ?? 0,
       };
       for (const f of BV_FIELDS) {
         point[f] = d && d.count > 0 ? Math.round(d.sums[f] / d.count * 10) / 10 : null;
       }
       dailyTrend.push(point);
-      cur.setDate(cur.getDate() + 1);
+      cur.setUTCDate(cur.getUTCDate() + 1);
     }
 
     // Per-user summaries

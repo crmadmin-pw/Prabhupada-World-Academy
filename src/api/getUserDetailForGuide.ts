@@ -5,6 +5,7 @@ import { computeStreak, getTodayIST } from '../lib/streakUtils';
 import { requireGuideRole } from '../lib/userUtils';
 import { getGuideScope, isUserInGuideScope } from '../lib/guideScope';
 import { isBvGroupProfileAdministrator } from '../lib/bvGroupMemberProfileNavigation';
+import { groupHasFacilitator } from '../lib/bvGroupFacilitators';
 import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
 import { pwScoreFromFieldValues } from '@/lib/pwSadhana';
 
@@ -43,16 +44,25 @@ async function resolveUser(id: string) {
  * Check if a BVSL (identified by their DB record ID) has the target user
  * in any of their active BV groups.
  */
-async function isBvslMember(caller: any, targetUserId: string, rgsfOnly = false): Promise<boolean> {
+function membershipIsActive(membership: any): boolean {
+  if (membership?.isActive === false) return false;
+  const status = String(membership?.status || '').toLowerCase();
+  return !['inactive', 'removed', 'left'].includes(status);
+}
+
+async function isBvslMember(caller: any, target: any, rgsfOnly = false): Promise<boolean> {
   const callerKeys = [
     caller?.id,
+    caller?.uid,
     caller?.userId,
     caller?.email,
+    caller?.fullName,
+    caller?.name,
   ].filter(Boolean).map((value) => String(value).toLowerCase());
+  const callerAliasSet = new Set(callerKeys);
 
   const { records: bvslGroups } = await BvGroups.findAll({
-    filters: { isActive: true } as any,
-    fields: ['id', 'bvslLeader', 'bvslId', 'subFacilitatorId', 'rgsfId', 'subFacilitator'],
+    fields: ['id', 'groupId', 'isActive', 'bvslLeader', 'bvslId', 'bvslName', 'subFacilitatorId', 'rgsfId', 'subFacilitator'],
     limit: 500,
   });
 
@@ -72,7 +82,9 @@ async function isBvslMember(caller: any, targetUserId: string, rgsfOnly = false)
     }
   }
 
+  const callerIsAlsoSubFacilitator = !!caller?.isBvSubFacilitator;
   const groups = bvslGroups.filter((group: any) => {
+    if (group.isActive === false) return false;
     const facilitatorKeys = [
       group.bvslLeader,
       group.bvslId,
@@ -88,27 +100,51 @@ async function isBvslMember(caller: any, targetUserId: string, rgsfOnly = false)
       .map((value) => String(value).toLowerCase());
 
     const parentGroup = facilitatorKeys.some((key) => parentRgfKeys.has(key));
-    const callerOwnedLegacyGroup = facilitatorKeys.some((key) => callerKeys.includes(key));
-    return rgsfOnly
-      ? parentGroup || callerOwnedLegacyGroup || subFacilitatorKeys.some((key) => callerKeys.includes(key))
-      : callerOwnedLegacyGroup;
+    const callerOwnedLegacyGroup = facilitatorKeys.some((key) => callerAliasSet.has(key)) || groupHasFacilitator(group, callerAliasSet);
+    const callerIsSubFacilitatorHere = subFacilitatorKeys.some((key) => callerAliasSet.has(key));
+    // A PW user can be RGF of one group and RGSF of another. The members list
+    // shows both, so the profile check has to accept both.
+    if (rgsfOnly) return parentGroup || callerOwnedLegacyGroup || callerIsSubFacilitatorHere;
+    return callerOwnedLegacyGroup || (callerIsAlsoSubFacilitator && callerIsSubFacilitatorHere);
   });
 
-  const groupIds = groups.map((g: any) => g.id).filter(Boolean);
+  const groupIds = [...new Set(groups.flatMap((g: any) => [g.id, g.groupId]).filter(Boolean).map((value: any) => String(value)))];
   if (groupIds.length === 0) return false;
 
-  const targetKeys = [targetUserId].filter(Boolean).map((value) => String(value));
-  const targetUser = await Users.findOne({ id: targetUserId, fields: ['id', 'userId', 'email'] });
-  if (targetUser?.userId) targetKeys.push(String(targetUser.userId));
-  if (targetUser?.email) targetKeys.push(String(targetUser.email));
+  const targetKeys = [...new Set([
+    target?.id,
+    target?.userId,
+    target?.email,
+    target?.uid,
+    target?.authUid,
+    target?.firebaseUid,
+  ].filter(Boolean).map((value) => String(value)))];
+  if (targetKeys.length === 0) return false;
 
-  const membershipResults = await Promise.all(targetKeys.map((userKey) => BvGroupMembers.findAll({
-    filters: { group: { in: groupIds }, user: userKey } as any,
-    fields: ['id'],
-    limit: 1,
-  })));
+  const membershipFields = ['id', 'isActive', 'status'];
+  for (let start = 0; start < groupIds.length; start += 30) {
+    const groupChunk = groupIds.slice(start, start + 30);
+    for (let keyStart = 0; keyStart < targetKeys.length; keyStart += 30) {
+      const keyChunk = targetKeys.slice(keyStart, keyStart + 30);
+      const membershipResults = await Promise.all(
+        (['user', 'userId', 'memberId'] as const).flatMap(field => [
+          BvGroupMembers.findAll({
+            filters: { group: { in: groupChunk }, [field]: { in: keyChunk } } as any,
+            fields: membershipFields,
+            limit: 5,
+          }),
+          BvGroupMembers.findAll({
+            filters: { groupId: { in: groupChunk }, [field]: { in: keyChunk } } as any,
+            fields: membershipFields,
+            limit: 5,
+          }),
+        ]),
+      );
+      if (membershipResults.some((result) => (result.records || []).some(membershipIsActive))) return true;
+    }
+  }
 
-  return membershipResults.some((result) => result.records.length > 0);
+  return false;
 }
 
 export default createEndpoint({
@@ -124,6 +160,7 @@ export default createEndpoint({
     requireGuideRole(context.user.role, {
       isSadhanaMentor: context.user.isSadhanaMentor,
       isBvsl: context.user.isBvsl,
+      isBvFacilitator: context.user.isBvFacilitator,
       isBvMentor: context.user.isBvMentor,
       isBvAdmin: context.user.isBvAdmin,
       isBvSuperAdmin: context.user.isBvSuperAdmin,
@@ -133,29 +170,44 @@ export default createEndpoint({
 
     const userRecord = await resolveUser(input.userId);
     if (!userRecord) throw new AppError({ code: 'NOT_FOUND', message: 'User not found' });
-    const callerDepartment = callerDirectoryDepartment(context.user);
-    const targetDepartment = memberDirectoryDepartment(userRecord);
-    if (callerDepartment && targetDepartment && callerDepartment !== targetDepartment) {
-      throw new AppError({ code: 'FORBIDDEN', message: 'This user belongs to another department' });
-    }
-    if (!isPwDepartmentAdmin(context.user) && !isUserInHierarchy(userRecord, await getScopedHierarchyUserIds(context.user))) {
-      throw new AppError({ code: 'FORBIDDEN', message: 'This user is not assigned to your hierarchy' });
-    }
-
+    const callerRole = String(context.user.role || '').toUpperCase().replace(/[\s-]+/g, '_');
+    const isRgf = !!(context.user.isBvsl || context.user.isBvFacilitator) || ['RGF', 'BVSL', 'FACILITATOR'].includes(callerRole);
+    const isRgsf = !!context.user.isBvSubFacilitator || callerRole === 'RGSF' || callerRole === 'SUB_FACILITATOR';
     // Admin-tier users manage members across their authorized department and
     // must not fall through to the RGF/guide-only scope checks below.
     const hasUnrestrictedProfileAccess = isBvGroupProfileAdministrator(context.user);
-
     const isBvMentor = !!(context.user.isBvMentor || context.user.isBvSupervisor);
-    const isRgsf = !!context.user.isBvSubFacilitator ||
-      String(context.user.role || '').toUpperCase().replace(/[\s-]+/g, '_').includes('RGSF');
+    const isGuideRole = ['GUIDE', 'SUPER_GUIDE'].includes(callerRole);
+    // A current group membership is enough. Reporting chains can lag behind
+    // the member list the RGF just opened.
+    const groupMember = !hasUnrestrictedProfileAccess && (isRgf || isRgsf)
+      ? await isBvslMember(context.user, userRecord, isRgsf && !isRgf)
+      : false;
 
-    if (!hasUnrestrictedProfileAccess && !isBvMentor) {
+    const callerDepartment = callerDirectoryDepartment(context.user);
+    const targetDepartment = memberDirectoryDepartment(userRecord);
+    if (!groupMember && callerDepartment && targetDepartment && callerDepartment !== targetDepartment) {
+      throw new AppError({ code: 'FORBIDDEN', message: 'This user belongs to another department' });
+    }
+    const inHierarchy = isPwDepartmentAdmin(context.user) || isUserInHierarchy(userRecord, await getScopedHierarchyUserIds(context.user));
+    if (!groupMember && !inHierarchy) {
+      throw new AppError({
+        code: 'FORBIDDEN',
+        message: isRgsf && !isRgf
+          ? 'You can only view members of your reporting RGF groups'
+          : isRgf
+            ? 'You can only view members of your BV groups'
+            : 'This user is not assigned to your hierarchy',
+      });
+    }
+
+    const facilitatorProfile = (isRgf || isRgsf) && !isGuideRole;
+    if (!hasUnrestrictedProfileAccess && !isBvMentor && !groupMember && !facilitatorProfile) {
       // Try center-based scope (works for guides)
       const scope = await getGuideScope(context.user.email);
 
       if (isRgsf) {
-        const allowed = await isBvslMember(context.user, userRecord.id, true);
+        const allowed = await isBvslMember(context.user, userRecord, true);
         if (!allowed) {
           throw new AppError({ code: 'FORBIDDEN', message: 'You can only view members of your reporting RGF groups' });
         }
@@ -164,9 +216,9 @@ export default createEndpoint({
         if (!isUserInGuideScope(scope, userRecord)) {
           throw new AppError({ code: 'FORBIDDEN', message: 'You can only view users in your center' });
         }
-      } else if (context.user.isBvsl) {
+      } else if (isRgf || context.user.isBvsl) {
         // BVSL: check if the target user is in one of their BV groups
-        const allowed = await isBvslMember(context.user, userRecord.id);
+        const allowed = await isBvslMember(context.user, userRecord);
         if (!allowed) {
           throw new AppError({ code: 'FORBIDDEN', message: 'You can only view members of your BV groups' });
         }
