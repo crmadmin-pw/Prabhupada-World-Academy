@@ -105,7 +105,7 @@ export default createEndpoint({
     try {
       if (userRecord?.email) {
         const appUrl = process.env.APP_APP_URL ?? '';
-        await Email.send({
+        Email.sendAfterResponse({
           to: userRecord.email as string,
           subject: '✅ You Are Approved! Start Your Sadhana Today | FOLK Sadhana Tracker',
           body: [

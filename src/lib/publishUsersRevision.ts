@@ -1,5 +1,6 @@
 import { getFirestoreDb } from './app-backend-sdk';
 import { firestoreVersion, type RecordChange } from './realtimeQueryModel';
+import { runAfterResponse } from './runAfterResponse';
 
 /** Tell open dashboards that a document changed.
  * The request is submitted in a different browser from the admin's, so a
@@ -37,14 +38,9 @@ export async function publishCollectionRevision(table: string, id: string, befor
   const collection = String(table || '').trim();
   const recordId = String(id || '').trim();
   if (!collection || !recordId) return;
-  const work = publishNow(collection, recordId, before);
-  try {
-    // The record is already saved. A slow subscriber fan-out must not leave
-    // the button that saved it spinning.
-    await withinBudget(work, PUBLISH_BUDGET_MS);
-  } catch (error) {
-    console.warn('[Realtime] Saved the record, but could not refresh open approval lists', error);
-  }
+  // The record is already saved. Subscriber fan-out must not leave the button
+  // that saved it spinning, so it runs once the response has been sent.
+  runAfterResponse('refresh open approval lists', () => withinBudget(publishNow(collection, recordId, before), PUBLISH_BUDGET_MS));
 }
 
 export async function publishUsersRevision(id: string, before?: Record<string, unknown> | null): Promise<void> {

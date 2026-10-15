@@ -6,6 +6,7 @@ import path from 'path';
 import { requestQuery, invalidateRequestTable, recordQueryReadTime } from './requestQueries';
 import { attachSharedCacheDatabase, serverCacheInvalidate } from './serverCache';
 import { deliverEmail } from './mailer';
+import { runAfterResponse } from './runAfterResponse';
 import type { z } from 'zod';
 import type { ApiCapability, ApiUserContext } from './apiAuthorization';
 
@@ -832,6 +833,9 @@ async function noteHierarchyWrite(tableName: string, record?: Record<string, unk
 
 export const Email = {
   send: (params: { to: string; subject: string; body: any[] }) => deliverEmail(params),
+  /** Notification mail whose delivery result the caller does not report. */
+  sendAfterResponse: (params: { to: string; subject: string; body: any[] }) =>
+    runAfterResponse(`email to ${params.to}`, () => deliverEmail(params)),
 };
 
 // ─── INSTANTIATE & EXPORT ALL TABLES ──────────────────────────────────────────

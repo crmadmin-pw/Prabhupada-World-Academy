@@ -167,10 +167,13 @@ export default function PwAdminDashboard() {
     { value: 'callreports', label: '1:1 Call Reports', icon: CalendarClock },
   ];
 
-  const SidebarButton = ({ value, label, icon: Icon, badge }: { value: string; label: string; icon: any; badge?: number }) => {
+  // Called as a function, not rendered as <SidebarButton>: a component defined
+  // in render remounts on every dashboard update and replays the highlight animation.
+  const renderSidebarButton = ({ value, label, icon: Icon, badge }: { value: string; label: string; icon: any; badge?: number }) => {
     const isActive = activeTab === value || (value === 'bhakti-vriksha' && activeTab === 'bv-registrations');
     return (
       <button
+        key={value}
         onClick={() => handleTabChange(value)}
         onMouseEnter={() => prefetchTab(value)}
         onFocus={() => prefetchTab(value)}
@@ -211,15 +214,7 @@ export default function PwAdminDashboard() {
         {/* Desktop Sidebar Navigation */}
         <div className="hidden md:block w-64 shrink-0 sticky top-[93px] self-start max-h-[calc(100vh-125px)] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
           <div className="bg-card border rounded-xl p-3 space-y-0.5 shadow-sm">
-            {navItems.map((item) => (
-              <SidebarButton
-                key={item.value}
-                value={item.value}
-                label={item.label}
-                icon={item.icon}
-                badge={item.badge}
-              />
-            ))}
+            {navItems.map(renderSidebarButton)}
           </div>
         </div>
 

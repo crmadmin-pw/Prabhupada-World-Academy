@@ -44,8 +44,24 @@ const BvGroupDetailPage = lazy(() => import('./spa-pages/BvGroupDetailPage'));
 import { useAuth } from '@/lib/auth-sdk';
 
 // ── Super Guide & Admin pages ──
-const PwAdminDashboard = lazy(() => import('./spa-pages/PwAdminDashboard'));
-const FolkGuideDashboard = lazy(() => import('./spa-pages/FolkGuideDashboard'));
+const loadPwAdminDashboard = () => import('./spa-pages/PwAdminDashboard');
+const loadFolkGuideDashboard = () => import('./spa-pages/FolkGuideDashboard');
+const PwAdminDashboard = lazy(loadPwAdminDashboard);
+const FolkGuideDashboard = lazy(loadFolkGuideDashboard);
+
+// Download the dashboard (and its default report) code while sign-in and the
+// profile are still resolving. Code only: routing and access still wait for
+// the verified profile.
+if (typeof window !== 'undefined') {
+  const path = window.location.pathname;
+  if (path.startsWith('/pw-admin/') || path.startsWith('/super-admin/')) {
+    void loadPwAdminDashboard().catch(() => {});
+    void import('./components/guide/ReportsTab').catch(() => {});
+  } else if (path.startsWith('/folk-guide/') || path.startsWith('/super/')) {
+    void loadFolkGuideDashboard().catch(() => {});
+    void import('./components/guide/ReportsTab').catch(() => {});
+  }
+}
 
 // ── BVSL, RGF & RGSF pages ──
 const RgfDashboard = lazy(() => import('./spa-pages/RgfDashboard'));

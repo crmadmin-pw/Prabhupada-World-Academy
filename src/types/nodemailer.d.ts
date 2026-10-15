@@ -7,7 +7,7 @@ declare module 'nodemailer' {
     text?: string;
   }
 
-  interface Transporter {
+  export interface Transporter {
     sendMail(options: SendMailOptions): Promise<{ messageId?: string }>;
   }
 
@@ -16,6 +16,9 @@ declare module 'nodemailer' {
     port: number;
     secure: boolean;
     auth: { user: string; pass: string };
+    connectionTimeout?: number;
+    greetingTimeout?: number;
+    socketTimeout?: number;
   }
 
   const nodemailer: {

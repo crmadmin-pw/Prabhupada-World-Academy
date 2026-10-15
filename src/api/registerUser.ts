@@ -196,7 +196,7 @@ export default createEndpoint({
     // ── Email: confirmation to the newly registered devotee ──
     try {
       if (!isPw) {
-        await Email.send({
+        Email.sendAfterResponse({
           to: userEmail,
           subject: '🙏 Registration Received — Awaiting Guide Approval | FOLK Sadhana Tracker',
           body: [
@@ -219,7 +219,7 @@ export default createEndpoint({
     // ── Email: notification to the assigned guide or PW Admins ──
     try {
       if (!isPw && guideRecord?.email) {
-        await Email.send({
+        Email.sendAfterResponse({
           to: guideRecord.email,
           subject: `New Devotee Awaiting Approval — ${input.fullName} | FOLK Sadhana Tracker`,
           body: [

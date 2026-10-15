@@ -107,6 +107,7 @@ export async function enrollUserOnTagMango(opts: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ name, email, phone: Number(phone), mangoId }),
+      signal: AbortSignal.timeout(8_000),
     });
 
     const body = await response.text();

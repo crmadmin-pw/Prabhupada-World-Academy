@@ -1,4 +1,4 @@
-import nodemailer from 'nodemailer';
+import nodemailer, { type Transporter } from 'nodemailer';
 import { escapeEmailHtml, escapeHtml } from './sanitize';
 
 type MailPart = {
@@ -124,6 +124,20 @@ function smtpConfig() {
   return { host, port, user, pass, from, secure: port === 465 };
 }
 
+type SmtpConfig = NonNullable<ReturnType<typeof smtpConfig>>;
+
+function smtpTransport(config: SmtpConfig): Transporter {
+  return nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    auth: { user: config.user, pass: config.pass },
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 20_000,
+  });
+}
+
 /**
  * Hand the message to SMTP. Throws when mail is not configured or the server
  * rejects it, so callers cannot count an undelivered message as sent.
@@ -136,12 +150,7 @@ export async function deliverEmail(params: { to: string; subject: string; body: 
   const config = smtpConfig();
   if (!config) throw new Error('Email delivery is not configured');
 
-  const transport = nodemailer.createTransport({
-    host: config.host,
-    port: config.port,
-    secure: config.secure,
-    auth: { user: config.user, pass: config.pass },
-  });
+  const transport = smtpTransport(config);
 
   try {
     await transport.sendMail({

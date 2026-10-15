@@ -743,6 +743,24 @@ export default createEndpoint({
     const effectiveStart = (startDate || date || '').split('T')[0];
     const effectiveEnd = (endDate || date || '').split('T')[0];
     if (!effectiveStart) throw new Error('Invalid date: no date provided');
+    const dateFilter = reportType === 'daily'
+      ? { entryDate: effectiveStart }
+      : { entryDate: { gte: effectiveStart, lte: effectiveEnd } };
+    const readPages = async (filters: any, fields: string[]) => {
+      const rows: any[] = [];
+      let offset = 0;
+      while (true) {
+        const { records, hasMore } = await SadhanaEntries.findAll({ filters, fields, limit: 2000, offset });
+        rows.push(...records);
+        if (!hasMore) return rows;
+        offset += 2000;
+      }
+    };
+    // The report's entries depend only on the requested dates, so this read
+    // overlaps scope and user resolution. Rows are still matched to the
+    // authorized users below; nothing outside that scope is returned.
+    const reportEntriesPromise = readPages(dateFilter, ENTRY_FIELDS);
+    void reportEntriesPromise.catch(() => {});
     const referencePromise = getReportReferenceData();
     // Start labels alongside scope resolution, with rejection observed even if
     // an earlier scope check exits the report. Awaiting below still propagates it.
@@ -984,30 +1002,15 @@ export default createEndpoint({
     void availableGuidesPromise.catch(() => {});
     if (users.length === 0) return { users: [], fieldDefs: reportFieldDefs, availableResidencies: await availableResidenciesPromise, availableGuides: await availableGuidesPromise, currentGuideId: guideDbId, summary: {} };
 
-    // Fetch entries in date range (paginated if needed)
-    const dateFilter = reportType === 'daily'
-      ? { entryDate: effectiveStart }
-      : { entryDate: { gte: effectiveStart, lte: effectiveEnd } };
-
     // ── Streak computation ──
     // For Super Guide (ALL users), skip the expensive 100-day paginated fetch and
     // use the cached `currentStreak` value stored on each user record instead.
     // For individual guides, compute it live from the 100-day window for accuracy.
     const todayStr = getTodayIST();
-    const readPages = async (filters: any, fields: string[]) => {
-      const rows: any[] = [];
-      let offset = 0;
-      while (true) {
-        const { records, hasMore } = await SadhanaEntries.findAll({ filters, fields, limit: 2000, offset });
-        rows.push(...records);
-        if (!hasMore) return rows;
-        offset += 2000;
-      }
-    };
     // Report values and streak history are independent once scope is known.
     // Keep the original date bounds, field projections and alias matching.
     const entriesPromise = Promise.all([
-      readPages(dateFilter, ENTRY_FIELDS),
+      reportEntriesPromise,
       guideDbId !== null
         ? readPages({ entryDate: { gte: daysAgo(todayStr, 100), lte: todayStr } }, ['id', 'user', 'entryDate', 'scorePercent', 'maxScore'])
         : Promise.resolve([]),

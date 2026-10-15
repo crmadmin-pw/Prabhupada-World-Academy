@@ -28,7 +28,18 @@ function plan({ segment, isSuperAdmin, guideId }: Options): Query[] {
   ];
 }
 
-/** One background read at a time, only after visible requests finish. */
+const TAB_MODULES: Record<string, () => Promise<unknown>> = {
+  sadhana: () => import('@/components/guide/ReportsTab'),
+  bv: () => import('@/components/super/SuperBvReportTab'),
+  users: () => import('@/components/super/SuperUsersPanel'),
+  meetings: () => import('@/components/super/MeetingsAndMomTab'),
+  'bhakti-vriksha': () => import('@/components/super/BvAdminManagementTab'),
+  'missing-sadhana': () => import('@/components/guide/MissingSadhanaTab'),
+};
+
+/** One background read at a time, only after visible requests finish.
+ * The tab open at load is the exception: its reads start with the dashboard,
+ * in parallel with its code chunk, and the panel joins those in-flight reads. */
 export function useDashboardPrefetch(options: Options) {
   const optionsRef = useRef(options);
   optionsRef.current = options;
@@ -36,6 +47,17 @@ export function useDashboardPrefetch(options: Options) {
   const wake = useRef<() => void>(() => {});
   const completed = useRef(new Set<string>());
   const scopeKey = queryCacheKey('dashboard-prefetch', { segment: options.segment, guideId: options.guideId, isSuperAdmin: options.isSuperAdmin });
+  useEffect(() => {
+    if (!options.enabled) return;
+    const opening = optionsRef.current;
+    void TAB_MODULES[opening.activeTab]?.().catch(() => {});
+    for (const query of plan(opening)) {
+      if (query.intentOnly || (query.tab !== opening.activeTab && query.tab !== 'lookups')) continue;
+      if (!isEndpointQueryFresh(query.name, query.input)) {
+        void queryEndpoint(query.name, query.input).catch(() => { /* The visible panel reports errors. */ });
+      }
+    }
+  }, [options.enabled, scopeKey]);
   useEffect(() => {
     if (!options.enabled) return;
     const connection = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
@@ -78,15 +100,7 @@ export function useDashboardPrefetch(options: Options) {
   }, [options.enabled, scopeKey]);
   return useCallback((tab: string) => {
     intent.current = tab;
-    const modules: Record<string, () => Promise<unknown>> = {
-      sadhana: () => import('@/components/guide/ReportsTab'),
-      bv: () => import('@/components/super/SuperBvReportTab'),
-      users: () => import('@/components/super/SuperUsersPanel'),
-      meetings: () => import('@/components/super/MeetingsAndMomTab'),
-      'bhakti-vriksha': () => import('@/components/super/BvAdminManagementTab'),
-      'missing-sadhana': () => import('@/components/guide/MissingSadhanaTab'),
-    };
-    void modules[tab]?.().catch(() => {});
+    void TAB_MODULES[tab]?.().catch(() => {});
     wake.current();
   }, []);
 }
