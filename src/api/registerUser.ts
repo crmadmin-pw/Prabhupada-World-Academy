@@ -5,6 +5,7 @@ import { enforceRateLimit } from '../utils/rateLimit';
 import { serverCacheInvalidate } from '../lib/serverCache';
 import { profileCacheKey } from './getUserProfile';
 import { getUserSegment, resolveGuideReference } from '../lib/guideResolution';
+import { ACCOUNT_DELETED_LOGIN_MESSAGE, isAccountDeleted } from '@/lib/accountDeletionPolicy';
 import { ensureAccountLinkReview, findUnlinkedEmailProfiles, isLoginLinkedToProfile } from '@/lib/accountLinkReview';
 import { publishUsersRevision } from '../lib/publishUsersRevision';
 
@@ -73,6 +74,13 @@ export default createEndpoint({
         record[field] && authAliases.includes(String(record[field]))
       )
     );
+    const deletedProfile = emailMatches.find((record: any) => isAccountDeleted(record.status));
+    const linkedLiveProfile = emailMatches.find((record: any) =>
+      record?.userId && !isAccountDeleted(record.status) && isLoginLinkedToProfile(record, authUid)
+    );
+    if (deletedProfile && !linkedLiveProfile) {
+      throw new AppError({ code: 'FORBIDDEN', message: ACCOUNT_DELETED_LOGIN_MESSAGE });
+    }
     if (existingProfile && !isLoginLinkedToProfile(existingProfile, authUid)) {
       await ensureAccountLinkReview({ authUid, email: userEmail, bareRecordId: authUid });
       throw new AppError({

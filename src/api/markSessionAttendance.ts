@@ -3,7 +3,7 @@ import {
   createEndpoint, AppError, Users, AttendanceParticipants,
   AttendanceRecords, AttendanceSessions, ChallengeEnrollments,
 } from '@/lib/backend-sdk';
-import { normalizePhone } from '@/lib/phoneNormalize';
+import { findByPhone } from '@/lib/phoneLookup';
 
 export default createEndpoint({
   description: 'Mark attendance for a session by phone or userId (public)',
@@ -58,18 +58,15 @@ export default createEndpoint({
       participantName = targetUser.fullName || targetUser.email || '';
       source = 'Registered User';
     } else if (input.phone) {
-      const norm = normalizePhone(input.phone);
       // Search Users first
-      const { records: users } = await Users.findAll({ filters: { phone: { contains: norm.replace('+', '') } }, limit: 5 });
-      const matchedUser = users.find(u => normalizePhone(u.phone || '') === norm);
+      const [matchedUser] = await findByPhone(Users, input.phone);
       if (matchedUser) {
         userId = matchedUser.id;
         participantName = matchedUser.fullName || matchedUser.email || '';
         source = 'Registered User';
       } else {
         // Search Participants
-        const { records: parts } = await AttendanceParticipants.findAll({ filters: { phone: { contains: norm.replace('+', '') } }, limit: 5 });
-        const matchedPart = parts.find(p => normalizePhone(p.phone || '') === norm);
+        const [matchedPart] = await findByPhone(AttendanceParticipants, input.phone);
         if (matchedPart) {
           participantId = matchedPart.id;
           participantName = matchedPart.name || '';

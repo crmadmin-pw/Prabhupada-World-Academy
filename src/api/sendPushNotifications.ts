@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { matchesAnySecret } from '@/lib/secretMatch';
 import { createEndpoint, PushSubscriptions, Users, SadhanaEntries, AppError } from '@/lib/backend-sdk';
 import { storeBroadcast } from '@/lib/notificationBroadcast';
 import getPwNotificationConfig from './getPwNotificationConfig';
@@ -311,7 +312,7 @@ export default createEndpoint({
       process.env.APP_CRON_SECRET,
       process.env.ZITE_CRON_SECRET,
     ].filter(Boolean);
-    const isCron = input.cronSecret && validCronSecrets.includes(input.cronSecret);
+    const isCron = matchesAnySecret(input.cronSecret, validCronSecrets);
     const canSendNotifications = !!(
       context?.user?.isActive &&
       (context.user.capabilities?.includes('*') || context.user.capabilities?.includes('notifications.send'))

@@ -38,6 +38,22 @@ test('an active migrated member selecting another guide becomes a pending regist
   assert.equal(updates[0].record.firebaseUid, 'auth-user');
 });
 
+test('signing up again with a deleted Prabhupada World account asks them to contact support', async t => {
+  t.mock.method(Users, 'findAll', async (query: any) => ({
+    records: query.filters?.email === registrationInput.email
+      ? [{ id: 'legacy-user-doc', userId: 'USER-087', email: registrationInput.email, status: 'Account Deleted', segment: 'PW', isPrabhupadaWorldUser: true }]
+      : [],
+    hasMore: false,
+  }));
+  await assert.rejects(
+    () => (registerUser as any).execute({
+      input: { ...registrationInput, guideId: undefined, isPrabhupadaWorldUser: true },
+      context: { user: { id: 'new-auth', uid: 'new-auth', email: registrationInput.email, role: 'User' } },
+    }),
+    /Your account had been deleted\. Kindly contact support@prabhupadaworld\.com for further help\./,
+  );
+});
+
 test('a phone owned by another account returns a conflict instead of phantom pending success', async t => {
   t.mock.method(Guides, 'findOne', async (query: any) =>
     query.filters?.guideId === 'GUIDE-007'

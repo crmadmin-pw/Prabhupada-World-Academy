@@ -22,6 +22,7 @@ import BvslOneToOneTab from '@/components/bvsl/BvslOneToOneTab';
 import BvslWeeklyPlanTab from '@/components/bvsl/BvslWeeklyPlanTab';
 import SuperBvRegistrationsTab from '@/components/super/SuperBvRegistrationsTab';
 import MeetingsAndMomTab from '@/components/super/MeetingsAndMomTab';
+import PwBvAttendancePanel from '@/components/pw/PwBvAttendancePanel';
 
 export default function RgfDashboard() {
   const { profile } = useUserProfile();
@@ -100,7 +101,12 @@ export default function RgfDashboard() {
                   onRefresh={loadGroups}
                 />
               )}
-              {activeTab === 'session' && <BvslSessionPanel bvslId={bvslId} groups={groups} />}
+              {activeTab === 'session' && (
+                <div className="space-y-4">
+                  <BvslSessionPanel bvslId={bvslId} groups={groups} />
+                  {!isFolk && <PwBvAttendancePanel bvslId={bvslId} />}
+                </div>
+              )}
               {activeTab === 'members' && <BvslMembersTable bvslId={bvslId} canAssignSadhana={!isFolk} />}
               {activeTab === 'bvreport' && <BvSection guideId={bvslId} bvslMode segment={isFolk ? 'FOLK' : 'PW'} groupOptions={reportGroups} />}
               {activeTab === 'report' && <BvslSadhanaReportPanel bvslId={bvslId} hideImprovement={!isFolk} groupOptions={reportGroups} />}

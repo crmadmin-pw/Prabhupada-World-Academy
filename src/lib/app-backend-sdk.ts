@@ -144,6 +144,7 @@ export class AppError extends Error {
 }
 
 const MAX_DISJUNCTION_VALUES = 30;
+const BULK_CREATE_CONCURRENCY = 20;
 
 /** The first filter whose list exceeds one Firestore disjunction, if any. */
 function oversizedListFilter(filters: any): { col: string; op: string; values: unknown[] } | null {
@@ -185,7 +186,7 @@ function applyFilters(ref: any, filters: any) {
 
     if (val === null) {
       q = q.where(dbField, '==', null);
-    } else if (typeof val === 'object' && !Array.isArray(val)) {
+    } else if (typeof val === 'object' && !Array.isArray(val) && Object.getPrototypeOf(val) === Object.prototype) {
       const keys = Object.keys(val);
       for (const op of keys) {
         const opVal = val[op];
@@ -819,9 +820,9 @@ export class Table {
 
   async bulkCreate({ records, matchOn }: { records: any[]; matchOn?: string[] }): Promise<{ records: any[] }> {
     const results: any[] = [];
-    for (const r of records) {
-      const res = await this.create({ record: r });
-      results.push(res);
+    for (let i = 0; i < records.length; i += BULK_CREATE_CONCURRENCY) {
+      const chunk = records.slice(i, i + BULK_CREATE_CONCURRENCY);
+      results.push(...await Promise.all(chunk.map(record => this.create({ record }))));
     }
     return { records: results };
   }

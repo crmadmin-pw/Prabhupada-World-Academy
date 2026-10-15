@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { matchesAnySecret } from '@/lib/secretMatch';
 import { createEndpoint, ServiceAllocations, Services, Users, Email } from '@/lib/backend-sdk';
 import { getServiceWeekStartOf } from '../lib/serviceWeek';
 
@@ -68,7 +69,7 @@ export default createEndpoint({
   execute: async ({ input }) => {
     // Verify secret
     const expectedSecret = process.env.APP_REMINDER_SECRET || process.env.ZITE_REMINDER_SECRET || '';
-    if (!expectedSecret || input.secret !== expectedSecret) {
+    if (!expectedSecret || !matchesAnySecret(input.secret, [expectedSecret])) {
       return { sent: 0, skipped: 0, date: '' };
     }
 

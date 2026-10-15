@@ -3,7 +3,7 @@ import {
   createEndpoint, AppError, AttendanceParticipants, AttendanceRecords,
   AttendanceSessions, Users,
 } from '@/lib/backend-sdk';
-import { normalizePhone } from '@/lib/phoneNormalize';
+import { findByPhone } from '@/lib/phoneLookup';
 
 export default createEndpoint({
   description: 'Register a new participant and mark attendance (public)',
@@ -28,17 +28,13 @@ export default createEndpoint({
     }
 
     const eventId = Array.isArray(session.event) ? session.event[0] : session.event;
-    const norm = normalizePhone(input.phone);
-
     // Check if phone exists in Users
-    const { records: users } = await Users.findAll({ filters: { phone: { contains: norm.replace('+', '') } }, limit: 5 });
-    if (users.some(u => normalizePhone(u.phone || '') === norm)) {
+    if ((await findByPhone(Users, input.phone)).length > 0) {
       throw new AppError({ code: 'CONFLICT', message: 'This phone is already registered as a user. Please use the attendance form instead.' });
     }
 
     // Check if phone exists in Participants
-    const { records: parts } = await AttendanceParticipants.findAll({ filters: { phone: { contains: norm.replace('+', '') } }, limit: 5 });
-    if (parts.some(p => normalizePhone(p.phone || '') === norm)) {
+    if ((await findByPhone(AttendanceParticipants, input.phone)).length > 0) {
       throw new AppError({ code: 'CONFLICT', message: 'This phone is already registered. Please use the attendance form instead.' });
     }
 

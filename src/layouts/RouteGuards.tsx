@@ -37,6 +37,7 @@ export function GuestOnlyRoute({ children }: { children: React.ReactNode }) {
     );
   }
 
+  if (profile?.status === 'ACCOUNT_DELETED') return <Navigate to="/account-deleted" replace />;
   if (profile?.status === 'PENDING_DELETION') return <Navigate to="/account-deletion" replace />;
   if (profile?.status === 'ACTIVE') return <Navigate to="/dashboard" replace />;
   if (profile?.status === 'PENDING_APPROVAL') return <Navigate to="/pending" replace />;
@@ -112,6 +113,7 @@ export function StatusRoute({
 
   // Route to the correct page based on status
   if (profile.status !== required) {
+    if (profile.status === 'ACCOUNT_DELETED') return <Navigate to="/account-deleted" replace />;
     if (profile.status === 'PENDING_DELETION') return <Navigate to="/account-deletion" replace />;
     if (profile.status === 'ACTIVE') return <Navigate to="/dashboard" replace />;
     if (profile.status === 'PENDING_APPROVAL') return <Navigate to="/pending" replace />;
@@ -229,6 +231,7 @@ export function AuthCallbackGuard({ children }: { children: React.ReactNode }) {
 
   // ── Auth resolved ─────────────────────────────────────────────────────────
 
+  if (profile?.status === 'ACCOUNT_DELETED') return <Navigate to="/account-deleted" replace />;
   // Fast path: profile already in context (any status) → DashboardRouter handles routing.
   // This covers returning users whose profile was cached, AND users who have been
   // pending/rejected — DashboardRouter redirects them to the right page.

@@ -5,7 +5,7 @@ import { useDashboardPrefetch } from '@/hooks/useDashboardPrefetch';
 import { dashboardScope } from '@/lib/dashboardScope';
 import React, { useCallback, useEffect, useRef, useState, Suspense, lazy } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, CalendarCheck, LayoutGrid, AlertCircle, ClipboardCheck, Database, Leaf, CalendarClock, Bell, Video, Brain } from 'lucide-react';
+import { Users, CalendarCheck, LayoutGrid, AlertCircle, ClipboardCheck, Database, Leaf, CalendarClock, Bell, Video, Brain, Target } from 'lucide-react';
 import { useAuth } from '@/lib/auth-sdk';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { getUserDashboardPath } from '@/lib/userDashboardRoutes';
@@ -28,6 +28,8 @@ const BvAdminManagementTab = lazy(() => import('@/components/super/BvAdminManage
 const MeetingsAndMomTab = lazy(() => import('@/components/super/MeetingsAndMomTab'));
 const BvslOneToOneTab = lazy(() => import('@/components/bvsl/BvslOneToOneTab'));
 const PwQuizPanel = lazy(() => import('@/components/bv/PwQuizPanel'));
+const PwAshrayaTargetsPanel = lazy(() => import('@/components/pw/PwAshrayaTargetsPanel'));
+const PwStaffTargetsPanel = lazy(() => import('@/components/pw/PwStaffTargetsPanel'));
 import {
   getCurrentGuide, getPushSubscriptionStats, GetPushSubscriptionStatsOutputType,
   getPendingApprovals, getGuideRequests, getCleanlinessReviews,
@@ -155,6 +157,7 @@ export default function PwAdminDashboard() {
 
   const navItems = [
     { value: 'sadhana', label: 'Sadhana Report', icon: Database },
+    { value: 'targets', label: 'Sadhana Targets', icon: Target },
     { value: 'bv', label: 'Bhakti Vriksha Report', icon: CalendarCheck },
     { value: 'users', label: 'Members / Users', icon: Users },
     { value: 'approvals', label: 'Approvals', icon: ClipboardCheck, badge: approvalCount },
@@ -230,6 +233,19 @@ export default function PwAdminDashboard() {
                       <p className="text-sm text-muted-foreground">Overview of all Prabhupada World sadhana records</p>
                     </div>
                     <ReportsTab guideId="ALL" />
+                  </DashboardPanel>
+                )}
+
+                {visitedTabs.has('targets') && (
+                  <DashboardPanel active={activeTab === 'targets'}>
+                    <div className="space-y-1 mb-4">
+                      <h2 className="text-lg font-bold">Sadhana Targets</h2>
+                      <p className="text-sm text-muted-foreground">Ashraya-level targets, plus the targets for RGFs and supervisors</p>
+                    </div>
+                    <div className="space-y-8">
+                      <PwAshrayaTargetsPanel />
+                      <PwStaffTargetsPanel />
+                    </div>
                   </DashboardPanel>
                 )}
 

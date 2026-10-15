@@ -12,7 +12,7 @@ import { NON_RESIDENT_FIELDS } from '../config/sadhanaFields';
 import { computeStreak, getTodayIST, daysAgo } from '../lib/streakUtils';
 import { getGuideScope } from '../lib/guideScope';
 import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
-import { pwFieldPercent, pwOverallPercent, pwTarget } from '@/lib/pwSadhana';
+import { pwScoreFromFieldValues, pwTarget, PW_FIELDS } from '@/lib/pwSadhana';
 import { resolveBvAdminFacilitators } from '@/lib/bvAdminFacilitatorScope';
 import { residencyMatchesDepartment } from '../lib/residencyCategory';
 
@@ -672,32 +672,32 @@ function aggregateEntries(entries: any[], isResident: boolean, ashrayLevel?: str
     totalScore = entries.reduce((s, e) => s + (e.totalScore ?? 0), 0);
   }
 
-  const snapshots = entries.map(entry => {
-    const fv = parseFieldValues(entry.fieldValuesJson);
-    const meta = fv._meta;
-    const has = !!meta && typeof meta === 'object' && ('pwChantingTarget' in meta || 'pwReadingTarget' in meta);
-    return { has, fv, meta: has ? meta as Record<string, unknown> : null };
-  });
+  const snapshots = entries.map(entry => pwScoreFromFieldValues(entry.fieldValuesJson));
+  const saved = snapshots.filter(snapshot => snapshot.hasSnapshot);
   let pwChantingTarget: number | null = null;
   let pwReadingTarget: number | null = null;
   let pwScorePercent: number | null = null;
-  if (snapshots.some(snapshot => snapshot.has)) {
-    const chantTargets = snapshots.map(snapshot => snapshot.has ? pwTarget(snapshot.meta?.pwChantingTarget) : null);
-    const readTargets = snapshots.map(snapshot => snapshot.has ? pwTarget(snapshot.meta?.pwReadingTarget) : null);
+  const pwFieldPoints: Record<string, number | null> = {};
+  if (saved.length) {
+    const metas = entries.map(entry => {
+      const fv = parseFieldValues(entry.fieldValuesJson);
+      return fv._meta && typeof fv._meta === 'object' ? fv._meta as Record<string, unknown> : {};
+    });
+    const chantTargets = metas.map(meta => 'pwChantingTarget' in meta || meta.pwVersion === 2 ? pwTarget((meta.pwTargets as any)?.chanting ?? meta.pwChantingTarget) : null);
+    const readTargets = metas.map(meta => 'pwReadingTarget' in meta || meta.pwVersion === 2 ? pwTarget((meta.pwTargets as any)?.readingMin ?? meta.pwReadingTarget) : null);
     pwChantingTarget = chantTargets.every(target => target === chantTargets[0]) ? chantTargets[0] : null;
     pwReadingTarget = readTargets.every(target => target === readTargets[0]) ? readTargets[0] : null;
-    const percents = snapshots.map((snapshot, index) => snapshot.has
-      ? pwOverallPercent([
-          pwFieldPercent(Number(snapshot.fv.chanting ?? snapshot.fv.rounds ?? 0), chantTargets[index]),
-          pwFieldPercent(Number(snapshot.fv.reading ?? 0), readTargets[index]),
-        ])
-      : null).filter((percent): percent is number => percent != null);
+    const percents = saved.map(snapshot => snapshot.scorePercent).filter((percent): percent is number => percent != null);
     pwScorePercent = percents.length
       ? Math.round(percents.reduce((sum, percent) => sum + percent, 0) / percents.length)
       : null;
+    for (const field of PW_FIELDS) {
+      const points = saved.map(snapshot => snapshot.fieldPoints?.[field.key]).filter((points): points is number => points != null);
+      pwFieldPoints[field.key] = points.length ? Math.round(points.reduce((sum, points) => sum + points, 0) / points.length) : null;
+    }
   }
 
-  return { fieldScores, fieldRawValues, totalScore, scorePercent, chantingRaw, readingRaw, hearingRaw, flagSick, flagOs, submittedAt, pwChantingTarget, pwReadingTarget, pwScorePercent };
+  return { fieldScores, fieldRawValues, totalScore, scorePercent, chantingRaw, readingRaw, hearingRaw, flagSick, flagOs, submittedAt, pwChantingTarget, pwReadingTarget, pwScorePercent, pwFieldPoints };
 }
 
 
@@ -1141,6 +1141,7 @@ export default createEndpoint({
         pwChantingTarget: agg.pwChantingTarget,
         pwReadingTarget: agg.pwReadingTarget,
         pwScorePercent: agg.pwScorePercent,
+        pwFieldPoints: agg.pwFieldPoints,
       };
     });
 

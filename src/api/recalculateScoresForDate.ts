@@ -3,6 +3,7 @@ import { createEndpoint, SadhanaEntries, AppError } from '@/lib/backend-sdk';
 import { getNRMaxScore, fillingSameDayApplies, normalizeAshrayLevel } from '../lib/userUtils';
 import { getScopedHierarchyUserIds } from '@/lib/hierarchyUtils';
 import { refreshUserPeriodSummaries } from '../lib/sadhanaPeriodSummary';
+import { pwScoreFromFieldValues, readPwTargets, scoreStoredPwDay } from '../lib/pwSadhana';
 
 function getIstDateStr(isoString: string): string {
   const ms = new Date(isoString).getTime() + 5.5 * 60 * 60 * 1000;
@@ -142,6 +143,30 @@ export default createEndpoint({
           correctMax = 20;
         }
       } else {
+        const pwStored = pwScoreFromFieldValues(e.fieldValuesJson);
+        if (pwStored.version >= 1) {
+          if (pwStored.version === 2) {
+            let storedValues: any = {};
+            try { storedValues = JSON.parse(e.fieldValuesJson || '{}'); } catch { storedValues = {}; }
+            const meta = storedValues._meta || {};
+            const scored = scoreStoredPwDay(storedValues, {
+              targets: readPwTargets(meta.pwTargets),
+              source: String(meta.pwTargetSource || 'rgf'),
+              deadline: String(meta.pwSubmissionDeadline || '10:00'),
+              submittedAt,
+              entryDate,
+            });
+            storedValues._meta = scored.meta;
+            correctRsp = scored.result.fields.find(field => field.key === 'submitted')?.points || 0;
+            correctTotal = scored.result.earned;
+            correctMax = scored.result.applicableMax;
+            (e as any)._pwFieldValuesJson = JSON.stringify(storedValues);
+          } else {
+            correctRsp = 0;
+            correctTotal = pwStored.scorePercent ?? 0;
+            correctMax = pwStored.scorePercent == null ? 0 : 100;
+          }
+        } else {
         // NR: read field pts from fieldValuesJson, recompute fillingSameDay from submittedAt
         let fv: any = {};
         try { fv = JSON.parse(e.fieldValuesJson || '{}'); } catch {}
@@ -175,6 +200,7 @@ export default createEndpoint({
         // Dynamic max based on ashray level — use stored maxScore as authoritative when available
         const storedMax = Number(e.maxScore ?? 0);
         correctMax = storedMax > 0 ? storedMax : getNRMaxScore(ashrayLevel);
+        }
       }
 
       const correctPct = correctMax > 0
@@ -198,6 +224,7 @@ export default createEndpoint({
           totalScore: correctTotal,
           maxScore: correctMax,
           scorePercent: correctPct,
+          ...((e as any)._pwFieldValuesJson ? { fieldValuesJson: (e as any)._pwFieldValuesJson } : {}),
         },
       });
 

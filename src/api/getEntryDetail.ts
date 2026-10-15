@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { createEndpoint, SadhanaEntries, Users } from '@/lib/backend-sdk';
 import { NON_RESIDENT_FIELDS, RESIDENT_FIELDS } from '../config/sadhanaFields';
 import { isPwSadhanaUser, PW_SADHANA_FORM_KEYS } from '@/lib/sadhanaDepartment';
-import { formatPwProgress, pwScoreFromFieldValues, pwTarget } from '@/lib/pwSadhana';
+import { formatPwProgress, pwDetailRows, pwScoreFromFieldValues, pwTarget } from '@/lib/pwSadhana';
 
 // Personalized PW scoring only covers chanting and reading. Preaching and book
 // distribution are still stored on the entry and belong in the detail view.
@@ -177,6 +177,25 @@ export default createEndpoint({
     }
 
     const pwScored = isPw ? pwScoreFromFieldValues(entry.fieldValuesJson) : null;
+    const pwRows = isPw ? pwDetailRows(entry.fieldValuesJson) : null;
+    if (pwRows) {
+      return {
+        found: true,
+        entry: {
+          entryId: entry.entryId || entry.id,
+          entryDate: entry.entryDate || '',
+          totalScore: pwScored?.earned ?? null,
+          maxScore: pwScored?.applicableMax ?? null,
+          scorePercent: pwScored?.scorePercent ?? null,
+          isPw,
+          templateMode: meta.templateMode ?? entry.templateMode ?? null,
+          submittedAt: entry.submittedAt || '',
+          flagSick: entry.flagSick || false,
+          flagOs: entry.flagOs || false,
+          fields: pwRows,
+        },
+      };
+    }
     return {
       found: true,
       entry: {

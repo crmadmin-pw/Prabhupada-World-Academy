@@ -251,6 +251,11 @@ export default createEndpoint({
         if (scored.scorePercent != null) { agg.total += scored.scorePercent; agg.count++; }
         addField('rounds', scored.chanting);
         addField('reading', scored.reading);
+        if (scored.version === 2 && scored.fieldPoints) {
+          for (const [key, points] of Object.entries(scored.fieldPoints)) {
+            if (points != null) addField(key, points);
+          }
+        }
         continue;
       }
 

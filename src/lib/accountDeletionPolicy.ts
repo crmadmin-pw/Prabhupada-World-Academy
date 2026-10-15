@@ -3,11 +3,40 @@ export const ACCOUNT_DELETION_GRACE_DAYS = 30;
 export const ACCOUNT_DELETION_GRACE_MS = ACCOUNT_DELETION_GRACE_DAYS * 24 * 60 * 60 * 1000;
 export const FRESH_LOGIN_MAX_AGE_MS = 5 * 60 * 1000;
 export const PENDING_DELETION_STATUS = 'Pending Deletion';
+export const ACCOUNT_DELETED_STATUS = 'Account Deleted';
+export const ACCOUNT_DELETED_LOGIN_MESSAGE = 'Your account had been deleted. Kindly contact support@prabhupadaworld.com for further help.';
 
 const CLOCK_SKEW_MS = 60_000;
 
 export function isPendingDeletion(status: unknown): boolean {
   return String(status || '').trim().toUpperCase().replace(/[\s-]+/g, '_') === 'PENDING_DELETION';
+}
+
+export function isAccountDeleted(status: unknown): boolean {
+  return String(status || '').trim().toUpperCase().replace(/[\s-]+/g, '_') === 'ACCOUNT_DELETED';
+}
+
+/** Sadhana, reminder, and "has not reported" views skip a closed Prabhupada World account. */
+export function isExcusedFromReporting(status: unknown): boolean {
+  return isAccountDeleted(status);
+}
+
+/**
+ * Explicit Prabhupada World membership is retained after deletion.
+ * Folk accounts, including legacy rows with no department, are not.
+ */
+export function isPrabhupadaWorldAccount(profile: {
+  segment?: unknown;
+  isFolkUser?: unknown;
+  isPrabhupadaWorldUser?: unknown;
+  role?: unknown;
+} | null | undefined): boolean {
+  const segment = String(profile?.segment || '').trim().toUpperCase().replace(/[\s_-]+/g, '');
+  if (segment === 'FOLK' || profile?.isFolkUser === true) return false;
+  if (segment === 'PW' || segment === 'PRABHUPADAWORLD') return true;
+  const role = String(profile?.role || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+  if (role === 'GUIDE' || role === 'SUPER_GUIDE' || role === 'SUPERGUIDE') return false;
+  return profile?.isPrabhupadaWorldUser === true;
 }
 
 /** Typed confirmation and a recent sign-in. A boolean confirm flag is never enough. */

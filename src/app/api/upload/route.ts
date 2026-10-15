@@ -9,13 +9,17 @@ import {
 } from '@/lib/apiAuthorization';
 import {
   buildImageObjectPath,
+  imageBytesMatchType,
   MAX_MULTIPART_UPLOAD_BYTES,
   parseUploadPurpose,
   requiredUploadCapability,
   validateImageUpload,
 } from '@/lib/uploadPolicy';
+import { isRateLimited, RATE_LIMIT_MESSAGE } from '@/utils/rateLimit';
 
 export const runtime = 'nodejs';
+
+const UPLOADS_PER_HOUR = 60;
 
 function jsonError(message: string, status: number) {
   return NextResponse.json({ message }, { status });
@@ -35,6 +39,9 @@ export async function POST(req: NextRequest) {
     const decoded = await verifyFirebaseIdToken(token);
     if (!decoded.uid || !decoded.email || decoded.email_verified !== true) {
       return jsonError('A verified Firebase account is required', 403);
+    }
+    if (await isRateLimited(`upload:${decoded.uid}`, UPLOADS_PER_HOUR, 60 * 60 * 1000)) {
+      return NextResponse.json({ message: RATE_LIMIT_MESSAGE }, { status: 429 });
     }
 
     const formData = await req.formData();
@@ -57,6 +64,9 @@ export async function POST(req: NextRequest) {
     const { extension } = validateImageUpload(file.type, file.size);
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
+    if (!imageBytesMatchType(file.type, buffer)) {
+      return jsonError('The file content is not a supported image', 400);
+    }
     const bucketName = process.env.FIREBASE_STORAGE_BUCKET
       || process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
       || 'bvpw108.firebasestorage.app';

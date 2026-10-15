@@ -19,20 +19,21 @@ export default createEndpoint({
     if (context.user!.role !== 'Super Guide') throw new AppError({ code: 'FORBIDDEN', message: 'Super Guide access required' });
     if (input.confirm !== 'SEED_REAL_DATA') throw new Error('Confirmation required');
 
-    // Delete existing dummy data
-    const [existingLevels, existingConfig, existingServices, existingChecklists] = await Promise.all([
+    // Capture the existing dummy data now; it is deleted only after the
+    // replacement rows exist, so a failed seed never leaves these tables empty.
+    const [existingLevels, existingConfigAll, existingServices, existingChecklists] = await Promise.all([
       AshrayLevels.findAll({}),
       Config.findAll({}),
       Services.findAll({}),
       AshrayChecklist.findAll({}),
     ]);
-
-    await Promise.all([
-      ...existingLevels.records.map(r => AshrayLevels.delete({ id: r.id })),
-      ...existingConfig.records.map(r => Config.delete({ id: r.id })),
-      ...existingServices.records.map(r => Services.delete({ id: r.id })),
-      ...existingChecklists.records.map(r => AshrayChecklist.delete({ id: r.id })),
-    ]);
+    // Entry-ID counters and the reporting-chain marker are system state, not seed data.
+    const existingConfig = {
+      records: existingConfigAll.records.filter(r => {
+        const key = String(r.configKey || r.id || '');
+        return !key.startsWith('counter:') && key !== 'reportingChainsVersion';
+      }),
+    };
 
     // Seed AshrayLevels (from PDF pages 81-86)
     const levelsResult = await AshrayLevels.bulkCreate({
@@ -438,6 +439,13 @@ export default createEndpoint({
         },
       ],
     });
+
+    await Promise.all([
+      ...existingLevels.records.map(r => AshrayLevels.delete({ id: r.id })),
+      ...existingConfig.records.map(r => Config.delete({ id: r.id })),
+      ...existingServices.records.map(r => Services.delete({ id: r.id })),
+      ...existingChecklists.records.map(r => AshrayChecklist.delete({ id: r.id })),
+    ]);
 
     return {
       deletedLevels: existingLevels.records.length,

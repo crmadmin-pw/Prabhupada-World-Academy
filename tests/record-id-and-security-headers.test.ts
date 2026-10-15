@@ -32,7 +32,8 @@ test('an explicit record id is kept', async () => {
 });
 
 test('response headers no longer send X-XSS-Protection', async () => {
-  const groups = await nextConfig.headers();
+  assert.equal(typeof nextConfig.headers, 'function');
+  const groups = await nextConfig.headers!();
   const names = groups.flatMap(group => group.headers.map(header => header.key));
   assert.equal(names.includes('X-XSS-Protection'), false);
   assert.equal(names.includes('X-Frame-Options'), true);

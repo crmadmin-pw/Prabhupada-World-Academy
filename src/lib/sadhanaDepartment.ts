@@ -4,4 +4,7 @@ export function isPwSadhanaUser(user: { segment?: unknown; isPrabhupadaWorldUser
   return segment ? ['PW', 'PRABHUPADAWORLD'].includes(segment) : user?.isPrabhupadaWorldUser === true;
 }
 
-export const PW_SADHANA_FORM_KEYS = new Set(['chanting', 'reading']);
+export const PW_SADHANA_FORM_KEYS = new Set([
+  'wakeUp', 'sleep', 'chanting', 'reading', 'hearing', 'heardSbBefore1030', 'seva',
+  'waiveWakeUp', 'waiveWakeUpReason', 'waiveSleep', 'waiveSleepReason', 'waiveChanting', 'waiveChantingReason',
+]);

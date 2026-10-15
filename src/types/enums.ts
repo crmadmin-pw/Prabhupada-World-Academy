@@ -72,6 +72,7 @@ export const USER_STATUS = {
   ACTIVE: 'ACTIVE',
   REJECTED: 'REJECTED',
   PENDING_DELETION: 'PENDING_DELETION',
+  ACCOUNT_DELETED: 'ACCOUNT_DELETED',
 } as const;
 
 export type UserStatus = (typeof USER_STATUS)[keyof typeof USER_STATUS];

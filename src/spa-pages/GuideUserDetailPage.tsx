@@ -22,6 +22,7 @@ import MiniCalendar from '@/components/dashboard/MiniCalendar';
 import EntryDetailModal from '@/components/dashboard/EntryDetailModal';
 import FieldTrendChart, { RESIDENT_FIELD_CONFIGS, NR_FIELD_CONFIGS, PW_FIELD_CONFIGS } from '@/components/stats/FieldTrendChart';
 import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
+import { formatAccountStatus } from '@/lib/memberDirectoryStatus';
 import { profileBackNavigation, viewerDetailHome } from '@/lib/bvGroupMemberProfileNavigation';
 
 type Period = 'daily' | 'weekly' | 'monthly';
@@ -194,7 +195,7 @@ export default function GuideUserDetailPage() {
             <h1 className="text-3xl font-bold">👤 {data.user.fullName}</h1>
             <p className="text-muted-foreground">{data.user.email}</p>
             <div className="flex flex-wrap gap-2 mt-2">
-              <Badge>{data.user.status}</Badge>
+              <Badge>{formatAccountStatus(data.user.status)}</Badge>
               {!isPw && (data.user.isResident ? (
                 <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
                   🏠 {data.user.residencyName || 'FOLK Resident'}

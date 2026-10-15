@@ -5,7 +5,8 @@ import { RESIDENT_FIELDS, NON_RESIDENT_FIELDS, toFormField } from '../config/sad
 import { serverCacheGetOrFetch } from '../lib/serverCache';
 import { getUserDepartment } from '../lib/userDashboardRoutes';
 import { isPwSadhanaUser } from '../lib/sadhanaDepartment';
-import { pwTarget } from '../lib/pwSadhana';
+import { pwFormFields, pwTarget } from '../lib/pwSadhana';
+import { resolvePwTargetsForUser } from '../lib/pwTargetResolver';
 
 // ── Field cache keys & TTL ─────────────────────────────────────────────────────
 export const FIELD_CACHE_KEY_RESIDENT  = 'sadhana_fields:resident';
@@ -116,7 +117,8 @@ async function loadFormFields(isResident: boolean): Promise<FormField[]> {
 // ── User/entry field selectors ─────────────────────────────────────────────────
 const USER_FIELDS  = ['id', 'userId', 'residency', 'residencyApproved', 'residencyJoinDate', 'ashrayLevel',
   'role', 'segment', 'isPrabhupadaWorldUser', 'isFolkUser', 'temporaryResidencyEnabled', 'temporaryResidency',
-  'pwChantingTarget', 'pwReadingTarget'];
+  'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator', 'isBvSupervisor', 'isBvMember', 'isRgsf', 'bvGroupId',
+  'sadhanaMentor', 'pwTargets', 'pwChantingTarget', 'pwReadingTarget', 'pwPendingBvAttendance'];
 const ENTRY_FIELDS = ['id', 'entryId', 'entryDate', 'totalScore', 'maxScore', 'scorePercent',
   'templateMode', 'ashrayLevelUsed', 'flagSick', 'flagOs', 'submittedAt', 'fieldValuesJson'];
 
@@ -171,22 +173,13 @@ export default createEndpoint({
     const isPw = isPwSadhanaUser(userInfo);
     const isResident    = isOfficialResident || isTempResident;
     const templateMode  = isResident ? 'RESIDENT_TEMPLATE' : 'NON_RESIDENT_TEMPLATE';
+    const resolvedTargets = isPw ? await resolvePwTargetsForUser(userInfo) : null;
 
     // ✅ Fields loaded from memory cache — zero DB cost after first load
     // fillingSameDay is auto-computed server-side (like report_sending for residents) — never shown in form
     const loadedFields = (await loadFormFields(isResident)).filter(f => f.fieldKey !== 'fillingSameDay' && f.fieldKey !== 'report_sending');
-    const visibleFields = isPw
-      ? loadedFields
-          .filter(field => field.fieldKey === 'chanting' || field.fieldKey === 'reading')
-          .map(field => ({
-            ...field,
-            fieldType: 'number' as const,
-            fieldLabel: field.fieldKey === 'chanting' ? 'Chanting (rounds)' : 'Reading (minutes)',
-            criteria: null,
-            contributesToScore: false,
-            minValue: 0,
-            maxValue: field.fieldKey === 'chanting' ? 192 : 1440,
-          }))
+    const visibleFields = isPw && resolvedTargets
+      ? pwFormFields(resolvedTargets.targets, resolvedTargets.source)
       : loadedFields;
 
     let parsedFieldValues: Record<string, unknown> = {};
@@ -198,6 +191,11 @@ export default createEndpoint({
       }
     }
 
+    const pendingAttendance = isPw ? userInfo?.pwPendingBvAttendance?.[entryDate] : null;
+    const savedAttendance = isPw && parsedFieldValues.bvSessionMinutes != null
+      ? { attended: parsedFieldValues.bvAttendedMinutes ?? 0, session: parsedFieldValues.bvSessionMinutes }
+      : null;
+
     return {
       fields: visibleFields,
       templateMode,
@@ -207,8 +205,12 @@ export default createEndpoint({
       userRole:             userInfo?.role || 'User',
       isResident,
       isPw,
-      pwChantingTarget: isPw ? pwTarget(userInfo?.pwChantingTarget) : null,
-      pwReadingTarget: isPw ? pwTarget(userInfo?.pwReadingTarget) : null,
+      pwChantingTarget: isPw ? pwTarget(resolvedTargets?.targets.chanting) : null,
+      pwReadingTarget: isPw ? pwTarget(resolvedTargets?.targets.readingMin) : null,
+      pwTargets: resolvedTargets?.targets || null,
+      pwTargetSource: resolvedTargets?.source || null,
+      pwSubmissionDeadline: resolvedTargets?.deadline || null,
+      pwBvAttendance: savedAttendance || (pendingAttendance ? { attended: pendingAttendance.attended ?? 0, session: pendingAttendance.session } : null),
       isOfficialResident,
       tempResidencyEnabled: isTempResident,
       tempResidencyId:      isTempResident ? (tempResidencyId as string) : null,

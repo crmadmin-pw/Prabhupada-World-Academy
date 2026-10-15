@@ -15,7 +15,7 @@ export default createEndpoint({
 
     // Find the user's room via occupants
     const { records: rooms } = await CleanlinessRooms.findAll({
-      filters: { residency: input.residencyId, occupants: { contains: userRecordId } } as any,
+      filters: { residency: input.residencyId, occupants: { arrayContains: userRecordId } } as any,
       limit: 5,
     });
 

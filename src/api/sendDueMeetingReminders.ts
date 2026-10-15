@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { matchesAnySecret } from '@/lib/secretMatch';
 import { createEndpoint, Meetings, AppError } from '@/lib/backend-sdk';
 import { MEETING_REMINDERS, meetingStartMs, reminderWindow } from '@/lib/meetingReminderSchedule';
 import { allReminderRecords } from '@/lib/meetingReminderRecipients';
@@ -14,7 +15,7 @@ export default createEndpoint({
   }),
   execute: async ({ input }: { input: any }) => {
     const secrets = [process.env.APP_CRON_SECRET, process.env.ZITE_CRON_SECRET].filter(Boolean);
-    if (!secrets.includes(input.cronSecret)) throw new AppError({ code: 'UNAUTHORIZED', message: 'Unauthorized scheduler request' });
+    if (!matchesAnySecret(input.cronSecret, secrets)) throw new AppError({ code: 'UNAUTHORIZED', message: 'Unauthorized scheduler request' });
     const meetings = await allReminderRecords(Meetings);
     const now = Date.now();
     let checked = 0, oneMinuteReminders = 0, tenMinuteReminders = 0, failed = 0;

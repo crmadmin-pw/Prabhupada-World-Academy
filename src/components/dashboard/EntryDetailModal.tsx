@@ -38,7 +38,7 @@ function SadhanaContent({ entry }: { entry: EntryData }) {
     <div className="space-y-4">
       <div className="flex items-center gap-3">
         <ScoreBadge scorePercent={entry.scorePercent} totalScore={entry.totalScore} />
-        {entry.maxScore != null && !(entry as any).isPw && <span className="text-xs text-muted-foreground">out of {entry.maxScore}</span>}
+        {entry.maxScore != null && (!(entry as any).isPw || entry.totalScore != null) && <span className="text-xs text-muted-foreground">out of {entry.maxScore}</span>}
         {entry.flagSick && <Badge variant="outline">🤒 Sick</Badge>}
         {entry.flagOs && <Badge variant="outline">✈️ OS</Badge>}
       </div>

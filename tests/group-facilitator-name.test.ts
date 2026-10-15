@@ -6,7 +6,6 @@ test('approval shows the RGF stored by public user id, not only document id', ()
   const asha = { id: 'asha-doc', userId: 'ASHA-1', email: 'asha@example.invalid', fullName: 'Asha' };
   const users = indexFacilitatorUsers([asha]);
   const name = facilitatorDisplayName({
-    groupName: 'Gauranga 1:30',
     bvslId: 'ASHA-1',
   }, users);
   assert.equal(name, 'Asha');

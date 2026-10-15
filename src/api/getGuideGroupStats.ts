@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { createEndpoint, AppError, BvGroups, BvGroupMembers, BvAttendance, Guides, Users } from '@/lib/backend-sdk';
+import { createEndpoint, BvGroups, BvGroupMembers, BvAttendance, Guides, Users } from '@/lib/backend-sdk';
 import { getGuideIdsForResidencies } from '../lib/guideScope';
 import { bvGroupFacilitatorAliases, bvUserAliases, isBvDepartmentAdmin, isBvSuperAdminUser, resolveBvDepartmentGroups, resolveBvScopedGroups, resolveBvUsersByAliases } from '../lib/bvGroupMemberScope';
 
@@ -16,10 +16,9 @@ export default createEndpoint({
     const groupFilter: any = { isActive: true };
     let hierarchyGroups: any[] | null = null;
 
+    // Department-wide ('ALL') reads are super-admin only; any other admin who
+    // asks for 'ALL' falls through to their own hierarchy below.
     if (input.guideId === 'ALL' && input.segment && isBvSuperAdminUser(context.user as any)) {
-      if (!isBvSuperAdminUser(context.user as any)) {
-        throw new AppError({ code: 'FORBIDDEN', message: 'Department-wide BV reports require super admin access' });
-      }
       hierarchyGroups = (await resolveBvDepartmentGroups(input.segment)).map(group => group.record);
     } else if (isBvDepartmentAdmin(context.user as any) && !isBvSuperAdminUser(context.user as any)) {
       hierarchyGroups = (await resolveBvScopedGroups(context.user as any, { segment: input.segment }))

@@ -8,12 +8,12 @@
  * How this works:
  *   1. First call: reads the last-known counter from the Config table (1 DB call)
  *   2. If Config has no value: falls back to scanning the DB once, then saves the result
- *   3. All subsequent calls: pure in-memory increment — zero DB calls
- *   4. After each use: updates Config async (fire-and-forget) so restarts resume correctly
+ *   3. Every call: claims the next number in a Firestore transaction on that
+ *      Config row, so concurrent server instances never issue the same ID
  *
- * Result: O(1) on every submission after warm-up. O(n) at most ONCE ever per deploy.
+ * Result: one small transaction per submission. O(n) at most ONCE ever per deploy.
  */
-import { Config, SadhanaEntries, BvslPreachingEntries } from '@/lib/backend-sdk';
+import { Config, SadhanaEntries, BvslPreachingEntries, getFirestoreDb } from '@/lib/backend-sdk';
 
 const CONFIG_KEY_ENTRY = 'counter:sadhanaEntryN';
 const CONFIG_KEY_BV    = 'counter:bvEntryN';
@@ -110,33 +110,41 @@ async function initBvCounter(): Promise<void> {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-/** Returns the next unique ENTRY-N id. O(1) after first call. */
+/** Claims the next number from the shared Config counter. Several server
+ * instances allocate concurrently, so a process-local count would repeat IDs.
+ * Returns null when Firestore is unavailable. */
+async function claimShared(configId: string | null, configKey: string, floor: number): Promise<number | null> {
+  const db = getFirestoreDb();
+  if (!db || !configId) return null;
+  const ref = db.collection('Config').doc(configId);
+  return db.runTransaction(async (tx: any) => {
+    const stored = parseInt(String((await tx.get(ref)).data()?.configValue ?? ''), 10);
+    const n = Math.max(Number.isFinite(stored) ? stored : 0, floor) + 1;
+    tx.set(ref, { configKey, configValue: String(n), updatedAt: new Date().toISOString() }, { merge: true });
+    return n;
+  });
+}
+
+/** Returns the next unique ENTRY-N id. */
 export async function nextSadhanaEntryId(): Promise<string> {
   if (sadhanaN === null) {
     if (!sadhanaInitPromise) sadhanaInitPromise = initSadhanaCounter();
     await sadhanaInitPromise;
     sadhanaInitPromise = null;
   }
-  sadhanaN = (sadhanaN ?? 0) + 1;
-  const n = sadhanaN;
-  // Persist async — never block the submission
-  if (sadhanaConfigId) {
-    Config.update({ id: sadhanaConfigId, record: { configValue: String(n), updatedAt: new Date().toISOString() } }).catch(() => {});
-  }
+  const n = await claimShared(sadhanaConfigId, CONFIG_KEY_ENTRY, sadhanaN ?? 0) ?? (sadhanaN ?? 0) + 1;
+  sadhanaN = Math.max(sadhanaN ?? 0, n);
   return `ENTRY-${n}`;
 }
 
-/** Returns the next unique BV-ENTRY-N id. O(1) after first call. */
+/** Returns the next unique BV-ENTRY-N id. */
 export async function nextBvEntryId(): Promise<string> {
   if (bvN === null) {
     if (!bvInitPromise) bvInitPromise = initBvCounter();
     await bvInitPromise;
     bvInitPromise = null;
   }
-  bvN = (bvN ?? 0) + 1;
-  const n = bvN;
-  if (bvConfigId) {
-    Config.update({ id: bvConfigId, record: { configValue: String(n), updatedAt: new Date().toISOString() } }).catch(() => {});
-  }
+  const n = await claimShared(bvConfigId, CONFIG_KEY_BV, bvN ?? 0) ?? (bvN ?? 0) + 1;
+  bvN = Math.max(bvN ?? 0, n);
   return `BV-ENTRY-${n}`;
 }

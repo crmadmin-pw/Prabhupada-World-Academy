@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { ACCOUNT_DELETED_LOGIN_MESSAGE, isAccountDeleted } from '@/lib/accountDeletionPolicy';
 import { resolveAuthenticatedProfile } from '@/lib/accountLinkReview';
 import { getApps, initializeApp, cert } from 'firebase-admin/app';
 import { verifyFirebaseIdToken } from '@/lib/verifyFirebaseIdToken';
@@ -164,6 +165,37 @@ function verifyPublicEndpointSecret(req: NextRequest, endpointConfig: EndpointCo
 }
 
 const RATE_LIMIT_WINDOW_MS = 60_000;
+const AUTHENTICATED_LIMIT = 180;
+const ANONYMOUS_LIMIT = 60;
+
+/** The platform appends the connecting address. Earlier values are client-supplied. */
+function clientAddress(req: NextRequest): string {
+  const forwarded = req.headers.get('x-forwarded-for');
+  if (forwarded) {
+    const parts = forwarded.split(',').map(part => part.trim()).filter(Boolean);
+    if (parts.length > 0) return parts[parts.length - 1];
+  }
+  return req.headers.get('x-real-ip')?.trim() || 'unknown';
+}
+
+// These endpoints authorize from the stored role string. Deactivation keeps
+// the role and changes only the status, so they also require an active account.
+const ACTIVE_ACCOUNT_ENDPOINTS = new Set([
+  'addRentPayment', 'addTrip', 'approveGuideTransfer', 'approveRentCorrection', 'approveTripCorrection',
+  'approveUnavailability', 'archiveSadhanaData', 'assignScholarStatus', 'backfillSessionMatrix',
+  'bulkAddGroupMembers', 'bulkSubmitAvailability', 'bulkUpdateUserFlags', 'createAttendanceEvent',
+  'createAttendanceSession', 'createEvent', 'deleteBvGroup', 'exportRentPayments', 'exportTrips',
+  'fixGuideIds', 'getActiveSadhanaMentors', 'getArchiveStats', 'getAttendanceDashboard',
+  'getAttendanceEventsAdmin', 'getBvStats', 'getCleanlinessReviews', 'getCrossPreachingDrilldown',
+  'getCrossPreachingReport', 'getEligibleMembersForBvGroup', 'getGuideResidencyAssignmentRequests',
+  'getSadhanaLeaderboard', 'getSadhanaStats', 'getScoresDrilldown', 'getScoresReport',
+  'getServiceLeaderboard', 'getUnavailabilityRequests', 'importRentPayments', 'importTrips',
+  'invalidateSadhanaFieldsCache', 'logOneToOneMeeting', 'manageAttendanceVolunteers', 'markCourseComplete',
+  'publishAllocation', 'recalculateScoresForDate', 'removeBvGroupMember', 'retryTagMangoEnrollment',
+  'revoketagmangoaccess', 'savePreachingGoals', 'setAshrayLevel', 'submitAvailability', 'tagUserAsB',
+  'toggleCleanlinessEnabled', 'updateRentPayment', 'updateTrip', 'updateUserResidency',
+  'seedData', 'seedUsers', 'seedWeeklyAllocations',
+]);
 
 export async function POST(
   req: NextRequest,
@@ -174,10 +206,11 @@ export async function POST(
   let realtimeDurationMs = 0;
   const authHeader = req.headers.get('Authorization') || req.headers.get('authorization') || '';
   const token = authHeader.replace(/^Bearer\s+/i, '').trim();
-  const rateLimitKey = token ? `token:${token.slice(-30)}` : `ip:${req.headers.get('x-forwarded-for')?.split(',')[0] || '127.0.0.1'}`;
-  const limit = token ? 180 : 60;
+  const clientIp = clientAddress(req);
 
-  if (process.env.NODE_ENV !== 'development' && await isRateLimited(rateLimitKey, limit, RATE_LIMIT_WINDOW_MS)) {
+  // Authenticated calls are limited by account after the token is verified.
+  // Anonymous calls, including a forged forwarding header, share the platform IP.
+  if (!token && process.env.NODE_ENV !== 'development' && await isRateLimited(`ip:${clientIp}`, ANONYMOUS_LIMIT, RATE_LIMIT_WINDOW_MS)) {
     return NextResponse.json(
       { message: RATE_LIMIT_MESSAGE, code: 'TOO_MANY_REQUESTS' },
       { status: 429, headers: { 'Retry-After': String(RATE_LIMIT_WINDOW_MS / 1000) } }
@@ -234,6 +267,12 @@ export async function POST(
       const authStartedAt = Date.now();
       try {
         const decodedUser = await verifyToken(token);
+        if (process.env.NODE_ENV !== 'development' && await isRateLimited(`uid:${decodedUser.uid}`, AUTHENTICATED_LIMIT, RATE_LIMIT_WINDOW_MS)) {
+          return NextResponse.json(
+            { message: RATE_LIMIT_MESSAGE, code: 'TOO_MANY_REQUESTS' },
+            { status: 429, headers: { 'Retry-After': String(RATE_LIMIT_WINDOW_MS / 1000) } }
+          );
+        }
         if (!decodedUser.emailVerified) {
           return NextResponse.json({ message: 'A verified email is required' }, { status: 403 });
         }
@@ -247,6 +286,12 @@ export async function POST(
       } catch (authError: unknown) {
         const authFailure = caughtApiError(authError);
         console.error('[API Router] Authentication error:', authError);
+        if (process.env.NODE_ENV !== 'development' && await isRateLimited(`ip:${clientIp}`, ANONYMOUS_LIMIT, RATE_LIMIT_WINDOW_MS)) {
+          return NextResponse.json(
+            { message: RATE_LIMIT_MESSAGE, code: 'TOO_MANY_REQUESTS' },
+            { status: 429, headers: { 'Retry-After': String(RATE_LIMIT_WINDOW_MS / 1000) } }
+          );
+        }
         // Never fail open when a caller presents an invalid token, even for a public endpoint.
         return NextResponse.json(
           { message: authFailure.message || 'Unauthorized' },
@@ -257,9 +302,21 @@ export async function POST(
       return NextResponse.json({ message: 'Authentication required' }, { status: 401 });
     }
 
+    if (
+      isAccountDeleted(context.user?.status)
+      && endpoint !== 'resolveUserLogin'
+      && endpoint !== 'getUserProfile'
+      && endpoint !== 'deleteAccount'
+    ) {
+      return NextResponse.json({ message: ACCOUNT_DELETED_LOGIN_MESSAGE }, { status: 403 });
+    }
+
     const requiredCapabilities = endpointConfig.requiredCapabilities as ApiCapability | ApiCapability[] | undefined;
     if (!hasApiCapabilities(context.user, requiredCapabilities)) {
       return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
+    }
+    if (ACTIVE_ACCOUNT_ENDPOINTS.has(endpoint) && context.user && !context.user.isActive) {
+      return NextResponse.json({ message: 'An active account is required' }, { status: 403 });
     }
 
     // 4. Input validation using Zod schema defined in endpoint

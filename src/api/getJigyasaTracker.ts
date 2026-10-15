@@ -90,7 +90,23 @@ export default createEndpoint({
     // Build registration filters (filter on raw mangoName values that map to selected centre)
     const filters: any = {};
     if (input.affiliate) filters.affiliateName = input.affiliate;
-    if (input.search) filters.name = { contains: input.search };
+    // Firestore has no substring match, so search narrows the filtered rows
+    // here and pagination is applied to the matches.
+    const searchTerm = String(input.search || '').trim().toLowerCase();
+    const matchesSearch = (r: any) => [r.name, r.email, r.phone]
+      .some(value => String(value || '').toLowerCase().includes(searchTerm));
+    const findRegs = async (query: any): Promise<{ records: any[]; hasMore: boolean }> => {
+      if (!searchTerm) return JigyasaRegistrations.findAll(query);
+      const { offset: start = 0, limit: size, fields, ...rest } = query;
+      const { records } = await JigyasaRegistrations.findAll({
+        ...rest,
+        fields: fields ? [...new Set([...fields, 'name', 'email', 'phone'])] : undefined,
+        limit: 5000,
+      });
+      const matched = records.filter(matchesSearch).slice(Number(start) || 0);
+      if (!size) return { records: matched, hasMore: false };
+      return { records: matched.slice(0, size), hasMore: matched.length > size };
+    };
     // Centre filter: find all mangoName values that map to the selected centre
     if (input.centre) {
       const matchingMangos = [...new Set(allRegsUnfiltered
@@ -108,7 +124,7 @@ export default createEndpoint({
     }
 
     // Get filtered registrations for stats
-    const { records: allRegs } = await JigyasaRegistrations.findAll({
+    const { records: allRegs } = await findRegs({
       filters: Object.keys(filters).length > 0 ? filters : undefined,
       limit: 2000,
       fields: ['mangoName', 'affiliateName', 'totalSessions'],
@@ -136,7 +152,7 @@ export default createEndpoint({
     let totalCount = allRegs.length;
 
     if (tab === 'summary') {
-      const { records, hasMore: hm } = await JigyasaRegistrations.findAll({
+      const { records, hasMore: hm } = await findRegs({
         filters: Object.keys(filters).length > 0 ? filters : undefined,
         offset,
         limit,
@@ -162,7 +178,7 @@ export default createEndpoint({
       }));
     } else if (tab === 'sessions') {
       // Read directly from registrations (precomputed sessionMatrix) — no N+1 joins needed
-      const { records: regsWithMatrix, hasMore: hm } = await JigyasaRegistrations.findAll({
+      const { records: regsWithMatrix, hasMore: hm } = await findRegs({
         filters: Object.keys(filters).length > 0 ? filters : undefined,
         offset,
         limit: 2000,

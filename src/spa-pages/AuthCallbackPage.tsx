@@ -94,6 +94,9 @@ export default function AuthCallbackPage() {
       } else if (result.action === 'account_link_pending' || result.action === 'account_link_rejected') {
         writeAccountLinkHold(result.action);
         navigate('/account-link-pending', { replace: true });
+      } else if (result.action === 'account_deleted') {
+        writeAccountLinkHold(null);
+        navigate('/account-deleted', { replace: true });
       } else if (result.action === 'register') {
         writeAccountLinkHold(null);
         navigate(registrationPath(isPwRegistrationFlow(window.location.search) ? 'PW' : 'FOLK'), { replace: true });

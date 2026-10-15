@@ -9,6 +9,7 @@
  */
 import { z } from 'zod';
 import { createEndpoint, Users, SadhanaEntries, Guides, FolkResidencies, AppError } from '@/lib/backend-sdk';
+import { isExcusedFromReporting } from '@/lib/accountDeletionPolicy';
 
 type UsersRecordType = Awaited<ReturnType<typeof Users.findAll>>['records'][number];
 type SadhanaEntriesRecordType = Awaited<ReturnType<typeof SadhanaEntries.findAll>>['records'][number];
@@ -129,7 +130,10 @@ export default createEndpoint({
     let guideId: string | undefined;
     let guideName: string | undefined;
     if (input.guide) {
-      const g = await Guides.findOne({ filters: { fullName: { contains: input.guide } } });
+      const guideTerm = input.guide.trim().toLowerCase();
+      const { records: guideRows } = await Guides.findAll({ fields: ['id', 'fullName'], limit: 1000 });
+      const g = guideRows.find(row => String(row.fullName || '').trim().toLowerCase() === guideTerm)
+        || guideRows.find(row => String(row.fullName || '').toLowerCase().includes(guideTerm));
       if (!g) return { date: targetDate, count: 0, submittedCount: 0, missingCount: 0, data: [] };
       guideId = g.id;
       guideName = g.fullName;
@@ -138,9 +142,10 @@ export default createEndpoint({
     let residencyId: string | undefined;
     let residencyName: string | undefined;
     if (input.residency) {
-      const r = await FolkResidencies.findOne({
-        filters: { residencyName: { contains: input.residency } },
-      });
+      const residencyTerm = input.residency.trim().toLowerCase();
+      const { records: residencyRows } = await FolkResidencies.findAll({ fields: ['id', 'residencyName'], limit: 1000 });
+      const r = residencyRows.find(row => String(row.residencyName || '').trim().toLowerCase() === residencyTerm)
+        || residencyRows.find(row => String(row.residencyName || '').toLowerCase().includes(residencyTerm));
       if (!r) return { date: targetDate, count: 0, submittedCount: 0, missingCount: 0, data: [] };
       residencyId = r.id;
       residencyName = r.residencyName;
@@ -190,6 +195,7 @@ export default createEndpoint({
 
     // ── 7. Join users with entries ────────────────────────────────────────────
     const data = allUsers
+      .filter(user => !isExcusedFromReporting(user.status))
       .map(user => {
         const entry = entryMap.get(user.id);
         const sadhanaStatus: 'submitted' | 'missing' = entry ? 'submitted' : 'missing';

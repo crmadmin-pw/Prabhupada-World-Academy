@@ -20,6 +20,7 @@ import BvSection from '@/components/guide/BvSection';
 import BvslWeeklyPlanTab from '@/components/bvsl/BvslWeeklyPlanTab';
 import BvslOneToOneTab from '@/components/bvsl/BvslOneToOneTab';
 import MeetingsAndMomTab from '@/components/super/MeetingsAndMomTab';
+import PwBvAttendancePanel from '@/components/pw/PwBvAttendancePanel';
 
 export default function RgsfDashboard() {
   const { profile } = useUserProfile();
@@ -98,7 +99,12 @@ export default function RgsfDashboard() {
                   onRefresh={loadGroups}
                 />
               )}
-              {activeTab === 'session' && <BvslSessionPanel bvslId={bvslId} groups={groups} />}
+              {activeTab === 'session' && (
+                <div className="space-y-4">
+                  <BvslSessionPanel bvslId={bvslId} groups={groups} />
+                  {!isFolk && <PwBvAttendancePanel bvslId={bvslId} />}
+                </div>
+              )}
               {activeTab === 'members' && <BvslMembersTable bvslId={bvslId} detailBasePath="/rgsf/users" />}
               {activeTab === 'bvreport' && (
                 <BvSection

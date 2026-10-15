@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { matchesAnySecret } from '@/lib/secretMatch';
 import { getApps } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { createEndpoint, AppError, AccountDeletionHolds, Users } from '@/lib/backend-sdk';
@@ -30,7 +31,7 @@ export default createEndpoint({
   outputSchema: z.object({ purged: z.number(), skipped: z.number() }),
   execute: async ({ input }) => {
     const secrets = [process.env.APP_CRON_SECRET, process.env.ZITE_CRON_SECRET].filter((value): value is string => !!value);
-    if (!secrets.includes(input.cronSecret)) {
+    if (!matchesAnySecret(input.cronSecret, secrets)) {
       throw new AppError({ code: 'UNAUTHORIZED', message: 'Unauthorized scheduler request' });
     }
     return purgeDueAccountDeletions({

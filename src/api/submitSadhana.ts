@@ -5,9 +5,11 @@ import { getNRMaxScore, fillingSameDayApplies } from '../lib/userUtils';
 import { TEMPLATE_MODES, TIME_BUCKETS } from '../types/enums';
 import { refreshUserPeriodSummaries } from '../lib/sadhanaPeriodSummary';
 import { getUserDepartment } from '../lib/userDashboardRoutes';
-import { pwTarget, scorePwSadhana } from '../lib/pwSadhana';
+import { scoreStoredPwDay } from '../lib/pwSadhana';
+import { resolvePwTargetsForUser } from '../lib/pwTargetResolver';
 import { computeSingleFieldScore } from '../lib/scoring';
 import { NON_RESIDENT_FIELDS, RESIDENT_FIELDS, toFormField } from '../config/sadhanaFields';
+import { ACCOUNT_DELETED_LOGIN_MESSAGE, isAccountDeleted } from '@/lib/accountDeletionPolicy';
 
 
 /** Normalize templateMode to canonical TEMPLATE_MODES values */
@@ -311,9 +313,12 @@ export default createEndpoint({
 
     // Block inactive users from submitting, and retain the legacy/custom ID only
     // to locate an entry saved by the earlier, incorrect write path.
-    const userRec = await Users.findOne({ id: authenticatedUserId, fields: ['id', 'userId', 'status', 'segment', 'isPrabhupadaWorldUser', 'isFolkUser', 'pwChantingTarget', 'pwReadingTarget'] });
+    const userRec = await Users.findOne({ id: authenticatedUserId, fields: ['id', 'userId', 'status', 'segment', 'isPrabhupadaWorldUser', 'isFolkUser', 'role', 'ashrayLevel', 'sadhanaMentor', 'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator', 'isBvSupervisor', 'isBvMember', 'isRgsf', 'bvGroupId', 'pwTargets', 'pwChantingTarget', 'pwReadingTarget', 'pwPendingBvAttendance'] });
     if (userRec?.status === 'Inactive') {
       throw new Error('Your account has been deactivated. Please contact your guide.');
+    }
+    if (isAccountDeleted(userRec?.status)) {
+      throw new Error(ACCOUNT_DELETED_LOGIN_MESSAGE);
     }
 
     if (getUserDepartment(userRec) === 'PW' && normalizeTemplateMode(input.templateMode) === TEMPLATE_MODES.RESIDENT) {
@@ -332,7 +337,9 @@ export default createEndpoint({
     if (isFolk && (!/^\d{4}-\d{2}-\d{2}$/.test(entryDate) || Number.isNaN(entryDateObj.getTime()))) throw new Error('Invalid entry date');
     if (isFolk ? entryDate > submissionTodayIST : entryDateObj > oneDayAhead) throw new Error('Cannot submit for a future date');
     if (!isFolk && entryDateObj < sevenDaysAgo) throw new Error('Cannot submit for dates older than 7 days');
-    assertScoresMatchAnswers(input, userRec?.ashrayLevel || input.ashrayLevelUsed || 'Jigyasa');
+    if (getUserDepartment(userRec) !== 'PW') {
+      assertScoresMatchAnswers(input, userRec?.ashrayLevel || input.ashrayLevelUsed || 'Jigyasa');
+    }
 
     // Never trust a row or user ID supplied by the client.  First locate the
     // authenticated user's entry.  The second lookup makes entries written by
@@ -374,25 +381,36 @@ export default createEndpoint({
       now,
     );
     if (getUserDepartment(userRec) === 'PW') {
-      const chantingTarget = pwTarget(userRec?.pwChantingTarget);
-      const readingTarget = pwTarget(userRec?.pwReadingTarget);
-      const scored = scorePwSadhana({
-        chanting: Number(fv?.chanting) || 0,
-        reading: Number(fv?.reading) || 0,
-        chantingTarget,
-        readingTarget,
-      });
-      record.totalScore = scored.scorePercent ?? 0;
-      record.maxScore = scored.scorePercent == null ? 0 : 100;
-      record.scorePercent = scored.scorePercent ?? 0;
+      const waiveMissing = [
+        [fv?.waiveWakeUp, fv?.waiveWakeUpReason, 'wake-up'],
+        [fv?.waiveSleep, fv?.waiveSleepReason, 'sleep'],
+        [fv?.waiveChanting, fv?.waiveChantingReason, 'chanting'],
+      ].find(([flag, reason]) => flag === true && !String(reason || '').trim());
+      if (waiveMissing) throw new Error(`Enter a reason for the ${waiveMissing[2]} waive-off`);
+      const pending = userRec?.pwPendingBvAttendance?.[entryDate];
+      const resolved = await resolvePwTargetsForUser(userRec);
       const stored = JSON.parse(record.fieldValuesJson);
-      stored._meta = {
-        ...(stored._meta || {}),
-        pwChantingTarget: chantingTarget,
-        pwReadingTarget: readingTarget,
-        scorePercent: record.scorePercent,
-      };
+      if (pending && stored.bvSessionMinutes == null) {
+        stored.bvAttendedMinutes = pending.attended ?? 0;
+        stored.bvSessionMinutes = pending.session;
+      }
+      const scored = scoreStoredPwDay(stored, {
+        targets: resolved.targets,
+        source: resolved.source,
+        deadline: resolved.deadline,
+        submittedAt: now,
+        entryDate,
+      });
+      stored._meta = scored.meta;
       record.fieldValuesJson = JSON.stringify(stored);
+      record.totalScore = scored.result.earned;
+      record.maxScore = scored.result.applicableMax;
+      record.scorePercent = scored.result.scorePercent ?? 0;
+      if (pending) {
+        const rest = { ...(userRec.pwPendingBvAttendance || {}) };
+        delete rest[entryDate];
+        await Users.update({ id: authenticatedUserId, record: { pwPendingBvAttendance: rest } });
+      }
     }
 
     // Run main entry save + optional BVSL preaching in parallel where possible
@@ -401,7 +419,9 @@ export default createEndpoint({
     if (existingId) {
       await SadhanaEntries.update({ id: existingId, record });
     } else {
-      await SadhanaEntries.create({ record });
+      // One document per member and day: a retried or concurrent first save
+      // overwrites the same entry instead of adding a duplicate.
+      await SadhanaEntries.create({ record: { ...record, id: `${authenticatedUserId}_${entryDate}` } });
     }
 
     await refreshUserPeriodSummaries({

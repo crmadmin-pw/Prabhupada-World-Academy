@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createEndpoint, Users, Guides, FolkResidencies, GuideTransferRequests, ResidencyTransferRequests, AshrayUpgradeRequests, BvGroupMembers } from '@/lib/backend-sdk';
+import { isAccountDeleted } from '@/lib/accountDeletionPolicy';
 import { normalizeRole, normalizeStatus } from './resolveUserLogin';
 import { isCompleteProfile, isLoginLinkedToProfile } from '@/lib/accountLinkReview';
 import { getUserDepartment } from '../lib/userDashboardRoutes';
@@ -95,7 +96,7 @@ export default createEndpoint({
     // acknowledges it, instead of clearing the group on this read.
     const preservePendingAssignment = !hasBvMembership && !!userRecord.pendingBvGroupAssignmentNotice;
 
-    if (!preservePendingAssignment && needsMembershipSync) {
+    if (!isAccountDeleted(userRecord.status) && !preservePendingAssignment && needsMembershipSync) {
       const membershipFields = hasBvMembership
         ? {
             isBvMember: true,

@@ -53,8 +53,14 @@ type ResidencyFilter = 'all' | 'resident' | 'non_resident' | 'scholar';
 // These use remapped keys (common_*). Scoring scales differ per group (R rounds max=4,
 // NR max=8) so we show raw values only — maxPoints: null means neutral cell styling.
 const PW_FIELD_DEFS: FieldDef[] = [
-  { key: 'pw_chanting', shortLabel: 'Chanting', maxPoints: null, isScoring: false, forResident: true, forNR: true },
-  { key: 'pw_reading', shortLabel: 'Reading', maxPoints: null, isScoring: false, forResident: true, forNR: true },
+  { key: 'pw_wakeUp', shortLabel: 'Wake', maxPoints: 4, isScoring: true, forResident: true, forNR: true },
+  { key: 'pw_sleep', shortLabel: 'Sleep', maxPoints: 4, isScoring: true, forResident: true, forNR: true },
+  { key: 'pw_chanting', shortLabel: 'Chant', maxPoints: 16, isScoring: true, forResident: true, forNR: true },
+  { key: 'pw_reading', shortLabel: 'Read', maxPoints: 8, isScoring: true, forResident: true, forNR: true },
+  { key: 'pw_hearing', shortLabel: 'Hear', maxPoints: 8, isScoring: true, forResident: true, forNR: true },
+  { key: 'pw_submitted', shortLabel: 'On time', maxPoints: 2, isScoring: true, forResident: true, forNR: true },
+  { key: 'pw_seva', shortLabel: 'Seva', maxPoints: 8, isScoring: true, forResident: true, forNR: true },
+  { key: 'pw_bvAttendance', shortLabel: 'BV', maxPoints: 10, isScoring: true, forResident: true, forNR: true },
 ];
 
 const COMMON_FIELD_DEFS: FieldDef[] = [
@@ -380,9 +386,20 @@ export default function ReportsTab({ guideId = '', senderName, bvslMode, mentorM
           const readingTarget = pwTarget((u as any).pwReadingTarget);
           const chanting = u.submitted ? Number((u as any).chantingRaw ?? 0) : null;
           const reading = u.submitted ? Number((u as any).readingRaw ?? 0) : null;
+          const points = ((u as any).pwFieldPoints || {}) as Record<string, number | null>;
+          const pointText = (key: string, fallback: string | null) => {
+            const value = points[key];
+            return value == null ? fallback : String(value);
+          };
           const progress = {
-            pw_chanting: u.submitted ? formatPwProgress(chanting, chantingTarget) : null,
-            pw_reading: u.submitted ? formatPwProgress(reading, readingTarget) : null,
+            pw_wakeUp: u.submitted ? pointText('wakeUp', null) : null,
+            pw_sleep: u.submitted ? pointText('sleep', null) : null,
+            pw_chanting: u.submitted ? pointText('chanting', formatPwProgress(chanting, chantingTarget)) : null,
+            pw_reading: u.submitted ? pointText('reading', formatPwProgress(reading, readingTarget)) : null,
+            pw_hearing: u.submitted ? pointText('hearing', null) : null,
+            pw_submitted: u.submitted ? pointText('submitted', null) : null,
+            pw_seva: u.submitted ? pointText('seva', null) : null,
+            pw_bvAttendance: u.submitted ? pointText('bvAttendance', null) : null,
           };
           return {
             ...u,

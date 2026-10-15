@@ -26,7 +26,7 @@ export default createEndpoint({
     let hasMore = true;
     while (hasMore) {
       const batch = await Users.findAll({
-        filters: { status: 'Active', ashrayLevel: { not: '' } },
+        filters: { status: 'Active' },
         fields: ['id', 'fullName', 'email', 'phone', 'ashrayLevel', 'tagMangoEnrollmentStatus', 'tagMangoEnrollmentAttempts'],
         limit: 500,
         offset,

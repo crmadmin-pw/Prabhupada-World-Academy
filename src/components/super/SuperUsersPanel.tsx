@@ -25,6 +25,7 @@ import { useUserProfile } from '@/contexts/UserProfileContext';
 import { ASHRAY_LEVELS } from '@/types/enums';
 import { fmt } from '@/lib/fmt';
 import { scoreColor } from '@/lib/scoring';
+import { isAccountDeleted } from '@/lib/accountDeletionPolicy';
 import { isActiveDirectoryMember } from '@/lib/memberDirectoryStatus';
 import { folkGuideIdentityRefs, isPrabhupadaWorldDirectoryMember } from '@/lib/directoryDepartment';
 import { isBhaktiVrikshaDirectoryMember } from '@/lib/bvDirectoryMembership';
@@ -964,7 +965,7 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
     // A Prabhupada World admin sees every Prabhupada World member. FOLK guides
     // and the members assigned to them stay on the FOLK dashboard.
     const departmentUsers = isPwMode ? restrictToPrabhupadaWorld(users) : users.filter(u => isUserInCurrentDepartment(u, false));
-    return departmentUsers.filter(u => isActiveDirectoryMember(u.status));
+    return departmentUsers.filter(u => isActiveDirectoryMember(u.status) || isAccountDeleted(u.status));
   }, [users, isPwMode, isUserInCurrentDepartment]);
 
   const filtered = useMemo(() => {
@@ -1240,7 +1241,10 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                       {/* 1. Name */}
                       <td data-label="Name" data-summary="true" className="px-3 py-2 text-center align-middle font-medium sticky left-0 bg-background z-1 border-r border-border/40 shadow-sm">
                         <div className="flex items-center justify-between gap-2 md:justify-center">
-                          <button type="button" className="min-h-11 min-w-0 text-center font-semibold md:min-h-0" onClick={e => { e.stopPropagation(); navigate(`/guide/users/${u.userId}`); }}>{u.fullName}</button>
+                          <div className="min-w-0 text-center">
+                            <button type="button" className="min-h-11 min-w-0 text-center font-semibold md:min-h-0" onClick={e => { e.stopPropagation(); navigate(`/guide/users/${u.userId}`); }}>{u.fullName}</button>
+                            {isAccountDeleted(u.status) && <Badge variant="destructive" className="mt-1 text-[10px] py-0">Account Deleted</Badge>}
+                          </div>
                           <Button variant="ghost" size="sm" className="md:hidden shrink-0 text-primary" aria-expanded={expandedRows.has(u.userId)} aria-label={`Details for ${u.fullName}`}
                             onClick={e => { e.stopPropagation(); setExpandedRows(current => { const next = new Set(current); if (next.has(u.userId)) next.delete(u.userId); else next.add(u.userId); return next; }); }}>
                             {expandedRows.has(u.userId) ? 'Less' : 'Details'}

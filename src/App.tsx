@@ -26,6 +26,7 @@ const RegistrationPage = lazy(() => import('./spa-pages/RegistrationPage'));
 const PendingApprovalPage = lazy(() => import('./spa-pages/PendingApprovalPage'));
 const RejectedPage = lazy(() => import('./spa-pages/RejectedPage'));
 const AccountDeletionPage = lazy(() => import('./spa-pages/AccountDeletionPage'));
+const AccountDeletedPage = lazy(() => import('./spa-pages/AccountDeletedPage'));
 const InactivePage = lazy(() => import('./spa-pages/InactivePage'));
 const BvslEntryPage = lazy(() => import('./spa-pages/BvslEntryPage'));
 
@@ -110,6 +111,7 @@ export default function App() {
             <Route path="/pending" element={<StatusRoute required="PENDING_APPROVAL"><PendingApprovalPage /></StatusRoute>} />
             <Route path="/rejected" element={<StatusRoute required="REJECTED"><RejectedPage /></StatusRoute>} />
             <Route path="/account-deletion" element={<AccountDeletionPage />} />
+            <Route path="/account-deleted" element={<AccountDeletedPage />} />
             <Route path="/inactive" element={<InactivePage />} />
             <Route path="/bvsl" element={<BvslEntryPage />} />
             <Route path="/join/:token/pw" element={<JoinGroupPage />} />
@@ -225,6 +227,7 @@ function DashboardRouter() {
     </div>
   );
   if (!profile) return <Navigate to="/register" replace />;
+  if (profile.status === 'ACCOUNT_DELETED') return <Navigate to="/account-deleted" replace />;
   if (profile.status === 'PENDING_DELETION') return <Navigate to="/account-deletion" replace />;
   if (profile.status === 'PENDING_APPROVAL') return <Navigate to="/pending" replace />;
   if (profile.status === 'REJECTED') return <Navigate to="/rejected" replace />;

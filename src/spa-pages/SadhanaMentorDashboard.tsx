@@ -26,6 +26,7 @@ import { format } from 'date-fns';
 import { scoreColor } from '@/lib/scoring';
 import { normalizePhoneForLinks } from '@/lib/userUtils';
 import { ASHRAY_LEVELS } from '@/types/enums';
+import PwTargetEditor from '@/components/pw/PwTargetEditor';
 
 type Member = GetMentorMembersOutputType['members'][0];
 type SortKey = 'fullName' | 'latestScore' | 'currentStreak' | 'ashrayLevel' | 'residencyName' | 'performanceStatus';
@@ -54,10 +55,11 @@ interface MembersTableProps {
   members: Member[];
   guideName: string;
   showResidency: boolean;
+  assignTargets?: boolean;
   onNavigate: (userId: string, from: string) => void;
 }
 
-function MembersTable({ members, guideName, showResidency, onNavigate }: MembersTableProps) {
+function MembersTable({ members, guideName, showResidency, assignTargets = false, onNavigate }: MembersTableProps) {
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('fullName');
   const [sortAsc, setSortAsc] = useState(true);
@@ -236,6 +238,7 @@ function MembersTable({ members, guideName, showResidency, onNavigate }: Members
                 <th className="text-center px-3 py-2.5 bg-muted"><SortBtn k="currentStreak" label="Streak" /></th>
                 <th className="text-left px-3 py-2.5 hidden lg:table-cell bg-muted"><SortBtn k="performanceStatus" label="Status" /></th>
                 <th className="text-center px-3 py-2.5 font-medium text-muted-foreground hidden lg:table-cell bg-muted">Contact</th>
+                {assignTargets && <th className="text-center px-3 py-2.5 font-medium text-muted-foreground bg-muted">Targets</th>}
               </tr>
             </thead>
             <tbody>
@@ -296,6 +299,11 @@ function MembersTable({ members, guideName, showResidency, onNavigate }: Members
                         </div>
                       ) : <span className="text-muted-foreground">—</span>}
                     </td>
+                    {assignTargets && (
+                      <td className="px-3 py-2.5 text-center" onClick={event => event.stopPropagation()}>
+                        <PwTargetEditor userId={m.userId} fullName={m.fullName} targets={(m as any).pwTargets} />
+                      </td>
+                    )}
                   </tr>
                 );
               })}
@@ -396,6 +404,7 @@ export default function SadhanaMentorDashboard() {
                   members={members}
                   guideName={guideName || (isPwMentor ? 'Prabhupada World Guide' : 'FOLK Guide')}
                   showResidency={isFolkMentor}
+                  assignTargets={isPwMentor}
                   onNavigate={(uid, from) => navigate(`/guide/users/${uid}`, { state: { from } })}
                 />
               )}

@@ -100,6 +100,58 @@ const request = {
   email: 'member@example.test',
 };
 
+test('a Prabhupada World deletion keeps the person and their records', async () => {
+  const data = world();
+  const profile = data.users.rows.get('profile-1');
+  profile.segment = 'PW';
+  profile.isPrabhupadaWorldUser = true;
+  const removed: { paths: string[]; uids: string[] }[] = [];
+  const authDeleted: string[] = [];
+  const result = await deleteAccountImmediately({
+    ...request,
+    users: data.users,
+    ownedTables: data.ownedTables,
+    nowMs: Date.parse('2026-10-05T12:00:00Z'),
+    deleteFiles: async (paths, uids) => { removed.push({ paths, uids }); },
+    deleteAuthUser: async uid => { authDeleted.push(uid); },
+  });
+  assert.equal(result.status, 'deleted');
+  assert.equal(data.users.rows.get('profile-1').status, 'Account Deleted');
+  assert.equal(typeof data.users.rows.get('profile-1').accountDeletedAt, 'string');
+  assert.equal(data.rent.rows.has('rent-1'), true);
+  assert.equal(data.trips.rows.has('trip-1'), true);
+  assert.equal(data.attendance.rows.has('att-1'), true);
+  assert.equal(data.challenges.rows.has('ch-1'), true);
+  assert.equal(removed.length, 0);
+  assert.ok(authDeleted.includes('auth-1'));
+});
+
+test('a scheduled Prabhupada World deletion closes as Account Deleted and restores held records', async () => {
+  const data = world();
+  const profile = data.users.rows.get('profile-1');
+  profile.segment = 'PW';
+  profile.isPrabhupadaWorldUser = true;
+  const nowMs = Date.parse('2026-10-05T12:00:00Z');
+  await scheduleAccountDeletion({ ...request, ...data, nowMs });
+  assert.equal(data.rent.rows.has('rent-1'), false);
+  const removed: { paths: string[]; uids: string[] }[] = [];
+  const authDeleted: string[] = [];
+  const done = await purgeDueAccountDeletions({
+    nowMs: nowMs + ACCOUNT_DELETION_GRACE_MS,
+    users: data.users,
+    holds: data.holds,
+    ownedTables: data.ownedTables,
+    deleteFiles: async (paths, uids) => { removed.push({ paths, uids }); },
+    deleteAuthUser: async uid => { authDeleted.push(uid); },
+  });
+  assert.equal(done.purged, 1);
+  assert.equal(data.users.rows.get('profile-1').status, 'Account Deleted');
+  assert.equal(data.rent.rows.get('rent-1').amountPaid, 10);
+  assert.equal(data.holds.rows.size, 0);
+  assert.equal(removed.length, 0);
+  assert.ok(authDeleted.includes('auth-1'));
+});
+
 test('deletion removes the account immediately without a fresh sign-in', async () => {
   const data = world();
   const removed: { paths: string[]; uids: string[] }[] = [];

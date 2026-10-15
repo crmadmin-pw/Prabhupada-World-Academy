@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, Users, Guides, SadhanaEntries } from '@/lib/backend-sdk';
 import { requireGuideRole } from '../lib/userUtils';
 import { joinFacilitatorNames, textList } from '@/lib/bvGroupFacilitators';
+import { isExcusedFromReporting } from '@/lib/accountDeletionPolicy';
 
 function isSadhanaExemptLeadershipRole(role: unknown): boolean {
   const normalized = String(role || '')
@@ -161,7 +162,7 @@ export default createEndpoint({
 
       for (const uid of memberIds) {
         const userInfo = userInfoMap[uid];
-        if (!userInfo || isSadhanaExemptLeadershipRole(userInfo.role)) continue;
+        if (!userInfo || isSadhanaExemptLeadershipRole(userInfo.role) || isExcusedFromReporting(userInfo.status)) continue;
 
         const userEntries = userEntryMap[uid] || [];
         const filledDates = new Set(

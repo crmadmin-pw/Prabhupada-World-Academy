@@ -111,6 +111,7 @@ export default function ProtectedRoute({ children, allowedRoles }: Props) {
   );
 
   if (!profile) return <Navigate to={readAccountLinkHold() ? '/account-link-pending' : '/register'} replace />;
+  if (profile.status === 'ACCOUNT_DELETED') return <Navigate to="/account-deleted" replace />;
   if (profile.status === 'PENDING_DELETION') return <Navigate to="/account-deletion" replace />;
   if (profile.status === 'PENDING_APPROVAL') return <Navigate to="/pending" replace />;
   if (profile.status === 'REJECTED') return <Navigate to="/rejected" replace />;

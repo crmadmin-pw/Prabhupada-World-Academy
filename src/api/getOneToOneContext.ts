@@ -177,7 +177,7 @@ export default createEndpoint({
 
     const improvementAreas: string[] = [];
     if (isPw) {
-      if (avgScore !== null && avgScore < 100) improvementAreas.push('Below the assigned chanting or reading');
+      if (avgScore !== null && avgScore < 100) improvementAreas.push('Below the assigned sadhana target');
     } else {
       if (avgScore !== null && avgScore < 70) improvementAreas.push('Overall Score');
       if (avgRounds < 12) improvementAreas.push('Chanting Rounds');

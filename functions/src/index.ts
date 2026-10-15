@@ -24,7 +24,8 @@ export const synchronizeQueries = onDocumentWritten({
 }, async event => {
   const table = event.params.collection;
   // Synchronization metadata must never recursively generate more events.
-  if (table.startsWith('Realtime') || table === 'meta' || !event.data) return;
+  // RateLimits counters change on nearly every API request and no query reads them.
+  if (table.startsWith('Realtime') || table === 'meta' || table === 'RateLimits' || !event.data) return;
   const after = event.data.after;
   const before = event.data.before;
   const version = after.exists && after.updateTime ? firestoreVersion(after.updateTime)

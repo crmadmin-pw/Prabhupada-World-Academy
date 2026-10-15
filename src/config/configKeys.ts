@@ -15,6 +15,12 @@ export const CONFIG_KEYS = {
    */
   NEXT_ASHRAY_EXAM: 'Next Ashray Exam',
 
+  /**
+   * Ashraya-level Prabhupada World sadhana targets and the submission deadline.
+   * Value: JSON `{ submissionDeadline, levels }`. Written only by the admin endpoint.
+   */
+  PW_ASHRAYA_TARGETS: 'pw_ashraya_targets',
+
 } as const;
 
 /**
@@ -30,4 +36,5 @@ export type ConfigKey = (typeof CONFIG_KEYS)[keyof typeof CONFIG_KEYS];
 /** Default values for each config key — used when the DB row is missing */
 export const CONFIG_DEFAULTS: Record<ConfigKey, string> = {
   [CONFIG_KEYS.NEXT_ASHRAY_EXAM]: '',
+  [CONFIG_KEYS.PW_ASHRAYA_TARGETS]: '',
 };

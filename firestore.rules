@@ -13,7 +13,8 @@ service cloud.firestore {
     // query filters are never client-readable.
     //
     // Server-managed collection families include:
-    // - Identity/PII: Users, Guides, FolkResidencies, PushSubscriptions,
+    // - Identity/PII: Users (including pwTargets and pwPendingBvAttendance),
+    //   Guides, FolkResidencies, PushSubscriptions,
     //   AccountLinkRequests
     // - Sadhana: SadhanaEntries, SadhanaFields, SadhanaMonthlySummaries,
     //   SadhanaPeriodSummaries, SadhanaPeriodSummaryMeta,
@@ -33,7 +34,8 @@ service cloud.firestore {
     //   UnavailabilityRequests, ResidencyTransferRequests
     // - Leadership/administration: Meetings, MinutesOfMeeting,
     //   OneToOneMeetings, GuideTransferRequests, PreachingReportGoals,
-    //   Config, SkillCatalog, UserSkills, TagMangoSyncLog, RateLimits
+    //   Config (including pw_ashraya_targets), SkillCatalog, UserSkills,
+    //   TagMangoSyncLog, RateLimits
     // - Realtime registry/clocks: RealtimeQuerySubscriptions,
     //   RealtimeCollectionVersions, RealtimeIdentities
     //

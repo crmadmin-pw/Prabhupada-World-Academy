@@ -30,6 +30,16 @@ import MentorTaskCenterTab from '@/components/crm/MentorTaskCenterTab';
 import GlobalCommandPalette from '@/components/crm/GlobalCommandPalette';
 import Devotee360Drawer from '@/components/crm/Devotee360Drawer';
 
+function MemberAccountBadge({ status, className = '' }: { status?: string; className?: string }) {
+  if (status === 'ACCOUNT_DELETED') {
+    return <Badge variant="destructive" className={`text-xs py-0 ${className}`}>Account Deleted</Badge>;
+  }
+  if (status === 'INACTIVE') {
+    return <Badge variant="destructive" className={`text-xs py-0 ${className}`}>Inactive</Badge>;
+  }
+  return null;
+}
+
 type GuideUser = GetGuideUsersOutputType['users'][0];
 type Residency = { id: string; residencyName: string };
 interface UsersTabProps { guideId: string; }
@@ -444,7 +454,7 @@ export default function UsersTab({ guideId }: UsersTabProps) {
                             {(user as any).isCleanlinessManager && <Badge className="text-xs py-0 bg-cyan-600">🧹 CM</Badge>}
                             {(user as any).isFolkLead && <Badge className="text-xs py-0 bg-blue-600">FOLK Lead</Badge>}
                             {(user as any).isTripCoordinator && <Badge className="text-xs py-0 bg-amber-600">Trip Coord</Badge>}
-                            {user.status === 'INACTIVE' && <Badge variant="destructive" className="text-xs py-0">Inactive</Badge>}
+                            <MemberAccountBadge status={user.status} />
                           </div>
                         </div>
                         <Button size="sm" variant="outline" className="h-8 px-2.5 shrink-0"
@@ -518,7 +528,7 @@ export default function UsersTab({ guideId }: UsersTabProps) {
                           {(user as any).isCleanlinessManager && <Badge className="ml-1 bg-cyan-600 text-xs">🧹 CM</Badge>}
                           {(user as any).isFolkLead && <Badge className="ml-1 bg-blue-600 text-xs">FOLK Lead</Badge>}
                           {(user as any).isTripCoordinator && <Badge className="ml-1 bg-amber-600 text-xs">Trip Coord</Badge>}
-                          {user.status === 'INACTIVE' && <Badge variant="destructive" className="ml-1 text-xs">Inactive</Badge>}
+                          <MemberAccountBadge status={user.status} className="ml-1" />
                         </td>
                         <td className="p-2" onClick={e => e.stopPropagation()}>
                           <AshrayLevelDropdown userId={user.userId} currentLevel={user.ashrayLevel || 'Jigyasa'} onUpdated={loadUsers} compact />
@@ -576,7 +586,9 @@ export default function UsersTab({ guideId }: UsersTabProps) {
 
                         {/* Account toggle */}
                         <td className="p-2" onClick={e => e.stopPropagation()}>
-                          {user.status === 'INACTIVE' ? (
+                          {user.status === 'ACCOUNT_DELETED' ? (
+                            <MemberAccountBadge status={user.status} />
+                          ) : user.status === 'INACTIVE' ? (
                             <Button size="sm" variant="outline"
                               className="h-7 text-xs border-green-600 text-green-700 hover:bg-green-50"
                               onClick={() => setStatusDialog({ user, newStatus: 'Active' })}>
@@ -736,7 +748,7 @@ export default function UsersTab({ guideId }: UsersTabProps) {
                     {(u as any).isCleanlinessManager && <Badge className="text-xs py-0 bg-cyan-600">🧹 CM</Badge>}
                     {(u as any).isFolkLead && <Badge className="text-xs py-0 bg-blue-600">FOLK Lead</Badge>}
                     {(u as any).isTripCoordinator && <Badge className="text-xs py-0 bg-amber-600">Trip Coord</Badge>}
-                    {u.status === 'INACTIVE' && <Badge variant="destructive" className="text-xs py-0">Inactive</Badge>}
+                    <MemberAccountBadge status={u.status} />
                   </div>
                 </SheetHeader>
 
@@ -824,7 +836,9 @@ export default function UsersTab({ guideId }: UsersTabProps) {
                   </Button>
 
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1 pt-2">Account</p>
-                  {u.status === 'INACTIVE' ? (
+                  {u.status === 'ACCOUNT_DELETED' ? (
+                    <MemberAccountBadge status={u.status} />
+                  ) : u.status === 'INACTIVE' ? (
                     <Button variant="outline" className="w-full justify-start h-11 border-green-500 text-green-700"
                       onClick={() => { closeSheet(); setStatusDialog({ user: u, newStatus: 'Active' }); }}>
                       <UserCheck className="w-4 h-4 mr-2" />Re-activate Account

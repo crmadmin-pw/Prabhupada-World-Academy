@@ -22,7 +22,7 @@ test('a stale directory response keeps a role that was just assigned', () => {
     row => [String(row.userId)],
   );
   assert.equal(stale[0].isBvFacilitator, true);
-  assert.equal(stale[0].bvReportingSupervisorId, 'supervisor-1');
+  assert.equal((stale[0] as { bvReportingSupervisorId?: string }).bvReportingSupervisorId, 'supervisor-1');
 
   const fresh = mergePendingDirectoryPatches(
     [{ userId: 'member-1', isBvFacilitator: true, isBvsl: true, bvReportingSupervisorId: 'supervisor-1', fullName: 'Member One' }],

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { matchesAnySecret } from '@/lib/secretMatch';
 import { createEndpoint, Users, SadhanaEntries, Email } from '@/lib/backend-sdk';
 
 /**
@@ -72,7 +73,7 @@ export default createEndpoint({
   execute: async ({ input }) => {
     // Verify secret to prevent unauthorised calls
     const expectedSecret = process.env.APP_REMINDER_SECRET || process.env.ZITE_REMINDER_SECRET || '';
-    if (!expectedSecret || input.secret !== expectedSecret) {
+    if (!expectedSecret || !matchesAnySecret(input.secret, [expectedSecret])) {
       // Return silently — don't reveal whether the secret is wrong
       return { sent: 0, skipped: 0, date: '' };
     }

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { matchesAnySecret } from '@/lib/secretMatch';
 import { createEndpoint, Meetings, AppError, getFirestoreDb } from '@/lib/backend-sdk';
 import { storeBroadcast } from '@/lib/notificationBroadcast';
 import { claimMeetingReminder, reminderHash } from '@/lib/meetingReminderDispatch';
@@ -194,7 +195,7 @@ export async function executeMeetingReminder(
   publish: (...args: any[]) => Promise<any> = storeBroadcast,
 ) {
     const validCronSecrets = [process.env.APP_CRON_SECRET, process.env.ZITE_CRON_SECRET].filter(Boolean);
-    const isCron = !!input.cronSecret && validCronSecrets.includes(input.cronSecret);
+    const isCron = matchesAnySecret(input.cronSecret, validCronSecrets);
     const canManageMeetings = !!(
       context?.user?.isActive &&
       (context.user.capabilities?.includes('*') || context.user.capabilities?.includes('meetings.manage'))

@@ -1088,6 +1088,34 @@ export const setPwSadhanaTargets = (input: setPwSadhanaTargets_Input): Promise<s
 export type SetPwSadhanaTargetsOutputType = setPwSadhanaTargets_Output;
 export type SetPwSadhanaTargetsInputType = setPwSadhanaTargets_Input;
 
+import type getPwAshrayaTargets_Type from '../api/getPwAshrayaTargets';
+type getPwAshrayaTargets_Input = z.input<typeof getPwAshrayaTargets_Type.inputSchema>;
+type getPwAshrayaTargets_Output = ReturnType<typeof getPwAshrayaTargets_Type.execute> extends Promise<infer R> ? R : ReturnType<typeof getPwAshrayaTargets_Type.execute>;
+export const getPwAshrayaTargets = (input: getPwAshrayaTargets_Input): Promise<getPwAshrayaTargets_Output> => invokeEndpoint('getPwAshrayaTargets', input);
+export type GetPwAshrayaTargetsOutputType = getPwAshrayaTargets_Output;
+export type GetPwAshrayaTargetsInputType = getPwAshrayaTargets_Input;
+
+import type setPwAshrayaTargets_Type from '../api/setPwAshrayaTargets';
+type setPwAshrayaTargets_Input = z.input<typeof setPwAshrayaTargets_Type.inputSchema>;
+type setPwAshrayaTargets_Output = ReturnType<typeof setPwAshrayaTargets_Type.execute> extends Promise<infer R> ? R : ReturnType<typeof setPwAshrayaTargets_Type.execute>;
+export const setPwAshrayaTargets = (input: setPwAshrayaTargets_Input): Promise<setPwAshrayaTargets_Output> => invokeEndpoint('setPwAshrayaTargets', input);
+export type SetPwAshrayaTargetsOutputType = setPwAshrayaTargets_Output;
+export type SetPwAshrayaTargetsInputType = setPwAshrayaTargets_Input;
+
+import type listPwStaffTargets_Type from '../api/listPwStaffTargets';
+type listPwStaffTargets_Input = z.input<typeof listPwStaffTargets_Type.inputSchema>;
+type listPwStaffTargets_Output = ReturnType<typeof listPwStaffTargets_Type.execute> extends Promise<infer R> ? R : ReturnType<typeof listPwStaffTargets_Type.execute>;
+export const listPwStaffTargets = (input: listPwStaffTargets_Input): Promise<listPwStaffTargets_Output> => invokeEndpoint('listPwStaffTargets', input);
+export type ListPwStaffTargetsOutputType = listPwStaffTargets_Output;
+export type ListPwStaffTargetsInputType = listPwStaffTargets_Input;
+
+import type recordBvAttendanceMinutes_Type from '../api/recordBvAttendanceMinutes';
+type recordBvAttendanceMinutes_Input = z.input<typeof recordBvAttendanceMinutes_Type.inputSchema>;
+type recordBvAttendanceMinutes_Output = ReturnType<typeof recordBvAttendanceMinutes_Type.execute> extends Promise<infer R> ? R : ReturnType<typeof recordBvAttendanceMinutes_Type.execute>;
+export const recordBvAttendanceMinutes = (input: recordBvAttendanceMinutes_Input): Promise<recordBvAttendanceMinutes_Output> => invokeEndpoint('recordBvAttendanceMinutes', input);
+export type RecordBvAttendanceMinutesOutputType = recordBvAttendanceMinutes_Output;
+export type RecordBvAttendanceMinutesInputType = recordBvAttendanceMinutes_Input;
+
 import type getBvslOneToOneData_Type from '../api/getBvslOneToOneData';
 type getBvslOneToOneData_Input = z.input<typeof getBvslOneToOneData_Type.inputSchema>;
 type getBvslOneToOneData_Output = ReturnType<typeof getBvslOneToOneData_Type.execute> extends Promise<infer R> ? R : ReturnType<typeof getBvslOneToOneData_Type.execute>;

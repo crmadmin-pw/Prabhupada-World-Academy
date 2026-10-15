@@ -84,7 +84,7 @@ export default createEndpoint({
     const residencyMentorScope = await getSadhanaMentorResidencyScope(context.user);
     const memberQuery = {
       filters: { status: 'Active' },
-      fields: ['status', 'role', 'isBvAdmin', 'isBvSuperAdmin', 'segment', 'isPrabhupadaWorldUser', 'id', 'userId', 'fullName', 'email', 'phone', 'ashrayLevel', 'residency', 'residencyApproved', 'residencyJoinDate', 'scholarSince', 'residentSince', 'currentStreak', 'lastStreakUpdatedAt', 'guide', 'bvReportingAdminId', 'sadhanaMentor'],
+      fields: ['status', 'role', 'isBvAdmin', 'isBvSuperAdmin', 'segment', 'isPrabhupadaWorldUser', 'id', 'userId', 'fullName', 'email', 'phone', 'ashrayLevel', 'residency', 'residencyApproved', 'residencyJoinDate', 'scholarSince', 'residentSince', 'currentStreak', 'lastStreakUpdatedAt', 'guide', 'bvReportingAdminId', 'sadhanaMentor', 'pwTargets', 'pwChantingTarget', 'pwReadingTarget'],
       limit: 1000,
     };
     const { records: allUsers } = residencyMentorScope
@@ -231,6 +231,14 @@ export default createEndpoint({
         latestScore: latestEntry?.scorePercent ?? null,
         currentStreak: streak,
         performanceStatus,
+        pwTargets: {
+          wakeUp: u.pwTargets?.wakeUp ?? null,
+          sleep: u.pwTargets?.sleep ?? null,
+          chanting: u.pwTargets?.chanting ?? u.pwChantingTarget ?? null,
+          readingMin: u.pwTargets?.readingMin ?? u.pwReadingTarget ?? null,
+          hearingMin: u.pwTargets?.hearingMin ?? null,
+          sevaMin: u.pwTargets?.sevaMin ?? null,
+        },
       };
     });
 

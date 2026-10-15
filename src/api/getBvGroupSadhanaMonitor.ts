@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, Users, Guides, SadhanaEntries } from '@/lib/backend-sdk';
 import { getTodayIST, daysAgo } from '../lib/streakUtils';
 import { joinFacilitatorNames, textList } from '@/lib/bvGroupFacilitators';
+import { isExcusedFromReporting } from '@/lib/accountDeletionPolicy';
 
 const EMPTY_SUMMARY = { totalGroups: 0, totalMembers: 0, filledToday: 0, pendingToday: 0, fillRate: 0, weeklyAvgRate: 0 };
 
@@ -93,7 +94,7 @@ export default createEndpoint({
     const [{ records: memberUsers }, { records: todayEntries }, { records: weekEntries }] = await Promise.all([
       Users.findAll({
         filters: { id: { in: allMemberUserIds } as any },
-        fields: ['id', 'fullName', 'currentStreak'],
+        fields: ['id', 'fullName', 'currentStreak', 'status'],
         limit: 2000,
       }),
       SadhanaEntries.findAll({
@@ -108,7 +109,14 @@ export default createEndpoint({
       }),
     ]);
     const userInfoMap: Record<string, { fullName: string; currentStreak: number }> = {};
-    for (const u of memberUsers) userInfoMap[u.id] = { fullName: u.fullName || '', currentStreak: u.currentStreak ?? 0 };
+    const excusedMemberIds = new Set<string>();
+    for (const u of memberUsers) {
+      if (isExcusedFromReporting(u.status)) {
+        excusedMemberIds.add(u.id);
+        continue;
+      }
+      userInfoMap[u.id] = { fullName: u.fullName || '', currentStreak: u.currentStreak ?? 0 };
+    }
 
     // Entries are already scoped to BV members — no need for extra .includes() checks
     const filledTodaySet = new Set(
@@ -138,7 +146,7 @@ export default createEndpoint({
     const groupResults = groups.map(g => {
       const bvslPeople = textList(g.bvslLeader).map(id => bvslMap[id]).filter(Boolean);
       const bvslInfo = bvslPeople[0];
-      const memberIds = groupMembershipsMap[g.id] || [];
+      const memberIds = (groupMembershipsMap[g.id] || []).filter(uid => !excusedMemberIds.has(uid));
       const filledCount = memberIds.filter(uid => filledTodaySet.has(uid)).length;
       const fillPercent = memberIds.length > 0 ? Math.round((filledCount / memberIds.length) * 100) : 0;
 

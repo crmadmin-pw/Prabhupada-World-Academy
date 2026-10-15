@@ -233,7 +233,7 @@ test('supervisor groups include only groups led by reporting RGFs with RGF card 
       detail.members.map((row: any) => row.fullName).sort(),
       [member.fullName, reportingRgf.fullName].sort(),
     );
-    assert.deepEqual(detail.members.find((row: any) => row.userId === reportingRgf.userId).badges, ['RGF']);
+    assert.deepEqual(detail.members.find((row: any) => row.userId === reportingRgf.userId)?.badges, ['RGF']);
     assert.equal(detail.quizzes.length, 1);
 
     const matrix = await getBvAttendanceMatrix.execute({
@@ -618,13 +618,12 @@ test('normal PW admins see only groups under their reporting RGFs', async () => 
       context: { user: admin },
     } as never);
     assert.deepEqual(reportGroups.groups.map((group: any) => group.groupId), [assignedGroup.groupId]);
-    await assert.rejects(
-      () => getGuideGroupStats.execute({
-        input: { guideId: 'ALL', segment: 'PW' },
-        context: { user: admin },
-      } as never),
-      /super admin access/,
-    );
+    // 'ALL' from a non-super admin must never widen to the whole department.
+    const allRequest = await getGuideGroupStats.execute({
+      input: { guideId: 'ALL', segment: 'PW' },
+      context: { user: admin },
+    } as never);
+    assert.deepEqual(allRequest.groups.map((group: any) => group.groupId), [assignedGroup.groupId]);
     assert.equal(isBvSuperAdminUser(admin), false);
     assert.equal(isBvSuperAdminUser({ role: 'SUPER_ADMIN' }), true);
   } finally {
@@ -681,8 +680,8 @@ test('BV group detail resolves a legacy memberId membership for the group leader
 
     assert.equal(detail.members.length, 2);
     const listedMember = detail.members.find((row: any) => row.fullName === member.fullName);
-    assert.equal(listedMember.userId, member.userId);
-    assert.deepEqual(detail.members.find((row: any) => row.fullName === leader.fullName).badges, ['RGF']);
+    assert.equal(listedMember?.userId, member.userId);
+    assert.deepEqual(detail.members.find((row: any) => row.fullName === leader.fullName)?.badges, ['RGF']);
     assert.equal(detail.group.joinToken, group.joinToken);
 
     await assert.rejects(

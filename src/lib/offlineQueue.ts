@@ -11,6 +11,23 @@ export interface PendingQueueItem {
   dedupeKey?: string;
   attempts?: number;
   retryAfter?: number;
+  /** Login that saved the item. Replay under another login would credit or
+   * authorize the record as that other person. */
+  ownerUid?: string;
+}
+
+const AUTH_USER_ID_KEY = 'auth_user_id';
+
+function currentOwnerUid(): string | undefined {
+  try {
+    return queueStorage()?.getItem(AUTH_USER_ID_KEY) || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function ownedByCurrentLogin(item: PendingQueueItem): boolean {
+  return !item.ownerUid || item.ownerUid === currentOwnerUid();
 }
 
 export interface OfflineFlushResult {
@@ -131,6 +148,7 @@ export function enqueueOfflinePayload(
     timestamp: Date.now(),
     dedupeKey: options?.dedupeKey,
     attempts: 0,
+    ownerUid: currentOwnerUid(),
   };
   const dedupeKey = options?.dedupeKey;
   const queue = readQueue().filter(existing => !dedupeKey || existing.dedupeKey !== dedupeKey);
@@ -178,7 +196,7 @@ async function runFlush(handler: SyncHandler): Promise<OfflineFlushResult> {
 
   for (let steps = 0; steps < 50; steps++) {
     const snapshot = readQueue().find(item =>
-      (!item.retryAfter || item.retryAfter <= Date.now()) && !deferred.has(item.id)
+      (!item.retryAfter || item.retryAfter <= Date.now()) && !deferred.has(item.id) && ownedByCurrentLogin(item)
     );
     if (!snapshot) break;
 

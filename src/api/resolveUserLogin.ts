@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createEndpoint, Users, Guides } from '@/lib/backend-sdk';
-import { ensureAccountLinkReview, isCompleteProfile, isLoginLinkedToProfile } from '@/lib/accountLinkReview';
+import { ACCOUNT_DELETED_LOGIN_MESSAGE, isAccountDeleted } from '@/lib/accountDeletionPolicy';
+import { ensureAccountLinkReview, findAccountDeletedProfile, isCompleteProfile, isLoginLinkedToProfile } from '@/lib/accountLinkReview';
 import { getUserDashboardPath, getUserDepartment } from '../lib/userDashboardRoutes';
 
 function roleToRoute(role: string, isBvsl?: boolean, isSadhanaMentor?: boolean, isBvSupervisor?: boolean, isBvFacilitator?: boolean, isBvSubFacilitator?: boolean, email?: string, segment?: string): string {
@@ -31,7 +32,7 @@ export function normalizeRole(r: string): string {
 export function normalizeStatus(s: string): string {
   const m: Record<string, string> = {
     'Pending Approval': 'PENDING_APPROVAL', 'Active': 'ACTIVE', 'Rejected': 'REJECTED', 'Inactive': 'INACTIVE',
-    'Pending Deletion': 'PENDING_DELETION',
+    'Pending Deletion': 'PENDING_DELETION', 'Account Deleted': 'ACCOUNT_DELETED',
   };
   return m[s] ?? s.toUpperCase().replace(/ /g, '_');
 }
@@ -56,7 +57,14 @@ export default createEndpoint({
       if (isCompleteProfile(linked) && isLoginLinkedToProfile(linked, authUid)) userRecord = linked;
     }
 
+    if (isAccountDeleted(userRecord?.status)) {
+      return { action: 'account_deleted', message: ACCOUNT_DELETED_LOGIN_MESSAGE };
+    }
+
     if (!isCompleteProfile(userRecord)) {
+      if (await findAccountDeletedProfile(userEmail)) {
+        return { action: 'account_deleted', message: ACCOUNT_DELETED_LOGIN_MESSAGE };
+      }
       const hold = authUid
         ? await ensureAccountLinkReview({ authUid, email: userEmail, bareRecordId: authUid })
         : null;

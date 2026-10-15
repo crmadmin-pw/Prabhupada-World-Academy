@@ -1,3 +1,4 @@
+import { ACCOUNT_DELETED_LOGIN_MESSAGE, isAccountDeleted } from '@/lib/accountDeletionPolicy';
 import { AccountLinkRequests, AppError, Users } from '@/lib/backend-sdk';
 import type { ApiDatabaseUser } from '@/lib/apiAuthorization';
 import { publishCollectionRevision, publishUsersRevision } from '@/lib/publishUsersRevision';
@@ -112,6 +113,11 @@ export async function findUnlinkedEmailProfiles(email: string, authUid: string):
   return profiles.filter(record => !isLoginLinkedToProfile(record, authUid));
 }
 
+export async function findAccountDeletedProfile(email: string): Promise<any | null> {
+  const profiles = await findEmailProfiles(email);
+  return profiles.find(record => isAccountDeleted(record.status)) || null;
+}
+
 function sameIds(left: unknown, right: string[]): boolean {
   const current = Array.isArray(left) ? left.map(value => String(value)).sort() : [];
   return current.join('\0') === [...right].sort().join('\0');
@@ -130,7 +136,7 @@ export async function ensureAccountLinkReview(input: {
   const email = normalizeLoginEmail(input.email || '');
   if (!authUid || !email) return null;
 
-  const matches = await findUnlinkedEmailProfiles(email, authUid);
+  const matches = (await findUnlinkedEmailProfiles(email, authUid)).filter(record => !isAccountDeleted(record.status));
   if (matches.length === 0) return null;
 
   const candidates = matches.map(record => summarizeCandidate(record, authUid));
@@ -192,6 +198,11 @@ export async function resolveAuthenticatedProfile(authUid: string, email: string
 
   const linked = await Users.findOne({ filters: { firebaseUid: uid } });
   if (isCompleteProfile(linked) && isLoginLinkedToProfile(linked, uid)) return linked;
+
+  const emailProfiles = await findEmailProfiles(email);
+  const deletedProfile = emailProfiles.find(record => isAccountDeleted(record.status));
+  const liveProfiles = emailProfiles.filter(record => !isAccountDeleted(record.status));
+  if (deletedProfile && liveProfiles.length === 0) return deletedProfile;
 
   await ensureAccountLinkReview({
     authUid: uid,
@@ -269,6 +280,9 @@ export async function reviewAccountLinkRequest(input: {
   const profile = await Users.findOne({ id: profileId });
   if (!isCompleteProfile(profile)) {
     throw new AppError({ code: 'NOT_FOUND', message: 'That profile is no longer available to link' });
+  }
+  if (isAccountDeleted(profile.status)) {
+    throw new AppError({ code: 'CONFLICT', message: ACCOUNT_DELETED_LOGIN_MESSAGE });
   }
   if (normalizeLoginEmail(profile.email || '') !== normalizeLoginEmail(request.email || '')) {
     throw new AppError({ code: 'CONFLICT', message: 'That profile email no longer matches this login' });

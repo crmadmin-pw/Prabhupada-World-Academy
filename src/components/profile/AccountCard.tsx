@@ -71,7 +71,9 @@ export default function AccountCard({ createdAt, lastLoginAt }: Props) {
               <AlertDialogHeader>
                 <AlertDialogTitle>Delete Your Account</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This permanently deletes your account and its records now. This cannot be undone.
+                  {profile?.segment === 'PW' || profile?.isPrabhupadaWorldUser
+                    ? 'This closes your account. You will not be able to sign in again. Your records stay on file with the status Account Deleted.'
+                    : 'This permanently deletes your account and its records now. This cannot be undone.'}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>

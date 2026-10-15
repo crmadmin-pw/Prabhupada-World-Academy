@@ -3,7 +3,7 @@ import { createEndpoint, Users, SadhanaEntries, BvAttendance } from '@/lib/backe
 import { daysAgo, getTodayIST } from '../lib/streakUtils';
 import { fillingSameDayApplies } from '@/lib/userUtils';
 import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
-import { pwFieldPercent, pwOverallPercent, pwTarget } from '@/lib/pwSadhana';
+import { pwFieldPercent, pwOverallPercent, pwScoreFromFieldValues, pwTarget } from '@/lib/pwSadhana';
 
 const USER_FIELDS = ['id', 'userId', 'email', 'segment', 'isPrabhupadaWorldUser', 'ashrayLevel', 'residencyApproved', 'residencyGuideVerified', 'residency', 'selectedFolkResidency', 'temporaryResidencyEnabled', 'temporaryResidency', 'pwChantingTarget', 'pwReadingTarget', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
 const USER_IDENTITY_FIELDS = ['id', 'userId', 'email', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
@@ -179,6 +179,14 @@ interface EntryValues {
   nrFillingSameDayPts: number;
   nrSevaPts: number;
   nrBhaktiVrikshaPts: number;
+  pwWakeUpPts?: number;
+  pwSleepPts?: number;
+  pwChantingPts?: number;
+  pwReadingPts?: number;
+  pwHearingPts?: number;
+  pwSevaPts?: number;
+  pwSubmittedPts?: number;
+  pwAttendancePts?: number;
 }
 
 function entryToValues(
@@ -290,6 +298,14 @@ function avgValues(vals: EntryValues[]): Omit<EntryValues, 'label' | 'date'> {
     nrFillingSameDayPts: r('nrFillingSameDayPts'),
     nrSevaPts: r('nrSevaPts'),
     nrBhaktiVrikshaPts: r('nrBhaktiVrikshaPts'),
+    pwWakeUpPts: r('pwWakeUpPts'),
+    pwSleepPts: r('pwSleepPts'),
+    pwChantingPts: r('pwChantingPts'),
+    pwReadingPts: r('pwReadingPts'),
+    pwHearingPts: r('pwHearingPts'),
+    pwSevaPts: r('pwSevaPts'),
+    pwSubmittedPts: r('pwSubmittedPts'),
+    pwAttendancePts: r('pwAttendancePts'),
   };
 }
 
@@ -339,8 +355,16 @@ const NR_FIELD_DEFS = [
 ];
 
 const PW_FIELD_DEFS = [
+  { key: 'pwWakeUpPts', label: 'Wake-up', unit: 'pts' },
+  { key: 'pwSleepPts', label: 'Sleep', unit: 'pts' },
+  { key: 'pwChantingPts', label: 'Chanting points', unit: 'pts' },
   { key: 'rounds', label: 'Chanting', unit: 'rounds' },
+  { key: 'pwReadingPts', label: 'Reading points', unit: 'pts' },
   { key: 'reading', label: 'Reading', unit: 'min' },
+  { key: 'pwHearingPts', label: 'Hearing points', unit: 'pts' },
+  { key: 'pwSevaPts', label: 'Seva points', unit: 'pts' },
+  { key: 'pwSubmittedPts', label: 'Submitted on time', unit: 'pts' },
+  { key: 'pwAttendancePts', label: 'BV attendance', unit: 'pts' },
   { key: 'preachingMinutes', label: 'Preaching', unit: 'min' },
   { key: 'booksDistributed', label: 'Books Distributed', unit: '' },
 ];
@@ -490,7 +514,7 @@ export default createEndpoint({
     );
 
     const isNR = !effectiveIsResident;
-    const allValues = trendSorted.map(e => {
+    const allValues: Array<EntryValues & { isSickOs: boolean }> = trendSorted.map(e => {
       const isNREntry = isNonResidentEntry(e.templateMode);
       return {
         ...entryToValues(e, isNREntry || isNR, attendanceByDate, targetUser.ashrayLevel),
@@ -503,12 +527,25 @@ export default createEndpoint({
         const source = trendSorted.find(entry => String(entry.entryDate || '').slice(0, 10) === row.date);
         const stored = source ? parseFieldValues(source.fieldValuesJson as string) : {};
         const meta = (stored._meta && typeof stored._meta === 'object') ? stored._meta as Record<string, unknown> : {};
-        const chantingTarget = pwTarget('pwChantingTarget' in meta ? meta.pwChantingTarget : targetUser.pwChantingTarget);
-        const readingTarget = pwTarget('pwReadingTarget' in meta ? meta.pwReadingTarget : targetUser.pwReadingTarget);
-        row.scorePercent = pwOverallPercent([
-          pwFieldPercent(row.rounds, chantingTarget),
-          pwFieldPercent(row.reading, readingTarget),
-        ]);
+        const scored = pwScoreFromFieldValues(stored);
+        if (scored.version === 2 && scored.fieldPoints) {
+          row.scorePercent = scored.scorePercent;
+          row.pwWakeUpPts = scored.fieldPoints.wakeUp ?? 0;
+          row.pwSleepPts = scored.fieldPoints.sleep ?? 0;
+          row.pwChantingPts = scored.fieldPoints.chanting ?? 0;
+          row.pwReadingPts = scored.fieldPoints.reading ?? 0;
+          row.pwHearingPts = scored.fieldPoints.hearing ?? 0;
+          row.pwSevaPts = scored.fieldPoints.seva ?? 0;
+          row.pwSubmittedPts = scored.fieldPoints.submitted ?? 0;
+          row.pwAttendancePts = scored.fieldPoints.bvAttendance ?? 0;
+        } else {
+          const chantingTarget = pwTarget('pwChantingTarget' in meta ? meta.pwChantingTarget : targetUser.pwChantingTarget);
+          const readingTarget = pwTarget('pwReadingTarget' in meta ? meta.pwReadingTarget : targetUser.pwReadingTarget);
+          row.scorePercent = pwOverallPercent([
+            pwFieldPercent(row.rounds, chantingTarget),
+            pwFieldPercent(row.reading, readingTarget),
+          ]);
+        }
       }
     }
 

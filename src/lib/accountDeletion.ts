@@ -1,10 +1,12 @@
 import { createHash } from 'node:crypto';
 import { AppError } from '@/lib/backend-sdk';
 import {
+  ACCOUNT_DELETED_STATUS,
   ACCOUNT_DELETION_GRACE_MS,
   PENDING_DELETION_STATUS,
   collectStoragePaths,
   isPendingDeletion,
+  isPrabhupadaWorldAccount,
 } from '@/lib/accountDeletionPolicy';
 
 export interface DeletionTable {
@@ -374,6 +376,49 @@ export async function cancelAccountDeletion(options: {
   return { success: true, status: 'cancelled', purgeAt: null, profileIds };
 }
 
+function deletionSubject(profiles: any[], profileId: string, authId: string): any {
+  return profiles.find(profile => String(profile.id) === profileId)
+    || profiles.find(profile => String(profile.id) === authId)
+    || profiles.find(profile => [profile.firebaseUid, profile.uid, profile.authUid].some(value => String(value || '') === authId))
+    || profiles[0];
+}
+
+async function markProfilesAccountDeleted(users: DeletionTable, profiles: any[], nowMs: number): Promise<string[]> {
+  const accountDeletedAt = new Date(nowMs).toISOString();
+  const profileIds: string[] = [];
+  for (const profile of profiles) {
+    if (!profile?.id) continue;
+    await users.update({
+      id: profile.id,
+      record: {
+        status: ACCOUNT_DELETED_STATUS,
+        accountDeletedAt,
+        deletionRequestedAt: null,
+        deletionPurgeAt: null,
+        deletionPreviousStatus: null,
+        deletionCreatedProfile: null,
+      },
+    });
+    profileIds.push(String(profile.id));
+  }
+  return profileIds;
+}
+
+async function restoreHeldRecords(holds: DeletionTable, ownedTables: DeletionTable[], profiles: any[], ownerId: string): Promise<void> {
+  const tables = new Map(ownedTables.map(table => [table.tableName, table]));
+  const held = [];
+  for (const id of uniqueStrings([ownerId, ...profiles.map(profile => profile.id)])) {
+    held.push(...await eachPage(holds, { ownerId: id }));
+  }
+  for (const hold of held) {
+    const table = tables.get(String(hold.tableName || ''));
+    if (!table || !hold.recordId) continue;
+    const existing = await table.findOne({ id: String(hold.recordId) });
+    if (!existing) await table.create({ record: { ...(hold.record || {}), id: hold.recordId } });
+    await holds.delete({ id: hold.id });
+  }
+}
+
 function storageAndAuthIds(profiles: any[]): string[] {
   return uniqueStrings(profiles.flatMap(profile => [
     profile.deletionAuthUid,
@@ -396,6 +441,21 @@ export async function deleteAccountImmediately(options: {
 }): Promise<{ success: true; status: 'deleted'; purgeAt: null; profileIds: string[] }> {
   const email = options.email.toLowerCase();
   const profiles = await resolveProfiles(options.users, options.authId, options.profileId, email);
+  const subject = deletionSubject(profiles, options.profileId, options.authId);
+  if (subject && isPrabhupadaWorldAccount(subject)) {
+    const profileIds = await markProfilesAccountDeleted(options.users, profiles, options.nowMs);
+    const authIds = storageAndAuthIds(profiles.length ? profiles : [{ id: options.authId, deletionAuthUid: options.authId }]);
+    if (!authIds.includes(options.authId)) authIds.push(options.authId);
+    for (const uid of authIds) {
+      try {
+        await options.deleteAuthUser(uid);
+      } catch (error) {
+        console.error('[accountDeletion] sign-in removal failed after the account was closed', error);
+      }
+    }
+    return { success: true, status: 'deleted', purgeAt: null, profileIds };
+  }
+
   const identities = identityValues(profiles, options.authId, email);
   const ownedGroups = await Promise.all(options.ownedTables.map(async table => {
     const records = await collectOwned(table, identities);
@@ -452,6 +512,21 @@ export async function purgeDueAccountDeletions(options: {
     const stillPending = await options.users.findOne({ id: fresh.id });
     if (!stillPending || !isPendingDeletion(stillPending.status)) {
       skipped += 1;
+      continue;
+    }
+
+    if (profiles.some(profile => isPrabhupadaWorldAccount(profile))) {
+      const ownerId = canonicalOwnerId(profiles, authId);
+      await restoreHeldRecords(options.holds, options.ownedTables, profiles, ownerId);
+      await markProfilesAccountDeleted(options.users, profiles, options.nowMs);
+      for (const uid of storageAndAuthIds(profiles)) {
+        try {
+          await options.deleteAuthUser(uid);
+        } catch (error) {
+          console.error('[accountDeletion] sign-in removal failed after the account was closed', error);
+        }
+      }
+      purged += 1;
       continue;
     }
 

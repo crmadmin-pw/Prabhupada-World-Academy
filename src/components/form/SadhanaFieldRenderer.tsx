@@ -120,6 +120,7 @@ function SadhanaFieldRenderer({
         {field.isRequired && <span className="text-destructive ml-1 inline">*</span>}
       </Label>
       {contextBadgeLabel && <ContextBadge label={contextBadgeLabel} />}
+      {field.helpText && <p className="w-full text-xs text-muted-foreground">{field.helpText}</p>}
     </div>
   );
 

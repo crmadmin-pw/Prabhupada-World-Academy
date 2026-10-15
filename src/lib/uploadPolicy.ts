@@ -44,6 +44,26 @@ export function validateImageUpload(contentType: string, size: number): { extens
   return { extension };
 }
 
+/** True when the file's leading bytes match the declared image type. The
+ * browser-supplied MIME type alone does not prove the content is an image. */
+export function imageBytesMatchType(contentType: string, bytes: Uint8Array): boolean {
+  const ascii = (start: number, end: number) => String.fromCharCode(...bytes.subarray(start, end));
+  switch (contentType.trim().toLowerCase()) {
+    case 'image/jpeg':
+      return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+    case 'image/png':
+      return ascii(1, 4) === 'PNG' && bytes[0] === 0x89;
+    case 'image/gif':
+      return ascii(0, 6) === 'GIF87a' || ascii(0, 6) === 'GIF89a';
+    case 'image/webp':
+      return ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WEBP';
+    case 'image/avif':
+      return ascii(4, 8) === 'ftyp' && ['avif', 'avis'].includes(ascii(8, 12));
+    default:
+      return false;
+  }
+}
+
 export function buildImageObjectPath(
   purpose: UploadPurpose,
   uid: string,

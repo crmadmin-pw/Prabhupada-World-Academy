@@ -4,11 +4,14 @@ import { bvGroupDepartment } from '@/lib/bvGroupName';
 import { bvUserAliases } from '@/lib/bvGroupMemberScope';
 import { getScopedHierarchyUserIds, isUserInHierarchy } from '@/lib/hierarchyUtils';
 import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
-import { pwTarget } from '@/lib/pwSadhana';
+import { pwTarget, pwTime, readPwTargets } from '@/lib/pwSadhana';
+import { canSetPwTargets, isPwAdmin, isPwRgf } from '@/lib/pwTargetResolver';
 import { serverCacheInvalidate } from '@/lib/serverCache';
 
 const MEMBER_FIELDS = ['id', 'userId', 'email', 'fullName', 'segment', 'isPrabhupadaWorldUser', 'role',
-  'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator', 'isBvAdmin',
+  'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator', 'isBvAdmin', 'isBvSuperAdmin', 'isBvSupervisor',
+  'isBvMember', 'isRgsf', 'isSadhanaMentor', 'bvGroupId', 'sadhanaMentor', 'ashrayLevel',
+  'pwTargets', 'pwChantingTarget', 'pwReadingTarget',
   'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
 
 function rawIdentity(user: any): string[] {
@@ -82,26 +85,34 @@ async function memberInAssignableGroup(people: any[]): Promise<boolean> {
   return groups.some(group => bvGroupDepartment(group.segment) !== 'FOLK');
 }
 
+const optionalMinutes = z.number().int().min(0).max(1440).nullable().optional();
+
 export default createEndpoint({
-  description: 'Assign a Prabhupada World member their chanting rounds and reading minutes',
+  description: 'Assign a Prabhupada World member the sadhana targets their role allows',
   authenticated: true,
-  requiredCapabilities: 'bv.manage',
   inputSchema: z.object({
     userId: z.string().min(1),
-    chantingRounds: z.number().int().min(0).max(192).nullable(),
-    readingMinutes: z.number().int().min(0).max(1440).nullable(),
+    chantingRounds: z.number().int().min(0).max(192).nullable().optional(),
+    readingMinutes: optionalMinutes,
+    wakeUp: z.string().nullable().optional(),
+    sleep: z.string().nullable().optional(),
+    hearingMinutes: optionalMinutes,
+    sevaMinutes: optionalMinutes,
   }),
   outputSchema: z.object({
     success: z.boolean(),
     pwChantingTarget: z.number().nullable(),
     pwReadingTarget: z.number().nullable(),
+    pwTargets: z.any(),
+    source: z.string(),
   }),
   execute: async ({ input, context }: any) => {
     if (!context.user) throw new Error('Unauthorized');
-    const isRgf = !!(context.user.isBvFacilitator || context.user.isBvsl);
-    const isAdmin = !!(context.user.isBvAdmin || context.user.isBvSuperAdmin);
-    if (!isRgf && !isAdmin) {
-      throw new AppError({ code: 'FORBIDDEN', message: 'Only a reading group facilitator can assign sadhana targets' });
+    const isRgf = isPwRgf(context.user);
+    const isAdmin = isPwAdmin(context.user);
+    const isMentor = !!(context.user.isSadhanaMentor);
+    if (!isRgf && !isAdmin && !isMentor) {
+      throw new AppError({ code: 'FORBIDDEN', message: 'Only a reading group facilitator, admin, or sadhana mentor can assign sadhana targets' });
     }
 
     const found = await Users.findOne({ id: input.userId, fields: MEMBER_FIELDS })
@@ -110,8 +121,8 @@ export default createEndpoint({
     if (!found) throw new AppError({ code: 'NOT_FOUND', message: 'Member not found' });
     const profiles = await relatedProfiles(found);
     const member = profiles.find(profile => profile.id && profile.userId && profile.id !== profile.userId) || found;
-    const inAssignableGroup = profiles.some(isPwSadhanaUser) || await memberInAssignableGroup(profiles);
-    if (!inAssignableGroup) {
+    const inGroup = await memberInAssignableGroup(profiles);
+    if (!profiles.some(isPwSadhanaUser) && !inGroup) {
       throw new AppError({ code: 'FORBIDDEN', message: 'Sadhana targets apply only to Prabhupada World members' });
     }
 
@@ -120,19 +131,39 @@ export default createEndpoint({
       throw new AppError({ code: 'FORBIDDEN', message: 'You can only assign sadhana for your own members' });
     }
 
-    const pwChantingTarget = pwTarget(input.chantingRounds);
-    const pwReadingTarget = pwTarget(input.readingMinutes);
+    const inBvGroup = inGroup || profiles.some(profile => profile.isBvMember || profile.bvGroupId || profile.isBvSubFacilitator || profile.isRgsf);
+    const permission = canSetPwTargets(context.user, member, inBvGroup);
+    if (!permission.allowed) {
+      throw new AppError({ code: 'FORBIDDEN', message: permission.message });
+    }
+
+    const next = readPwTargets(member.pwTargets);
+    if (next.chanting == null) next.chanting = pwTarget(member.pwChantingTarget);
+    if (next.readingMin == null) next.readingMin = pwTarget(member.pwReadingTarget);
+    if (input.chantingRounds !== undefined) next.chanting = pwTarget(input.chantingRounds);
+    if (input.readingMinutes !== undefined) next.readingMin = pwTarget(input.readingMinutes);
+    if (input.wakeUp !== undefined) next.wakeUp = pwTime(input.wakeUp);
+    if (input.sleep !== undefined) next.sleep = pwTime(input.sleep);
+    if (input.hearingMinutes !== undefined) next.hearingMin = pwTarget(input.hearingMinutes);
+    if (input.sevaMinutes !== undefined) next.sevaMin = pwTarget(input.sevaMinutes);
+    const pwTargets = {
+      ...next,
+      setBy: context.user.id || context.user.userId || '',
+      setByRole: permission.source,
+      updatedAt: new Date().toISOString(),
+    };
     await Users.update({
       id: member.id,
       record: {
-        pwChantingTarget,
-        pwReadingTarget,
+        pwChantingTarget: next.chanting,
+        pwReadingTarget: next.readingMin,
+        pwTargets,
         // Keep the profile aligned with the reading group so later sadhana
         // scoring sees the same department this target was saved for.
         ...(!isPwSadhanaUser(member) ? { segment: 'PW', isPrabhupadaWorldUser: true } : {}),
       },
     });
     serverCacheInvalidate('bvslMembers:');
-    return { success: true, pwChantingTarget, pwReadingTarget };
+    return { success: true, pwChantingTarget: next.chanting, pwReadingTarget: next.readingMin, pwTargets, source: permission.source };
   },
 });

@@ -76,15 +76,15 @@ test('a group leader can read member contacts and the join token', async t => {
   assert.equal(detail.members.length, 2);
   const listedMember = detail.members.find((row: any) => row.fullName === member.fullName);
   const listedLeader = detail.members.find((row: any) => row.fullName === leader.fullName);
-  assert.equal(listedMember.phone, member.phone);
-  assert.deepEqual(listedLeader.badges, ['RGF']);
+  assert.equal(listedMember?.phone, member.phone);
+  assert.deepEqual(listedLeader?.badges, ['RGF']);
   assert.equal(detail.group.joinToken, group.joinToken);
 });
 
 test('a supervisor in the chain can read the group but not its join token', async t => {
   database(t);
   const detail = await call(supervisor);
-  assert.equal(detail.members.find((row: any) => row.fullName === member.fullName).userId, member.userId);
+  assert.equal(detail.members.find((row: any) => row.fullName === member.fullName)?.userId, member.userId);
   assert.equal(detail.group.joinToken, null);
   assert.equal(detail.group.whatsAppLink, group.whatsAppLink);
 });
@@ -149,15 +149,15 @@ test('RGF and RGSF appear in the member list with attendance scores', async t =>
   const detail = await call(reportingLeader);
   const listedLeader = detail.members.find((row: any) => row.fullName === leader.fullName);
   const listedRgsf = detail.members.find((row: any) => row.fullName === rgsf.fullName);
-  assert.deepEqual(listedLeader.badges, ['RGF']);
-  assert.equal(listedLeader.presentCount, 1);
-  assert.equal(listedLeader.totalCount, 2);
-  assert.equal(listedLeader.attendanceRate, 50);
-  assert.deepEqual(listedRgsf.badges, ['RGSF']);
-  assert.equal(listedRgsf.presentCount, 1);
-  assert.equal(listedRgsf.totalCount, 1);
-  assert.equal(listedRgsf.attendanceRate, 100);
-  assert.equal(detail.members.find((row: any) => row.fullName === member.fullName).badges.length, 0);
+  assert.deepEqual(listedLeader?.badges, ['RGF']);
+  assert.equal(listedLeader?.presentCount, 1);
+  assert.equal(listedLeader?.totalCount, 2);
+  assert.equal(listedLeader?.attendanceRate, 50);
+  assert.deepEqual(listedRgsf?.badges, ['RGSF']);
+  assert.equal(listedRgsf?.presentCount, 1);
+  assert.equal(listedRgsf?.totalCount, 1);
+  assert.equal(listedRgsf?.attendanceRate, 100);
+  assert.equal(detail.members.find((row: any) => row.fullName === member.fullName)?.badges.length, 0);
 });
 
 test('a member and an outsider are refused before membership records are read', async t => {

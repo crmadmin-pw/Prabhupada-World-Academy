@@ -95,10 +95,15 @@ export default createEndpoint({
     // ── Step 3: Check existing summaries to avoid duplicates ─────────────────
     // Build set of already-archived user+month combos
     const existingKeys = new Set<string>();
-    const { records: existingSummaries } = await SadhanaMonthlySummaries.findAll({
-      fields: ['user', 'month'],
-      limit: 2000,
-    });
+    // Only the months being archived matter. A fixed cap on all summaries
+    // missed older rows once there were many, creating duplicates on re-run.
+    const candidateMonths = [...new Set([...groups.keys()].map(key => key.split('::')[1]).filter(Boolean))];
+    const { records: existingSummaries } = candidateMonths.length > 0
+      ? await SadhanaMonthlySummaries.findAll({
+        filters: { month: { in: candidateMonths } },
+        fields: ['user', 'month'],
+      })
+      : { records: [] as any[] };
     for (const s of existingSummaries) {
       const uid = Array.isArray(s.user) ? s.user[0] : (s.user || '');
       if (uid && s.month) existingKeys.add(`${uid}::${s.month}`);

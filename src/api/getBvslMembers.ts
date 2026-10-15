@@ -122,9 +122,9 @@ async function fetchBvslMembers({ input, context }: { input: any; context: any }
   let memberUsers: any[] = [];
   if (userIds.length > 0) {
     const userQueries = await Promise.all([
-      Users.findAll({ filters: { id: { in: userIds } } as any, fields: ['id', 'userId', 'fullName', 'phone', 'ashrayLevel', 'email', 'residency', 'residencyApproved', 'role', 'roles', 'isRgsf', 'pwChantingTarget', 'pwReadingTarget', 'firebaseUid', 'uid', 'authUid'], limit: 500 }),
-      Users.findAll({ filters: { userId: { in: userIds } } as any, fields: ['id', 'userId', 'fullName', 'phone', 'ashrayLevel', 'email', 'residency', 'residencyApproved', 'role', 'roles', 'isRgsf', 'pwChantingTarget', 'pwReadingTarget', 'firebaseUid', 'uid', 'authUid'], limit: 500 }),
-      Users.findAll({ filters: { email: { in: userIds } } as any, fields: ['id', 'userId', 'fullName', 'phone', 'ashrayLevel', 'email', 'residency', 'residencyApproved', 'role', 'roles', 'isRgsf', 'pwChantingTarget', 'pwReadingTarget', 'firebaseUid', 'uid', 'authUid'], limit: 500 }),
+      Users.findAll({ filters: { id: { in: userIds } } as any, fields: ['id', 'userId', 'fullName', 'phone', 'ashrayLevel', 'email', 'residency', 'residencyApproved', 'role', 'roles', 'isRgsf', 'pwChantingTarget', 'pwReadingTarget', 'pwTargets', 'firebaseUid', 'uid', 'authUid'], limit: 500 }),
+      Users.findAll({ filters: { userId: { in: userIds } } as any, fields: ['id', 'userId', 'fullName', 'phone', 'ashrayLevel', 'email', 'residency', 'residencyApproved', 'role', 'roles', 'isRgsf', 'pwChantingTarget', 'pwReadingTarget', 'pwTargets', 'firebaseUid', 'uid', 'authUid'], limit: 500 }),
+      Users.findAll({ filters: { email: { in: userIds } } as any, fields: ['id', 'userId', 'fullName', 'phone', 'ashrayLevel', 'email', 'residency', 'residencyApproved', 'role', 'roles', 'isRgsf', 'pwChantingTarget', 'pwReadingTarget', 'pwTargets', 'firebaseUid', 'uid', 'authUid'], limit: 500 }),
     ]);
     const uniqueUsers = new Map<string, any>();
     userQueries.flatMap(result => result.records || []).forEach((user: any) => uniqueUsers.set(String(user.id), user));
@@ -164,8 +164,9 @@ async function fetchBvslMembers({ input, context }: { input: any; context: any }
       isResident: !!(u.residencyApproved && residencyId),
       residencyName: residencyId ? (residencyMap[residencyId] || null) : null,
       isRgsf: !!(u.isRgsf || u.role === 'RGSF' || (Array.isArray(u.roles) && u.roles.includes('RGSF'))),
-      pwChantingTarget: u.pwChantingTarget ?? null,
-      pwReadingTarget: u.pwReadingTarget ?? null,
+      pwChantingTarget: u.pwTargets?.chanting ?? u.pwChantingTarget ?? null,
+      pwReadingTarget: u.pwTargets?.readingMin ?? u.pwReadingTarget ?? null,
+      pwTargets: u.pwTargets ?? null,
     };
   }).filter(member => member !== null);
 

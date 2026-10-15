@@ -14,6 +14,7 @@ import { ArrowLeft, AlertCircle, Loader2, Link as LinkIcon, CheckCircle2 } from 
 import { getGuides, registerUser, checkGuideEmail, getAllResidencies, GetGuidesOutputType, GetAllResidenciesOutputType } from '@/lib/endpoints-sdk';
 import { acceptStoredGroupInvite } from '@/lib/bvJoinInvite';
 import { applyRegistrationFlowFromSearch, isPwRegistrationFlow } from '@/lib/registrationDepartment';
+import { ACCOUNT_DELETED_LOGIN_MESSAGE } from '@/lib/accountDeletionPolicy';
 import { Link } from 'react-router-dom';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { useAuth } from '@/lib/auth-sdk';
@@ -201,7 +202,9 @@ export default function RegistrationPage() {
       }
     } catch (err: any) {
       const msg = err?.message || '';
-      if (msg.includes('already exists') || msg.includes('already registered')) {
+      if (msg.includes('support@prabhupadaworld.com')) {
+        toast.error(ACCOUNT_DELETED_LOGIN_MESSAGE);
+      } else if (msg.includes('already exists') || msg.includes('already registered')) {
         toast.error('An account with this phone number already exists. Please sign in instead.');
       } else if (msg.includes('guide not found')) {
         toast.error('Selected guide not found. Please refresh and try again.');

@@ -9,7 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { Users, Search, Phone, MessageCircle, ExternalLink, UserMinus } from 'lucide-react';
 import { toast } from 'sonner';
-import { getBvslMembers, removeGroupMember, setPwSadhanaTargets } from '@/lib/endpoints-sdk';
+import { getBvslMembers, removeGroupMember } from '@/lib/endpoints-sdk';
+import PwTargetEditor from '@/components/pw/PwTargetEditor';
 import type { GetBvslMembersOutputType } from '@/lib/endpoints-sdk';
 import { EmptyState, ConfirmDialog } from '@/shared';
 import { ASHRAY_LEVELS } from '@/types/enums';
@@ -22,68 +23,6 @@ interface Props {
   bvslId: string;
   detailBasePath?: '/guide/users' | '/rgsf/users';
   canAssignSadhana?: boolean;
-}
-
-function targetText(value: number | null | undefined): string {
-  return value == null ? '' : String(value);
-}
-
-function SadhanaTargetEditor({ member }: { member: Member }) {
-  const savedRounds = targetText(member.pwChantingTarget);
-  const savedMinutes = targetText(member.pwReadingTarget);
-  const [rounds, setRounds] = useState(savedRounds);
-  const [minutes, setMinutes] = useState(savedMinutes);
-  const [committedRounds, setCommittedRounds] = useState(savedRounds);
-  const [committedMinutes, setCommittedMinutes] = useState(savedMinutes);
-  const [saving, setSaving] = useState(false);
-  const dirty = rounds.trim() !== committedRounds || minutes.trim() !== committedMinutes;
-
-  useEffect(() => {
-    setRounds(savedRounds);
-    setMinutes(savedMinutes);
-    setCommittedRounds(savedRounds);
-    setCommittedMinutes(savedMinutes);
-  }, [member.userId, savedRounds, savedMinutes]);
-
-  const save = async () => {
-    const chantingRounds = rounds.trim() === '' ? null : Math.round(Number(rounds));
-    const readingMinutes = minutes.trim() === '' ? null : Math.round(Number(minutes));
-    if ((chantingRounds != null && !Number.isFinite(chantingRounds)) || (readingMinutes != null && !Number.isFinite(readingMinutes))) {
-      toast.error('Enter whole numbers for rounds and minutes, or leave a field empty');
-      return;
-    }
-    setSaving(true);
-    try {
-      const saved = await setPwSadhanaTargets({
-        userId: member.userId,
-        chantingRounds,
-        readingMinutes,
-      });
-      const nextRounds = targetText(saved.pwChantingTarget);
-      const nextMinutes = targetText(saved.pwReadingTarget);
-      setRounds(nextRounds);
-      setMinutes(nextMinutes);
-      setCommittedRounds(nextRounds);
-      setCommittedMinutes(nextMinutes);
-      toast.success(`Saved sadhana target for ${member.fullName}`);
-    } catch (error: any) {
-      toast.error(error?.message || 'Could not save the sadhana target');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="flex items-center gap-1" onClick={event => event.stopPropagation()}>
-      <Input value={rounds} inputMode="numeric" placeholder="Rounds" aria-label={`Chanting rounds for ${member.fullName}`}
-        className="h-7 w-16 px-1.5 text-xs" onChange={event => setRounds(event.target.value)} />
-      <Input value={minutes} inputMode="numeric" placeholder="Min" aria-label={`Reading minutes for ${member.fullName}`}
-        className="h-7 w-16 px-1.5 text-xs" onChange={event => setMinutes(event.target.value)} />
-      <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={!dirty || saving} onClick={() => void save()}>
-        {saving ? '...' : 'Save'}
-      </Button>
-    </div>
-  );
 }
 
 export default function BvslMembersTable({ bvslId, detailBasePath = '/guide/users', canAssignSadhana = false }: Props) {
@@ -252,7 +191,9 @@ export default function BvslMembersTable({ bvslId, detailBasePath = '/guide/user
                             {m.ashrayLevel && <Badge variant="outline" className="text-xs">{m.ashrayLevel}</Badge>}
                             {isFolk && m.isResident && <Badge className="text-xs bg-primary/10 text-primary border-primary/30">{m.residencyName || 'Resident'}</Badge>}
                           </div>
-                          {canAssignSadhana && <SadhanaTargetEditor member={m} />}
+                          {canAssignSadhana && (
+                            <PwTargetEditor userId={m.userId} fullName={m.fullName} targets={(m as any).pwTargets || { chanting: m.pwChantingTarget, readingMin: m.pwReadingTarget }} />
+                          )}
                         </div>
                         <div className="flex gap-1 shrink-0">
                           {m.phone && (
@@ -285,7 +226,7 @@ export default function BvslMembersTable({ bvslId, detailBasePath = '/guide/user
                       <th className="text-left p-2 font-medium bg-card">Group</th>
                       <th className="text-left p-2 font-medium bg-card">Ashray Level</th>
                       {isFolk && <th className="text-left p-2 font-medium bg-card">Type</th>}
-                      {canAssignSadhana && <th className="text-left p-2 font-medium bg-card">Chanting / Reading</th>}
+                      {canAssignSadhana && <th className="text-left p-2 font-medium bg-card">Sadhana targets</th>}
                       <th className="text-left p-2 font-medium bg-card">Contact</th>
                       {canManageGroups && <th className="text-left p-2 font-medium bg-card">Actions</th>}
                     </tr>
@@ -312,7 +253,9 @@ export default function BvslMembersTable({ bvslId, detailBasePath = '/guide/user
                         </td>
                         <td className="p-2 text-muted-foreground">{m.ashrayLevel || '—'}</td>
                         {canAssignSadhana && (
-                          <td className="p-2"><SadhanaTargetEditor member={m} /></td>
+                          <td className="p-2" onClick={event => event.stopPropagation()}>
+                            <PwTargetEditor userId={m.userId} fullName={m.fullName} targets={(m as any).pwTargets || { chanting: m.pwChantingTarget, readingMin: m.pwReadingTarget }} />
+                          </td>
                         )}
                         {isFolk && (
                           <td className="p-2">

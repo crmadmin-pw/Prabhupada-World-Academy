@@ -116,7 +116,7 @@ test('one reading group can be facilitated by more than one RGF', async () => {
       } as never);
       assert.ok(listed.groups.some((group: any) => group.groupId === shared.groupId));
       const row = listed.groups.find((group: any) => group.groupId === shared.groupId);
-      assert.equal(row.bvslName, 'First Shared RGF, Second Shared RGF');
+      assert.equal(row?.bvslName, 'First Shared RGF, Second Shared RGF');
     }
   } finally {
     await BvGroups.delete({ id: shared.id }).catch(() => undefined);
@@ -180,7 +180,7 @@ test('one RGF can facilitate more than one reading group', async () => {
     } as never);
     const listedRgf = directory.users.find((user: any) => user.userDbId === rgf.userId || user.email === rgf.email);
     assert.deepEqual(
-      [...(listedRgf?.facilitatedGroupNames || [])].sort(),
+      [...((listedRgf as { facilitatedGroupNames?: string[] } | undefined)?.facilitatedGroupNames || [])].sort(),
       [monday.groupName, thursday.groupName].sort(),
     );
 

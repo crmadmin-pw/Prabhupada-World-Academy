@@ -28,7 +28,8 @@ import BvslPreachingSection, { BV_DURATION_KEYS } from '@/components/BvslPreachi
 import ScoringCriteriaPanel from '@/components/guide/ScoringCriteriaPanel';
 import SadhanaFieldRenderer from '@/components/form/SadhanaFieldRenderer';
 import NRScoringCriteria from '@/components/form/NRScoringCriteria';
-import { scorePwSadhana } from '@/lib/pwSadhana';
+import { emptyPwTargets, scorePwSadhanaV2, type PwTargets } from '@/lib/pwSadhana';
+import PwScoringCriteria from '@/components/pw/PwScoringCriteria';
 import {
   normalizeFieldType, parseCriteria, isNRCriteria,
   calculateNRPoints, calculateResidentPoints, parseNumericValue,
@@ -84,7 +85,13 @@ export default function DailySadhanaForm() {
   const ashrayLevel = profile?.ashrayLevel || '';
   const isFolkUser = getUserDepartment(profile) === 'FOLK';
   const isPwUser = getUserDepartment(profile) === 'PW';
-  const [pwTargets, setPwTargets] = useState<{ chanting: number | null; reading: number | null }>({ chanting: null, reading: null });
+  const [pwContext, setPwContext] = useState<{
+    targets: PwTargets;
+    source: string | null;
+    deadline: string;
+    attendance: { attended: number; session: number } | null;
+    submittedAt: string | null;
+  }>({ targets: emptyPwTargets(), source: null, deadline: '10:00', attendance: null, submittedAt: null });
   const [userRoleFromDb, setUserRoleFromDb] = useState<string | null>(null);
   const userRole = userRoleFromDb || profile?.role || 'USER';
   // RGFs are the current Reading Group Facilitator role.  Their Bhakti
@@ -120,15 +127,33 @@ export default function DailySadhanaForm() {
     return entryDate === today ? 1 : 0;
   }, [isResident, entryDate]);
 
+  const pwScore = useMemo(() => {
+    if (!isPwUser) return null;
+    return scorePwSadhanaV2({
+      wakeUp: formValues.wakeUp,
+      sleep: formValues.sleep,
+      chanting: formValues.chanting,
+      reading: formValues.reading,
+      hearing: formValues.hearing,
+      seva: formValues.seva,
+      bvAttendedMinutes: pwContext.attendance?.attended,
+      bvSessionMinutes: pwContext.attendance?.session,
+      submittedAt: pwContext.submittedAt || new Date().toISOString(),
+      entryDate,
+      submissionDeadline: pwContext.deadline,
+      waiveWakeUp: formValues.waiveWakeUp,
+      waiveWakeUpReason: formValues.waiveWakeUpReason,
+      waiveSleep: formValues.waiveSleep,
+      waiveSleepReason: formValues.waiveSleepReason,
+      waiveChanting: formValues.waiveChanting,
+      waiveChantingReason: formValues.waiveChantingReason,
+      targets: pwContext.targets,
+    });
+  }, [isPwUser, formValues, pwContext, entryDate]);
+
   const scoreResult = useMemo(() => {
-    if (isPwUser) {
-      const pw = scorePwSadhana({
-        chanting: Number(formValues.chanting) || 0,
-        reading: Number(formValues.reading) || 0,
-        chantingTarget: pwTargets.chanting,
-        readingTarget: pwTargets.reading,
-      });
-      return { totalScore: pw.scorePercent ?? 0, maxScore: pw.scorePercent == null ? 0 : 100, scorePercent: pw.scorePercent };
+    if (pwScore) {
+      return { totalScore: pwScore.earned, maxScore: pwScore.applicableMax, scorePercent: pwScore.scorePercent };
     }
     if (!isResident) return baseScoreResult; // NR: no report_sending
     // All resident entries (normal AND sick/OS) include report_sending
@@ -138,7 +163,7 @@ export default function DailySadhanaForm() {
     const maxScore = isSickOrOs ? 8 : (baseScoreResult.maxScore + 1);
     const scorePercent = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : null;
     return { totalScore, maxScore, scorePercent };
-  }, [baseScoreResult, isResident, isSickOrOs, reportSendingPts, isPwUser, formValues.chanting, formValues.reading, pwTargets]);
+  }, [baseScoreResult, isResident, isSickOrOs, reportSendingPts, pwScore]);
 
   const bvTotalMinutes = useMemo(() => {
     return BV_DURATION_KEYS.reduce((sum, key) => sum + (bvslValues[key] || 0), 0);
@@ -196,9 +221,12 @@ export default function DailySadhanaForm() {
       setUserJoinDate(result.userJoinDate || result.residencyJoinDate);
       setTemplateMode(result.templateMode || 'RESIDENT_TEMPLATE');
       setIsResident(result.isResident ?? false);
-      setPwTargets({
-        chanting: result.isPw ? result.pwChantingTarget ?? null : null,
-        reading: result.isPw ? result.pwReadingTarget ?? null : null,
+      setPwContext({
+        targets: result.pwTargets || emptyPwTargets(),
+        source: result.pwTargetSource || null,
+        deadline: result.pwSubmissionDeadline || '10:00',
+        attendance: result.pwBvAttendance || null,
+        submittedAt: result.entry?.submittedAt || null,
       });
       setIsOfficialResident(result.isOfficialResident ?? false);
       setTempResidencyEnabled(result.tempResidencyEnabled ?? false);
@@ -331,10 +359,26 @@ export default function DailySadhanaForm() {
       // Duration: 0 is a valid value (user didn't read/preach today) — only block empty/unset
       if (nt === 'duration') return v === undefined || v === null || v === '';
       // Time: empty string OR "00:00" (midnight is never a valid japa/sleep time)
-      if (nt === 'time') return !v || v === '' || v === '00:00';
+      if (nt === 'time') {
+        if (isPwUser && (f.fieldKey === 'wakeUp' || f.fieldKey === 'sleep')) return !v;
+        return !v || v === '' || v === '00:00';
+      }
       return v === '' || v === undefined || v === null;
+    }).filter(field => {
+      if (field.fieldKey === 'wakeUp' && formValues.waiveWakeUp) return false;
+      if (field.fieldKey === 'sleep' && formValues.waiveSleep) return false;
+      if (field.fieldKey === 'chanting' && formValues.waiveChanting) return false;
+      return true;
     });
     if (missing.length > 0) { toast.error(`Please fill: ${missing.map(f => f.fieldLabel).join(', ')}`); return; }
+    if (isPwUser) {
+      const waiveGap = [
+        [formValues.waiveWakeUp, formValues.waiveWakeUpReason, 'wake-up'],
+        [formValues.waiveSleep, formValues.waiveSleepReason, 'sleep'],
+        [formValues.waiveChanting, formValues.waiveChantingReason, 'chanting'],
+      ].find(([flag, reason]) => flag === true && !String(reason || '').trim());
+      if (waiveGap) { toast.error(`Enter a reason for the ${waiveGap[2]} waive-off`); return; }
+    }
 
     // BV-FIX-1: Validate RGF preaching fields are compulsory
     if (isBvsl && !isPwUser) {
@@ -513,7 +557,7 @@ export default function DailySadhanaForm() {
                   {isResident
                     ? 'Temple morning program is exempted. Your score will be evaluated only from Chanting (Rounds) + Book Reading (maximum 7 points) plus 1 bonus point for same-day submission.'
                     : isPwUser
-                      ? 'Fill the chanting rounds and reading minutes you completed.'
+                      ? 'Fill the sadhana you completed. A waive-off needs a reason and scores full points for that field.'
                       : `Temple attendance is exempted. Your score is evaluated only from Chanting Rounds + Book Reading (max ${sickMaxScore} points).`}
                 </p>
               </div>
@@ -557,11 +601,17 @@ export default function DailySadhanaForm() {
           )}
 
           {isPwUser && (
-            <p className="text-sm text-muted-foreground">
-              {pwTargets.chanting || pwTargets.reading
-                ? `Assigned by your RGF: ${pwTargets.chanting ? `${pwTargets.chanting} rounds` : 'chanting not assigned'}${pwTargets.reading ? `, ${pwTargets.reading} minutes of reading` : ''}. More than the assignment still counts as 100%.`
-                : 'No chanting rounds or reading minutes are assigned yet. Fill in what you did. A percentage appears once your RGF assigns a target.'}
-            </p>
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                {pwContext.source === 'admin' && 'Your admin sets these targets.'}
+                {pwContext.source === 'mentor' && 'Your sadhana mentor sets these targets.'}
+                {pwContext.source === 'ashraya' && 'These targets follow your Ashraya level.'}
+                {pwContext.source !== 'admin' && pwContext.source !== 'mentor' && pwContext.source !== 'ashraya' && 'Your RGF sets these targets.'}
+                {' '}Submission deadline is {pwContext.deadline}. The percentage is points earned divided by the points that apply today.
+                {pwContext.attendance ? ` BV attendance recorded: ${pwContext.attendance.attended} of ${pwContext.attendance.session} minutes.` : ' BV attendance is added by your RGF or RGSF.'}
+              </p>
+              <PwScoringCriteria />
+            </div>
           )}
 
           {/* NR: Filled Same Day auto-indicator + personalized scoring targets */}
@@ -620,19 +670,18 @@ export default function DailySadhanaForm() {
                 <div className="flex items-center justify-between gap-4 flex-wrap">
                   <div className={isSickOrOs ? 'opacity-50' : ''}>
                     <p className="text-sm text-muted-foreground">{isPwUser ? 'Sadhana' : 'Sadhana Score'}</p>
-                    {isPwUser ? (
-                      scoreResult.scorePercent != null ? (
-                        <>
-                          <p className="text-3xl font-bold text-primary">{scoreResult.scorePercent}%</p>
-                          <p className="text-xs text-muted-foreground">
-                            {pwTargets.chanting ? `${formValues.chanting || 0}/${pwTargets.chanting} rounds` : `${formValues.chanting || 0} rounds`}
-                            {' · '}
-                            {pwTargets.reading ? `${formValues.reading || 0}/${pwTargets.reading} min` : `${formValues.reading || 0} min`}
-                          </p>
-                        </>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">No target assigned, so this day has no percentage.</p>
-                      )
+                    {isPwUser && pwScore ? (
+                      <>
+                        <p className="text-3xl font-bold text-primary">{pwScore.scorePercent ?? 0}%</p>
+                        <p className="text-xs text-muted-foreground">{pwScore.earned} / {pwScore.applicableMax} pts</p>
+                        <ul className="mt-2 space-y-0.5">
+                          {pwScore.fields.map(field => (
+                            <li key={field.key} className="text-xs text-muted-foreground">
+                              {field.label}: {field.points == null ? 'not assigned' : `${field.points}/${field.maxPoints}`}
+                            </li>
+                          ))}
+                        </ul>
+                      </>
                     ) : percentage != null ? (
                       <>
                         <p className="text-3xl font-bold text-primary">
