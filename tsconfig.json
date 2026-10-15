@@ -35,5 +35,5 @@
     "**/*.mts",
     "src/types/**/*.d.ts"
   ],
-  "exclude": ["node_modules", "functions"]
+  "exclude": ["node_modules", "functions", "tests"]
 }
