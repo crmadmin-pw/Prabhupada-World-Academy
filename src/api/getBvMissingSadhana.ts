@@ -69,22 +69,23 @@ export default createEndpoint({
       groups.flatMap(g => textList(g.bvslLeader))
     )];
     const bvslMap: Record<string, string> = {};
-    if (bvslLeaderIds.length > 0) {
-      const { records: bvslUsers } = await Users.findAll({
-        filters: { id: { in: bvslLeaderIds } as any },
-        fields: ['id', 'fullName'],
-        limit: 200,
-      });
-      for (const u of bvslUsers) bvslMap[u.id] = u.fullName || '';
-    }
-
-    // ── 4. Fetch all group memberships ───────────────────────────────────────
     const groupDbIds = groups.map(g => g.id);
-    const { records: memberships } = await BvGroupMembers.findAll({
-      filters: { group: { in: groupDbIds } as any },
-      fields: ['user', 'group'],
-      limit: 2000,
-    });
+    const [bvslUsers, { records: memberships }] = await Promise.all([
+      bvslLeaderIds.length > 0
+        ? Users.findAll({
+          filters: { id: { in: bvslLeaderIds } as any },
+          fields: ['id', 'fullName'],
+          limit: 200,
+        }).then(result => result.records)
+        : Promise.resolve([] as any[]),
+      // ── 4. Fetch all group memberships ───────────────────────────────────────
+      BvGroupMembers.findAll({
+        filters: { group: { in: groupDbIds } as any },
+        fields: ['user', 'group'],
+        limit: 2000,
+      }),
+    ]);
+    for (const u of bvslUsers) bvslMap[u.id] = u.fullName || '';
 
     const allMemberUserIds = [...new Set(
       memberships.map(m => (Array.isArray(m.user) ? m.user[0] : m.user) as string).filter(Boolean)
@@ -97,11 +98,22 @@ export default createEndpoint({
     }
 
     // ── 5. Fetch member user records (both Active and Inactive) ──────────────
-    const { records: memberUsers } = await Users.findAll({
-      filters: { id: { in: allMemberUserIds } as any },
-      fields: ['id', 'fullName', 'phone', 'email', 'status', 'role'],
-      limit: 2000,
-    });
+    // ── 6. Sadhana entries in the date range are fetched concurrently ───────
+    const [{ records: memberUsers }, { records: entries }] = await Promise.all([
+      Users.findAll({
+        filters: { id: { in: allMemberUserIds } as any },
+        fields: ['id', 'fullName', 'phone', 'email', 'status', 'role'],
+        limit: 2000,
+      }),
+      SadhanaEntries.findAll({
+        filters: {
+          entryDate: { gte: input.startDate, lte: input.endDate } as any,
+          user: { in: allMemberUserIds } as any,
+        },
+        fields: ['user', 'entryDate', 'submittedAt'],
+        limit: 10000,
+      }),
+    ]);
     const userInfoMap: Record<string, { fullName: string; phone: string; email: string; status: string; role: string }> = {};
     for (const u of memberUsers) {
       userInfoMap[u.id] = {
@@ -112,16 +124,6 @@ export default createEndpoint({
         role: (u.role as string) || '',
       };
     }
-
-    // ── 6. Fetch sadhana entries in date range ───────────────────────────────
-    const { records: entries } = await SadhanaEntries.findAll({
-      filters: {
-        entryDate: { gte: input.startDate, lte: input.endDate } as any,
-        user: { in: allMemberUserIds } as any,
-      },
-      fields: ['user', 'entryDate', 'submittedAt'],
-      limit: 10000,
-    });
 
     // Build per-user entry map
     const userEntryMap: Record<string, Array<{ entryDate: string; submittedAt: string | null }>> = {};

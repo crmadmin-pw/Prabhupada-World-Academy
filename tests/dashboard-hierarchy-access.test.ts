@@ -596,3 +596,20 @@ test('ordinary admins see meetings they created or were invited to; super admins
   assert.equal(isMeetingVisibleToViewer({ createdByUserId: otherAdmin.id, inviteeUserIds: [otherAdmin.id] }, viewer), false);
   assert.equal(getMeetingViewer(superAdmin, superAdmin).canViewAllMeetings, true);
 });
+
+test('a meeting stays hidden when the matching participant is saved under another name', () => {
+  const rgsf = member('rgsf-viewer', { fullName: 'F20190150H', email: 'f20190150h@alumni.bits-pilani.ac.in' });
+  const viewer = getMeetingViewer(rgsf, rgsf);
+  assert.equal(isMeetingVisibleToViewer({
+    inviteeUserIds: [rgsf.userId],
+    invitees: [{ userId: rgsf.userId, fullName: 'F20190150H', email: rgsf.email }],
+  }, viewer), true);
+  assert.equal(isMeetingVisibleToViewer({
+    invitees: [{ userId: '', fullName: 'F20190150H', email: '' }],
+  }, viewer), true);
+  assert.equal(isMeetingVisibleToViewer({
+    inviteeUserIds: [rgsf.userId],
+    invitees: [{ userId: rgsf.userId, fullName: 'BITS VEDANG', email: rgsf.email }],
+  }, viewer), false);
+  assert.equal(isMeetingVisibleToViewer({ inviteeUserIds: [rgsf.id] }, viewer), true);
+});

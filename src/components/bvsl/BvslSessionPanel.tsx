@@ -77,8 +77,7 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
         );
         setPresentIds(presentSet);
       } else {
-        // Default: all present for a new date
-        setPresentIds(new Set(res.members.map((m: AttendanceMember) => m.userDbId)));
+        setPresentIds(new Set());
       }
     } catch { if (!read.cancelled && !read.background) toast.error('Failed to load members'); }
     finally { if (!read.cancelled && !silent) setLoading(false); }

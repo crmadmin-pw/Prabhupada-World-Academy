@@ -133,10 +133,15 @@ export default function RoleAcknowledgementHandler() {
       icon = <XCircle className="w-12 h-12 text-destructive mx-auto" />;
       break;
     case 'bv_role_notice': {
-      title = roleRemoved && roleAssigned
+      const parentOnly = !roleRemoved && !roleAssigned && !!roleNotice.reportsTo;
+      title = parentOnly
+        ? 'Reporting parent updated'
+        : roleRemoved && roleAssigned
         ? 'Roles Updated'
         : roleRemoved ? 'Role Removed' : 'New Role Assigned';
-      description = roleRemoved && roleAssigned
+      description = parentOnly
+        ? 'You now report to this person.'
+        : roleRemoved && roleAssigned
         ? 'Your account roles have been updated.'
         : roleRemoved
         ? 'The following role has been removed from your account.'
@@ -184,7 +189,13 @@ export default function RoleAcknowledgementHandler() {
                 <p className="mt-1">{role}</p>
               </div>
             ))}
-            {roleNotice.assigned.length === 0 && roleNotice.removed.length === 0 && (
+            {roleNotice.reportsTo && (
+              <div className="rounded-lg border border-primary/20 bg-primary/10 p-3 text-center">
+                <p className="font-semibold text-primary">Now reports to:</p>
+                <p className="mt-1">{roleNotice.reportsTo}</p>
+              </div>
+            )}
+            {roleNotice.assigned.length === 0 && roleNotice.removed.length === 0 && !roleNotice.reportsTo && (
               <div className="rounded-lg border p-3 text-center">
                 <p>{roleNoticeText || 'Account role updated.'}</p>
               </div>

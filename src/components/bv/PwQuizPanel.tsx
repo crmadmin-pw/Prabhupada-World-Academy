@@ -137,6 +137,8 @@ export default function PwQuizPanel({ mode }: { mode: 'admin' | 'facilitator' })
           </div>
           {groupChoices.length > 0 ? (
             <GroupSelect groups={groupChoices} selectedGroupId={selectedGroupId} onSelectGroup={setSelectedGroupId} />
+          ) : loading ? (
+            <span className="text-xs text-muted-foreground">Loading groups…</span>
           ) : (
             <span className="text-xs text-muted-foreground">No reading groups yet</span>
           )}

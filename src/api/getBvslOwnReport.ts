@@ -14,15 +14,6 @@ export default createEndpoint({
     const { startDate, endDate } = input;
     const userId = context.user!.id;
 
-    // Get preaching entries
-    const { records: entries } = await BvslPreachingEntries.findAll({
-      filters: {
-        user: userId,
-        entryDate: { gte: startDate, lte: endDate },
-      } as any,
-      limit: 500,
-    });
-
     // Get groups led by this BVSL, including groups they facilitate with others.
     const callerAliases = new Set([
       context.user!.id,
@@ -30,58 +21,60 @@ export default createEndpoint({
       context.user!.email,
       context.user!.fullName,
     ].map(value => String(value || '').trim().toLowerCase()).filter(Boolean));
-    const { records: activeGroups } = await BvGroups.findAll({
-      filters: { isActive: true } as any,
-      fields: ['id', 'groupName', 'bvslLeader', 'bvslId', 'bvslName'],
-      limit: 1000,
-    });
+    const [{ records: entries }, { records: activeGroups }] = await Promise.all([
+      // Get preaching entries
+      BvslPreachingEntries.findAll({
+        filters: {
+          user: userId,
+          entryDate: { gte: startDate, lte: endDate },
+        } as any,
+        limit: 500,
+      }),
+      BvGroups.findAll({
+        filters: { isActive: true } as any,
+        fields: ['id', 'groupName', 'bvslLeader', 'bvslId', 'bvslName'],
+        limit: 1000,
+      }),
+    ]);
     const groups = activeGroups.filter(group => groupHasFacilitator(group, callerAliases));
 
     const groupIds = groups.map(g => g.id);
     const groupMap = new Map(groups.map(g => [g.id, g.groupName || '']));
 
-    // Get member counts
-    let totalMembers = 0;
-    if (groupIds.length > 0) {
-      const { records: members } = await BvGroupMembers.findAll({
-        filters: { group: { in: groupIds } } as any,
-        fields: ['id'],
-        limit: 2000,
-      });
-      totalMembers = members.length;
-    }
+    // Member counts, session topics/notes and attendance depend only on the groups.
+    const [members, sessRecs, attendanceRecords] = groupIds.length > 0
+      ? await Promise.all([
+        BvGroupMembers.findAll({
+          filters: { group: { in: groupIds } } as any,
+          fields: ['id'],
+          limit: 2000,
+        }).then(result => result.records),
+        BvSessions.findAll({
+          filters: {
+            group: { in: groupIds },
+            sessionDate: { gte: startDate, lte: endDate },
+          } as any,
+          fields: ['id', 'group', 'sessionDate', 'topic', 'notes'],
+          limit: 500,
+        }).then(result => result.records),
+        BvAttendance.findAll({
+          filters: {
+            group: { in: groupIds },
+            attendanceDate: { gte: startDate, lte: endDate },
+          } as any,
+          fields: ['id', 'group', 'present', 'attendanceDate'],
+          limit: 2000,
+        }).then(result => result.records as any[]),
+      ])
+      : [[], [], [] as any[]];
+    const totalMembers = members.length;
 
-    // Get session topics/notes from BvSessions (for enrichment)
     type SessionMeta = { topic: string; notes: string };
     const sessionMetaMap = new Map<string, SessionMeta>();
-    if (groupIds.length > 0) {
-      const { records: sessRecs } = await BvSessions.findAll({
-        filters: {
-          group: { in: groupIds },
-          sessionDate: { gte: startDate, lte: endDate },
-        } as any,
-        fields: ['id', 'group', 'sessionDate', 'topic', 'notes'],
-        limit: 500,
-      });
-      for (const s of sessRecs) {
-        const gid = Array.isArray(s.group) ? s.group[0] : s.group as string;
-        const date = String(s.sessionDate || '').slice(0, 10);
-        if (gid && date) sessionMetaMap.set(`${gid}::${date}`, { topic: s.topic || '', notes: s.notes || '' });
-      }
-    }
-
-    // Query attendance by group+date range directly (new approach)
-    let attendanceRecords: any[] = [];
-    if (groupIds.length > 0) {
-      const { records } = await BvAttendance.findAll({
-        filters: {
-          group: { in: groupIds },
-          attendanceDate: { gte: startDate, lte: endDate },
-        } as any,
-        fields: ['id', 'group', 'present', 'attendanceDate'],
-        limit: 2000,
-      });
-      attendanceRecords = records;
+    for (const s of sessRecs) {
+      const gid = Array.isArray(s.group) ? s.group[0] : s.group as string;
+      const date = String(s.sessionDate || '').slice(0, 10);
+      if (gid && date) sessionMetaMap.set(`${gid}::${date}`, { topic: s.topic || '', notes: s.notes || '' });
     }
 
     // Group attendance by group+date

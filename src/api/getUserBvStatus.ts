@@ -270,13 +270,9 @@ export default createEndpoint({
     const presentCount = myAtt.filter((a: any) => a.present).length;
 
     const leaders = readGroupFacilitators(group);
-    const leaderNames: string[] = [];
-    for (const leader of leaders) {
+    const resolvedLeaderNames = await Promise.all(leaders.map(async (leader): Promise<string | null> => {
       const leaderId = leader.id || leader.userId;
-      if (!leaderId) {
-        if (leader.name) leaderNames.push(leader.name);
-        continue;
-      }
+      if (!leaderId) return leader.name || null;
       let leaderRec = await Users.findOne({ id: leaderId, fields: ['id', 'fullName'] });
       if (!leaderRec && leader.userId) {
         leaderRec = await Users.findOne({ filters: { userId: leader.userId }, fields: ['id', 'fullName'] });
@@ -284,19 +280,15 @@ export default createEndpoint({
       if (!leaderRec && leader.id && leader.id !== leaderId) {
         leaderRec = await Users.findOne({ id: leader.id, fields: ['id', 'fullName'] });
       }
-      if (leaderRec?.fullName) {
-        leaderNames.push(leaderRec.fullName);
-        continue;
-      }
+      if (leaderRec?.fullName) return leaderRec.fullName;
       const gRec = await Guides.findOne({ id: leaderId, fields: ['id', 'fullName'] }) ||
         await Guides.findOne({ filters: { guideId: leaderId }, fields: ['id', 'fullName'] });
-      if (gRec?.fullName) {
-        leaderNames.push(gRec.fullName);
-        continue;
-      }
-      if (leader.name) leaderNames.push(leader.name);
-      else if (!leaderId.startsWith('USER-') && !leaderId.startsWith('REC')) leaderNames.push(leaderId);
-    }
+      if (gRec?.fullName) return gRec.fullName;
+      if (leader.name) return leader.name;
+      if (!leaderId.startsWith('USER-') && !leaderId.startsWith('REC')) return leaderId;
+      return null;
+    }));
+    const leaderNames = resolvedLeaderNames.filter((name): name is string => !!name);
     const bvslName = joinFacilitatorNames(leaderNames);
 
     const groupName = group?.groupName || userRecord?.bvGroupName || '';

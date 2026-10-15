@@ -13,6 +13,7 @@ export type MeetingViewer = {
   canViewAllMeetings: boolean;
   isReadOnlySadhanaMentor: boolean;
   identityKeys: Set<string>;
+  names: Set<string>;
   email: string;
 };
 
@@ -39,6 +40,18 @@ function identityValues(...users: UserLike[]): Set<string> {
   return keys;
 }
 
+function personNames(...users: UserLike[]): Set<string> {
+  const names = new Set<string>();
+  for (const user of users) {
+    if (!user) continue;
+    for (const value of [user.fullName, user.displayName, user.name]) {
+      const name = String(value || '').trim().toLowerCase();
+      if (name) names.add(name);
+    }
+  }
+  return names;
+}
+
 export function getMeetingViewer(contextUser: UserLike, storedUser: UserLike): MeetingViewer {
   // The database profile takes precedence; it is the source of truth when a
   // token still contains a legacy department or role from a prior assignment.
@@ -60,21 +73,47 @@ export function getMeetingViewer(contextUser: UserLike, storedUser: UserLike): M
     isReadOnlySadhanaMentor,
     canViewAllMeetings: isAdmin && !isReadOnlySadhanaMentor,
     identityKeys: identityValues(storedUser, contextUser),
+    names: personNames(storedUser, contextUser),
     email: String(storedUser?.email || contextUser?.email || '').trim().toLowerCase(),
   };
 }
 
+function inviteeIdentity(invitee: any): { id: string; email: string; name: string } {
+  return {
+    id: String(invitee?.userId || '').trim().toLowerCase(),
+    email: String(invitee?.email || '').trim().toLowerCase(),
+    name: String(invitee?.fullName || '').trim().toLowerCase(),
+  };
+}
+
+function identityMatchesViewer(id: string, email: string, viewer: MeetingViewer): boolean {
+  return viewer.identityKeys.has(id) || (!!viewer.email && email === viewer.email);
+}
+
+/** A saved participant can carry another person's account id. That name wins. */
+function listedAsSomeoneElse(invitee: any, viewer: MeetingViewer): boolean {
+  const name = inviteeIdentity(invitee).name;
+  if (!name || !viewer.names || viewer.names.size === 0) return false;
+  return !viewer.names.has(name);
+}
+
 export function isMeetingVisibleToViewer(meeting: any, viewer: MeetingViewer): boolean {
   if (viewer.identityKeys.has(String(meeting?.createdByUserId || '').trim().toLowerCase())) return true;
-  const inviteeIds = Array.isArray(meeting?.inviteeUserIds) ? meeting.inviteeUserIds : [];
-  if (inviteeIds.some((id: unknown) => viewer.identityKeys.has(String(id || '').trim().toLowerCase()))) {
-    return true;
-  }
-
   const invitees = Array.isArray(meeting?.invitees) ? meeting.invitees : [];
+  const inviteeIds = Array.isArray(meeting?.inviteeUserIds) ? meeting.inviteeUserIds : [];
+  if (inviteeIds.some((id: unknown) => {
+    const key = String(id || '').trim().toLowerCase();
+    if (!viewer.identityKeys.has(key)) return false;
+    const linked = invitees.filter((invitee: any) => {
+      const identity = inviteeIdentity(invitee);
+      return identity.id === key || identity.email === key;
+    });
+    return linked.length === 0 || linked.some((invitee: any) => !listedAsSomeoneElse(invitee, viewer));
+  })) return true;
+
   return invitees.some((invitee: any) => {
-    const invitedId = String(invitee?.userId || '').trim().toLowerCase();
-    const invitedEmail = String(invitee?.email || '').trim().toLowerCase();
-    return viewer.identityKeys.has(invitedId) || (!!viewer.email && invitedEmail === viewer.email);
+    if (listedAsSomeoneElse(invitee, viewer)) return false;
+    const identity = inviteeIdentity(invitee);
+    return identityMatchesViewer(identity.id, identity.email, viewer) || viewer.names.has(identity.name);
   });
 }

@@ -45,22 +45,23 @@ export default createEndpoint({
       groups.flatMap(g => textList(g.bvslLeader))
     )];
     const bvslMap: Record<string, { fullName: string; phone: string }> = {};
-    if (bvslLeaderIds.length > 0) {
-      const { records: bvslUsers } = await Users.findAll({
-        filters: { id: { in: bvslLeaderIds } as any },
-        fields: ['id', 'fullName', 'phone'],
-        limit: 200,
-      });
-      for (const u of bvslUsers) bvslMap[u.id] = { fullName: u.fullName || '', phone: u.phone || '' };
-    }
-
-    // --- Fetch all group memberships ---
     const groupDbIds = groups.map(g => g.id);
-    const { records: allMemberships } = await BvGroupMembers.findAll({
-      filters: { group: { in: groupDbIds } as any },
-      fields: ['user', 'group'],
-      limit: 2000,
-    });
+    const [bvslUsers, { records: allMemberships }] = await Promise.all([
+      bvslLeaderIds.length > 0
+        ? Users.findAll({
+          filters: { id: { in: bvslLeaderIds } as any },
+          fields: ['id', 'fullName', 'phone'],
+          limit: 200,
+        }).then(result => result.records)
+        : Promise.resolve([] as any[]),
+      // --- Fetch all group memberships ---
+      BvGroupMembers.findAll({
+        filters: { group: { in: groupDbIds } as any },
+        fields: ['user', 'group'],
+        limit: 2000,
+      }),
+    ]);
+    for (const u of bvslUsers) bvslMap[u.id] = { fullName: u.fullName || '', phone: u.phone || '' };
 
     const allMemberUserIds = [...new Set(
       allMemberships.map(m => (Array.isArray(m.user) ? m.user[0] : m.user) as string).filter(Boolean)
@@ -87,17 +88,14 @@ export default createEndpoint({
     }
 
     // --- Fetch member user info ---
-    const { records: memberUsers } = await Users.findAll({
-      filters: { id: { in: allMemberUserIds } as any },
-      fields: ['id', 'fullName', 'currentStreak'],
-      limit: 2000,
-    });
-    const userInfoMap: Record<string, { fullName: string; currentStreak: number }> = {};
-    for (const u of memberUsers) userInfoMap[u.id] = { fullName: u.fullName || '', currentStreak: u.currentStreak ?? 0 };
-
     // --- Fetch sadhana entries SCOPED to BV group members only ---
     // This prevents hitting the global 2000-record limit and ensures accuracy
-    const [{ records: todayEntries }, { records: weekEntries }] = await Promise.all([
+    const [{ records: memberUsers }, { records: todayEntries }, { records: weekEntries }] = await Promise.all([
+      Users.findAll({
+        filters: { id: { in: allMemberUserIds } as any },
+        fields: ['id', 'fullName', 'currentStreak'],
+        limit: 2000,
+      }),
       SadhanaEntries.findAll({
         filters: { entryDate: targetDate, user: { in: allMemberUserIds } as any },
         fields: ['user', 'entryDate'],
@@ -109,6 +107,8 @@ export default createEndpoint({
         limit: 2000,
       }),
     ]);
+    const userInfoMap: Record<string, { fullName: string; currentStreak: number }> = {};
+    for (const u of memberUsers) userInfoMap[u.id] = { fullName: u.fullName || '', currentStreak: u.currentStreak ?? 0 };
 
     // Entries are already scoped to BV members — no need for extra .includes() checks
     const filledTodaySet = new Set(

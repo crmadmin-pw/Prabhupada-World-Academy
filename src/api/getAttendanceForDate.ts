@@ -1,5 +1,11 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, BvSessions, BvAttendance, Users, AppError } from '@/lib/backend-sdk';
+import { bvUserAliases } from '../lib/bvGroupMemberScope';
+
+function refs(value: unknown): string[] {
+  if (Array.isArray(value)) return value.flatMap(refs);
+  return value == null ? [] : [String(value).trim().toLowerCase()].filter(Boolean);
+}
 
 export default createEndpoint({
   description: 'Get member list with existing attendance for a specific group and date',
@@ -23,23 +29,35 @@ export default createEndpoint({
     }
     if (!group) throw new AppError({ code: 'NOT_FOUND', message: 'Group not found' });
 
-    // Get group members
-    const { records: memberRecords } = await BvGroupMembers.findAll({
-      filters: { group: group.id },
-      fields: ['id', 'user'],
-      limit: 200,
-    });
+    const groupKeys = [group.id, group.groupId].filter(Boolean);
+    const [byGroup, byGroupId] = await Promise.all([
+      BvGroupMembers.findAll({
+        filters: { group: group.id },
+        fields: ['id', 'user', 'userId', 'memberId', 'group', 'groupId'],
+        limit: 200,
+      }),
+      BvGroupMembers.findAll({
+        filters: { groupId: { in: groupKeys } } as any,
+        fields: ['id', 'user', 'userId', 'memberId', 'group', 'groupId'],
+        limit: 200,
+      }),
+    ]);
+    const memberRecords = [...byGroup.records, ...byGroupId.records]
+      .filter((member: any, index: number, records: any[]) => records.findIndex(item => item.id === member.id) === index);
 
-    const userDbIds = memberRecords
-      .map((m: any) => Array.isArray(m.user) ? m.user[0] : m.user)
-      .filter(Boolean) as string[];
-
-    const { records: userRecords } = userDbIds.length > 0
-      ? await Users.findAll({ filters: { id: { in: userDbIds } }, fields: ['id', 'userId', 'fullName'], limit: 500 })
-      : { records: [] };
-
+    const identityValues = [...new Set(memberRecords.flatMap((member: any) => [member.user, member.userId, member.memberId]).filter(Boolean).map(String))];
+    const userFields = ['id', 'userId', 'fullName', 'firebaseUid', 'uid', 'authUid'];
+    const userQueries = identityValues.length > 0
+      ? await Promise.all([
+        Users.findAll({ filters: { id: { in: identityValues } } as any, fields: userFields, limit: 500 }),
+        Users.findAll({ filters: { userId: { in: identityValues } } as any, fields: userFields, limit: 500 }),
+        Users.findAll({ filters: { firebaseUid: { in: identityValues } } as any, fields: userFields, limit: 500 }),
+      ])
+      : [];
     const userMap: Record<string, any> = {};
-    userRecords.forEach((u: any) => { userMap[u.id] = u; });
+    userQueries.flatMap(result => result.records || []).forEach((user: any) => {
+      bvUserAliases(user).forEach(alias => { userMap[alias] = user; });
+    });
 
     // Query attendance directly by group + date (new approach)
     const { records: directAttRecords } = await BvAttendance.findAll({
@@ -93,16 +111,16 @@ export default createEndpoint({
     const members = memberRecords
       .map((m: any) => {
         const dbId = Array.isArray(m.user) ? m.user[0] : m.user as string;
-        if (!dbId) return null;
-        const u = userMap[dbId];
+        const u = refs([m.user, m.userId, m.memberId]).map(alias => userMap[alias]).find(Boolean);
         if (!u) return null;
-        const isPresent = sessionExists ? (attendanceMap[dbId] ?? null) : null;
+        const isPresent = sessionExists ? (attendanceMap[u.id] ?? attendanceMap[dbId] ?? null) : null;
+        const savedMinutes = attendedMinutesMap[u.id] ?? attendedMinutesMap[dbId];
         return {
-          userDbId: dbId,
-          userId: u.userId || dbId,
+          userDbId: u.id,
+          userId: u.userId || u.id,
           fullName: u.fullName || '',
           present: isPresent,
-          attendedMinutes: sessionExists ? (attendedMinutesMap[dbId] ?? (isPresent ? totalMeetingMinutes : 0)) : totalMeetingMinutes,
+          attendedMinutes: sessionExists ? (savedMinutes ?? (isPresent ? totalMeetingMinutes : 0)) : 0,
         };
       })
       .filter(member => member !== null)

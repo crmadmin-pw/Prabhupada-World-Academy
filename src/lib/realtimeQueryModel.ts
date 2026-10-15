@@ -40,7 +40,7 @@ function scopeMatches(scope: RealtimeRecordScope | undefined, record: Record<str
   if (!scope) return true;
   if (scope.kind === 'meetings') return normalizeMeetingDepartment(record.segment || 'PW') === scope.department &&
     (scope.all || isMeetingVisibleToViewer(record, { department: scope.department, canViewAllMeetings: false,
-      isReadOnlySadhanaMentor: false, identityKeys: new Set(scope.identities), email: scope.email }));
+      isReadOnlySadhanaMentor: false, identityKeys: new Set(scope.identities), names: new Set<string>(), email: scope.email }));
   const normalize = (value: unknown) => scope.caseSensitive ? String(value || '').trim() : String(value || '').trim().toLowerCase();
   const allowed = new Set(scope.values.map(normalize));
   return scope.fields.some(field => {

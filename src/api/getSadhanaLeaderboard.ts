@@ -151,7 +151,7 @@ export default createEndpoint({
       allUsers = await resolveBvGroupMemberUsers(context.user, USER_FIELDS, {
         groupId: input.groupId,
         segment: String(context.user.segment || '').toUpperCase() === 'FOLK' ? 'FOLK' : 'PW',
-        excludeCaller: true,
+        excludeCaller: input.segment !== 'PW',
       });
     } else if (input.facilitatorMode) {
       allUsers = await resolveBvAdminFacilitators(context.user, input.guideId, USER_FIELDS, input.segment);

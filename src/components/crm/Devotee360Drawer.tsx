@@ -12,6 +12,7 @@ import {
   Activity, DollarSign, ExternalLink, Plus
 } from 'lucide-react';
 import { getUserCrmData, getOneToOneMeetings } from '@/lib/endpoints-sdk';
+import { observeEndpointReads } from '@/lib/app-endpoints-sdk';
 import { calculateDevoteeHealth } from '@/utils/devoteeHealthUtils';
 import LogInteractionModal from './LogInteractionModal';
 import { fmt } from '@/lib/fmt';
@@ -313,8 +314,8 @@ export default function Devotee360Drawer({ open, onClose, devotee }: Props) {
         open={logModalOpen}
         onClose={() => setLogModalOpen(false)}
         onSuccess={() => {
-          // reload crm meetings
-          getOneToOneMeetings({ userDbId: devotee.id }).then((res) => {
+          // reload crm meetings; the cached pre-save response is still marked fresh
+          observeEndpointReads(() => getOneToOneMeetings({ userDbId: devotee.id }), () => {}, true).then((res) => {
             if (res?.meetings) setMeetings(res.meetings);
           });
         }}

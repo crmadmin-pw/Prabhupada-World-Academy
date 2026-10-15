@@ -38,14 +38,49 @@ export default createEndpoint({
       groups.flatMap((g: any) => textList(g.bvslLeader))
     )];
     const bvslMap: Record<string, string> = {};
-    if (bvslIds.length > 0) {
-      const { records: bvslUsers } = await Users.findAll({
-        filters: { id: { in: bvslIds } as any },
-        fields: ['id', 'fullName'],
-        limit: 200,
-      });
-      for (const u of bvslUsers) bvslMap[u.id] = u.fullName || '';
+
+    // Get attendance for date range
+    const attFilter: any = { group: { in: allGroupIds } as any };
+    if (input.startDate || input.endDate) {
+      const df: any = {};
+      if (input.startDate) df.gte = input.startDate;
+      if (input.endDate) df.lte = input.endDate;
+      attFilter.attendanceDate = df;
     }
+    const loadAttendance = async () => {
+      let rows: any[] = [];
+      let offset = 0;
+      while (true) {
+        const { records, hasMore } = await BvAttendance.findAll({
+          filters: attFilter,
+          fields: ['id', 'user', 'present', 'attendanceDate'],
+          limit: 2000,
+          offset,
+        });
+        rows = rows.concat(records);
+        if (!hasMore) break;
+        offset += 2000;
+      }
+      return rows;
+    };
+
+    // Leader names, memberships and attendance depend only on the groups.
+    const [bvslUsers, { records: memberships }, attRecords] = await Promise.all([
+      bvslIds.length > 0
+        ? Users.findAll({
+          filters: { id: { in: bvslIds } as any },
+          fields: ['id', 'fullName'],
+          limit: 200,
+        }).then(result => result.records)
+        : Promise.resolve([] as any[]),
+      BvGroupMembers.findAll({
+        filters: { group: { in: allGroupIds } as any },
+        fields: ['id', 'user', 'group'],
+        limit: 2000,
+      }),
+      loadAttendance(),
+    ]);
+    for (const u of bvslUsers) bvslMap[u.id] = u.fullName || '';
 
     // Build group info map
     const groupInfoMap: Record<string, { groupName: string; bvslName: string }> = {};
@@ -55,13 +90,6 @@ export default createEndpoint({
         bvslName: joinFacilitatorNames(textList(g.bvslLeader).map(id => bvslMap[id])),
       };
     }
-
-    // Get all memberships
-    const { records: memberships } = await BvGroupMembers.findAll({
-      filters: { group: { in: allGroupIds } as any },
-      fields: ['id', 'user', 'group'],
-      limit: 2000,
-    });
 
     const memberUserIds = [...new Set(
       memberships.map((m: any) => (Array.isArray(m.user) ? m.user[0] : m.user)).filter(Boolean) as string[]
@@ -84,29 +112,6 @@ export default createEndpoint({
       const uid = (Array.isArray(m.user) ? m.user[0] : m.user) as string;
       const gid = (Array.isArray(m.group) ? m.group[0] : m.group) as string;
       if (uid && gid) userGroupMap[uid] = gid;
-    }
-
-    // Get attendance for date range
-    const attFilter: any = { group: { in: allGroupIds } as any };
-    if (input.startDate || input.endDate) {
-      const df: any = {};
-      if (input.startDate) df.gte = input.startDate;
-      if (input.endDate) df.lte = input.endDate;
-      attFilter.attendanceDate = df;
-    }
-
-    let attRecords: any[] = [];
-    let offset = 0;
-    while (true) {
-      const { records, hasMore } = await BvAttendance.findAll({
-        filters: attFilter,
-        fields: ['id', 'user', 'present', 'attendanceDate'],
-        limit: 2000,
-        offset,
-      });
-      attRecords = attRecords.concat(records);
-      if (!hasMore) break;
-      offset += 2000;
     }
 
     // Build date list

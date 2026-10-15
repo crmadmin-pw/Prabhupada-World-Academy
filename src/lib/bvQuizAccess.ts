@@ -225,10 +225,10 @@ function resolveGroupDepartment(
 async function getExpandedAliases(reference: unknown): Promise<Set<string>> {
   const seed = quizRefValues(reference);
   const aliases = new Set(seed);
-  for (const value of seed) {
-    const record = await Users.findOne({ id: value }) ||
-      await Users.findOne({ filters: { userId: value } }) ||
-      await Users.findOne({ filters: { email: value } });
+  const records = await Promise.all(seed.map(async value => await Users.findOne({ id: value }) ||
+    await Users.findOne({ filters: { userId: value } }) ||
+    await Users.findOne({ filters: { email: value } })));
+  for (const record of records) {
     if (record) directoryAliases(record).forEach(alias => aliases.add(alias));
   }
   return aliases;

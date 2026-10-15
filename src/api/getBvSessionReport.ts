@@ -53,36 +53,57 @@ export default createEndpoint({
       textList(g.bvslLeader).forEach(lid => bvslIds.add(lid));
     }
     const bvslNameMap = new Map<string, string>();
-    if (bvslIds.size > 0) {
-      const { records: bvslUsers } = await Users.findAll({
-        filters: { id: { in: Array.from(bvslIds) } } as any,
-        fields: ['id', 'fullName'],
-        limit: 200,
-      });
-      for (const u of bvslUsers) bvslNameMap.set(u.id, u.fullName || '');
-    }
+    const loadAttendance = async () => {
+      let rows: any[] = [];
+      let attOff = 0;
+      while (true) {
+        const { records, hasMore } = await BvAttendance.findAll({
+          filters: {
+            group: { in: groupIds },
+            attendanceDate: { gte: startDate, lte: endDate },
+          } as any,
+          fields: ['id', 'group', 'user', 'present', 'attendanceDate'],
+          limit: 2000,
+          offset: attOff,
+        });
+        rows = rows.concat(records);
+        if (!hasMore) break;
+        attOff += 2000;
+      }
+      return rows;
+    };
+    // Leader names, member counts, sessions and attendance depend only on the groups.
+    const [bvslUsers, { records: allMembers }, { records: sessions }, allAttendance] = await Promise.all([
+      bvslIds.size > 0
+        ? Users.findAll({
+          filters: { id: { in: Array.from(bvslIds) } } as any,
+          fields: ['id', 'fullName'],
+          limit: 200,
+        }).then(result => result.records)
+        : Promise.resolve([] as any[]),
+      BvGroupMembers.findAll({
+        filters: { group: { in: groupIds } } as any,
+        fields: ['id', 'group'],
+        limit: 2000,
+      }),
+      // Sessions in date range (for topic/notes enrichment)
+      BvSessions.findAll({
+        filters: {
+          group: { in: groupIds },
+          sessionDate: { gte: startDate, lte: endDate },
+        } as any,
+        fields: ['id', 'group', 'sessionDate', 'topic', 'notes'],
+        limit: 2000,
+      }),
+      loadAttendance(),
+    ]);
+    for (const u of bvslUsers) bvslNameMap.set(u.id, u.fullName || '');
 
-    // Get member counts per group
-    const { records: allMembers } = await BvGroupMembers.findAll({
-      filters: { group: { in: groupIds } } as any,
-      fields: ['id', 'group'],
-      limit: 2000,
-    });
     const memberCountByGroup = new Map<string, number>();
     for (const m of allMembers) {
       const gid = Array.isArray(m.group) ? m.group[0] : m.group;
       if (gid) memberCountByGroup.set(gid as string, (memberCountByGroup.get(gid as string) || 0) + 1);
     }
-
-    // Get sessions in date range (for topic/notes enrichment)
-    const { records: sessions } = await BvSessions.findAll({
-      filters: {
-        group: { in: groupIds },
-        sessionDate: { gte: startDate, lte: endDate },
-      } as any,
-      fields: ['id', 'group', 'sessionDate', 'topic', 'notes'],
-      limit: 2000,
-    });
 
     // Build session lookup: groupId + date → {topic, notes}
     type SessionMeta = { topic: string; notes: string };
@@ -91,24 +112,6 @@ export default createEndpoint({
       const gid = Array.isArray(s.group) ? s.group[0] : s.group as string;
       const date = String(s.sessionDate || '').slice(0, 10);
       if (gid && date) sessionMetaMap.set(`${gid}::${date}`, { topic: s.topic || '', notes: s.notes || '' });
-    }
-
-    // Query attendance by group+date range directly (new approach)
-    let allAttendance: any[] = [];
-    let attOff = 0;
-    while (true) {
-      const { records, hasMore } = await BvAttendance.findAll({
-        filters: {
-          group: { in: groupIds },
-          attendanceDate: { gte: startDate, lte: endDate },
-        } as any,
-        fields: ['id', 'group', 'user', 'present', 'attendanceDate'],
-        limit: 2000,
-        offset: attOff,
-      });
-      allAttendance = allAttendance.concat(records);
-      if (!hasMore) break;
-      attOff += 2000;
     }
 
     // Group attendance by groupId + date

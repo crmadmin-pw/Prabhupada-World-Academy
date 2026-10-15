@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, BvAttendance, BvGroupRequests, Guides, Users, AppError } from '@/lib/backend-sdk';
 import { getTodayIST } from '../lib/streakUtils';
-import { isBvSuperAdminUser, resolveBvScopedGroups } from '../lib/bvGroupMemberScope';
+import { bvUserAliases, isBvSuperAdminUser, resolveBvScopedGroups } from '../lib/bvGroupMemberScope';
 import { joinFacilitatorNames, readGroupFacilitators, textList } from '@/lib/bvGroupFacilitators';
 
 function ownerKeys(group: any): string[] {
@@ -550,6 +550,19 @@ export default createEndpoint({
       }
       const facilitatorName = joinFacilitatorNames(rgfNames);
       const rgsfName = joinFacilitatorNames(rgsfNames);
+      const groupSegment = String(g.segment || facilitatorUser?.segment || '').trim().toUpperCase().replace(/[\s_-]+/g, '');
+      if ((groupSegment === 'PW' || groupSegment === 'PRABHUPADAWORLD') && facilitatorRoleKind(facilitatorUser) === 'rgf' && !(memberIdsByGroup.get(g.id)?.size)) {
+        const countedIds = memberIdsByGroup.get(g.id) || new Set<string>();
+        const alreadyCounted = bvUserAliases(facilitatorUser).some(alias => {
+          const known = cachedUser(identity, alias);
+          const canonical = String(known?.id || known?.userId || alias);
+          return countedIds.has(canonical) || countedIds.has(alias);
+        });
+        if (!alreadyCounted) {
+          countedIds.add(String(facilitatorUser.id || facilitatorUser.userId));
+          memberIdsByGroup.set(g.id, countedIds);
+        }
+      }
       const guideRes = guideMap.get(Array.isArray(g.guide) ? g.guide[0] : g.guide);
       
       let totalSessions = 0;

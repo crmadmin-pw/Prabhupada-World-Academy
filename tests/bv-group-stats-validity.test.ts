@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import getGuideGroupStats from '../src/api/getGuideGroupStats';
+import getBvslGroups from '../src/api/getBvslGroups';
 import { BvGroups, Users } from '../src/lib/app-backend-sdk';
 
 test('group stats hide orphan groups but retain a valid empty RGF group', async () => {
@@ -35,8 +36,15 @@ test('group stats hide orphan groups but retain a valid empty RGF group', async 
       context: { user: superAdmin },
     } as never);
 
-    assert.ok(result.groups.some((group: any) => group.groupId === validGroup.groupId));
+    const validCard = result.groups.find((group: any) => group.groupId === validGroup.groupId);
+    assert.equal(validCard?.memberCount, 1);
     assert.ok(!result.groups.some((group: any) => group.groupName === orphanGroup.groupName));
+
+    const listed = await getBvslGroups.execute({
+      input: { bvslId: rgf.userId },
+      context: { user: rgf },
+    } as never);
+    assert.equal(listed.groups.find((group: any) => group.groupId === validGroup.groupId)?.memberCount, 1);
   } finally {
     await BvGroups.delete({ id: validGroup.id }).catch(() => undefined);
     await BvGroups.delete({ id: orphanGroup.id }).catch(() => undefined);

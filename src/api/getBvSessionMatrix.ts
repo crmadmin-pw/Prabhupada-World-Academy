@@ -4,7 +4,7 @@ import { createEndpoint, AppError, Users, BvGroups, BvGroupMembers, BvAttendance
 import { requireGuideRole } from '../lib/userUtils';
 import { getGuideIdsForResidencies } from '../lib/guideScope';
 import { legacyQuizMatchesGroup, normalizeQuizDepartment } from '../lib/bvQuizAccess';
-import { bvGroupFacilitatorAliases, bvUserAliases, isBvDepartmentAdmin, isBvSuperAdminUser, resolveBvDepartmentGroups, resolveBvScopedGroups, resolveBvUsersByAliases } from '../lib/bvGroupMemberScope';
+import { bvGroupFacilitatorAliases, bvUserAliases, isBvDepartmentAdmin, isBvSuperAdminUser, isBvSupervisorUser, resolveBvDepartmentGroups, resolveBvScopedGroups, resolveBvUsersByAliases } from '../lib/bvGroupMemberScope';
 
 export default createEndpoint({
   description: 'BV attendance matrix with FOLK-only quiz results',
@@ -235,7 +235,9 @@ export default createEndpoint({
     const facilitatorAliases = new Set(groups.flatMap(group => bvGroupFacilitatorAliases(group)));
     const hierarchy = await getScopedHierarchyUserIds(context.user);
     const permittedUsers = users.filter(user => isUserInHierarchy(user, hierarchy));
-    const scopedUsers = bvslMode
+    // Prabhupada World reports list a facilitator who is also a group member.
+    // FOLK reports stay limited to the people that facilitator is monitoring.
+    const scopedUsers = bvslMode && !isBvSupervisorUser(context.user as any) && input.segment !== 'PW'
       ? permittedUsers.filter(user => !bvUserAliases(user as any).some(alias =>
         callerAliases.has(alias) || facilitatorAliases.has(alias)
       ))

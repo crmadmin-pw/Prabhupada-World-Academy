@@ -1,6 +1,22 @@
 {
   "indexes": [
     {
+      "collectionGroup": "BvSessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "group", "order": "ASCENDING" },
+        { "fieldPath": "sessionDate", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "BvslPreachingEntries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "user", "order": "ASCENDING" },
+        { "fieldPath": "entryDate", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "BvAttendance",
       "queryScope": "COLLECTION",
       "fields": [

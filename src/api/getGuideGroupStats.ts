@@ -88,7 +88,7 @@ export default createEndpoint({
 
     let groups = hierarchyGroups ?? (await BvGroups.findAll({
       filters: groupFilter,
-      fields: ['id', 'groupId', 'groupName', 'bvslLeader', 'bvslId'],
+      fields: ['id', 'groupId', 'groupName', 'segment', 'bvslLeader', 'bvslId'],
       limit: 200,
     })).records;
 
@@ -134,15 +134,34 @@ export default createEndpoint({
           .flatMap(item => Array.isArray(item) ? item : String(item || '').split(','));
         return values.some(item => callerAliases.has(String(item || '').trim().toLowerCase()));
       };
-      const memberRecords = isBvslMode
+      const groupSegment = String(g.segment || '').trim().toUpperCase().replace(/[\s_-]+/g, '');
+      const isPwGroup = groupSegment === 'PW' || groupSegment === 'PRABHUPADAWORLD';
+      const hideCaller = isBvslMode && !isPwGroup;
+      const memberRecords = hideCaller
         ? memberRows.filter(member => !isCaller([member.user, member.userId, member.memberId]))
         : memberRows;
-      const attRecords = isBvslMode
+      const attRecords = hideCaller
         ? attendanceRows.filter(attendance => !isCaller(attendance.user))
         : attendanceRows;
-      const memberCount = new Set(memberRecords.map(member =>
+      const memberAliases = new Set(memberRecords.flatMap(member =>
+        [member.user, member.userId, member.memberId]
+          .flatMap(value => Array.isArray(value) ? value : [value])
+          .map(value => String(value || '').trim().toLowerCase())
+          .filter(Boolean),
+      ));
+      const facilitator = bvGroupFacilitatorAliases(g)
+        .map(alias => facilitatorByAlias.get(alias))
+        .find(Boolean);
+      const facilitatorRole = String(facilitator?.role || '').toUpperCase().replace(/[\s-]+/g, '_');
+      const isPwRgf = isPwGroup && !!(
+        facilitator?.isBvFacilitator || facilitator?.isBvsl ||
+        ['RGF', 'BVSL', 'FACILITATOR', 'BV_FACILITATOR'].includes(facilitatorRole)
+      );
+      const rgfAlreadyCounted = isPwRgf && bvUserAliases(facilitator).some(alias => memberAliases.has(alias));
+      const baseCount = new Set(memberRecords.map(member =>
         String(member.user || member.userId || member.memberId || member.id),
       )).size;
+      const memberCount = baseCount + (isPwRgf && !rgfAlreadyCounted && baseCount === 0 ? 1 : 0);
 
       // Count distinct session dates
       const distinctDates = new Set(attRecords.map((a: any) => a.attendanceDate).filter(Boolean));
@@ -150,10 +169,6 @@ export default createEndpoint({
 
       const presentCount = attRecords.filter((a: any) => a.present).length;
       const totalPossible = memberCount * totalSessions;
-      const facilitator = bvGroupFacilitatorAliases(g)
-        .map(alias => facilitatorByAlias.get(alias))
-        .find(Boolean);
-
       return {
         groupId: (g.groupId as string) || g.id,
         groupName: (g.groupName as string) || '',

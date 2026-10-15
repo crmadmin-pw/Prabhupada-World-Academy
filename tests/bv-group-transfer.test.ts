@@ -16,6 +16,7 @@ test('moving a BV member replaces old memberships and synchronizes their profile
     segment: 'PW',
     isBvFacilitator: true,
     bvReportingSupervisorId: 'BV-TRANSFER-SUPERVISOR',
+    bvReportingSupervisorName: 'BITS VEDANG',
   };
   const member = {
     id: 'BV-TRANSFER-MEMBER-DOC',
@@ -62,6 +63,7 @@ test('moving a BV member replaces old memberships and synchronizes their profile
     const assignedProfile = await getUserProfile.execute({ input: {}, context: assignedContext } as never);
     assert.equal(assignedProfile.user?.pendingBvGroupAssignmentNotice, true);
     assert.equal(assignedProfile.user?.bvGroupName, newGroup.groupName);
+    assert.equal(assignedProfile.user?.bvReportingSupervisorName, 'BITS VEDANG');
     assert.equal(assignedProfile.user?.isBvMember, true);
 
     // The membership row can be briefly invisible to the profile read that

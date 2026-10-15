@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createEndpoint, Users, BvGroups, BvGroupMembers, AppError } from '@/lib/backend-sdk';
 import { serverCacheInvalidate } from '../lib/serverCache';
 import { publishUsersRevision } from '../lib/publishUsersRevision';
+import { noticeForRoleUpdate } from '../lib/roleNoticeText';
 import {
   facilitatorIdentityKeys,
   facilitatorWrite,
@@ -404,11 +405,8 @@ export default createEndpoint({
     const meaningfulActiveRoles = activeRoles.filter(role => role !== 'Regular Member' && role !== 'NA');
     const addedRoles = meaningfulActiveRoles.filter(role => !previousRoles.includes(role));
     const removedRoles = previousRoles.filter(role => !meaningfulActiveRoles.includes(role));
-    updates.pendingRoleNotice = [
-      addedRoles.length > 0 ? `Assigned role: ${addedRoles.join(', ')}` : '',
-      removedRoles.length > 0 ? `Removed role: ${removedRoles.join(', ')}` : '',
-    ].filter(Boolean).join(' | ') || `Assigned role: ${activeRoles.join(', ')}`;
-    updates.roleNoticeAcknowledged = false;
+    updates.pendingRoleNotice = null;
+    updates.roleNoticeAcknowledged = targetUser.roleNoticeAcknowledged !== false;
 
     // Store appropriate hierarchy link & inherit parent's admin/supervisor
     if (input.isBvMember !== false) {
@@ -554,6 +552,25 @@ export default createEndpoint({
     if (input.rgsfReportsToId) {
       updates.bvReportingFacilitatorId = input.rgsfReportsToId;
       if (input.rgsfReportsToName) updates.bvReportingFacilitatorName = input.rgsfReportsToName;
+    }
+
+    if (!updates.pendingBvGroupAssignmentNotice) {
+      const parentName = (role: string, record: any) => {
+        if (role === 'SUPERVISOR') return record?.bvReportingAdminName || '';
+        if (role === 'FACILITATOR') return record?.bvReportingSupervisorName || '';
+        if (role === 'SUB_FACILITATOR' || role === 'MEMBER') return record?.bvReportingFacilitatorName || '';
+        return '';
+      };
+      const notice = noticeForRoleUpdate({
+        added: addedRoles,
+        removed: removedRoles,
+        previousParent: parentName(input.role, targetUser),
+        nextParent: parentName(input.role, updates),
+      });
+      if (notice) {
+        updates.pendingRoleNotice = notice;
+        updates.roleNoticeAcknowledged = false;
+      }
     }
 
     // Sync base role field — only set to 'Admin' for explicit admin assignment

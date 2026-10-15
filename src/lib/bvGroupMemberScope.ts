@@ -66,6 +66,12 @@ function roleValue(user: UserRecord | null | undefined): string {
   return String(user?.role || '').toUpperCase().replace(/[\s-]+/g, '_');
 }
 
+export function isBvSupervisorUser(user: UserRecord | null | undefined): boolean {
+  const role = roleValue(user);
+  return !!(user?.isBvSupervisor || user?.isBvMentor ||
+    role === 'SUPERVISOR' || role === 'BV_SUPERVISOR' || role === 'BV_MENTOR');
+}
+
 export function isBvDepartmentAdmin(user: UserRecord | null | undefined): boolean {
   const role = roleValue(user);
   return !!(user?.isBvAdmin || user?.isBvSuperAdmin || user?.isPwAdmin ||

@@ -105,6 +105,7 @@ export interface ProfileSummary {
   bvGroupId?: string | null;
   bvGroupName?: string | null;
   bvReportingFacilitatorName?: string | null;
+  bvReportingSupervisorName?: string | null;
   pendingAshrayNoticeStatus?: string | null;
   pendingAshrayNoticeLevel?: string | null;
   ashrayNoticeAcknowledged?: boolean;

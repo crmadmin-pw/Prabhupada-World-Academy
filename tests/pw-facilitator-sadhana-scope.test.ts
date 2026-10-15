@@ -39,6 +39,32 @@ test('PW Admin facilitator Sadhana scope contains only RGF/RGSF descendants of t
   assert.deepEqual(result.map(user => user.id).sort(), [rgfA.id, rgsfA.id].sort());
 });
 
+test('a self-linked RGF and a supervisor with a stale facilitator id still reach the Admin', () => {
+  const admin = {
+    id: '9LmUXbG637YTjvVXyF3Hf8D4rYB3', userId: 'USER-MTWND3S6', status: 'Active',
+    segment: 'PW', role: 'ADMIN', isBvAdmin: true,
+  };
+  const supervisor = {
+    id: 'EOPsxhyV7sfjzO1MRJ4ZooFIWXp2', userId: 'USER-246', fullName: 'BITS VEDANG',
+    status: 'Active', segment: 'PW', role: 'USER', isBvSupervisor: true,
+    bvReportingAdminId: admin.userId, bvReportingSupervisorId: admin.userId,
+    bvReportingFacilitatorId: 'USER-235',
+  };
+  const rgf = {
+    id: 'USER-e3764ad0b8035a353e0c39400e105773', userId: 'USER-235', fullName: 'Vedanarayana Dasa',
+    status: 'Active', segment: 'PW', role: 'USER', isBvFacilitator: true, isBvsl: true,
+    bvReportingAdminId: admin.userId, bvReportingSupervisorId: supervisor.userId,
+    bvReportingFacilitatorId: 'USER-e3764ad0b8035a353e0c39400e105773',
+  };
+  const rgsf = {
+    id: 'USER-51a52a4fdc58e02fca6f204c8206c548', userId: 'USER-RGSF', fullName: 'F20190150H',
+    status: 'Active', segment: 'PW', role: 'USER', isBvSubFacilitator: true,
+    bvReportingAdminId: admin.userId, bvReportingFacilitatorId: rgf.userId,
+  };
+  const result = filterBvAdminFacilitators([admin, supervisor, rgf, rgsf], admin, admin.userId, 'PW');
+  assert.deepEqual(result.map(user => user.fullName).sort(), ['F20190150H', 'Vedanarayana Dasa']);
+});
+
 test('PW Super Admin can view all facilitators or select one Admin', () => {
   const superAdmin = {
     id: 'SUPER-ADMIN-DB', userId: 'SUPER-ADMIN', status: 'Active', segment: 'PW',

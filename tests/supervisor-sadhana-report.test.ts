@@ -5,6 +5,7 @@ import { serverCacheInvalidate } from '../src/lib/serverCache';
 import { resolveBvGroupMemberUsers } from '../src/lib/bvGroupMemberScope';
 import { withHierarchyDatabase } from '../src/lib/hierarchyUtils';
 import getGuideDetailedReport from '../src/api/getGuideDetailedReport';
+import getBvSessionMatrix from '../src/api/getBvSessionMatrix';
 
 const supervisor = {
   id: 'sadhana-supervisor',
@@ -96,7 +97,104 @@ test('a supervisor sadhana report keeps a group member who has no user account',
       },
       context: { user: supervisor },
     } as never);
-    assert.deepEqual(report.users.map((user: any) => user.id).sort(), ['auth-orphan', 'linked-member']);
+    assert.deepEqual(report.users.map((user: any) => user.id).sort(), ['auth-orphan', 'linked-member', 'sadhana-supervisor']);
     assert.equal(report.users.filter((user: any) => user.submitted).length, 0);
+  });
+});
+
+test('a supervisor report lists the supervisor and the RGF when both belong to the group', async (t) => {
+  const rgf = {
+    id: 'rgf-doc',
+    userId: 'USER-RGF',
+    email: 'rgf@example.test',
+    fullName: 'Vedanarayana Dasa',
+    role: 'User',
+    segment: 'PW',
+    isPrabhupadaWorldUser: true,
+    isBvFacilitator: true,
+    isBvsl: true,
+    bvReportingSupervisorId: supervisor.userId,
+    status: 'Active',
+  };
+  const originalGroup = { ...group };
+  fixture.Users.push(rgf);
+  fixture.BvGroupMembers.push({
+    id: 'm-rgf', group: group.id, groupId: group.groupId, user: rgf.id, userId: rgf.userId, role: 'Member',
+  });
+  group.bvslId = rgf.userId;
+  group.bvslLeader = rgf.id;
+  group.bvslName = rgf.fullName;
+  t.after(() => {
+    fixture.Users = fixture.Users.filter(user => user.id !== rgf.id);
+    fixture.BvGroupMembers = fixture.BvGroupMembers.filter(member => member.id !== 'm-rgf');
+    Object.assign(group, originalGroup);
+  });
+  mockDatabase(t);
+  await withHierarchyDatabase(null, async () => {
+    const report = await getGuideDetailedReport.execute({
+      input: {
+        guideId: supervisor.userId,
+        date: '2026-10-14',
+        reportType: 'daily',
+        bvslMode: true,
+        segment: 'PW',
+      },
+      context: { user: supervisor },
+    } as never);
+    assert.deepEqual(report.users.map((user: any) => user.fullName).sort(), ['BITS VEDANG', 'Devotee', 'Linked Member', 'Vedanarayana Dasa']);
+  });
+});
+
+test('an RGF sadhana report lists the RGF when they are also a group member', async (t) => {
+  const rgf = {
+    id: 'rgf-doc',
+    userId: 'USER-RGF',
+    email: 'rgf@example.test',
+    fullName: 'Vedanarayana Dasa',
+    role: 'User',
+    segment: 'PW',
+    isPrabhupadaWorldUser: true,
+    isBvFacilitator: true,
+    isBvsl: true,
+    status: 'Active',
+  };
+  const originalGroup = { ...group };
+  fixture.Users.push(rgf);
+  fixture.BvGroupMembers.push({
+    id: 'm-rgf', group: group.id, groupId: group.groupId, user: rgf.id, userId: rgf.userId, role: 'Member',
+  });
+  group.bvslId = rgf.userId;
+  group.bvslLeader = rgf.id;
+  group.bvslName = rgf.fullName;
+  t.after(() => {
+    fixture.Users = fixture.Users.filter(user => user.id !== rgf.id);
+    fixture.BvGroupMembers = fixture.BvGroupMembers.filter(member => member.id !== 'm-rgf');
+    Object.assign(group, originalGroup);
+  });
+  mockDatabase(t);
+  await withHierarchyDatabase(null, async () => {
+    const report = await getGuideDetailedReport.execute({
+      input: {
+        guideId: rgf.userId,
+        date: '2026-10-13',
+        reportType: 'daily',
+        bvslMode: true,
+        segment: 'PW',
+      },
+      context: { user: rgf },
+    } as never);
+    assert.deepEqual(report.users.map((user: any) => user.fullName).sort(), ['BITS VEDANG', 'Devotee', 'Linked Member', 'Vedanarayana Dasa']);
+
+    const matrix = await getBvSessionMatrix.execute({
+      input: {
+        guideId: rgf.userId,
+        startDate: '2026-10-12',
+        endDate: '2026-10-18',
+        bvslMode: true,
+        segment: 'PW',
+      },
+      context: { user: rgf },
+    } as never);
+    assert.deepEqual(matrix.members.map((row: any) => row.fullName).sort(), ['BITS VEDANG', 'Linked Member', 'Vedanarayana Dasa']);
   });
 });

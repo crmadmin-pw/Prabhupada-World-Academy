@@ -55,6 +55,40 @@ export function hierarchyAliases(user: any): string[] {
   return HIERARCHY_IDENTITY_FIELDS.flatMap(field => hierarchyRefs(user?.[field]));
 }
 
+/** The reporting parent for this person's role. A facilitator id that points
+ * back at the same person, or a supervisor row that still carries an old
+ * facilitator id, must not hide the admin or supervisor they actually report to. */
+export function reportingParentRefs(user: any): string[] {
+  const self = new Set(hierarchyAliases(user));
+  const pick = (...values: unknown[]) => hierarchyRefs(values).filter(ref => !self.has(ref));
+  const role = String(user?.role || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+  const rgsf = !!(user?.isBvSubFacilitator || role === 'RGSF' || role === 'SUB_FACILITATOR' || role === 'BV_SUB_FACILITATOR');
+  const rgf = !!(user?.isBvFacilitator || user?.isBvsl || ['RGF', 'BVSL', 'FACILITATOR', 'BV_FACILITATOR'].includes(role));
+  const supervisor = !!(user?.isBvSupervisor || user?.isBvMentor || ['SUPERVISOR', 'BV_SUPERVISOR', 'BV_MENTOR'].includes(role));
+  if (rgsf && !rgf) {
+    const facilitator = pick(user?.bvReportingFacilitatorId);
+    if (facilitator.length) return facilitator;
+  }
+  if (rgf && !supervisor) {
+    const supervisorParent = pick(user?.bvReportingSupervisorId);
+    if (supervisorParent.length) return supervisorParent;
+    const adminParent = pick(user?.bvReportingAdminId);
+    if (adminParent.length) return adminParent;
+  }
+  if (supervisor) {
+    const adminParent = pick(user?.bvReportingAdminId);
+    if (adminParent.length) return adminParent;
+  }
+  return pick(
+    user?.bvReportingFacilitatorId,
+    user?.bvReportingSupervisorId,
+    user?.bvReportingAdminId,
+    user?.bvSupervisorGuideId,
+    user?.guide,
+    user?.selectedGuideId,
+  );
+}
+
 export function isHierarchySuperAdmin(user: any): boolean {
   const role = String(user?.role || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
   return !!user && (user.isBvSuperAdmin === true || ['SUPER_ADMIN', 'SUPER_GUIDE'].includes(role));
@@ -149,9 +183,7 @@ export function resolveHierarchyScope(caller: any, users: any[], groups: any[] =
       expandGuideAliases();
       for (const user of users) {
         if (!eligible(user) || foreignAdmin(user)) continue;
-        // An explicit immediate parent wins over legacy guide/registration fields.
-        const parents = hierarchyRefs(user.bvReportingFacilitatorId || user.bvReportingSupervisorId ||
-          user.bvReportingAdminId || user.bvSupervisorGuideId || user.guide || user.selectedGuideId);
+        const parents = reportingParentRefs(user);
         if (parents.some(ref => scope.has(ref))) add(user);
       }
     }

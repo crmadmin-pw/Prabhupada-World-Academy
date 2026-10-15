@@ -15,6 +15,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Archive, Database, Calendar, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
 import { getArchiveStats, archiveSadhanaData } from '@/lib/endpoints-sdk';
 import type { GetArchiveStatsOutputType } from '@/lib/endpoints-sdk';
+import { observeEndpointReads } from '@/lib/app-endpoints-sdk';
 
 function getDefaultCutoff(): string {
   const d = new Date();
@@ -41,8 +42,8 @@ export default function ArchiveDataPanel() {
     try {
       const res = await archiveSadhanaData({ cutoffDate, confirm: 'ARCHIVE' });
       setResult(res);
-      // Refresh stats after archive
-      const fresh = await getArchiveStats({});
+      // Refresh stats after archive; the cached pre-archive response is still marked fresh
+      const fresh = await observeEndpointReads(() => getArchiveStats({}), () => {}, true);
       setStats(fresh);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Archive failed. Please try again.');

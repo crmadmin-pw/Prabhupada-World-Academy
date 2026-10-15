@@ -67,10 +67,17 @@ export default createEndpoint({
     const offset = input.offset || 0;
 
     // For filter options, get ALL registrations (unfiltered)
-    const { records: allRegsUnfiltered } = await JigyasaRegistrations.findAll({
-      limit: 2000,
-      fields: ['mangoName', 'affiliateName', 'totalSessions'],
-    });
+    // The unique session-date count does not depend on the filters.
+    const [{ records: allRegsUnfiltered }, { records: allSessions }] = await Promise.all([
+      JigyasaRegistrations.findAll({
+        limit: 2000,
+        fields: ['mangoName', 'affiliateName', 'totalSessions'],
+      }),
+      JigyasaSessionAttendance.findAll({
+        limit: 2000,
+        fields: ['sessionDate'],
+      }),
+    ]);
 
     const centreSet = new Set<string>();
     const affiliateSet = new Set<string>();
@@ -112,11 +119,6 @@ export default createEndpoint({
       if ((r.totalSessions || 0) > 0) attendedAtLeastOne++;
     }
 
-    // Get unique session dates count
-    const { records: allSessions } = await JigyasaSessionAttendance.findAll({
-      limit: 2000,
-      fields: ['sessionDate'],
-    });
     const sessionDateSet = new Set(allSessions.map(s => s.sessionDate).filter(Boolean));
 
     const stats = {

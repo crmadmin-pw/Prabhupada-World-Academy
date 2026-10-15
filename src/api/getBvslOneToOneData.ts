@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { createEndpoint, Users, OneToOneMeetings, BvGroups, BvGroupMembers } from '@/lib/backend-sdk';
-import { getScopedHierarchyUserIds, readScopedUsers } from '../lib/hierarchyUtils';
+import { getScopedHierarchyUserIds, isHierarchyAdmin, readScopedUsers } from '../lib/hierarchyUtils';
 import { resolveBvGroupFacilitatorUsers, resolveBvGroupMemberUsers } from '../lib/bvGroupMemberScope';
 
 function getWeeks(weeksBack: number): string[] {
@@ -210,6 +210,39 @@ export default createEndpoint({
       // Sadhana to remove blank legacy profile records.
       filteredUsers = await resolveBvGroupMemberUsers(context.user, userFields, {
         segment: callerSegment === 'FOLK' ? 'FOLK' : 'PW',
+      });
+    } else if (isHierarchyAdmin(context.user)) {
+      // An admin already sees direct reports. Also show the people those RGFs
+      // see: group members, and an RGSF whose reporting parent is that RGF
+      // even when an older admin id kept them out of the hierarchy walk.
+      const segment = callerSegment === 'FOLK' ? 'FOLK' : 'PW' as const;
+      const groupMembers = await resolveBvGroupMemberUsers(context.user, userFields, { segment });
+      const facilitatorIds = [...new Set([...filteredUsers, ...groupMembers].flatMap((user: any) => {
+        const role = String(user.role || '').toUpperCase().replace(/[\s-]+/g, '_');
+        const isRgf = !!(user.isBvFacilitator || user.isBvsl || ['RGF', 'BVSL', 'FACILITATOR'].includes(role));
+        return isRgf ? [user.id, user.userId, user.email].filter(Boolean).map(String) : [];
+      }))];
+      let reportingToRgf: any[] = [];
+      if (facilitatorIds.length > 0) {
+        const { records } = await Users.findAll({
+          filters: { bvReportingFacilitatorId: { in: facilitatorIds } } as any,
+          fields: userFields,
+          limit: 500,
+        });
+        reportingToRgf = records || [];
+      }
+      const callerAliases = new Set([dbUserId, customUserId, context.user.email]
+        .filter(Boolean)
+        .map(value => String(value).toLowerCase()));
+      const seenAliases = new Set<string>();
+      filteredUsers = [...filteredUsers, ...groupMembers, ...reportingToRgf].filter((user: any) => {
+        const aliases = [user.id, user.userId, user.email]
+          .filter(Boolean)
+          .map(value => String(value).toLowerCase());
+        if (aliases.some(alias => callerAliases.has(alias))) return false;
+        if (aliases.some(alias => seenAliases.has(alias))) return false;
+        aliases.forEach(alias => seenAliases.add(alias));
+        return aliases.length > 0;
       });
     }
 
