@@ -1,18 +1,26 @@
 import DashboardPanel from '@/components/DashboardPanel';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { BarChart3, TrendingUp, Lightbulb, Users, Square as Grid3X3, Activity, Settings2 } from 'lucide-react';
-import BvReportTab from '@/components/guide/BvReportTab';
-import BvStatsPanel from '@/components/guide/BvStatsPanel';
-import BvImprovementTab from '@/components/guide/BvImprovementTab';
-import GuideBvTab from '@/components/guide/GuideBvTab';
 import BvSessionMatrixTab from '@/components/guide/BvSessionMatrixTab';
-import SadhanaSection from '@/components/guide/SadhanaSection';
-import StatsOverviewPanel from '@/components/guide/StatsOverviewPanel';
-import BvslManagementTab from '@/components/guide/BvslManagementTab';
-import BvAdminManagementTab from '@/components/super/BvAdminManagementTab';
-import ImprovementTab from '@/components/guide/ImprovementTab';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import type { SadhanaGroupOption } from '@/components/guide/ReportsTab';
+
+// The report matrix is the tab users land on. The other panels, including the
+// charting library, load only when their tab is opened.
+const BvReportTab = lazy(() => import('@/components/guide/BvReportTab'));
+const BvStatsPanel = lazy(() => import('@/components/guide/BvStatsPanel'));
+const BvImprovementTab = lazy(() => import('@/components/guide/BvImprovementTab'));
+const GuideBvTab = lazy(() => import('@/components/guide/GuideBvTab'));
+const SadhanaSection = lazy(() => import('@/components/guide/SadhanaSection'));
+const StatsOverviewPanel = lazy(() => import('@/components/guide/StatsOverviewPanel'));
+const BvslManagementTab = lazy(() => import('@/components/guide/BvslManagementTab'));
+const BvAdminManagementTab = lazy(() => import('@/components/super/BvAdminManagementTab'));
+const ImprovementTab = lazy(() => import('@/components/guide/ImprovementTab'));
+
+function PanelFallback() {
+  return <Skeleton className="h-40 w-full" />;
+}
 
 interface Props {
   guideId: string;
@@ -102,13 +110,13 @@ export default function BvSection({ guideId, bvslMode, residencyIds, groupOption
       </div>
 
       <DashboardPanel active={activeSubTab === 'bvmatrix'}>{<BvSessionMatrixTab guideId={guideId} bvslMode={bvslMode} residencyIds={residencyIds} segment={segment} />}</DashboardPanel>
-      <DashboardPanel active={activeSubTab === 'report'}>{<BvReportTab guideId={guideId} bvslMode={bvslMode} residencyIds={residencyIds} segment={segment} />}</DashboardPanel>
-      <DashboardPanel active={activeSubTab === 'sadhana'}>{<SadhanaSection guideId={guideId} bvslMode={bvslMode} facilitatorMode hideImprovement={segment === 'PW'} />}</DashboardPanel>
-      <DashboardPanel active={activeSubTab === 'stats'}>{segment === 'PW'
+      <DashboardPanel active={activeSubTab === 'report'}><Suspense fallback={<PanelFallback />}><BvReportTab guideId={guideId} bvslMode={bvslMode} residencyIds={residencyIds} segment={segment} /></Suspense></DashboardPanel>
+      <DashboardPanel active={activeSubTab === 'sadhana'}><Suspense fallback={<PanelFallback />}><SadhanaSection guideId={guideId} bvslMode={bvslMode} facilitatorMode hideImprovement={segment === 'PW'} /></Suspense></DashboardPanel>
+      <DashboardPanel active={activeSubTab === 'stats'}><Suspense fallback={<PanelFallback />}>{segment === 'PW'
         ? <StatsOverviewPanel guideId={guideId} bvslMode={bvslMode} groupOptions={groupOptions} />
         : <BvStatsPanel guideId={guideId} bvslMode={bvslMode} residencyIds={residencyIds} showIndividualStats={isSupervisorOrAbove} groupOptions={groupOptions} segment={segment} />
-      }</DashboardPanel>
-      <DashboardPanel active={activeSubTab === 'improvement'}>{(isBvSupervisorDashboard ? (
+      }</Suspense></DashboardPanel>
+      <DashboardPanel active={activeSubTab === 'improvement'}><Suspense fallback={<PanelFallback />}>{(isBvSupervisorDashboard ? (
         <div className="space-y-6">
           {segment !== 'PW' && (
           <>
@@ -144,13 +152,13 @@ export default function BvSection({ guideId, bvslMode, residencyIds, groupOption
         />
       ) : (
         <BvImprovementTab guideId={guideId} bvslMode={bvslMode} residencyIds={residencyIds} segment={segment} />
-      ))}</DashboardPanel>
-      <DashboardPanel active={activeSubTab === 'groups'}>{<GuideBvTab guideId={guideId} bvslMode={bvslMode} residencyIds={residencyIds} summaryOnly={summaryOnlyGroups} segment={segment} />}</DashboardPanel>
-      <DashboardPanel active={activeSubTab === 'management'}>{!bvslMode && (
+      ))}</Suspense></DashboardPanel>
+      <DashboardPanel active={activeSubTab === 'groups'}><Suspense fallback={<PanelFallback />}><GuideBvTab guideId={guideId} bvslMode={bvslMode} residencyIds={residencyIds} summaryOnly={summaryOnlyGroups} segment={segment} /></Suspense></DashboardPanel>
+      <DashboardPanel active={activeSubTab === 'management'}><Suspense fallback={<PanelFallback />}>{!bvslMode && (
         guideId === 'ALL' && segment
           ? <BvAdminManagementTab segment={segment} isSuperGuide />
           : <BvslManagementTab guideId={guideId} />
-      )}</DashboardPanel>
+      )}</Suspense></DashboardPanel>
     </div>
   );
 }

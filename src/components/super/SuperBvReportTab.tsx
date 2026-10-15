@@ -1,10 +1,11 @@
 import DashboardPanel from '@/components/DashboardPanel';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
 import BvSection from '@/components/guide/BvSection';
-import SuperGuideBvSection from './SuperGuideBvSection';
-import SuperBvPreachingAnalytics from './SuperBvPreachingAnalytics';
+const SuperGuideBvSection = lazy(() => import('./SuperGuideBvSection'));
+const SuperBvPreachingAnalytics = lazy(() => import('./SuperBvPreachingAnalytics'));
 import { getGuides } from '@/lib/endpoints-sdk';
 import type { GetGuidesOutputType } from '@/lib/endpoints-sdk';
 import { BarChart3, TrendingUp } from 'lucide-react';
@@ -91,14 +92,14 @@ export default function SuperBvReportTab({ isPwAdmin = false, segment, guideId, 
             </div>
           )}
           {selectedGuide === 'all' && !isPwAdmin
-            ? <SuperGuideBvSection />
+            ? <Suspense fallback={<Skeleton className="h-40 w-full" />}><SuperGuideBvSection /></Suspense>
             : <BvSection guideId={selectedGuide === 'all' ? 'ALL' : selectedGuide} segment={effectiveSegment} showManagementTab={false} />
           }
         </div>
       )}</DashboardPanel>
 
       {effectiveSegment !== 'PW' && (
-      <DashboardPanel active={activeSubTab === 'preaching'}>{<SuperBvPreachingAnalytics />}</DashboardPanel>
+      <DashboardPanel active={activeSubTab === 'preaching'}><Suspense fallback={<Skeleton className="h-40 w-full" />}><SuperBvPreachingAnalytics /></Suspense></DashboardPanel>
       )}
     </div>
   );

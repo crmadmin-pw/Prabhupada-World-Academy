@@ -17,7 +17,7 @@ async function main() {
    const superAdmin = role.includes('super');
    const context = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 1600, height: 1050 } });
    const page = await context.newPage();
-   const errors = [], reads = [], durations = [];
+   const errors = [], reads = [], assets = [], durations = [];
    page.on('pageerror', error => errors.push(error.message));
    const profile = { id: 'test-admin', userId: 'test-admin', fullName: 'Test Administrator', email: 'admin@example.invalid',
     role: segment === 'PW' ? (superAdmin ? 'SUPER_ADMIN' : 'User') : (superAdmin ? 'SUPER_GUIDE' : 'Guide'),
@@ -37,7 +37,7 @@ async function main() {
     const url = new URL(route.request().url());
     if (url.hostname === 'identitytoolkit.googleapis.com' && url.pathname.endsWith('accounts:lookup')) return route.fulfill({ json:{ users:[{localId:'test-admin',email:profile.email,emailVerified:true}] } });
     if (url.origin !== origin) return route.abort();
-    if (!url.pathname.startsWith('/api/')) return route.continue();
+    if (!url.pathname.startsWith('/api/')) { assets.push({name:url.pathname.split('/').pop(),at:Date.now()}); return route.continue(); }
     const name = url.pathname.split('/').pop();
     const input = route.request().postDataJSON() || {};
     reads.push({name,input,at:Date.now()});
@@ -81,9 +81,11 @@ async function main() {
     for (const [label, marker] of flows) {
      const beforeReads=reads.length;
      const start=performance.now();
+     const clickedAt=Date.now();
      await page.getByRole('button',{name:label,exact:true}).filter({visible:true}).first().click();
      await expect(visibleText(marker)).toBeVisible({timeout:15000});
      durations.push({flow:label,visit,ms:Math.round(performance.now()-start),requests:reads.length-beforeReads});
+     if (process.env.PERF_TRACE === '1' && visit === 1) console.error(role, label, reads.slice(beforeReads).map(r => `${r.name}@+${r.at-clickedAt}ms`).join(' '), '| assets', assets.filter(a => a.at >= clickedAt).map(a => `${a.name}@+${a.at-clickedAt}ms`).join(' '));
      if (!baseline && visit === 2) assert.equal(reads.length-beforeReads, 0, `${role}: revisiting ${label} must not refetch`);
      if (label==='Members / Users' && !baseline) {
       const search=page.getByPlaceholder('Search by name...').filter({visible:true});
