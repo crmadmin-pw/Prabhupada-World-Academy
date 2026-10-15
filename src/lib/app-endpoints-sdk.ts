@@ -8,6 +8,7 @@ import type { z } from 'zod';
 import {
   isReadOnlyEndpoint,
   accountLinkReads,
+  attendanceReads,
   directoryReads,
   membershipCountAdjustment,
   membershipCountReads,
@@ -423,7 +424,7 @@ async function invokeEndpoint(name: string, input: any): Promise<any> {
     if (!isQuery) {
       const membership = membershipCountAdjustment(name, input);
       invalidateCachedEndpoints(
-        [...membershipCountReads(name, input), ...directoryReads(name), ...quizReads(name), ...accountLinkReads(name)],
+        [...membershipCountReads(name, input), ...directoryReads(name), ...quizReads(name), ...accountLinkReads(name), ...attendanceReads(name)],
         membership ? { membership } : undefined,
       );
     }

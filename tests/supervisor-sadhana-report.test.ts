@@ -6,6 +6,8 @@ import { resolveBvGroupMemberUsers } from '../src/lib/bvGroupMemberScope';
 import { withHierarchyDatabase } from '../src/lib/hierarchyUtils';
 import getGuideDetailedReport from '../src/api/getGuideDetailedReport';
 import getBvSessionMatrix from '../src/api/getBvSessionMatrix';
+import getSadhanaLeaderboard from '../src/api/getSadhanaLeaderboard';
+import { getTodayIST } from '../src/lib/streakUtils';
 
 const supervisor = {
   id: 'sadhana-supervisor',
@@ -196,5 +198,61 @@ test('an RGF sadhana report lists the RGF when they are also a group member', as
       context: { user: rgf },
     } as never);
     assert.deepEqual(matrix.members.map((row: any) => row.fullName).sort(), ['BITS VEDANG', 'Linked Member', 'Vedanarayana Dasa']);
+  });
+});
+
+test('an RGF leaderboard includes a supervisor who is a member of the group', async (t) => {
+  const rgf = {
+    id: 'rgf-doc',
+    userId: 'USER-RGF',
+    email: 'rgf@example.test',
+    fullName: 'Vedanarayana Dasa',
+    role: 'User',
+    segment: 'PW',
+    isPrabhupadaWorldUser: true,
+    isBvFacilitator: true,
+    isBvsl: true,
+    bvReportingSupervisorId: supervisor.userId,
+    status: 'Active',
+  };
+  const date = getTodayIST();
+  const originalGroup = { ...group };
+  fixture.Users.push(rgf);
+  fixture.BvGroupMembers.push({
+    id: 'm-rgf', group: group.id, groupId: group.groupId, user: rgf.id, userId: rgf.userId, role: 'Member',
+  });
+  fixture.SadhanaPeriodSummaryMeta = [{ id: `day__${date}`, ready: true, streakFinal: true }];
+  fixture.SadhanaPeriodSummaries = [supervisor, rgf].map(person => ({
+    id: `sum-${person.id}`,
+    periodId: `day__${date}`,
+    user: person.id,
+    entryCount: 1,
+    entryDates: [date],
+    totalScore: 0,
+    totalMaxScore: 0,
+    latestMaxScore: 0,
+    latestEntryDate: date,
+    streakAtEnd: 1,
+  }));
+  group.bvslId = rgf.userId;
+  group.bvslLeader = rgf.id;
+  group.bvslName = rgf.fullName;
+  t.after(() => {
+    fixture.Users = fixture.Users.filter(user => user.id !== rgf.id);
+    fixture.BvGroupMembers = fixture.BvGroupMembers.filter(member => member.id !== 'm-rgf');
+    fixture.SadhanaPeriodSummaries = [];
+    delete fixture.SadhanaPeriodSummaryMeta;
+    Object.assign(group, originalGroup);
+  });
+  mockDatabase(t);
+  await withHierarchyDatabase(null, async () => {
+    const leaderboard = await getSadhanaLeaderboard.execute({
+      input: { date, bvslMode: true, segment: 'PW', guideId: rgf.userId },
+      context: { user: rgf },
+    } as never);
+    assert.deepEqual(
+      leaderboard.leaderboard.map((row: any) => row.displayName).sort(),
+      ['BITS VEDANG', 'Vedanarayana Dasa'],
+    );
   });
 });

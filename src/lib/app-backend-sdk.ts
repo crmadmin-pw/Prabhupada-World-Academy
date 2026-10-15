@@ -143,6 +143,38 @@ export class AppError extends Error {
   }
 }
 
+const MAX_DISJUNCTION_VALUES = 30;
+
+/** The first filter whose list exceeds one Firestore disjunction, if any. */
+function oversizedListFilter(filters: any): { col: string; op: string; values: unknown[] } | null {
+  if (!filters || typeof filters !== 'object') return null;
+  for (const col of Object.keys(filters)) {
+    const val = filters[col];
+    if (!val || typeof val !== 'object' || Array.isArray(val)) continue;
+    for (const op of ['in', 'arrayContainsAny', 'array-contains-any']) {
+      if (Array.isArray(val[op]) && val[op].length > MAX_DISJUNCTION_VALUES) {
+        return { col, op, values: [...new Set(val[op])] };
+      }
+    }
+  }
+  return null;
+}
+
+function compareBySorts(a: any, b: any, sorts: any[]): number {
+  for (const sort of sorts) {
+    const direction = String(sort?.dir || 'asc').toLowerCase() === 'desc' ? -1 : 1;
+    const left = a?.[sort.field];
+    const right = b?.[sort.field];
+    if (left === right) continue;
+    if (typeof left === 'number' && typeof right === 'number') {
+      return left < right ? -direction : direction;
+    }
+    const compared = String(left ?? '').localeCompare(String(right ?? ''));
+    if (compared !== 0) return compared * direction;
+  }
+  return 0;
+}
+
 function applyFilters(ref: any, filters: any) {
   let q = ref;
   for (const col of Object.keys(filters)) {
@@ -165,7 +197,7 @@ function applyFilters(ref: any, filters: any) {
           }
         } else if (op === 'arrayContainsAny' || op === 'array-contains-any') {
           if (Array.isArray(opVal) && opVal.length > 0) {
-            q = q.where(dbField, 'array-contains-any', opVal.slice(0, 10));
+            q = q.where(dbField, 'array-contains-any', opVal.slice(0, 30));
           } else {
             q = q.where(dbField, '==', '__EMPTY_QUERY_RESULT__');
           }
@@ -185,6 +217,10 @@ function applyFilters(ref: any, filters: any) {
           q = q.where(dbField, '<', opVal);
         } else if (op === 'neq' || op === 'ne') {
           q = q.where(dbField, '!=', opVal);
+        } else {
+          // Firestore has no substring operator. Dropping the filter returns
+          // arbitrary documents that callers then treat as matches.
+          throw new Error(`Unsupported filter operator "${op}" on ${col}`);
         }
       }
     } else {
@@ -490,6 +526,9 @@ export class Table {
             recordQueryReadTime(doc.readTime);
             if (doc.exists) return { id: doc.id, ...doc.data() };
           }
+        } else if (query.filters && oversizedListFilter(query.filters)) {
+          const { records } = await this.findAllUncached({ filters: query.filters, fields: query.fields, limit: 1 });
+          if (records[0]) return records[0];
         } else if (query.filters) {
           let q = db.collection(this.tableName);
           q = applyFilters(q, query.filters);
@@ -522,9 +561,46 @@ export class Table {
     return requestQuery(this.tableName, 'findAll', query, () => this.findAllUncached(query));
   }
 
+  /** Runs one query per 30-value slice of an oversized list filter and merges
+   * the results, so long ID lists are not silently truncated. */
+  private async findAllChunked(
+    query: any,
+    oversized: { col: string; op: string; values: unknown[] },
+  ): Promise<{ records: any[]; hasMore: boolean }> {
+    const offset = query.offset ? Number(query.offset) : 0;
+    const limit = query.limit ? Number(query.limit) : null;
+    const chunkLimit = limit === null ? undefined : offset + limit + 1;
+    const pages = [];
+    for (let i = 0; i < oversized.values.length; i += MAX_DISJUNCTION_VALUES) {
+      const chunk = oversized.values.slice(i, i + MAX_DISJUNCTION_VALUES);
+      pages.push(this.findAllUncached({
+        ...query,
+        offset: undefined,
+        limit: chunkLimit,
+        filters: {
+          ...query.filters,
+          [oversized.col]: { ...query.filters[oversized.col], [oversized.op]: chunk },
+        },
+      }));
+    }
+    const merged = new Map<string, any>();
+    for (const page of await Promise.all(pages)) {
+      for (const record of page.records) merged.set(String(record.id), record);
+    }
+    const records = [...merged.values()];
+    if (Array.isArray(query.sorts) && query.sorts.length > 0) {
+      records.sort((a, b) => compareBySorts(a, b, query.sorts));
+    }
+    const windowed = offset > 0 ? records.slice(offset) : records;
+    if (limit === null) return { records: windowed, hasMore: false };
+    return { records: windowed.slice(0, limit), hasMore: windowed.length > limit };
+  }
+
   private async findAllUncached(query: any = {}): Promise<{ records: any[]; hasMore: boolean }> {
     ensureFirestoreInProduction();
     const db = activeDb();
+    const oversized = db && !query.id ? oversizedListFilter(query.filters) : null;
+    if (oversized) return this.findAllChunked(query, oversized);
     if (db) {
       try {
         let q = db.collection(this.tableName);
@@ -587,20 +663,7 @@ export class Table {
 
     if (Array.isArray(query.sorts) && query.sorts.length > 0) {
       const sorts = query.sorts;
-      records.sort((a, b) => {
-        for (const sort of sorts) {
-          const direction = String(sort?.dir || 'asc').toLowerCase() === 'desc' ? -1 : 1;
-          const left = a?.[sort.field];
-          const right = b?.[sort.field];
-          if (left === right) continue;
-          if (typeof left === 'number' && typeof right === 'number') {
-            return left < right ? -direction : direction;
-          }
-          const compared = String(left ?? '').localeCompare(String(right ?? ''));
-          if (compared !== 0) return compared * direction;
-        }
-        return 0;
-      });
+      records.sort((a, b) => compareBySorts(a, b, sorts));
     }
 
     const offset = query.offset ? Number(query.offset) : 0;

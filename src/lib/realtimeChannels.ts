@@ -186,6 +186,30 @@ export function quizReads(endpoint: string): readonly string[] {
   return QUIZ_MUTATIONS.has(endpoint) ? QUIZ_READS : [];
 }
 
+const ATTENDANCE_MUTATIONS = new Set(['conductBvSession', 'markBvAttendance']);
+const ATTENDANCE_READS = [
+  'getAllBvGroupsAdmin',
+  'getAttendanceForDate',
+  'getBvAdminTable',
+  'getBvAttendance',
+  'getBvAttendanceMatrix',
+  'getBvGroupDetail',
+  'getBvSessionMatrix',
+  'getBvSessionReport',
+  'getBvSupervisorOverview',
+  'getBvslGroups',
+  'getBvslOwnReport',
+  'getGuideGroupStats',
+  'getSuperGuideBvStats',
+  'getUserBvStatus',
+] as const;
+
+/** The facilitator who marks attendance sees the BV reports refresh at once,
+ * instead of after the Firestore revision round-trip that other devices use. */
+export function attendanceReads(endpoint: string): readonly string[] {
+  return ATTENDANCE_MUTATIONS.has(endpoint) ? ATTENDANCE_READS : [];
+}
+
 export function membershipCountReads(endpoint: string, input?: unknown): readonly string[] {
   if (!MEMBERSHIP_MUTATIONS.has(endpoint)) return [];
   const record = input && typeof input === 'object' ? input as { groupId?: unknown; action?: unknown } : undefined;

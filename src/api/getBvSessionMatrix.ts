@@ -32,6 +32,14 @@ export default createEndpoint({
     });
 
     const { guideId, startDate, endDate, groupId, bvslMode, residencyIds, segment } = input;
+    // Caller-only scope checks overlap the group and member reads; both are
+    // still applied below exactly as before.
+    const hierarchyPromise = getScopedHierarchyUserIds(context.user);
+    void hierarchyPromise.catch(() => {});
+    const permittedGroupsPromise = isBvSuperAdminUser(context.user as any)
+      ? null
+      : resolveBvScopedGroups(context.user as any, { segment });
+    void permittedGroupsPromise?.catch(() => {});
 
     // Get groups
     const groupFilter: any = { isActive: true };
@@ -81,8 +89,8 @@ export default createEndpoint({
 
     // Older PW documents mix the Firestore record id and public groupId in
     // memberships and attendance. Treat both as aliases of the same group.
-    if (!isBvSuperAdminUser(context.user as any)) {
-      const permitted = new Set((await resolveBvScopedGroups(context.user as any, { segment })).map(g => g.id));
+    if (permittedGroupsPromise) {
+      const permitted = new Set((await permittedGroupsPromise).map(g => g.id));
       groups = groups.filter(group => permitted.has(group.id));
     }
     const groupIds = [...new Set(groups.flatMap(g => [g.id, g.groupId]).filter(Boolean))] as string[];
@@ -233,7 +241,7 @@ export default createEndpoint({
 
     const callerAliases = new Set(bvUserAliases(context.user as any));
     const facilitatorAliases = new Set(groups.flatMap(group => bvGroupFacilitatorAliases(group)));
-    const hierarchy = await getScopedHierarchyUserIds(context.user);
+    const hierarchy = await hierarchyPromise;
     const permittedUsers = users.filter(user => isUserInHierarchy(user, hierarchy));
     // Prabhupada World reports list a facilitator who is also a group member.
     // FOLK reports stay limited to the people that facilitator is monitoring.
