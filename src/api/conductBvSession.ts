@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, BvSessions, BvAttendance, AppError } from '@/lib/backend-sdk';
 import { callerFacilitatesReadingGroup } from '@/lib/bvAttendanceAccess';
+import { bvUserAliases } from '@/lib/bvGroupMemberScope';
+import { loadGroupFacilitators } from '@/lib/bvGroupFacilitators';
 
 export default createEndpoint({
   description: 'Save BV session attendance for a group and date. Idempotent — creates the session if needed, updates existing attendance. Also writes attendanceDate and group directly to attendance records.',
@@ -64,6 +66,36 @@ export default createEndpoint({
       const uid = Array.isArray(m.user) ? m.user[0] : m.user;
       return !!uid;
     });
+    const staff = await loadGroupFacilitators(group);
+    const roster: Array<{ writeUserId: string; keys: string[] }> = [];
+    const covered = new Set<string>();
+    const addPerson = (writeUserId: string, keys: string[]) => {
+      const id = String(writeUserId || '').trim();
+      if (!id || covered.has(id.toLowerCase())) return;
+      const uniqueKeys = [...new Set([id, ...keys].map(key => String(key || '').trim()).filter(Boolean))];
+      roster.push({ writeUserId: id, keys: uniqueKeys });
+      uniqueKeys.forEach(key => covered.add(key.toLowerCase()));
+    };
+    for (const member of validMembers) {
+      const dbId = Array.isArray(member.user) ? member.user[0] : member.user as string;
+      addPerson(dbId, [dbId]);
+    }
+    for (const entry of staff) {
+      const aliases = bvUserAliases(entry.user);
+      if (aliases.some(alias => covered.has(alias))) {
+        const person = roster.find(item => item.keys.some(key => aliases.includes(key.toLowerCase())));
+        if (person) {
+          for (const alias of [entry.user.id, entry.user.userId, ...aliases]) {
+            const key = String(alias || '').trim();
+            if (!key || person.keys.some(existing => existing.toLowerCase() === key.toLowerCase())) continue;
+            person.keys.push(key);
+            covered.add(key.toLowerCase());
+          }
+        }
+        continue;
+      }
+      addPerson(entry.user.id, [entry.user.id, entry.user.userId, ...aliases]);
+    }
 
     // Load existing attendance records for this group+date (new approach)
     const { records: existingAtt } = await BvAttendance.findAll({
@@ -74,7 +106,9 @@ export default createEndpoint({
     const attByUserDbId: Record<string, string> = {};
     existingAtt.forEach((a: any) => {
       const uid = Array.isArray(a.user) ? a.user[0] : a.user as string;
-      if (uid) attByUserDbId[uid] = a.id;
+      if (!uid) return;
+      attByUserDbId[uid] = a.id;
+      attByUserDbId[String(uid).toLowerCase()] = a.id;
     });
 
     const totalMinutes = input.totalMeetingMinutes || 60;
@@ -88,27 +122,45 @@ export default createEndpoint({
         };
       });
     } else {
-      const presentSet = new Set(input.presentUserIds || []);
-      validMembers.forEach((m: any) => {
-        const dbId = Array.isArray(m.user) ? m.user[0] : m.user as string;
-        const isPresent = presentSet.has(dbId);
-        memberAttMap[dbId] = {
+      const presentSet = new Set((input.presentUserIds || []).map((id: string) => String(id).toLowerCase()));
+      for (const person of roster) {
+        const isPresent = person.keys.some(key => presentSet.has(key.toLowerCase()));
+        memberAttMap[person.writeUserId] = {
           present: isPresent,
           attendedMinutes: isPresent ? totalMinutes : 0,
         };
-      });
+      }
     }
+
+    const payloadFor = (keys: string[]) => {
+      for (const key of keys) {
+        if (memberAttMap[key]) return memberAttMap[key];
+      }
+      const lower = new Map(Object.entries(memberAttMap).map(([key, value]) => [key.toLowerCase(), value]));
+      for (const key of keys) {
+        const hit = lower.get(key.toLowerCase());
+        if (hit) return hit;
+      }
+      return { present: false, attendedMinutes: 0 };
+    };
+    const existingIdFor = (keys: string[]) => {
+      for (const key of keys) {
+        if (attByUserDbId[key]) return attByUserDbId[key];
+        if (attByUserDbId[key.toLowerCase()]) return attByUserDbId[key.toLowerCase()];
+      }
+      return undefined;
+    };
 
     // Split into records to update vs records to create
     const toUpdate: { id: string; present: boolean; attendedMinutes: number; totalMeetingMinutes: number }[] = [];
     const toCreate: { session: string; user: string; present: boolean; attendedMinutes: number; totalMeetingMinutes: number; attendanceDate: string; group: string }[] = [];
 
-    for (const m of validMembers) {
-      const dbId = Array.isArray(m.user) ? m.user[0] : m.user as string;
-      const attData = memberAttMap[dbId] || { present: false, attendedMinutes: 0 };
-      if (attByUserDbId[dbId]) {
+    for (const person of roster) {
+      const attData = payloadFor(person.keys);
+      const existingId = existingIdFor(person.keys);
+      if (existingId) {
         toUpdate.push({
-          id: attByUserDbId[dbId],
+          id: existingId,
           present: attData.present,
           attendedMinutes: attData.attendedMinutes,
           totalMeetingMinutes: totalMinutes,
@@ -116,7 +168,7 @@ export default createEndpoint({
       } else {
         toCreate.push({
           session: session.id,
-          user: dbId,
+          user: person.writeUserId,
           present: attData.present,
           attendedMinutes: attData.attendedMinutes,
           totalMeetingMinutes: totalMinutes,
@@ -137,12 +189,12 @@ export default createEndpoint({
       await BvAttendance.bulkCreate({ records: toCreate.slice(i, i + 100) });
     }
 
-    const presentCount = Object.values(memberAttMap).filter(v => v.present).length;
+    const presentCount = roster.filter(person => payloadFor(person.keys).present).length;
 
     return {
       success: true,
       sessionId: session.id,
-      message: `Attendance saved for ${group.groupName} — ${presentCount}/${validMembers.length} present (${totalMinutes} mins session)`,
+      message: `Attendance saved for ${group.groupName} — ${presentCount}/${roster.length} present (${totalMinutes} mins session)`,
     };
   },
 });

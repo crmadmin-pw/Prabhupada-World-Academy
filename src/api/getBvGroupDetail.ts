@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, BvSessions, BvAttendance, BvQuizzes, Users, AppError } from '@/lib/backend-sdk';
 import { legacyQuizMatchesGroup, normalizeQuizDepartment } from '@/lib/bvQuizAccess';
-import { bvUserAliases, resolveBvScopedGroups, resolveBvUsersByAliases } from '@/lib/bvGroupMemberScope';
-import { isReadingGroupStaff } from '@/lib/bvGroupFacilitators';
+import { bvUserAliases, resolveBvScopedGroups } from '@/lib/bvGroupMemberScope';
+import { isReadingGroupStaff, loadGroupFacilitators, type FacilitatorBadge } from '@/lib/bvGroupFacilitators';
 import { isHierarchyAdmin } from '@/lib/hierarchyUtils';
 
 function normalizeKey(value: unknown): string {
@@ -90,37 +90,10 @@ function aliasSet(values: unknown[]): Set<string> {
   return new Set(values.flatMap(textValues).map(value => value.toLowerCase()));
 }
 
-type FacilitatorBadge = 'RGF' | 'RGSF';
-
 const GROUP_FIELDS = [
   'id', 'groupId', 'groupName', 'description', 'isActive', 'joinToken', 'whatsAppLink',
   'bvslLeader', 'bvslId', 'bvslName', 'segment', 'subFacilitatorId', 'rgsfId', 'subFacilitator',
 ];
-
-/** The group's assigned facilitators, even when they have no membership row. */
-async function loadGroupFacilitators(group: any): Promise<Array<{ user: any; badges: FacilitatorBadge[] }>> {
-  const rgfIds = aliasSet([group?.bvslLeader, group?.bvslId]);
-  const rgfNames = aliasSet([group?.bvslName]);
-  const rgsfIds = aliasSet([group?.subFacilitatorId, group?.rgsfId, group?.subFacilitator]);
-  const lookupAliases = [...rgfIds, ...(rgfIds.size > 0 ? [] : [...rgfNames]), ...rgsfIds];
-  if (lookupAliases.length === 0) return [];
-
-  const users = await resolveBvUsersByAliases(lookupAliases, [
-    'id', 'userId', 'fullName', 'email', 'phone', 'ashrayLevel', 'status',
-    'bvGroupId', 'isBvMember',
-  ]);
-  const rgfAliases = rgfIds.size > 0 ? rgfIds : rgfNames;
-  const roster: Array<{ user: any; badges: FacilitatorBadge[] }> = [];
-  for (const user of users) {
-    if (user?.status && String(user.status).toLowerCase() !== 'active') continue;
-    const aliases = new Set(bvUserAliases(user));
-    const badges: FacilitatorBadge[] = [];
-    if ([...rgfAliases].some(alias => aliases.has(alias))) badges.push('RGF');
-    if ([...rgsfIds].some(alias => aliases.has(alias))) badges.push('RGSF');
-    if (badges.length > 0) roster.push({ user, badges });
-  }
-  return roster;
-}
 
 function leaderAliases(group: any): string[] {
   return [...new Set([group?.bvslLeader, group?.bvslId]
@@ -299,6 +272,7 @@ export default createEndpoint({
       return {
         membershipId: m.id,
         userId: u?.userId || u?.id || canonicalId,
+        dbId: u?.id || null,
         fullName: u?.fullName || 'Unknown member',
         phone: u?.phone || '',
         ashrayLevel: u?.ashrayLevel || null,

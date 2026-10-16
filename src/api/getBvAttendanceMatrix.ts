@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, BvAttendance, Users, AppError } from '@/lib/backend-sdk';
 import { resolveBvScopedGroups } from '@/lib/bvGroupMemberScope';
-import { groupHasFacilitator, groupHasSubFacilitator, isReadingGroupStaff } from '@/lib/bvGroupFacilitators';
+import { facilitatorRoleLabel, groupHasFacilitator, groupHasSubFacilitator, isReadingGroupStaff, loadGroupFacilitators } from '@/lib/bvGroupFacilitators';
+import { bvUserAliases } from '@/lib/bvGroupMemberScope';
 
 function firstValue(value: unknown): string {
   if (Array.isArray(value)) return String(value[0] || '');
@@ -121,10 +122,25 @@ export default createEndpoint({
       userDateMap[uid][date] = a.present ? 1 : 0;
     }
 
+    const staff = await loadGroupFacilitators(group);
+    const roleFor = (user: any): 'RGF' | 'RGSF' | null => {
+      if (!user) return null;
+      const aliases = new Set(bvUserAliases(user));
+      let role: 'RGF' | 'RGSF' | null = null;
+      for (const entry of staff) {
+        if (!bvUserAliases(entry.user).some(alias => aliases.has(alias))) continue;
+        const label = facilitatorRoleLabel(entry.badges);
+        if (label === 'RGF') return 'RGF';
+        if (label) role = label;
+      }
+      return role;
+    };
+    const listed = new Set<string>();
     const rows = activeMembers.map((m: any) => {
       const uid = firstValue(m.user);
       const altUid = firstValue(m.userId);
       const u = (userMap[uid] || userMap[uid.toLowerCase()] || userMap[altUid] || userMap[altUid.toLowerCase()]) as any;
+      if (u) bvUserAliases(u).forEach(alias => listed.add(alias));
       const attendance: Record<string, number> = {};
       dates.forEach(d => { attendance[d] = userDateMap[uid]?.[d] ?? 0; });
       const weekTotal = Object.values(attendance).reduce((s, v) => s + v, 0);
@@ -132,10 +148,31 @@ export default createEndpoint({
         userId: u?.userId || uid || '',
         name: u?.fullName || '',
         ashrayLevel: u?.ashrayLevel || null,
+        roleLabel: roleFor(u),
         attendance,
         weekTotal,
       };
     });
+    for (const entry of staff) {
+      const aliases = bvUserAliases(entry.user);
+      if (aliases.some(alias => listed.has(alias))) continue;
+      const keys = [entry.user.id, entry.user.userId, entry.user.email].filter(Boolean).map(String);
+      const attendance: Record<string, number> = {};
+      dates.forEach(date => {
+        const marked = keys.map(key => userDateMap[key]?.[date]).find(value => value !== undefined);
+        attendance[date] = marked ?? 0;
+      });
+      const weekTotal = Object.values(attendance).reduce((sum, value) => sum + value, 0);
+      rows.push({
+        userId: entry.user.userId || entry.user.id,
+        name: entry.user.fullName || '',
+        ashrayLevel: entry.user.ashrayLevel || null,
+        roleLabel: facilitatorRoleLabel(entry.badges),
+        attendance,
+        weekTotal,
+      });
+      aliases.forEach(alias => listed.add(alias));
+    }
 
     return {
       sessions: dates.map(d => ({ sessionId: d, sessionDate: d, topic: '' })),

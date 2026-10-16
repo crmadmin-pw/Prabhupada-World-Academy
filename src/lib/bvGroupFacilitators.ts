@@ -1,3 +1,5 @@
+import { bvUserAliases, resolveBvUsersByAliases } from './bvGroupMemberScope';
+
 export type GroupFacilitator = {
   id: string;
   userId: string;
@@ -171,6 +173,53 @@ export function isReadingGroupStaff(user: any): boolean {
     || user?.isBvsl === true
     || user?.isBvSubFacilitator === true
     || ['RGF', 'BVSL', 'FACILITATOR', 'RGSF', 'SUB_FACILITATOR'].includes(role);
+}
+
+export type FacilitatorBadge = 'RGF' | 'RGSF';
+
+function commaValues(value: unknown): string[] {
+  if (Array.isArray(value)) return value.flatMap(commaValues);
+  const text = String(value ?? '').trim();
+  if (!text) return [];
+  return text.split(',').map(item => item.trim()).filter(Boolean);
+}
+
+function aliasSet(values: unknown[]): Set<string> {
+  return new Set(values.flatMap(commaValues).map(value => value.toLowerCase()));
+}
+
+/**
+ * RGFs and RGSFs assigned on the group, including people who have no
+ * membership row. Inactive profiles are left out.
+ */
+export async function loadGroupFacilitators(group: any): Promise<Array<{ user: any; badges: FacilitatorBadge[] }>> {
+  const rgfIds = aliasSet([group?.bvslLeader, group?.bvslId]);
+  const rgfNames = aliasSet([group?.bvslName]);
+  const rgsfIds = aliasSet([group?.subFacilitatorId, group?.rgsfId, group?.subFacilitator]);
+  const lookupAliases = [...rgfIds, ...(rgfIds.size > 0 ? [] : [...rgfNames]), ...rgsfIds];
+  if (lookupAliases.length === 0) return [];
+
+  const users = await resolveBvUsersByAliases(lookupAliases, [
+    'id', 'userId', 'fullName', 'email', 'phone', 'ashrayLevel', 'status',
+    'bvGroupId', 'isBvMember',
+  ]);
+  const rgfAliases = rgfIds.size > 0 ? rgfIds : rgfNames;
+  const roster: Array<{ user: any; badges: FacilitatorBadge[] }> = [];
+  for (const user of users) {
+    if (user?.status && String(user.status).toLowerCase() !== 'active') continue;
+    const aliases = new Set(bvUserAliases(user));
+    const badges: FacilitatorBadge[] = [];
+    if ([...rgfAliases].some(alias => aliases.has(alias))) badges.push('RGF');
+    if ([...rgsfIds].some(alias => aliases.has(alias))) badges.push('RGSF');
+    if (badges.length > 0) roster.push({ user, badges });
+  }
+  return roster;
+}
+
+export function facilitatorRoleLabel(badges: FacilitatorBadge[]): FacilitatorBadge | null {
+  if (badges.includes('RGF')) return 'RGF';
+  if (badges.includes('RGSF')) return 'RGSF';
+  return null;
 }
 
 export function joinFacilitatorNames(names: Array<string | null | undefined>): string {

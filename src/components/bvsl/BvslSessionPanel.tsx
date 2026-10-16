@@ -320,6 +320,11 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
                           className="shrink-0"
                         />
                         <p className="text-sm font-medium truncate">{m.fullName}</p>
+                        {m.roleLabel && (
+                          <span className="shrink-0 rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                            {m.roleLabel}
+                          </span>
+                        )}
                       </div>
 
                       {/* Attended Time Input & Label */}

@@ -1,6 +1,13 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, BvSessions, BvAttendance, Users, AppError } from '@/lib/backend-sdk';
 import { bvUserAliases } from '../lib/bvGroupMemberScope';
+import { facilitatorRoleLabel, loadGroupFacilitators } from '@/lib/bvGroupFacilitators';
+
+const GROUP_FIELDS = [
+  'id', 'groupId', 'groupName',
+  'bvslLeader', 'bvslId', 'bvslName',
+  'rgsfId', 'subFacilitatorId', 'subFacilitator',
+];
 
 function refs(value: unknown): string[] {
   if (Array.isArray(value)) return value.flatMap(refs);
@@ -19,12 +26,12 @@ export default createEndpoint({
     // Resolve group — try custom groupId field first, then DB UUID
     let group = await BvGroups.findOne({
       filters: { groupId: input.groupId },
-      fields: ['id', 'groupId', 'groupName'],
+      fields: GROUP_FIELDS,
     });
     if (!group) {
       group = await BvGroups.findOne({
         id: input.groupId,
-        fields: ['id', 'groupId', 'groupName'],
+        fields: GROUP_FIELDS,
       });
     }
     if (!group) throw new AppError({ code: 'NOT_FOUND', message: 'Group not found' });
@@ -71,12 +78,21 @@ export default createEndpoint({
     let totalMeetingMinutes: number = 60;
     let sessionExists = directAttRecords.length > 0;
 
+    const rememberAttendance = (uid: unknown, present: boolean | null, minutes: number | null) => {
+      const key = String(uid || '').trim();
+      if (!key) return;
+      attendanceMap[key] = present;
+      attendanceMap[key.toLowerCase()] = present;
+      attendedMinutesMap[key] = minutes;
+      attendedMinutesMap[key.toLowerCase()] = minutes;
+    };
+
     if (directAttRecords.length > 0) {
       directAttRecords.forEach((a: any) => {
         const uid = Array.isArray(a.user) ? a.user[0] : a.user;
         if (uid) {
-          attendanceMap[uid] = a.present ?? null;
-          attendedMinutesMap[uid] = typeof a.attendedMinutes === 'number' ? a.attendedMinutes : (a.present ? (a.totalMeetingMinutes || 60) : 0);
+          const minutes = typeof a.attendedMinutes === 'number' ? a.attendedMinutes : (a.present ? (a.totalMeetingMinutes || 60) : 0);
+          rememberAttendance(uid, a.present ?? null, minutes);
         }
         if (a.totalMeetingMinutes && typeof a.totalMeetingMinutes === 'number') {
           totalMeetingMinutes = a.totalMeetingMinutes;
@@ -98,8 +114,8 @@ export default createEndpoint({
         attRecords.forEach((a: any) => {
           const uid = Array.isArray(a.user) ? a.user[0] : a.user;
           if (uid) {
-            attendanceMap[uid] = a.present ?? null;
-            attendedMinutesMap[uid] = typeof a.attendedMinutes === 'number' ? a.attendedMinutes : (a.present ? (a.totalMeetingMinutes || 60) : 0);
+            const minutes = typeof a.attendedMinutes === 'number' ? a.attendedMinutes : (a.present ? (a.totalMeetingMinutes || 60) : 0);
+            rememberAttendance(uid, a.present ?? null, minutes);
           }
           if (a.totalMeetingMinutes && typeof a.totalMeetingMinutes === 'number') {
             totalMeetingMinutes = a.totalMeetingMinutes;
@@ -108,23 +124,67 @@ export default createEndpoint({
       }
     }
 
+    const staff = await loadGroupFacilitators(group);
+    const roleFor = (user: any): 'RGF' | 'RGSF' | null => {
+      if (!user) return null;
+      const aliases = new Set(bvUserAliases(user));
+      let role: 'RGF' | 'RGSF' | null = null;
+      for (const entry of staff) {
+        if (!bvUserAliases(entry.user).some(alias => aliases.has(alias))) continue;
+        const label = facilitatorRoleLabel(entry.badges);
+        if (label === 'RGF') return 'RGF';
+        if (label) role = label;
+      }
+      return role;
+    };
+    const savedFor = (user: any, extraIds: string[]) => {
+      const keys = [...extraIds, ...bvUserAliases(user)].map(value => String(value || '').trim()).filter(Boolean);
+      let present: boolean | null | undefined;
+      let minutes: number | null | undefined;
+      for (const key of keys) {
+        if (present === undefined && attendanceMap[key] !== undefined) present = attendanceMap[key];
+        if (minutes === undefined && attendedMinutesMap[key] !== undefined) minutes = attendedMinutesMap[key];
+      }
+      return { present: present ?? null, minutes };
+    };
+
     const members = memberRecords
       .map((m: any) => {
         const dbId = Array.isArray(m.user) ? m.user[0] : m.user as string;
         const u = refs([m.user, m.userId, m.memberId]).map(alias => userMap[alias]).find(Boolean);
         if (!u) return null;
-        const isPresent = sessionExists ? (attendanceMap[u.id] ?? attendanceMap[dbId] ?? null) : null;
-        const savedMinutes = attendedMinutesMap[u.id] ?? attendedMinutesMap[dbId];
+        const saved = savedFor(u, [u.id, dbId]);
+        const isPresent = sessionExists ? saved.present : null;
         return {
           userDbId: u.id,
           userId: u.userId || u.id,
           fullName: u.fullName || '',
           present: isPresent,
-          attendedMinutes: sessionExists ? (savedMinutes ?? (isPresent ? totalMeetingMinutes : 0)) : 0,
+          attendedMinutes: sessionExists ? (saved.minutes ?? (isPresent ? totalMeetingMinutes : 0)) : 0,
+          roleLabel: roleFor(u),
         };
       })
-      .filter(member => member !== null)
-      .sort((a: any, b: any) => a.fullName.localeCompare(b.fullName));
+      .filter(member => member !== null);
+
+    const covered = new Set(members.flatMap(member => bvUserAliases({ id: member.userDbId, userId: member.userId })));
+    for (const entry of staff) {
+      const aliases = bvUserAliases(entry.user);
+      if (aliases.some(alias => covered.has(alias))) continue;
+      const saved = savedFor(entry.user, []);
+      const isPresent = sessionExists ? saved.present : null;
+      members.push({
+        userDbId: entry.user.id,
+        userId: entry.user.userId || entry.user.id,
+        fullName: entry.user.fullName || '',
+        present: isPresent,
+        attendedMinutes: sessionExists ? (saved.minutes ?? (isPresent ? totalMeetingMinutes : 0)) : 0,
+        roleLabel: facilitatorRoleLabel(entry.badges),
+      });
+      aliases.forEach(alias => covered.add(alias));
+    }
+
+    const roleRank = (role: string | null) => (role === 'RGF' ? 0 : role === 'RGSF' ? 1 : 2);
+    members.sort((a: any, b: any) => roleRank(a.roleLabel) - roleRank(b.roleLabel) || a.fullName.localeCompare(b.fullName));
 
     return {
       members,

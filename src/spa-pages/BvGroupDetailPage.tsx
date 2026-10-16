@@ -81,6 +81,9 @@ function AttendanceMatrix({ matrix, dates }: { matrix: MatrixData; dates: string
             <tr key={row.userId} className="border-b hover:bg-muted/30">
               <td className="px-3 py-2 font-medium sticky left-0 bg-card z-10 whitespace-nowrap">
                 {row.name}
+                {row.roleLabel && (
+                  <span className="ml-1.5 text-[10px] text-muted-foreground">({row.roleLabel})</span>
+                )}
                 {row.ashrayLevel && (
                   <span className="ml-1.5 text-[10px] text-muted-foreground">({row.ashrayLevel})</span>
                 )}
@@ -135,7 +138,8 @@ function MembersTab({ members, onUserClick }: { members: GroupDetail['members'];
         </thead>
         <tbody>
           {members.map((m: any) => {
-            const openProfile = onUserClick && m.userId ? () => onUserClick(m.userId) : undefined;
+            const profileId = m.dbId || m.userId;
+            const openProfile = onUserClick && profileId ? () => onUserClick(profileId) : undefined;
             const roleBadges: string[] = Array.isArray(m.badges) ? m.badges : [];
             return (
             <tr
