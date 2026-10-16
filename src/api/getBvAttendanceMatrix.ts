@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, BvAttendance, Users, AppError } from '@/lib/backend-sdk';
 import { resolveBvScopedGroups } from '@/lib/bvGroupMemberScope';
+import { groupHasFacilitator, groupHasSubFacilitator, isReadingGroupStaff } from '@/lib/bvGroupFacilitators';
 
 function firstValue(value: unknown): string {
   if (Array.isArray(value)) return String(value[0] || '');
@@ -23,9 +24,10 @@ export default createEndpoint({
     await resolveBvScopedGroups(context.user, { groupId: input.groupId });
 
     // Resolve group
-    let group = await BvGroups.findOne({ filters: { groupId: input.groupId }, fields: ['id', 'groupId', 'groupName'] });
+    const groupFields = ['id', 'groupId', 'groupName', 'bvslLeader', 'bvslId', 'bvslName', 'subFacilitatorId', 'rgsfId', 'subFacilitator'];
+    let group = await BvGroups.findOne({ filters: { groupId: input.groupId }, fields: groupFields });
     if (!group) {
-      group = await BvGroups.findOne({ id: input.groupId, fields: ['id', 'groupId', 'groupName'] });
+      group = await BvGroups.findOne({ id: input.groupId, fields: groupFields });
     }
     if (!group) return { sessions: [], members: [], matrix: {}, rows: [], dates: [] };
 
@@ -48,10 +50,10 @@ export default createEndpoint({
 
     const [userRecordsById, userRecordsByUserId] = await Promise.all([
       memberUserIds.length > 0
-        ? Users.findAll({ filters: { id: { in: memberUserIds } }, fields: ['id', 'userId', 'fullName', 'ashrayLevel', 'status', 'isBvMember', 'bvGroupId'], limit: 500 })
+        ? Users.findAll({ filters: { id: { in: memberUserIds } }, fields: ['id', 'userId', 'fullName', 'email', 'ashrayLevel', 'status', 'role', 'isBvMember', 'bvGroupId', 'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator'], limit: 500 })
         : { records: [] },
       memberUserIds.length > 0
-        ? Users.findAll({ filters: { userId: { in: memberUserIds } }, fields: ['id', 'userId', 'fullName', 'ashrayLevel', 'status', 'isBvMember', 'bvGroupId'], limit: 500 })
+        ? Users.findAll({ filters: { userId: { in: memberUserIds } }, fields: ['id', 'userId', 'fullName', 'email', 'ashrayLevel', 'status', 'role', 'isBvMember', 'bvGroupId', 'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator'], limit: 500 })
         : { records: [] },
     ]);
 
@@ -73,6 +75,9 @@ export default createEndpoint({
       const profileGroupId = firstValue(u?.bvGroupId).toLowerCase();
       const isCurrentGroup = profileGroupId ? groupAliases.has(profileGroupId) : true;
       const isActiveUser = !u?.status || String(u.status).toLowerCase() === 'active';
+      const aliases = new Set([u?.id, u?.userId, u?.email, u?.fullName].map(value => String(value || '').trim().toLowerCase()).filter(Boolean));
+      const assignedHere = groupHasFacilitator(group, aliases) || groupHasSubFacilitator(group, aliases);
+      if (isReadingGroupStaff(u) && !assignedHere) return false;
       return !!u && isCurrentGroup && isActiveUser;
     });
 

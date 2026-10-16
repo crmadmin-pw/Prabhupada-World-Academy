@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, BvSessions, BvAttendance, BvQuizzes, Users, AppError } from '@/lib/backend-sdk';
 import { legacyQuizMatchesGroup, normalizeQuizDepartment } from '@/lib/bvQuizAccess';
 import { bvUserAliases, resolveBvScopedGroups, resolveBvUsersByAliases } from '@/lib/bvGroupMemberScope';
+import { isReadingGroupStaff } from '@/lib/bvGroupFacilitators';
 import { isHierarchyAdmin } from '@/lib/hierarchyUtils';
 
 function normalizeKey(value: unknown): string {
@@ -50,8 +51,9 @@ function addUserToMap(userMap: Record<string, any>, user: any) {
 async function findUsersForKeys(keys: string[]): Promise<any[]> {
   const uniqueKeys = [...new Set(keys.filter(Boolean))];
   const fields = [
-    'id', 'userId', 'fullName', 'email', 'phone', 'ashrayLevel', 'status',
+    'id', 'userId', 'fullName', 'email', 'phone', 'ashrayLevel', 'status', 'role',
     'bvGroupId', 'bvGroupName', 'bvRegistrationStatus', 'isBvMember',
+    'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator',
     'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid',
     'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id',
   ];
@@ -241,10 +243,12 @@ export default createEndpoint({
         // supported for pre-migration records.
         const isBvMember = resolved.user?.isBvMember !== false;
         const facilitatorBadges = badgesForUser(resolved.user);
-        // A group's RGF/RGSF stays on this roster even when their personal
-        // profile points at another group or is not flagged as a member.
+        // A group's current RGF/RGSF stays on this roster even when their
+        // personal profile points at another group. An RGF removed from this
+        // group keeps a membership row, but that row is not a member seat.
+        const assignedHere = facilitatorBadges.length > 0;
         const isActiveMember = !!resolved.user && isActiveUser && (
-          facilitatorBadges.length > 0 || (isBvMember && isCurrentGroup)
+          assignedHere || (!isReadingGroupStaff(resolved.user) && isBvMember && isCurrentGroup)
         );
         return { record: m, resolved, isActiveMember };
       })

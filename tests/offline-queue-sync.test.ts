@@ -146,6 +146,37 @@ test('sendOrQueue stores the payload while offline and a later flush delivers it
   setOfflineQueueStorageForTests(null);
 });
 
+test('a brief connection drop is sent again before the user is told it is waiting', async () => {
+  setOfflineQueueStorageForTests(memoryStorage());
+  clearOfflineQueue();
+  const previousWindow = globalThis.window;
+  const previousNavigator = globalThis.navigator;
+  Object.defineProperty(globalThis, 'window', { value: {}, configurable: true });
+  Object.defineProperty(globalThis, 'navigator', { value: { onLine: true }, configurable: true });
+
+  let sendCalls = 0;
+  const outcome = await sendOrQueue({
+    type: 'sadhana_entry',
+    dedupeKey: 'sadhana:user:2026-10-07',
+    payload: { userId: 'user', entryDate: '2026-10-07', totalScore: 10 },
+    send: async () => {
+      sendCalls++;
+      if (sendCalls === 1) throw new TypeError('Failed to fetch');
+      return { entryId: 'E-retry' };
+    },
+  });
+
+  assert.equal(sendCalls, 2);
+  assert.equal(outcome.status, 'sent');
+  if (outcome.status === 'sent') assert.equal(outcome.result.entryId, 'E-retry');
+  assert.equal(getOfflineQueue().length, 0);
+
+  if (previousWindow === undefined) delete (globalThis as { window?: unknown }).window;
+  else Object.defineProperty(globalThis, 'window', { value: previousWindow, configurable: true });
+  Object.defineProperty(globalThis, 'navigator', { value: previousNavigator, configurable: true });
+  setOfflineQueueStorageForTests(null);
+});
+
 test('the online event replays pending records instead of only announcing a sync', async () => {
   setOfflineQueueStorageForTests(memoryStorage());
   clearOfflineQueue();

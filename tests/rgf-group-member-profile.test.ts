@@ -96,6 +96,33 @@ test('an RGF who is also an RGSF can open a member of the group they sub-facilit
   assert.equal(detail.user.fullName, 'Group Member');
 });
 
+test('an RGF can open a member whose membership uses another saved id', async t => {
+  const punya = {
+    ...member,
+    id: 'punya-doc',
+    userId: 'USER-234',
+    fullName: 'Punya',
+    firebaseUserId: 'firebase-punya',
+  };
+  database(t, {
+    users: [rgf, punya],
+    groups: [{ id: 'group-doc', groupId: 'BV-GROUP-1', isActive: true, bvslId: rgf.userId, bvslName: rgf.fullName }],
+    members: [{ id: 'membership', groupId: 'BV-GROUP-1', user: 'firebase-punya', isActive: true }],
+  });
+  const detail = await call('USER-234');
+  assert.equal(detail.user.fullName, 'Punya');
+});
+
+test('an RGF can open a member saved on the membership by name', async t => {
+  database(t, {
+    users: [rgf, member],
+    groups: [{ id: 'group-doc', groupId: 'BV-GROUP-1', isActive: true, bvslLeader: rgf.fullName }],
+    members: [{ id: 'membership', group: 'group-doc', memberId: member.fullName, isActive: true }],
+  });
+  const detail = await call(member.userId);
+  assert.equal(detail.user.fullName, 'Group Member');
+});
+
 test('a left membership does not let the RGF open that profile', async t => {
   database(t, {
     users: [rgf, member],

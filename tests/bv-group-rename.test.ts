@@ -6,6 +6,9 @@ import updateBvGroup from '../src/api/updateBvGroup';
 function matches(record: any, filters: any) {
   return Object.entries(filters || {}).every(([field, value]) => {
     const actual = Array.isArray(record[field]) ? record[field][0] : record[field];
+    if (value && typeof value === 'object' && Array.isArray((value as any).in)) {
+      return (value as any).in.includes(actual);
+    }
     return String(actual || '') === String(value || '');
   });
 }
@@ -30,6 +33,10 @@ function installMemory(t: any, tables: Record<string, any[]>) {
       if (!row) throw new Error(`Missing ${name}/${id}`);
       Object.assign(row, record);
       return row;
+    });
+    t.mock.method(table, 'delete', async ({ id }: { id: string }) => {
+      const index = rows().findIndex(item => item.id === id);
+      if (index >= 0) rows().splice(index, 1);
     });
   }
   return stores;
@@ -164,4 +171,37 @@ test('an admin can remove a former RGF who is still listed on the group', async 
   assert.equal(stores.BvGroups[0].bvslLeader, 'dasa-doc');
   assert.equal(stores.BvGroups[0].bvslId, 'dasa');
   assert.equal(stores.BvGroups[0].bvslName, 'Vedanarayana Dasa');
+});
+
+test('removing an RGF also removes that person from the group member list', async t => {
+  const stores = installMemory(t, {
+    BvGroups: [{
+      id: 'gauranga-doc',
+      groupId: 'gauranga',
+      groupName: 'Gauranga 1:30',
+      bvslLeader: ['ramya-doc', 'asha-doc'],
+      bvslId: ['ramya', 'asha'],
+      bvslName: ['Ramya Devi Dasi', 'Asha N'],
+    }],
+    Users: [
+      { id: 'ramya-doc', userId: 'ramya', fullName: 'Ramya Devi Dasi', email: 'ramya@example.invalid', role: 'User', isBvFacilitator: true, isBvsl: true },
+      { id: 'asha-doc', userId: 'asha', fullName: 'Asha N', email: 'asha@example.invalid', role: 'User', isBvFacilitator: true, isBvsl: true, bvGroupId: 'gauranga-doc', bvGroupName: 'Gauranga 1:30', isBvMember: true },
+      { id: 'priya-doc', userId: 'priya', fullName: 'Priya bansal', bvGroupId: 'gauranga-doc', bvGroupName: 'Gauranga 1:30', isBvMember: true },
+    ],
+    BvGroupMembers: [
+      { id: 'asha-membership', group: 'gauranga-doc', groupId: 'gauranga', user: 'asha-doc', userId: 'asha', role: 'Member' },
+      { id: 'priya-membership', group: 'gauranga-doc', groupId: 'gauranga', user: 'priya-doc', userId: 'priya', role: 'Member' },
+    ],
+  });
+
+  await updateBvGroup.execute({
+    input: { groupId: 'gauranga', bvslId: 'asha', facilitatorAction: 'remove' },
+    context: { user: admin },
+  } as never);
+
+  assert.equal(stores.BvGroups[0].bvslLeader, 'ramya-doc');
+  assert.deepEqual(stores.BvGroupMembers.map(row => row.id), ['priya-membership']);
+  assert.equal(stores.Users.find(user => user.id === 'asha-doc')?.bvGroupId, '');
+  assert.equal(stores.Users.find(user => user.id === 'asha-doc')?.isBvMember, false);
+  assert.equal(stores.Users.find(user => user.id === 'priya-doc')?.bvGroupId, 'gauranga-doc');
 });

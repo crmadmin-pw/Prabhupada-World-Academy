@@ -164,6 +164,15 @@ export function groupHasFacilitator(
   );
 }
 
+/** An RGF or RGSF belongs to the groups they facilitate, not to a group they were removed from. */
+export function isReadingGroupStaff(user: any): boolean {
+  const role = String(user?.role || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+  return user?.isBvFacilitator === true
+    || user?.isBvsl === true
+    || user?.isBvSubFacilitator === true
+    || ['RGF', 'BVSL', 'FACILITATOR', 'RGSF', 'SUB_FACILITATOR'].includes(role);
+}
+
 export function joinFacilitatorNames(names: Array<string | null | undefined>): string {
   const unique: string[] = [];
   const seen = new Set<string>();

@@ -673,14 +673,18 @@ export default function DailySadhanaForm() {
                     {isPwUser && pwScore ? (
                       <>
                         <p className="text-3xl font-bold text-primary">{pwScore.scorePercent ?? 0}%</p>
-                        <p className="text-xs text-muted-foreground">{pwScore.earned} / {pwScore.applicableMax} pts</p>
-                        <ul className="mt-2 space-y-0.5">
-                          {pwScore.fields.map(field => (
-                            <li key={field.key} className="text-xs text-muted-foreground">
-                              {field.label}: {field.points == null ? 'not assigned' : `${field.points}/${field.maxPoints}`}
+                        <p className="text-xs text-muted-foreground">{pwScore.earned} of {pwScore.applicableMax} points today</p>
+                        <ul className="mt-3 divide-y border-t">
+                          {pwScore.fields.filter(field => field.points != null).map(field => (
+                            <li key={field.key} className="flex items-baseline justify-between gap-3 py-1.5 text-sm">
+                              <span>{field.label}{field.waived ? ' · waived' : ''}</span>
+                              <span className="shrink-0 tabular-nums text-muted-foreground">{field.points}/{field.maxPoints}</span>
                             </li>
                           ))}
                         </ul>
+                        {pwScore.fields.some(field => field.points == null) && (
+                          <p className="pt-2 text-xs text-muted-foreground">Fields with no target are left out.</p>
+                        )}
                       </>
                     ) : percentage != null ? (
                       <>
@@ -731,6 +735,44 @@ function AcknowledgementCheckbox({ acknowledged, onToggle }: { acknowledged: boo
 }
 
 
+const WAIVE_INSIDE: Record<string, { flag: string; reason: string }> = {
+  wakeUp: { flag: 'waiveWakeUp', reason: 'waiveWakeUpReason' },
+  sleep: { flag: 'waiveSleep', reason: 'waiveSleepReason' },
+  chanting: { flag: 'waiveChanting', reason: 'waiveChantingReason' },
+};
+const WAIVE_FIELD_KEYS = new Set(Object.values(WAIVE_INSIDE).flatMap(item => [item.flag, item.reason]));
+
+function isWaiveOn(value: unknown): boolean {
+  return value === true || String(value) === 'true';
+}
+
+function WaiveOffControl({ flag, reasonKey, on, reason, onFieldChange }: {
+  flag: string;
+  reasonKey: string;
+  on: boolean;
+  reason: string;
+  onFieldChange: (key: string, value: unknown) => void;
+}) {
+  return (
+    <div className="mt-3 space-y-2 border-t pt-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <Label htmlFor={flag} className="text-sm font-medium">Waive-off</Label>
+          <p className="text-xs text-muted-foreground">A reason gives full points for this field.</p>
+        </div>
+        <Switch id={flag} checked={on} onCheckedChange={(checked) => onFieldChange(flag, checked)} />
+      </div>
+      {on && (
+        <Input
+          value={reason}
+          placeholder="Reason"
+          onChange={(event) => onFieldChange(reasonKey, event.target.value)}
+        />
+      )}
+    </div>
+  );
+}
+
 /** SAD-H03 FIX: Extracted sadhana fields list with sick/OS visual treatment */
 function SadhanaFields({ fields, formValues, ashrayLevel, entryDate, residencyBucket, durationInputs, onFieldChange, onDurationInputChange, isSickOrOs, sickOsKeys, isResident, hiddenFieldKeys, loadError, onRetry, cleanlinessAutoFill }: {
   fields: Field[]; formValues: Record<string, any>; ashrayLevel: string; entryDate: string;
@@ -756,13 +798,15 @@ function SadhanaFields({ fields, formValues, ashrayLevel, entryDate, residencyBu
   }
   return (
     <>
-      {[...fields].sort((a, b) => a.displayOrder - b.displayOrder).filter(field => field.fieldKey !== 'bhaktiVriksha' && !hiddenFieldKeys?.has(field.fieldKey)).map(field => {
+      {[...fields].sort((a, b) => a.displayOrder - b.displayOrder).filter(field => field.fieldKey !== 'bhaktiVriksha' && !hiddenFieldKeys?.has(field.fieldKey) && !WAIVE_FIELD_KEYS.has(field.fieldKey)).map(field => {
         // Show all fields — for NR users, some fields may not be scored at their ashray level
         const applicableForLevel = isFieldVisibleForUser(field as any, ashrayLevel, entryDate);
         // SAD-H03 FIX: grey out non-scored fields when sick/OS
         const isNotScoredSickOs = !!(isSickOrOs && sickOsKeys && !sickOsKeys.has(field.fieldKey));
         const isNotApplicable = !isResident && Boolean(ashrayLevel) && ashrayLevel !== 'None' && ashrayLevel !== 'none' && !applicableForLevel;
         const isCleanlinessAutoFilled = !!(cleanlinessAutoFill?.enabled && field.fieldKey === 'cleanliness');
+        const waive = WAIVE_INSIDE[field.fieldKey];
+        const waived = waive ? isWaiveOn(formValues[waive.flag]) : false;
         
         if (isCleanlinessAutoFilled) {
           return (
@@ -782,11 +826,25 @@ function SadhanaFields({ fields, formValues, ashrayLevel, entryDate, residencyBu
             {isNotApplicable && !isNotScoredSickOs && (
               <p className="text-xs text-amber-600 mb-1 italic font-medium">Not scored at your level ({ashrayLevel}) — fill for practice</p>
             )}
-            <SadhanaFieldRenderer field={field} value={formValues[field.fieldKey]}
+            <SadhanaFieldRenderer
+              field={waived ? { ...field, isRequired: false } : field}
+              value={formValues[field.fieldKey]}
               onChange={onFieldChange}
-              ashrayLevel={ashrayLevel} entryDate={entryDate}
-              residencyBucket={residencyBucket} durationInput={durationInputs[field.fieldKey]}
-              onDurationInputChange={onDurationInputChange} />
+              ashrayLevel={ashrayLevel}
+              entryDate={entryDate}
+              residencyBucket={residencyBucket}
+              durationInput={durationInputs[field.fieldKey]}
+              onDurationInputChange={onDurationInputChange}
+            />
+            {waive && (
+              <WaiveOffControl
+                flag={waive.flag}
+                reasonKey={waive.reason}
+                on={waived}
+                reason={String(formValues[waive.reason] || '')}
+                onFieldChange={onFieldChange}
+              />
+            )}
           </div>
         );
       })}

@@ -103,6 +103,35 @@ async function resolveReadingGroupFacilitator(rawId: string) {
   };
 }
 
+/** Taking an RGF off a group also takes them off its member list. */
+async function removeFacilitatorMembership(group: any, aliases: Set<string>, person: any) {
+  const groupRefs = [...new Set([group.id, group.groupId].filter(Boolean).map(String))];
+  const groupFilter = groupRefs.length > 1 ? { in: groupRefs } : group.id;
+  const fields = ['id', 'user', 'userId', 'memberId', 'group', 'groupId'];
+  const [byGroup, byGroupId] = await Promise.all([
+    BvGroupMembers.findAll({ filters: { group: groupFilter } as any, fields, limit: 500 }),
+    BvGroupMembers.findAll({ filters: { groupId: groupFilter } as any, fields, limit: 500 }),
+  ]);
+  const rows = [...new Map([...byGroup.records, ...byGroupId.records].map(row => [String(row.id), row])).values()];
+  const keyOf = (value: unknown) => firstValue(value).trim().toLowerCase();
+  const removed = rows.filter(row => [row.user, row.userId, row.memberId].some(value => aliases.has(keyOf(value))));
+  await Promise.all(removed.map(row => BvGroupMembers.delete({ id: row.id })));
+
+  const profileIds = [...new Set([person?.id, ...removed.map(row => firstValue(row.user))].filter(Boolean).map(String))];
+  const groupKeys = new Set(groupRefs);
+  await Promise.all(profileIds.map(async id => {
+    const user = await Users.findOne({ id, fields: ['id', 'bvGroupId'] })
+      || await Users.findOne({ filters: { userId: id }, fields: ['id', 'bvGroupId'] });
+    if (!user?.id) return;
+    const assigned = firstValue(user.bvGroupId);
+    if (assigned && !groupKeys.has(assigned)) return;
+    await Users.update({
+      id: user.id,
+      record: { bvGroupId: '', bvGroupName: '', isBvMember: false },
+    });
+  }));
+}
+
 async function syncAssignedGroupNames(groupKeys: Set<string>, groupName: string) {
   const users = new Map<string, any>();
   const remember = (user: any) => {
@@ -215,6 +244,7 @@ export default createEndpoint({
           !facilitatorIdentityKeys(item).some(key => aliases.has(key)),
         );
         Object.assign(updates, facilitatorWrite(next));
+        await removeFacilitatorMembership(group, aliases, person);
       } else {
         const facilitator = await resolveReadingGroupFacilitator(nextFacilitatorId);
         const current = readGroupFacilitators(group);

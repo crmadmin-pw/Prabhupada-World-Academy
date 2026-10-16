@@ -160,6 +160,45 @@ test('RGF and RGSF appear in the member list with attendance scores', async t =>
   assert.equal(detail.members.find((row: any) => row.fullName === member.fullName)?.badges.length, 0);
 });
 
+test('an RGF removed from the group is not kept on as a member', async t => {
+  const formerRgf = {
+    id: 'detail-asha', userId: 'DETAIL-ASHA', email: 'asha@example.test',
+    fullName: 'Asha N', role: 'User', status: 'Active', segment: 'PW',
+    isBvFacilitator: true, isBvsl: true, isBvMember: true, bvGroupId: group.id,
+  };
+  const staleMembership = {
+    id: 'asha-membership', group: group.id, groupId: group.groupId,
+    user: formerRgf.id, userId: formerRgf.userId, role: 'Member',
+  };
+  const fixtures = new Map<any, any[]>([
+    [Users, [reportingLeader, supervisor, member, outsider, formerRgf]],
+    [BvGroups, [group]],
+    [BvGroupMembers, [membership, staleMembership]],
+    [BvSessions, []],
+    [BvAttendance, []],
+    [BvQuizzes, []],
+    [Guides, []],
+  ]);
+  for (const [table, rows] of fixtures) {
+    const matches = (row: any, query: any = {}) => {
+      if (query.id && row.id !== query.id) return false;
+      return Object.entries(query.filters || {}).every(([key, value]: any) => {
+        if (value && typeof value === 'object' && !Array.isArray(value) && Array.isArray(value.in)) {
+          return value.in.includes(row[key]);
+        }
+        return row[key] === value;
+      });
+    };
+    t.mock.method(table, 'findAll', async (query: any) => ({ records: rows.filter(row => matches(row, query)), hasMore: false }));
+    t.mock.method(table, 'findOne', async (query: any) => rows.find(row => matches(row, query)));
+  }
+
+  const detail = await call(reportingLeader);
+  assert.equal(detail.members.some((row: any) => row.fullName === 'Asha N'), false);
+  assert.equal(detail.members.some((row: any) => row.fullName === member.fullName), true);
+  assert.equal(detail.members.some((row: any) => row.fullName === leader.fullName), true);
+});
+
 test('a member and an outsider are refused before membership records are read', async t => {
   for (const user of [member, outsider]) {
     await t.test(user.userId, async st => {

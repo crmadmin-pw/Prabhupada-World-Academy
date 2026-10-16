@@ -39,8 +39,8 @@ export interface OfflineFlushResult {
 type QueueStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 type SyncHandler = (item: PendingQueueItem) => Promise<void>;
 
-const SAVED_LOCALLY_MESSAGE = 'Saved locally. Will auto-sync when network connection is restored.';
-const RETRY_ON_PHONE_MESSAGE = 'Saved on this phone. Sending again automatically.';
+const SAVED_LOCALLY_MESSAGE = 'No connection. We will send it when you are back online.';
+const RETRY_ON_PHONE_MESSAGE = 'Not sent yet. We will try again.';
 
 let storageOverride: QueueStorage | null = null;
 let installedHandler: SyncHandler | null = null;
@@ -226,7 +226,7 @@ async function runFlush(handler: SyncHandler): Promise<OfflineFlushResult> {
     });
   }
 
-  if (synced > 0) notify('success', `Successfully synced ${synced} offline record(s)!`);
+  if (synced > 0) notify('success', synced === 1 ? 'Sent.' : `Sent ${synced}.`);
   return { synced, pending: readQueue().length, dropped };
 }
 
@@ -269,6 +269,16 @@ export async function sendOrQueue<T>(options: {
       return { status: 'sent' as const, result };
     } catch (error) {
       if (!isRetryableSyncError(error)) throw error;
+      // A short connection drop should still finish as a normal save.
+      if (!browserIsOffline()) {
+        try {
+          const result = await options.send();
+          removeWhere(item => item.dedupeKey === options.dedupeKey);
+          return { status: 'sent' as const, result };
+        } catch (retryError) {
+          if (!isRetryableSyncError(retryError)) throw retryError;
+        }
+      }
     }
     const id = enqueueOfflinePayload(options.type, options.payload, {
       dedupeKey: options.dedupeKey,
@@ -290,7 +300,7 @@ export function installOfflineSync(handler: SyncHandler): () => void {
     const queue = readQueue();
     if (queue.length === 0) return;
     writeQueue(queue.map(item => ({ ...item, retryAfter: 0 })));
-    notify('info', `Back online! Syncing ${queue.length} pending record(s)...`);
+    notify('info', 'Back online. Sending now.');
     void flushOfflineQueue();
   };
   const onVisible = () => {

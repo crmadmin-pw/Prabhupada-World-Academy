@@ -6,6 +6,7 @@ import { requireGuideRole } from '../lib/userUtils';
 import { getGuideScope, isUserInGuideScope } from '../lib/guideScope';
 import { isBvGroupProfileAdministrator } from '../lib/bvGroupMemberProfileNavigation';
 import { groupHasFacilitator } from '../lib/bvGroupFacilitators';
+import { bvUserAliases } from '../lib/bvGroupMemberScope';
 import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
 import { pwScoreFromFieldValues } from '@/lib/pwSadhana';
 
@@ -50,16 +51,16 @@ function membershipIsActive(membership: any): boolean {
   return !['inactive', 'removed', 'left'].includes(status);
 }
 
+function membershipAliases(membership: any): string[] {
+  return [membership?.user, membership?.userId, membership?.memberId]
+    .flatMap(value => Array.isArray(value) ? value : [value])
+    .flatMap(value => String(value ?? '').split(','))
+    .map(value => value.trim().toLowerCase())
+    .filter(Boolean);
+}
+
 async function isBvslMember(caller: any, target: any, rgsfOnly = false): Promise<boolean> {
-  const callerKeys = [
-    caller?.id,
-    caller?.uid,
-    caller?.userId,
-    caller?.email,
-    caller?.fullName,
-    caller?.name,
-  ].filter(Boolean).map((value) => String(value).toLowerCase());
-  const callerAliasSet = new Set(callerKeys);
+  const callerAliasSet = new Set(bvUserAliases(caller));
 
   const { records: bvslGroups } = await BvGroups.findAll({
     fields: ['id', 'groupId', 'isActive', 'bvslLeader', 'bvslId', 'bvslName', 'subFacilitatorId', 'rgsfId', 'subFacilitator'],
@@ -111,37 +112,28 @@ async function isBvslMember(caller: any, target: any, rgsfOnly = false): Promise
   const groupIds = [...new Set(groups.flatMap((g: any) => [g.id, g.groupId]).filter(Boolean).map((value: any) => String(value)))];
   if (groupIds.length === 0) return false;
 
-  const targetKeys = [...new Set([
-    target?.id,
-    target?.userId,
-    target?.email,
-    target?.uid,
-    target?.authUid,
-    target?.firebaseUid,
-  ].filter(Boolean).map((value) => String(value)))];
-  if (targetKeys.length === 0) return false;
+  const targetAliases = new Set(bvUserAliases(target));
+  if (targetAliases.size === 0) return false;
 
-  const membershipFields = ['id', 'isActive', 'status'];
+  const membershipFields = ['id', 'isActive', 'status', 'user', 'userId', 'memberId'];
   for (let start = 0; start < groupIds.length; start += 30) {
     const groupChunk = groupIds.slice(start, start + 30);
-    for (let keyStart = 0; keyStart < targetKeys.length; keyStart += 30) {
-      const keyChunk = targetKeys.slice(keyStart, keyStart + 30);
-      const membershipResults = await Promise.all(
-        (['user', 'userId', 'memberId'] as const).flatMap(field => [
-          BvGroupMembers.findAll({
-            filters: { group: { in: groupChunk }, [field]: { in: keyChunk } } as any,
-            fields: membershipFields,
-            limit: 5,
-          }),
-          BvGroupMembers.findAll({
-            filters: { groupId: { in: groupChunk }, [field]: { in: keyChunk } } as any,
-            fields: membershipFields,
-            limit: 5,
-          }),
-        ]),
-      );
-      if (membershipResults.some((result) => (result.records || []).some(membershipIsActive))) return true;
-    }
+    const membershipResults = await Promise.all([
+      BvGroupMembers.findAll({
+        filters: { group: { in: groupChunk } } as any,
+        fields: membershipFields,
+        limit: 500,
+      }),
+      BvGroupMembers.findAll({
+        filters: { groupId: { in: groupChunk } } as any,
+        fields: membershipFields,
+        limit: 500,
+      }),
+    ]);
+    const matched = membershipResults
+      .flatMap(result => result.records || [])
+      .some(membership => membershipIsActive(membership) && membershipAliases(membership).some(alias => targetAliases.has(alias)));
+    if (matched) return true;
   }
 
   return false;
