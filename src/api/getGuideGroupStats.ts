@@ -6,27 +6,27 @@ import { bvGroupFacilitatorAliases, bvUserAliases, isBvDepartmentAdmin, isBvSupe
 export default createEndpoint({
   description: 'Get BV group stats for guide dashboard — member count, attendance rate per group',
   authenticated: true,
-  inputSchema: z.object({ guideId: z.string().optional(), bvslMode: z.boolean().optional(), residencyIds: z.array(z.string()).optional(), segment: z.enum(['PW', 'FOLK']).optional() }),
+  inputSchema: z.object({ guideId: z.string().optional(), bvslMode: z.boolean().optional(), residencyIds: z.array(z.string()).optional(), segment: z.enum(['PW', 'FOLK']).optional(), supervisionOnly: z.boolean().optional() }),
   outputSchema: z.any(),
   execute: async ({ input, context }) => {
     if (!context.user) throw new Error('Unauthorized');
     const isBvslMode = input.bvslMode === true;
     const isSuperGuide = context.user.role === 'Super Guide';
 
-    const groupFilter: any = { isActive: true };
+    const groupFilter: any = {};
     let hierarchyGroups: any[] | null = null;
 
     // Department-wide ('ALL') reads are super-admin only; any other admin who
     // asks for 'ALL' falls through to their own hierarchy below.
     if (input.guideId === 'ALL' && input.segment && isBvSuperAdminUser(context.user as any)) {
-      hierarchyGroups = (await resolveBvDepartmentGroups(input.segment)).map(group => group.record);
+      hierarchyGroups = (await resolveBvDepartmentGroups(input.segment, undefined, { includeInactive: true })).map(group => group.record);
     } else if (isBvDepartmentAdmin(context.user as any) && !isBvSuperAdminUser(context.user as any)) {
-      hierarchyGroups = (await resolveBvScopedGroups(context.user as any, { segment: input.segment }))
+      hierarchyGroups = (await resolveBvScopedGroups(context.user as any, { segment: input.segment, supervisionOnly: input.supervisionOnly === true, includeInactive: true }))
         .map(group => group.record);
     } else if (isBvslMode) {
       const rawSegment = String(context.user.segment || (context.user.isBvSupervisor ? 'FOLK' : '')).toUpperCase();
       const segment = rawSegment === 'FOLK' || rawSegment === 'PW' ? rawSegment as 'FOLK' | 'PW' : undefined;
-      hierarchyGroups = (await resolveBvScopedGroups(context.user as any, { segment }))
+      hierarchyGroups = (await resolveBvScopedGroups(context.user as any, { segment, supervisionOnly: input.supervisionOnly === true, includeInactive: true }))
         .map(group => group.record);
     } else {
       const isBvMentor = !!(context.user as any).isBvMentor;
@@ -87,12 +87,12 @@ export default createEndpoint({
 
     let groups = hierarchyGroups ?? (await BvGroups.findAll({
       filters: groupFilter,
-      fields: ['id', 'groupId', 'groupName', 'segment', 'bvslLeader', 'bvslId'],
-      limit: 200,
+      fields: ['id', 'groupId', 'groupName', 'segment', 'bvslLeader', 'bvslId', 'isActive'],
+      limit: 1000,
     })).records;
 
     if (!isBvSuperAdminUser(context.user as any)) {
-      const permitted = new Set((await resolveBvScopedGroups(context.user as any, { segment: input.segment })).map(g => g.id));
+      const permitted = new Set((await resolveBvScopedGroups(context.user as any, { segment: input.segment, supervisionOnly: input.supervisionOnly === true, includeInactive: true })).map(g => g.id));
       groups = groups.filter(group => permitted.has(group.id));
     }
     if (groups.length === 0) return { groups: [] };
@@ -177,6 +177,7 @@ export default createEndpoint({
         totalSessions,
         presentCount,
         attendanceRate: totalPossible > 0 ? Math.round((presentCount / totalPossible) * 100) : 0,
+        isActive: g.isActive !== false,
       };
     }));
 

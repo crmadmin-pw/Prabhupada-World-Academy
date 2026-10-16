@@ -6,11 +6,12 @@ import { requireGuideRole } from '../lib/userUtils';
 import { getGuideScope, isUserInGuideScope } from '../lib/guideScope';
 import { isBvGroupProfileAdministrator } from '../lib/bvGroupMemberProfileNavigation';
 import { groupHasFacilitator } from '../lib/bvGroupFacilitators';
-import { bvUserAliases } from '../lib/bvGroupMemberScope';
+import { bvUserAliases, resolveBvScopedGroups } from '../lib/bvGroupMemberScope';
 import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
 import { pwScoreFromFieldValues } from '@/lib/pwSadhana';
 
-const USER_FIELDS = ['id', 'userId', 'fullName', 'displayName', 'name', 'phone', 'email', 'ashrayLevel', 'status',
+const LINK_FIELDS = ['id', 'userId', 'email', 'phone', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
+const USER_FIELDS = ['id', 'userId', 'fullName', 'displayName', 'name', 'phone', 'email', 'ashrayLevel', 'status', 'bvGroupId', 'bvGroupName',
   'residency', 'residencyApproved', 'residencyGuideVerified', 'selectedFolkResidency',
   'temporaryResidency', 'temporaryResidencyEnabled', 'createdAt', 'lastLoginAt', 'isBvsl', 'isSadhanaMentor',
   'currentStreak', 'lastStreakUpdatedAt', 'guide', 'sadhanaMentor', 'segment', 'isPrabhupadaWorldUser',
@@ -38,7 +39,94 @@ async function resolveUser(id: string) {
   const { records } = await Users.findAll({ filters: { userId: id }, fields: USER_FIELDS });
   const registered = records.find(r => r.id !== r.userId);
   if (registered) return registered;
-  return records[0] || null;
+  if (records[0]) return records[0];
+  // The roster can address a member by email, phone, or an auth id. Those
+  // are not stored in the userId field, so a document-id lookup misses them.
+  for (const field of LINK_FIELDS) {
+    if (field === 'id' || field === 'userId') continue;
+    const matched = await Users.findAll({ filters: { [field]: id }, fields: USER_FIELDS, limit: 2 });
+    if (matched.records?.[0]) return matched.records[0];
+  }
+  return null;
+}
+
+function flatText(value: unknown): string[] {
+  if (Array.isArray(value)) return value.flatMap(flatText);
+  if (value == null) return [];
+  return String(value).split(',').map(item => item.trim()).filter(Boolean);
+}
+
+function phoneForms(value: string): string[] {
+  const digits = value.replace(/\D/g, '');
+  if (digits.length < 10) return [];
+  const forms = [digits, digits.slice(-10)];
+  if (digits.length === 10) forms.push(`91${digits}`);
+  if (digits.length === 12 && digits.startsWith('91')) forms.push(digits.slice(2));
+  return [...new Set(forms)];
+}
+
+function linkAliases(user: any): string[] {
+  const aliases = new Set<string>(bvUserAliases(user));
+  for (const field of LINK_FIELDS) {
+    for (const value of flatText(user?.[field])) {
+      const text = value.toLowerCase();
+      aliases.add(text);
+      phoneForms(text).forEach(form => aliases.add(form));
+    }
+  }
+  return [...aliases];
+}
+
+async function identityAliases(user: any): Promise<{ aliases: Set<string>; groupPointers: string[] }> {
+  const aliases = new Set(linkAliases(user));
+  const groupPointers = flatText([user?.bvGroupId, user?.bvGroupName]);
+  const seeds = [...new Set(LINK_FIELDS.flatMap(field => flatText(user?.[field])))].slice(0, 30);
+  if (seeds.length === 0) return { aliases, groupPointers };
+  const fields = [...new Set([...USER_FIELDS, ...LINK_FIELDS, 'bvGroupId', 'bvGroupName'])];
+  for (const field of LINK_FIELDS) {
+    const { records } = await Users.findAll({
+      filters: { [field]: { in: seeds } } as any,
+      fields,
+      limit: 20,
+    });
+    for (const record of records || []) {
+      linkAliases(record).forEach(alias => aliases.add(alias));
+      groupPointers.push(...flatText([record?.bvGroupId, record?.bvGroupName]));
+    }
+  }
+  return { aliases, groupPointers };
+}
+
+function aliasesHit(membership: any, aliases: Set<string>): boolean {
+  return membershipAliases(membership).some(alias => aliases.has(alias) || phoneForms(alias).some(form => aliases.has(form)));
+}
+
+/** The group roster already lists this person. Profile lookup has to accept
+ * the same row, including one stored by phone or by an older auth id. */
+async function isOnCallerGroupRoster(caller: any, target: any): Promise<boolean> {
+  const groups = await resolveBvScopedGroups(caller);
+  if (groups.length === 0) return false;
+  const identity = await identityAliases(target);
+  const groupRefs = new Set(groups.flatMap(group =>
+    [group.id, group.groupId, group.groupName, group.record?.groupName]
+      .filter(Boolean)
+      .map(value => String(value).trim().toLowerCase()),
+  ));
+  if (identity.groupPointers.some(value => groupRefs.has(value.trim().toLowerCase()))) return true;
+
+  const groupIds = [...new Set(groups.flatMap(group => [group.id, group.groupId].filter(Boolean).map(String)))];
+  const membershipFields = ['id', 'isActive', 'status', 'user', 'userId', 'memberId', 'group', 'groupId'];
+  for (let start = 0; start < groupIds.length; start += 30) {
+    const chunk = groupIds.slice(start, start + 30);
+    const results = await Promise.all([
+      BvGroupMembers.findAll({ filters: { group: { in: chunk } } as any, fields: membershipFields, limit: 500 }),
+      BvGroupMembers.findAll({ filters: { groupId: { in: chunk } } as any, fields: membershipFields, limit: 500 }),
+    ]);
+    const matched = results.flatMap(result => result.records || [])
+      .some(membership => membershipIsActive(membership) && aliasesHit(membership, identity.aliases));
+    if (matched) return true;
+  }
+  return false;
 }
 
 /**
@@ -112,7 +200,7 @@ async function isBvslMember(caller: any, target: any, rgsfOnly = false): Promise
   const groupIds = [...new Set(groups.flatMap((g: any) => [g.id, g.groupId]).filter(Boolean).map((value: any) => String(value)))];
   if (groupIds.length === 0) return false;
 
-  const targetAliases = new Set(bvUserAliases(target));
+  const targetAliases = new Set(linkAliases(target));
   if (targetAliases.size === 0) return false;
 
   const membershipFields = ['id', 'isActive', 'status', 'user', 'userId', 'memberId'];
@@ -132,7 +220,7 @@ async function isBvslMember(caller: any, target: any, rgsfOnly = false): Promise
     ]);
     const matched = membershipResults
       .flatMap(result => result.records || [])
-      .some(membership => membershipIsActive(membership) && membershipAliases(membership).some(alias => targetAliases.has(alias)));
+      .some(membership => membershipIsActive(membership) && aliasesHit(membership, targetAliases));
     if (matched) return true;
   }
 
@@ -170,19 +258,24 @@ export default createEndpoint({
     const hasUnrestrictedProfileAccess = isBvGroupProfileAdministrator(context.user);
     const isBvMentor = !!(context.user.isBvMentor || context.user.isBvSupervisor);
     const isGuideRole = ['GUIDE', 'SUPER_GUIDE'].includes(callerRole);
+    // The roster and this profile must agree. A member stored by phone, an
+    // older auth id, or a duplicate profile is still the person on the list.
+    const onRoster = await isOnCallerGroupRoster(context.user, userRecord);
     // A current group membership is enough. Reporting chains can lag behind
     // the member list the RGF just opened.
-    const groupMember = !hasUnrestrictedProfileAccess && (isRgf || isRgsf)
-      ? await isBvslMember(context.user, userRecord, isRgsf && !isRgf)
-      : false;
+    const groupMember = onRoster || (
+      !hasUnrestrictedProfileAccess && (isRgf || isRgsf)
+        ? await isBvslMember(context.user, userRecord, isRgsf && !isRgf)
+        : false
+    );
 
     const callerDepartment = callerDirectoryDepartment(context.user);
     const targetDepartment = memberDirectoryDepartment(userRecord);
-    if (!groupMember && callerDepartment && targetDepartment && callerDepartment !== targetDepartment) {
+    if (!onRoster && !groupMember && callerDepartment && targetDepartment && callerDepartment !== targetDepartment) {
       throw new AppError({ code: 'FORBIDDEN', message: 'This user belongs to another department' });
     }
-    const inHierarchy = isPwDepartmentAdmin(context.user) || isUserInHierarchy(userRecord, await getScopedHierarchyUserIds(context.user));
-    if (!groupMember && !inHierarchy) {
+    const inHierarchy = onRoster || isPwDepartmentAdmin(context.user) || isUserInHierarchy(userRecord, await getScopedHierarchyUserIds(context.user));
+    if (!onRoster && !groupMember && !inHierarchy) {
       throw new AppError({
         code: 'FORBIDDEN',
         message: isRgsf && !isRgf
@@ -194,7 +287,7 @@ export default createEndpoint({
     }
 
     const facilitatorProfile = (isRgf || isRgsf) && !isGuideRole;
-    if (!hasUnrestrictedProfileAccess && !isBvMentor && !groupMember && !facilitatorProfile) {
+    if (!onRoster && !hasUnrestrictedProfileAccess && !isBvMentor && !groupMember && !facilitatorProfile) {
       // Try center-based scope (works for guides)
       const scope = await getGuideScope(context.user.email);
 

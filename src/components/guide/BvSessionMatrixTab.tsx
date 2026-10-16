@@ -17,6 +17,7 @@ import type { GetBvSessionMatrixOutputType } from '@/lib/endpoints-sdk';
 import { format, startOfISOWeek, endOfISOWeek, getISOWeek, getISOWeekYear, startOfMonth, endOfMonth } from 'date-fns';
 import { useEndpointQuery } from '@/hooks/useEndpointQuery';
 import { useUserProfile } from '@/contexts/UserProfileContext';
+import { useSupervisionOnly } from '@/components/guide/supervisionScope';
 import { ASHRAY_LEVELS } from '@/types/enums';
 import { EmptyState } from '@/shared';
 import { exportToCsv } from '@/utils/exportCsv';
@@ -75,6 +76,7 @@ const BV_REPORT_LOAD_TOAST_ID = 'bv-session-matrix-load';
 
 export default function BvSessionMatrixTab({ guideId, bvslMode, residencyIds, segment }: Props) {
   const { profile } = useUserProfile();
+  const supervisionOnly = useSupervisionOnly();
   const navigate = useNavigate();
   const isPw = profile?.segment === 'PW' || profile?.isPrabhupadaWorldUser === true;
   const showFolkAssessmentData = !isPw;
@@ -96,8 +98,7 @@ export default function BvSessionMatrixTab({ guideId, bvslMode, residencyIds, se
 
   const reportQuery = useEndpointQuery<GetBvSessionMatrixOutputType>('getBvSessionMatrix', {
     guideId, startDate: start, endDate: end,
-    groupId: groupId !== 'all' ? groupId : undefined,
-    bvslMode, segment,
+    bvslMode, segment, supervisionOnly: supervisionOnly || undefined,
     residencyIds: residencyIds?.length ? residencyIds : undefined,
   }, Boolean(guideId));
   const data = reportQuery.data;
@@ -105,7 +106,29 @@ export default function BvSessionMatrixTab({ guideId, bvslMode, residencyIds, se
   const fetchData = reportQuery.refetch;
   useEffect(() => { if (reportQuery.error) toast.error('Failed to load BV report', { id: BV_REPORT_LOAD_TOAST_ID }); }, [reportQuery.error]);
 
-  const groups: { id: string; name: string }[] = (data as any)?.groups ?? [];
+  const bvOptions = useMemo(() => {
+    const listed = new Map<string, string>();
+    const apiGroups = ((data as { groups?: { id: string; name: string }[] } | null)?.groups) ?? [];
+    for (const group of apiGroups) {
+      if (group?.id) listed.set(String(group.id), group.name || 'Untitled BV');
+    }
+    for (const member of data?.members ?? []) {
+      const memberGroupId = member.groupId ? String(member.groupId) : '';
+      if (memberGroupId && !listed.has(memberGroupId)) {
+        listed.set(memberGroupId, member.groupName || 'Untitled BV');
+      }
+    }
+    return [...listed.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [data]);
+  const selectedBvName = groupId === 'all' ? '' : (bvOptions.find(group => group.id === groupId)?.name || '');
+
+  useEffect(() => {
+    if (groupId !== 'all' && bvOptions.length > 0 && !bvOptions.some(group => group.id === groupId)) {
+      setGroupId('all');
+    }
+  }, [bvOptions, groupId]);
 
   // Available FOLK residencies for filter
   const availableResidencies = useMemo(() => {
@@ -122,6 +145,7 @@ export default function BvSessionMatrixTab({ guideId, bvslMode, residencyIds, se
   const filteredMembers = useMemo(() => {
     if (!data) return [];
     return data.members.filter(m => {
+      if (groupId !== 'all' && String(m.groupId || '') !== groupId) return false;
       if (ashrayFilter !== 'all' && m.ashrayLevel !== ashrayFilter) return false;
       if (residencyFilter === 'resident' && !m.isResident) return false;
       if (residencyFilter === 'non_resident' && m.isResident) return false;
@@ -132,18 +156,30 @@ export default function BvSessionMatrixTab({ guideId, bvslMode, residencyIds, se
       }
       return true;
     }).sort((a, b) => a.fullName.localeCompare(b.fullName));
-  }, [data, ashrayFilter, residencyFilter, folkFilter]);
+  }, [data, groupId, ashrayFilter, residencyFilter, folkFilter]);
+
+  const sessionDateSet = useMemo(() => {
+    if (!data) return new Set<string>();
+    if (groupId === 'all') return new Set<string>(data.sessionDates);
+    const dates = new Set<string>();
+    const attendance = data.attendance as Record<string, Record<string, boolean>>;
+    for (const member of data.members) {
+      if (String(member.groupId || '') !== groupId) continue;
+      for (const date of Object.keys(attendance[member.userId] || {})) dates.add(date);
+    }
+    return dates;
+  }, [data, groupId]);
 
   // Summary stats
   const stats = useMemo(() => {
     if (!data || filteredMembers.length === 0) return { sessionDates: 0, attendancePct: 0, avgQuiz: null as number | null };
-    const sessionDates = data.sessionDates.length;
+    const sessionDates = sessionDateSet.size;
     let possible = 0; let attended = 0;
     const quizList: number[] = [];
     for (const m of filteredMembers) {
       const att = (data.attendance as Record<string, Record<string, boolean>>)[m.userId] || {};
       const qs = (data.quizScores as Record<string, Record<string, number>>)[m.userId] || {};
-      for (const d of data.sessionDates) {
+      for (const d of sessionDateSet) {
         if (att[d] !== undefined) { possible++; if (att[d]) attended++; }
       }
       for (const score of Object.values(qs)) { if (score != null) quizList.push(score as number); }
@@ -153,14 +189,15 @@ export default function BvSessionMatrixTab({ guideId, bvslMode, residencyIds, se
       attendancePct: possible > 0 ? Math.round(attended / possible * 100) : 0,
       avgQuiz: quizList.length > 0 ? Math.round(quizList.reduce((a, b) => a + b, 0) / quizList.length) : null,
     };
-  }, [data, filteredMembers]);
+  }, [data, filteredMembers, sessionDateSet]);
 
   const displayDates = data?.allDates ?? [];
-  const sessionDateSet = new Set<string>(data?.sessionDates ?? []);
 
   const dateLabel = reportType === 'weekly' && start && end
     ? `${format(new Date(start + 'T00:00:00'), 'MMM d')} – ${format(new Date(end + 'T00:00:00'), 'MMM d, yyyy')}`
     : reportType === 'monthly' ? format(new Date(selectedMonth + '-01'), 'MMMM yyyy') : '';
+  const bvSlug = selectedBvName.replace(/[^\w]+/g, '-').replace(/^-|-$/g, '').toLowerCase();
+  const reportFileStem = `bv-report${bvSlug ? `-${bvSlug}` : ''}-${start}-${end}`;
 
   const handleExportImage = () => {
     const table = document.querySelector('#bv-matrix-table') as HTMLTableElement | null;
@@ -192,7 +229,7 @@ export default function BvSessionMatrixTab({ guideId, bvslMode, residencyIds, se
     ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, totalWidth, totalHeight);
     ctx.font = `bold ${fontSize + 2}px sans-serif`;
     ctx.fillStyle = '#1a1a1a';
-    ctx.fillText(`BV Report — ${dateLabel}`, padding, padding + fontSize);
+    ctx.fillText(`BV Report${selectedBvName ? ` — ${selectedBvName}` : ''} — ${dateLabel}`, padding, padding + fontSize);
     ctx.font = `${fontSize}px sans-serif`;
     let y = padding + 28;
     rows.forEach((row, ri) => {
@@ -215,7 +252,7 @@ export default function BvSessionMatrixTab({ guideId, bvslMode, residencyIds, se
       y += lineH;
     });
     const link = document.createElement('a');
-    link.download = `bv-report-${start}-${end}.png`;
+    link.download = `${reportFileStem}.png`;
     link.href = canvas.toDataURL('image/png');
     link.click();
   };
@@ -251,7 +288,7 @@ export default function BvSessionMatrixTab({ guideId, bvslMode, residencyIds, se
         ...(!isPw ? [ql.length > 0 ? `${Math.round(ql.reduce((a, b) => a + b, 0) / ql.length)}%` : '—'] : []),
       ];
     });
-    exportToCsv(`bv-report-${start}-${end}.csv`, headers, rows);
+    exportToCsv(`${reportFileStem}.csv`, headers, rows);
   };
 
   return (
@@ -262,6 +299,7 @@ export default function BvSessionMatrixTab({ guideId, bvslMode, residencyIds, se
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2">
               <CardTitle className="text-base">BV Report</CardTitle>
+              {selectedBvName && <span className="text-xs font-medium">{selectedBvName}</span>}
               {dateLabel && <span className="text-xs text-muted-foreground">{dateLabel}</span>}
               <button onClick={fetchData} disabled={loading} title="Refresh"
                 className="flex items-center gap-1 px-2 py-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground disabled:opacity-40 text-xs font-medium">
@@ -283,7 +321,23 @@ export default function BvSessionMatrixTab({ guideId, bvslMode, residencyIds, se
           </div>
         </CardHeader>
         <CardContent>
-<FilterPanel summary={`${reportType} · ${dateLabel || ''}`}>
+          {bvOptions.length > 0 && (
+            <div className="mb-3 flex items-center gap-2">
+              <Label className="text-sm font-medium shrink-0">BV</Label>
+              <Select value={groupId} onValueChange={setGroupId}>
+                <SelectTrigger className="h-9 w-full sm:w-[260px]">
+                  <SelectValue>{selectedBvName || 'All BVs'}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All BVs</SelectItem>
+                  {bvOptions.map(group => (
+                    <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+<FilterPanel summary={`${selectedBvName || 'All BVs'} · ${reportType} · ${dateLabel || ''}`}>
           <div className="flex flex-wrap gap-x-4 gap-y-2 items-center">
             <div className="flex items-center gap-1.5">
               <Label className="text-sm font-medium whitespace-nowrap">Type:</Label>
@@ -314,20 +368,6 @@ export default function BvSessionMatrixTab({ guideId, bvslMode, residencyIds, se
                     <SelectValue>{MONTH_OPTIONS.find(o => o.value === selectedMonth)?.label || selectedMonth}</SelectValue>
                   </SelectTrigger>
                   <SelectContent className="max-h-60">{MONTH_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-            )}
-            {groups.length > 0 && (
-              <div className="flex items-center gap-1.5">
-                <Label className="text-sm font-medium whitespace-nowrap">Group:</Label>
-                <Select value={groupId} onValueChange={setGroupId}>
-                  <SelectTrigger className="h-8 w-[160px]">
-                    <SelectValue>{groupId === 'all' ? 'All Groups' : groups.find(g => g.id === groupId)?.name || groupId}</SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Groups</SelectItem>
-                    {groups.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
-                  </SelectContent>
                 </Select>
               </div>
             )}
@@ -411,7 +451,7 @@ export default function BvSessionMatrixTab({ guideId, bvslMode, residencyIds, se
           </div>
 
           {filteredMembers.length === 0 ? (
-            <Card><CardContent className="py-4"><EmptyState title="No members found for the selected filters." /></CardContent></Card>
+            <Card><CardContent className="py-4"><EmptyState title={selectedBvName ? `No members found in ${selectedBvName} for the selected filters.` : 'No members found for the selected filters.'} /></CardContent></Card>
           ) : displayDates.length === 0 ? (
             <Card><CardContent className="py-4"><EmptyState title="No dates in the selected period." /></CardContent></Card>
           ) : (

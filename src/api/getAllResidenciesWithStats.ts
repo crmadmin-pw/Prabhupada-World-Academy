@@ -4,6 +4,7 @@ import { getGuideScope } from '../lib/guideScope';
 import { createEndpoint, FolkResidencies, Guides, Users, SadhanaEntries } from '@/lib/backend-sdk';
 import { getTodayIST, daysAgo } from '../lib/streakUtils';
 import { isPrabhupadaWorldResidency } from '../lib/residencyCategory';
+import { readEntriesForOwners } from '../lib/scopedEntryReads';
 
 export default createEndpoint({
   description: 'Get all residencies with resident count, guide info, and 3-month sadhana averages',
@@ -160,19 +161,17 @@ export default createEndpoint({
       months.push({ key, label });
     }
 
-    // Fetch 3 months of sadhana entries (paginated)
+    // Fetch 3 months of sadhana entries for residents already on these hostels.
     // residency → month → scores[]
     const residencyMonthScores = new Map<string, Map<string, number[]>>();
     {
-      let offset = 0;
-      while (true) {
-        const { records, hasMore } = await SadhanaEntries.findAll({
-          filters: { entryDate: { gte: threeMonthsAgo, lte: todayStr } } as any,
-          fields: ['id', 'user', 'entryDate', 'scorePercent'],
-          limit: 2000,
-          offset,
-        });
-        for (const e of records) {
+      const records = await readEntriesForOwners(
+        query => SadhanaEntries.findAll(query),
+        [...userResidencyMap.keys()],
+        { entryDate: { gte: threeMonthsAgo, lte: todayStr } },
+        ['id', 'user', 'entryDate', 'scorePercent'],
+      );
+      for (const e of records) {
           const uid = Array.isArray(e.user) ? e.user[0] : e.user as string;
           if (!uid) continue;
           const rid = userResidencyMap.get(uid);
@@ -185,9 +184,6 @@ export default createEndpoint({
           if (!monthMap.has(monthKey)) monthMap.set(monthKey, []);
           monthMap.get(monthKey)!.push(pct);
         }
-        if (!hasMore) break;
-        offset += 2000;
-      }
     }
 
     return residencies.filter((r: any) => !isPrabhupadaWorldResidency(r)).map((r: any) => {

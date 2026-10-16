@@ -22,6 +22,8 @@ export interface BvGroupScopeOptions {
    * An admin's saved selection replaces the older "every group of a reporting RGF" list.
    */
   supervisionOnly?: boolean;
+  /** Admin lists keep deactivated groups visible. Reports stay on active groups. */
+  includeInactive?: boolean;
 }
 
 export interface BvScopedGroup {
@@ -161,13 +163,15 @@ export async function resolveBvUsersByAliases(
 export async function resolveBvDepartmentGroups(
   segment: 'FOLK' | 'PW',
   groupId?: string,
+  options?: { includeInactive?: boolean },
 ): Promise<BvScopedGroup[]> {
   const { records: allGroups } = await BvGroups.findAll({
       fields: ['id', 'groupId', 'groupName', 'description', 'segment', 'guide', 'isActive', 'bvslLeader', 'bvslId', 'bvslName', 'subFacilitatorId', 'rgsfId', 'subFacilitator', 'supervisorId', 'supervisorUserId'],
       limit: 1000,
   });
   const requestedGroup = groupId ? new Set(refs(groupId)) : null;
-  const needsLegacyDepartment = allGroups.some(group => group.isActive !== false &&
+  const listed = (group: UserRecord) => options?.includeInactive || group.isActive !== false;
+  const needsLegacyDepartment = allGroups.some(group => listed(group) &&
     (!requestedGroup || groupAliases(group).some(alias => requestedGroup.has(alias))) && !departmentValue(group.segment));
   // Explicit department fields are already authoritative. Only old groups
   // without one need a facilitator-directory scan to infer the department.
@@ -180,7 +184,7 @@ export async function resolveBvDepartmentGroups(
     if (userSegment) bvUserAliases(user).forEach(alias => segmentByUserAlias.set(alias, userSegment));
   }
   return allGroups.filter(group => {
-    if (group.isActive === false) return false;
+    if (!listed(group)) return false;
     if (requestedGroup && !groupAliases(group).some(alias => requestedGroup.has(alias))) return false;
     const explicit = departmentValue(group.segment);
     const facilitatorSegments = bvGroupFacilitatorAliases(group)
@@ -220,8 +224,8 @@ export async function resolveBvScopedGroups(
   if (isHierarchyAdmin(contextUser)) {
     const scope = await getScopedHierarchyUserIds(contextUser);
     const groups = options.segment
-      ? await resolveBvDepartmentGroups(options.segment)
-      : (await BvGroups.findAll({ limit: 5000 })).records.filter(g => g.isActive !== false).map(record => ({
+      ? await resolveBvDepartmentGroups(options.segment, undefined, { includeInactive: options.includeInactive })
+      : (await BvGroups.findAll({ limit: 5000 })).records.filter(g => options.includeInactive || g.isActive !== false).map(record => ({
         id: String(record.id), groupId: String(record.groupId || record.id), groupName: String(record.groupName || ''), record,
       }));
     const permitted = groups.filter(({ record }) => {
@@ -365,7 +369,7 @@ export async function resolveBvScopedGroups(
     limit: 1000,
   });
   let groups = allGroups.filter(group => {
-    if (group.isActive === false) return false;
+    if (!options.includeInactive && group.isActive === false) return false;
     const leaderRefs = refs([group.bvslLeader, group.bvslId]);
     const facilitatorRefs = refs([group.bvslLeader, group.bvslId, group.bvslName]);
     const rgsfRefs = refs([group.subFacilitatorId, group.rgsfId, group.subFacilitator]);

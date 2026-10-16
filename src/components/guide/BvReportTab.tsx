@@ -23,6 +23,7 @@ import { format, subDays, startOfMonth, endOfMonth, startOfISOWeek, endOfISOWeek
 import { EmptyState } from '@/shared';
 import { exportToCsv } from '@/utils/exportCsv';
 import { exportBvslReportAsImage } from '@/utils/exportBvReportImage';
+import { useSupervisionOnly } from '@/components/guide/supervisionScope';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 
 type ReportType = 'daily' | 'weekly' | 'monthly';
@@ -103,6 +104,7 @@ const MONTH_OPTIONS = getMonthOptions();
 interface Props { guideId: string; bvslMode?: boolean; residencyIds?: string[]; segment?: 'PW' | 'FOLK'; }
 
 export default function BvReportTab({ guideId, bvslMode, residencyIds, segment }: Props) {
+  const supervisionOnly = useSupervisionOnly();
   const [loading, setLoading]           = useState(false);
   const [reportType, setReportType]     = useState<ReportType>('daily');
   const [selectedDate, setSelectedDate] = useState(format(subDays(new Date(), 1), 'yyyy-MM-dd'));
@@ -128,12 +130,13 @@ export default function BvReportTab({ guideId, bvslMode, residencyIds, segment }
         groupId: selectedGroup !== 'all' ? selectedGroup : undefined,
         residencyIds: residencyIds && residencyIds.length > 0 ? residencyIds : undefined,
         segment,
+        supervisionOnly: supervisionOnly || undefined,
       }));
       setData(result);
     } catch {
       if (read.cancelled) return; toast.error('Failed to load RGF report'); }
     finally { setLoading(false); }
-  }, [guideId, selectedDate, reportType, computedStart, computedEnd, bvslMode, selectedGroup, residencyIds, segment]);
+  }, [guideId, selectedDate, reportType, computedStart, computedEnd, bvslMode, selectedGroup, residencyIds, segment, supervisionOnly]);
 
   const debouncedFetch = useDebouncedCallback(fetchReport, 300);
   useEffect(() => {

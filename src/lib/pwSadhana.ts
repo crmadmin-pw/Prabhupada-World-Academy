@@ -224,14 +224,34 @@ export function scorePwSadhanaV2(input: {
     )),
   ];
   const applicable = fields.filter(field => field.applicable && field.points != null);
-  const earned = applicable.reduce((sum, field) => sum + (field.points || 0), 0);
+  let earned = applicable.reduce((sum, field) => sum + (field.points || 0), 0);
   const applicableMax = applicable.reduce((sum, field) => sum + field.maxPoints, 0);
+  // No targets means only on-time submission is scored. An all-zero day is 0%,
+  // not 2/2 from submitting the empty report on time.
+  const onlySubmission = applicable.length > 0 && applicable.every(field => field.key === 'submitted');
+  if (onlySubmission && reportedAmountsAreZero(input)) {
+    const submitted = fields.find(field => field.key === 'submitted');
+    if (submitted) submitted.points = 0;
+    earned = 0;
+  }
   return {
     fields,
     earned,
     applicableMax,
     scorePercent: applicableMax > 0 ? Math.round((earned / applicableMax) * 100) : null,
   };
+}
+
+function reportedAmountsAreZero(input: {
+  chanting?: unknown;
+  reading?: unknown;
+  hearing?: unknown;
+  seva?: unknown;
+  bvAttendedMinutes?: unknown;
+}): boolean {
+  if ([input.chanting, input.reading, input.hearing, input.seva].some(value => numberOrZero(value) > 0)) return false;
+  if (input.bvAttendedMinutes != null && input.bvAttendedMinutes !== '' && numberOrZero(input.bvAttendedMinutes) > 0) return false;
+  return true;
 }
 
 function parseStored(fieldValuesJson: unknown): Record<string, any> {

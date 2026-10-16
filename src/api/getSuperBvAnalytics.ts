@@ -5,6 +5,7 @@ import { createEndpoint, Users, BvslPreachingEntries, Guides, BvGroups, FolkResi
 import { requireGuideRole, getRefId } from '../lib/userUtils';
 import getGuides from './getGuides';
 import { getScopedHierarchyUserIds, isUserInHierarchy, hierarchyAliases, hierarchyRefs, isHierarchyAdmin, readScopedUsers } from '../lib/hierarchyUtils';
+import { readEntriesForOwners } from '../lib/scopedEntryReads';
 
 const NUM_KEYS = [
   'callingTime', 'oneOnOneTime', 'bookDistTime', 'rduaTime', 'planTime',
@@ -223,14 +224,11 @@ export default createEndpoint({
       ? { entryDate: effectiveStart }
       : { entryDate: { gte: effectiveStart, lte: effectiveEnd } };
 
-    let allEntries: any[] = [];
-    let offset = 0;
-    while (true) {
-      const { records, hasMore } = await BvslPreachingEntries.findAll({ filters: dateFilter, limit: 2000, offset });
-      allEntries = allEntries.concat(records);
-      if (!hasMore) break;
-      offset += 2000;
-    }
+    const allEntries = await readEntriesForOwners(
+      query => BvslPreachingEntries.findAll(query),
+      bvslUsers.map(user => user.id).filter(Boolean),
+      dateFilter,
+    );
 
     const bvslIdSet = new Set(bvslUsers.map(u => u.id));
     const entriesByUser = new Map<string, any[]>();

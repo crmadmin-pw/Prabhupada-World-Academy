@@ -6,6 +6,7 @@ import { requireGuideRole, isScholar as checkIsScholar } from '../lib/userUtils'
 import { resolveBvGroupMemberUsers } from '../lib/bvGroupMemberScope';
 import { resolveBvAdminFacilitators } from '../lib/bvAdminFacilitatorScope';
 import { pwScoreFromFieldValues } from '@/lib/pwSadhana';
+import { collectOwnerKeys, readEntriesForOwners } from '../lib/scopedEntryReads';
 
 const USER_FIELDS = ['id', 'userId', 'fullName', 'displayName', 'name', 'email', 'segment', 'ashrayLevel', 'residency', 'residencyApproved', 'temporaryResidencyEnabled', 'temporaryResidency', 'residencyJoinDate', 'scholarSince', 'residentSince', 'sadhanaMentor', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
 const ENTRY_FIELDS = [
@@ -14,6 +15,17 @@ const ENTRY_FIELDS = [
   'sleepMinutes', 'sbPoints', 'maNaGvPoints', 'cleanlinessPoints',
   'dailyServicePoints', 'sleepQualityPoints', 'flagSick', 'flagOs', 'fieldValuesJson',
 ];
+
+const PW_POINT_TREND_KEYS: Record<string, string> = {
+  wakeUp: 'pwWakeUpPts',
+  sleep: 'pwSleepPts',
+  chanting: 'pwChantingPts',
+  reading: 'pwReadingPts',
+  hearing: 'pwHearingPts',
+  seva: 'pwSevaPts',
+  submitted: 'pwSubmittedPts',
+  bvAttendance: 'pwAttendancePts',
+};
 
 function parseFieldValues(json: string | null | undefined): Record<string, any> {
   if (!json) return {};
@@ -211,18 +223,14 @@ export default createEndpoint({
       userIdentityAliases(user).forEach(alias => userAliasToPrimaryId.set(alias, user.id));
     });
 
-    // Paginate until all entries in the date range are fetched (avoids 4000-record silent truncation)
-    let allEntries: any[] = [];
-    let entryOffset = 0;
-    while (true) {
-      const { records, hasMore } = await SadhanaEntries.findAll({
-        filters: { entryDate: { gte: startDate, lte: endDate } } as any,
-        fields: ENTRY_FIELDS, limit: 2000, offset: entryOffset,
-      });
-      allEntries = allEntries.concat(records);
-      if (!hasMore) break;
-      entryOffset += 2000;
-    }
+    // Read this audience's entries. A date-only scan pulls every department and
+    // is what made the stats tab wait on rows the report never shows.
+    const allEntries = await readEntriesForOwners(
+      query => SadhanaEntries.findAll(query),
+      collectOwnerKeys(users, USER_IDENTITY_FIELDS),
+      { entryDate: { gte: startDate, lte: endDate } },
+      ENTRY_FIELDS,
+    );
 
     const filteredEntries = allEntries.filter(e => {
       const owner = String(Array.isArray(e.user) ? e.user[0] : e.user || '').trim().toLowerCase();
@@ -253,7 +261,8 @@ export default createEndpoint({
         addField('reading', scored.reading);
         if (scored.version === 2 && scored.fieldPoints) {
           for (const [key, points] of Object.entries(scored.fieldPoints)) {
-            if (points != null) addField(key, points);
+            const trendKey = PW_POINT_TREND_KEYS[key];
+            if (trendKey && points != null) addField(trendKey, points);
           }
         }
         continue;
@@ -295,6 +304,7 @@ export default createEndpoint({
       'sbPoints', 'maNaGvPoints', 'quotesTulasi', 'bath', 'japaVisible',
       'cleanlinessPoints', 'reportSending', 'dailyServicePoints', 'sleepQualityPoints',
       'sleepHours', 'studyMinutes', 'reading', 'hearing', 'fillingSameDay', 'seva', 'bhaktiVriksha',
+      ...Object.values(PW_POINT_TREND_KEYS),
     ];
 
     const dailyTrend: Record<string, any>[] = [];

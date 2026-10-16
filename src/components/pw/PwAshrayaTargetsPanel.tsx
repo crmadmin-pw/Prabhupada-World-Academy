@@ -89,7 +89,7 @@ export default function PwAshrayaTargetsPanel() {
         Submission deadline
         <Input type="time" className="w-32" value={deadline} onChange={event => setDeadline(event.target.value)} />
       </label>
-      <div className="overflow-x-auto">
+      <form className="overflow-x-auto" autoComplete="off" onSubmit={event => event.preventDefault()}>
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-xs text-muted-foreground">
@@ -109,17 +109,30 @@ export default function PwAshrayaTargetsPanel() {
                 <tr key={level} className="border-t">
                   <td className="p-2 font-medium whitespace-nowrap">{level}</td>
                   {(['wakeUp', 'sleep'] as const).map(key => (
-                    <td key={key} className="p-1"><Input type="time" className="h-8" value={row[key]} onChange={event => update(level, key, event.target.value)} /></td>
+                    <td key={key} className="p-1">
+                      <Input type="time" className="h-8" autoComplete="off" name={`ashraya-${level}-${key}`} value={row[key]} onChange={event => update(level, key, event.target.value)} />
+                    </td>
                   ))}
                   {(['chanting', 'readingMin', 'hearingMin', 'sevaMin'] as const).map(key => (
-                    <td key={key} className="p-1"><Input inputMode="numeric" className="h-8 w-20" value={row[key]} onChange={event => update(level, key, event.target.value)} /></td>
+                    <td key={key} className="p-1">
+                      <Input
+                        inputMode="numeric"
+                        className="h-8 w-20"
+                        autoComplete="one-time-code"
+                        autoCorrect="off"
+                        spellCheck={false}
+                        name={`ashraya-${level}-${key}`}
+                        value={row[key]}
+                        onChange={event => update(level, key, event.target.value)}
+                      />
+                    </td>
                   ))}
                 </tr>
               );
             })}
           </tbody>
         </table>
-      </div>
+      </form>
       <Button onClick={() => void save()} disabled={saving}>{saving ? 'Saving…' : 'Save Ashraya targets'}</Button>
     </div>
   );

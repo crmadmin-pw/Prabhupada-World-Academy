@@ -191,6 +191,17 @@ function getMonthOptions(): { value: string; label: string }[] {
 const WEEK_OPTIONS = getWeekOptions();
 const MONTH_OPTIONS = getMonthOptions();
 
+function pwPointAvg(users: Array<{ submitted?: boolean; fieldScores?: Record<string, number | string | null> }>, key: string): number | null {
+  const values = users.filter(user => user.submitted).map(user => {
+    const raw = user.fieldScores?.[key];
+    if (raw == null || raw === '') return null;
+    const value = typeof raw === 'number' ? raw : Number(raw);
+    return Number.isFinite(value) ? value : null;
+  }).filter((value): value is number => value != null);
+  if (values.length === 0) return null;
+  return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length * 10) / 10;
+}
+
 function computeSummary(users: ReportUser[], isScholarView = false) {
   const submitted = users.filter(u => u.submitted);
   // In scholar view, compute averages from scholars themselves.
@@ -1131,6 +1142,21 @@ export default function ReportsTab({ guideId = '', senderName, bvslMode, mentorM
                   </div>
                 </CardContent>
               </Card>
+              {isPw && ([
+                ['Wake-up', 'pw_wakeUp'],
+                ['Sleep', 'pw_sleep'],
+                ['Hearing', 'pw_hearing'],
+                ['On time', 'pw_submitted'],
+                ['Seva', 'pw_seva'],
+                ['BV', 'pw_bvAttendance'],
+              ] as const).map(([label, key]) => (
+                <Card key={key} className="flex-1 min-w-[110px]">
+                  <CardContent className="pt-4 pb-3">
+                    <div className="text-xs text-muted-foreground">{label}</div>
+                    <div className="text-2xl font-bold mt-1 text-primary">{pwPointAvg(usersForTable || [], key) ?? '—'}</div>
+                  </CardContent>
+                </Card>
+              ))}
               {!isPw && <>
               {/* 6 — Avg SB/Hearing */}
               <Card className="flex-1 min-w-[110px]">

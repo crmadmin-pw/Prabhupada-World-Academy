@@ -123,6 +123,50 @@ test('an RGF can open a member saved on the membership by name', async t => {
   assert.equal(detail.user.fullName, 'Group Member');
 });
 
+test('an RGF can open a member whose membership stores only a phone number', async t => {
+  const richa = { ...member, id: 'richa-doc', userId: 'USER-RICHA', fullName: 'Richa Pathak', phone: '+91 98765 43210' };
+  database(t, {
+    users: [rgf, richa],
+    groups: [{ id: 'group-doc', groupId: 'BV-NITYANANDA', groupName: 'Nityananda BV', isActive: true, segment: 'PW', bvslId: rgf.userId, bvslLeader: rgf.id }],
+    members: [{ id: 'membership', group: 'group-doc', user: '9876543210', isActive: true }],
+  });
+  const detail = await call(richa.id);
+  assert.equal(detail.user.fullName, 'Richa Pathak');
+});
+
+test('a duplicate profile still opens when the membership points at the other record', async t => {
+  const placeholder = {
+    id: 'USER-88', userId: 'USER-88', fullName: 'Richa Pathak', phone: '9876543210',
+    firebaseUserId: 'firebase-richa', segment: 'PW', status: 'Active', role: 'User',
+  };
+  const registered = {
+    id: 'richa-registered', userId: 'USER-88', fullName: 'Richa Pathak', email: 'richa@example.test',
+    segment: 'PW', status: 'Active', role: 'User',
+  };
+  database(t, {
+    users: [rgf, placeholder, registered],
+    groups: [{ id: 'group-doc', groupId: 'BV-NITYANANDA', groupName: 'Nityananda BV', isActive: true, segment: 'PW', bvslLeader: rgf.id }],
+    members: [{ id: 'membership', group: 'group-doc', user: 'firebase-richa', isActive: true }],
+  });
+  const detail = await call(registered.id);
+  assert.equal(detail.user.fullName, 'Richa Pathak');
+});
+
+test('a PW admin can open a group member whose profile segment is FOLK', async t => {
+  const admin = {
+    id: 'pw-admin', userId: 'USER-ADMIN', email: 'admin@example.test', fullName: 'PW Admin',
+    role: 'PW_ADMIN', segment: 'PW', isPwAdmin: true, status: 'Active',
+  };
+  const richa = { ...member, id: 'richa-doc', userId: 'USER-RICHA', fullName: 'Richa Pathak', segment: 'FOLK' };
+  database(t, {
+    users: [admin, richa],
+    groups: [{ id: 'group-doc', groupId: 'BV-NITYANANDA', groupName: 'Nityananda BV', isActive: true, segment: 'PW', guide: admin.id, bvslLeader: 'some-rgf' }],
+    members: [{ id: 'membership', group: 'group-doc', user: richa.id, isActive: true }],
+  });
+  const detail = await call(richa.id, admin);
+  assert.equal(detail.user.fullName, 'Richa Pathak');
+});
+
 test('a left membership does not let the RGF open that profile', async t => {
   database(t, {
     users: [rgf, member],

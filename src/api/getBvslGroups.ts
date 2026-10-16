@@ -356,8 +356,6 @@ export default createEndpoint({
       // RGSF dashboard shows all groups facilitated by its reporting RGF,
       // while retaining direct assignments for legacy group records.
       groupRecords = records.filter((g: any) => {
-        if (g.isActive === false) return false;
-
         const owners = ownerKeys(g);
         const groupRefs = [g.id, g.groupId, g.groupName].filter(Boolean).map((value: unknown) => String(value).toLowerCase());
         const assignedToCaller = groupRefs.some((value: string) => assignedGroupRefs.has(value));
@@ -385,7 +383,7 @@ export default createEndpoint({
     }
 
     if (!isBvSuperAdminUser(context.user)) {
-      const allowedGroups = await resolveBvScopedGroups(context.user);
+      const allowedGroups = await resolveBvScopedGroups(context.user, { includeInactive: true });
       const allowed = new Set(allowedGroups.map(group => group.id));
       const selfAliases = [context.user?.id, context.user?.userId, context.user?.email, context.user?.fullName]
         .filter(Boolean)

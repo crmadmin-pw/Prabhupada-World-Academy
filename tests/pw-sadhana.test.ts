@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { formatPwProgress, pwFieldPercent, pwScoreFromFieldValues, pwSnapshotMeta, scorePwSadhana, scorePwSadhanaV2 } from '../src/lib/pwSadhana';
+import { emptyPwTargets, formatPwProgress, pwFieldPercent, pwScoreFromFieldValues, pwSnapshotMeta, scorePwSadhana, scorePwSadhanaV2 } from '../src/lib/pwSadhana';
 
 test('chanting and reading cap at 100 percent when the member exceeds the assignment', () => {
   const scored = scorePwSadhana({ chanting: 12, reading: 45, chantingTarget: 8, readingTarget: 30 });
@@ -111,6 +111,28 @@ test('a waive-off with a reason scores full points and a missing target is left 
   assert.equal(points.submitted, 2);
   assert.equal(scored.applicableMax, 4 + 16 + 8 + 2);
   assert.equal(scored.scorePercent, Math.round((18 / 30) * 100));
+});
+
+test('an all-zero day with no other targets scores 0 percent', () => {
+  const scored = scorePwSadhanaV2({
+    wakeUp: '04:30',
+    sleep: '22:30',
+    chanting: 0,
+    reading: 0,
+    hearing: 0,
+    seva: 0,
+    submittedAt: '2026-10-15T04:00:00.000Z',
+    entryDate: '2026-10-15',
+    submissionDeadline: '10:00',
+    targets: emptyPwTargets(),
+  });
+  const points = Object.fromEntries(scored.fields.map(field => [field.key, field.points]));
+  assert.equal(points.submitted, 0);
+  assert.equal(points.chanting, null);
+  assert.equal(points.reading, null);
+  assert.equal(scored.earned, 0);
+  assert.equal(scored.applicableMax, 2);
+  assert.equal(scored.scorePercent, 0);
 });
 
 test('a saved 60-point day is read back from its snapshot', () => {

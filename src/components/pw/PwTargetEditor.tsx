@@ -103,19 +103,19 @@ export default function PwTargetEditor({ userId, fullName, targets }: {
           </div>
           <div className="space-y-1">
             <Label htmlFor={`${userId}-chant`}>Chanting rounds</Label>
-            <Input id={`${userId}-chant`} inputMode="numeric" value={chanting} onChange={event => setChanting(event.target.value)} />
+            <Input id={`${userId}-chant`} name={`${userId}-chant`} inputMode="numeric" autoComplete="one-time-code" autoCorrect="off" spellCheck={false} value={chanting} onChange={event => setChanting(event.target.value)} />
           </div>
           <div className="space-y-1">
             <Label htmlFor={`${userId}-read`}>Reading minutes</Label>
-            <Input id={`${userId}-read`} inputMode="numeric" value={reading} onChange={event => setReading(event.target.value)} />
+            <Input id={`${userId}-read`} name={`${userId}-read`} inputMode="numeric" autoComplete="one-time-code" autoCorrect="off" spellCheck={false} value={reading} onChange={event => setReading(event.target.value)} />
           </div>
           <div className="space-y-1">
             <Label htmlFor={`${userId}-hear`}>Hearing minutes</Label>
-            <Input id={`${userId}-hear`} inputMode="numeric" value={hearing} onChange={event => setHearing(event.target.value)} />
+            <Input id={`${userId}-hear`} name={`${userId}-hear`} inputMode="numeric" autoComplete="one-time-code" autoCorrect="off" spellCheck={false} value={hearing} onChange={event => setHearing(event.target.value)} />
           </div>
           <div className="space-y-1">
             <Label htmlFor={`${userId}-seva`}>Seva minutes</Label>
-            <Input id={`${userId}-seva`} inputMode="numeric" value={seva} onChange={event => setSeva(event.target.value)} />
+            <Input id={`${userId}-seva`} name={`${userId}-seva`} inputMode="numeric" autoComplete="one-time-code" autoCorrect="off" spellCheck={false} value={seva} onChange={event => setSeva(event.target.value)} />
           </div>
         </div>
         <Button onClick={() => void save()} disabled={saving}>{saving ? 'Saving…' : 'Save targets'}</Button>

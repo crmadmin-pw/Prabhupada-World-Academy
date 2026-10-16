@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { getScopedHierarchyUserIds, isUserInHierarchy, readScopedUsers } from '../lib/hierarchyUtils';
 import { createEndpoint, Users, SadhanaEntries, Guides, FolkResidencies } from '@/lib/backend-sdk';
 import { computeStreak, getTodayIST, daysAgo } from '../lib/streakUtils';
+import { readEntriesForOwners } from '../lib/scopedEntryReads';
 
 const memberSchema = z.object({
   userId: z.string(),
@@ -166,20 +167,12 @@ export default createEndpoint({
     const todayStr = getTodayIST();
     const cutoffStr = daysAgo(todayStr, 100);
 
-    // Paginate — guides with many members easily exceed 2000 entries over 100 days
-    const entries: any[] = [];
-    let entryOffset = 0;
-    while (true) {
-      const { records, hasMore } = await SadhanaEntries.findAll({
-        filters: { entryDate: { gte: cutoffStr } } as any,
-        fields: ['id', 'user', 'entryDate', 'scorePercent', 'submittedAt'],
-        limit: 2000,
-        offset: entryOffset,
-      });
-      entries.push(...records);
-      if (!hasMore) break;
-      entryOffset += 2000;
-    }
+    const entries = await readEntriesForOwners(
+      query => SadhanaEntries.findAll(query),
+      users.map(user => user.id).filter(Boolean),
+      { entryDate: { gte: cutoffStr } },
+      ['id', 'user', 'entryDate', 'scorePercent', 'submittedAt'],
+    );
 
     const entriesByUser = new Map<string, { entryDate: string; scorePercent: number | null; submittedAt: string }[]>();
     for (const e of entries) {

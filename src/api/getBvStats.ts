@@ -6,6 +6,7 @@ import { requireGuideRole } from '../lib/userUtils';
 import { bvUserAliases, isBvDepartmentAdmin, isBvSuperAdminUser, resolveBvDepartmentFacilitatorUsers, resolveBvGroupFacilitatorUsers, resolveBvGroupMemberUsers } from '../lib/bvGroupMemberScope';
 import { normaliseMemberBvActivity } from '../lib/bvMemberActivity';
 import { serverCacheGetOrFetch } from '../lib/serverCache';
+import { collectOwnerKeys, readEntriesForOwners } from '../lib/scopedEntryReads';
 
 const BV_FIELDS = [
   'prCallingTime', 'prOneOnOneTime', 'prBookDistTime', 'prRduaTime', 'prPlanTime',
@@ -30,12 +31,13 @@ export default createEndpoint({
     /** Optional selected facilitator, always verified against the caller's scoped hierarchy. */
     subjectUserId: z.string().optional(),
     segment: z.enum(['PW', 'FOLK']).optional(),
+    supervisionOnly: z.boolean().optional(),
   }),
   outputSchema: z.any(),
   execute: async ({ input, context }: { input: any; context: any }) => {
     if (!context.user) throw new Error('Unauthorized');
     const callerSegment = String((context.user as any).segment || 'FOLK').toUpperCase();
-    const cacheKey = `bvStats:${input.guideId}:${input.startDate}:${input.endDate}:${input.bvslMode ? '1' : '0'}:${input.groupId || ''}:${input.subjectUserId || ''}:${(input.residencyIds || []).sort().join(',')}:${input.segment || callerSegment}:${context.user.id}`;
+    const cacheKey = `bvStats:${input.guideId}:${input.startDate}:${input.endDate}:${input.bvslMode ? '1' : '0'}:${input.supervisionOnly ? '1' : '0'}:${input.groupId || ''}:${input.subjectUserId || ''}:${(input.residencyIds || []).sort().join(',')}:${input.segment || callerSegment}:${context.user.id}`;
     return serverCacheGetOrFetch(cacheKey, () => _fetchBvStats({ input, context }), 5 * 60 * 1000);
   },
 });
@@ -69,7 +71,7 @@ async function _fetchBvStats({ input, context }: { input: any; context: any }) {
       bvslUsers = await resolveBvGroupFacilitatorUsers(
         context.user as any,
         ['id', 'userId', 'email', 'fullName'],
-        { segment, groupId },
+        { segment, groupId, supervisionOnly: input.supervisionOnly === true },
       );
     } else if (isSupervisorMode) {
       const rawSegment = String(context.user.segment || 'FOLK').toUpperCase();
@@ -77,7 +79,7 @@ async function _fetchBvStats({ input, context }: { input: any; context: any }) {
       bvslUsers = await resolveBvGroupFacilitatorUsers(
         context.user as any,
         ['id', 'userId', 'email', 'fullName'],
-        { segment, groupId },
+        { segment, groupId, supervisionOnly: input.supervisionOnly === true },
       );
     } else if (bvslMode) {
       // An RGF monitors the members of their facilitated groups. Their own
@@ -169,25 +171,24 @@ async function _fetchBvStats({ input, context }: { input: any; context: any }) {
     });
 
     scopeRealtimeDependencies(isMemberMode ? 'SadhanaEntries' : 'BvslPreachingEntries', { kind: 'references', fields: ['user'], values: [...canonicalByAlias.keys()] });
-    let allEntries: any[] = [];
-    let offset = 0;
     const entryDateFilter = startDate === endDate
-      ? startDate
-      : { gte: startDate, lte: endDate };
-    while (true) {
-      const source = isMemberMode ? SadhanaEntries : BvslPreachingEntries;
-      const { records, hasMore } = await source.findAll({
-        filters: { entryDate: entryDateFilter } as any,
-        fields: isMemberMode
-          ? ['id', 'user', 'entryDate', 'preachingMinutes', 'booksDistributed', 'fieldValuesJson', 'submittedAt']
-          : undefined,
-        limit: 2000,
-        offset,
-      });
-      allEntries = allEntries.concat(isMemberMode ? records.map(normaliseMemberBvActivity) : records);
-      if (!hasMore) break;
-      offset += 2000;
-    }
+      ? { entryDate: startDate }
+      : { entryDate: { gte: startDate, lte: endDate } };
+    const source = isMemberMode ? SadhanaEntries : BvslPreachingEntries;
+    const ownerKeys = collectOwnerKeys(bvslUsers, [
+      'id', 'userId', 'email', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId',
+      'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id',
+      'fullName', 'displayName', 'name',
+    ]);
+    const loadedEntries = await readEntriesForOwners(
+      query => source.findAll(query),
+      ownerKeys,
+      entryDateFilter,
+      isMemberMode
+        ? ['id', 'user', 'entryDate', 'preachingMinutes', 'booksDistributed', 'fieldValuesJson', 'submittedAt']
+        : undefined,
+    );
+    const allEntries = isMemberMode ? loadedEntries.map(normaliseMemberBvActivity) : loadedEntries;
 
     const filteredEntries = allEntries.flatMap(entry => {
       const entryAliases = (Array.isArray(entry.user) ? entry.user : [entry.user])

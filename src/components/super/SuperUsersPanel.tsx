@@ -125,6 +125,35 @@ function facilitatorRefsOf(user: { id?: string; userId?: string; userDbId?: stri
   );
 }
 
+function initialSupervisedGroupIds(
+  user: { id?: string; userId?: string; userDbId?: string; email?: string; fullName?: string; bvSupervisedGroupIds?: unknown },
+  groups: BvGroupOption[],
+  people: Array<{ id?: string; userId?: string; userDbId?: string; email?: string; fullName?: string; bvReportingSupervisorId?: string }>,
+): string[] {
+  const refs = facilitatorRefsOf(user);
+  const explicit = groups.filter(group =>
+    (group.supervisorIds || []).some(id => refs.has(String(id).trim().toLowerCase())),
+  ).map(group => group.id);
+  if (explicit.length > 0) return explicit;
+  if (Array.isArray(user.bvSupervisedGroupIds)) {
+    const saved = new Set(user.bvSupervisedGroupIds.map(id => String(id || '').trim().toLowerCase()).filter(Boolean));
+    return groups.filter(group => [group.id, group.groupId].some(id => saved.has(String(id || '').trim().toLowerCase()))).map(group => group.id);
+  }
+  const reportingLeaders = people.filter(person => {
+    if (samePerson(person, user)) return false;
+    const parent = String(person.bvReportingSupervisorId || '').trim().toLowerCase();
+    return !!parent && refs.has(parent);
+  });
+  return groups.filter(group => {
+    const leaders = (group.rgfIds || group.facilitatorIds || []).map(id => String(id).trim().toLowerCase()).filter(Boolean);
+    if (leaders.length > 0 && leaders.every(id => refs.has(id))) return false;
+    return reportingLeaders.some(person => {
+      const personRefs = facilitatorRefsOf(person);
+      return leaders.some(id => personRefs.has(id));
+    });
+  }).map(group => group.id);
+}
+
 function groupsFacilitatedBy(
   user: { id?: string; userId?: string; userDbId?: string; email?: string; fullName?: string; facilitatedGroupIds?: unknown; facilitatedGroupNames?: unknown },
   groups: BvGroupOption[],
@@ -1786,11 +1815,11 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
             return isPwMode ? segment === 'PW' || segment === 'PRABHUPADAWORLD' : segment === 'FOLK';
           }))}
           departmentGroups={bvGroups.filter(group => {
-            if (group.isActive === false) return false;
             const segment = String(group.segment || '').trim().toUpperCase().replace(/[\s_-]+/g, '');
             if (!segment) return true;
             return isPwMode ? segment === 'PW' || segment === 'PRABHUPADAWORLD' : segment === 'FOLK';
           })}
+          initialSupervisedIds={initialSupervisedGroupIds(multiRoleUser, bvGroups, users)}
           onClose={() => setMultiRoleUser(null)}
           onSaved={(update) => {
             rememberDirectoryPatch(update.user, update.patch);

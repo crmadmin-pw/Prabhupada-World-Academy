@@ -16,6 +16,7 @@ import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
 import { pwScoreFromFieldValues, pwTarget, PW_FIELDS } from '@/lib/pwSadhana';
 import { resolveBvAdminFacilitators } from '@/lib/bvAdminFacilitatorScope';
 import { residencyMatchesDepartment } from '../lib/residencyCategory';
+import { readEntriesForOwners } from '../lib/scopedEntryReads';
 
 const USER_FIELDS = ['status', 'id', 'userId', 'fullName', 'email', 'phone', 'segment', 'isPrabhupadaWorldUser', 'isFolkUser', 'isFolkLead', 'sadhanaMentor', 'ashrayLevel', 'residency', 'residencyApproved', 'temporaryResidencyEnabled', 'temporaryResidency', 'residencyJoinDate', 'scholarSince', 'residentSince', 'currentStreak', 'lastStreakUpdatedAt', 'guide', 'role', 'isBvSuperAdmin', 'isBvAdmin', 'isPwAdmin', 'pwChantingTarget', 'pwReadingTarget', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
 const ENTRY_FIELDS = [
@@ -791,11 +792,12 @@ export default createEndpoint({
         offset += 2000;
       }
     };
-    // The report's entries depend only on the requested dates, so this read
-    // overlaps scope and user resolution. Rows are still matched to the
-    // authorized users below; nothing outside that scope is returned.
-    const reportEntriesPromise = readPages(dateFilter, ENTRY_FIELDS);
-    void reportEntriesPromise.catch(() => {});
+    // A one-day report starts immediately so label lookups cannot block it.
+    // Longer ranges wait until the audience is known and read only those people.
+    const reportEntriesPromise = reportType === 'daily'
+      ? readPages(dateFilter, ENTRY_FIELDS)
+      : null;
+    if (reportEntriesPromise) void reportEntriesPromise.catch(() => {});
     const referencePromise = getReportReferenceData();
     // Start labels alongside scope resolution, with rejection observed even if
     // an earlier scope check exits the report. Awaiting below still propagates it.
@@ -1069,18 +1071,6 @@ export default createEndpoint({
     // use the cached `currentStreak` value stored on each user record instead.
     // For individual guides, compute it live from the 100-day window for accuracy.
     const todayStr = getTodayIST();
-    // Report values and streak history are independent once scope is known.
-    // Keep the original date bounds, field projections and alias matching.
-    const entriesPromise = Promise.all([
-      reportEntriesPromise,
-      guideDbId !== null
-        ? readPages({ entryDate: { gte: daysAgo(todayStr, 100), lte: todayStr } }, ['id', 'user', 'entryDate', 'scorePercent', 'maxScore'])
-        : Promise.resolve([]),
-    ]);
-    void entriesPromise.catch(() => {});
-
-    const availableGuides = await availableGuidesPromise;
-
     // Sadhana entries are owned by the authenticated Firebase identity. A
     // member record can also carry a Firestore ID and a legacy/custom userId,
     // so match every supported alias before grouping entries for a report.
@@ -1099,6 +1089,20 @@ export default createEndpoint({
     });
 
     scopeRealtimeDependencies('SadhanaEntries', { kind: 'references', fields: ['user'], values: [...userDbIdSet], caseSensitive: true, firstArrayValue: true });
+    // Report values and streak history are independent once scope is known.
+    // Keep the original date bounds, field projections and alias matching.
+    const ownerKeys = [...userDbIdSet];
+    const readSadhana = (filters: Record<string, unknown>, fields: string[]) =>
+      readEntriesForOwners(query => SadhanaEntries.findAll(query), ownerKeys, filters, fields);
+    const entriesPromise = Promise.all([
+      reportEntriesPromise ?? readSadhana(dateFilter, ENTRY_FIELDS),
+      guideDbId !== null
+        ? readSadhana({ entryDate: { gte: daysAgo(todayStr, 100), lte: todayStr } }, ['id', 'user', 'entryDate', 'scorePercent', 'maxScore'])
+        : Promise.resolve([]),
+    ]);
+    void entriesPromise.catch(() => {});
+
+    const availableGuides = await availableGuidesPromise;
     const [allEntries, streakEntries] = await entriesPromise;
     availableResidencies = await availableResidenciesPromise;
     const streakEntriesByUser = new Map<string, { entryDate: string; scorePercent: number | null; maxScore: number | null }[]>();

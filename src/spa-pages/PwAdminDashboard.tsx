@@ -253,7 +253,7 @@ export default function PwAdminDashboard() {
                   <DashboardPanel active={activeTab === 'bv'}>
                     <div className="space-y-1 mb-4">
                       <h2 className="text-lg font-bold">Bhakti Vriksha Report</h2>
-                      <p className="text-sm text-muted-foreground">Attendance, chanting, and reading</p>
+                      <p className="text-sm text-muted-foreground">Attendance, wake-up, sleep, chanting, reading, hearing, seva, on-time submission, and BV</p>
                     </div>
                     <SuperBvReportTab
                       isPwAdmin={true}

@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { getGuideGroupStats } from '@/lib/endpoints-sdk';
 import type { GetGuideGroupStatsOutputType } from '@/lib/endpoints-sdk';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { useSupervisionOnly } from '@/components/guide/supervisionScope';
 
 interface Props { guideId: string; bvslMode?: boolean; residencyIds?: string[]; summaryOnly?: boolean; segment?: 'PW' | 'FOLK'; }
 
@@ -33,6 +34,7 @@ function GroupCard({ group, onClick }: { group: GroupStat; onClick: () => void }
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="font-bold text-base text-foreground truncate group-hover:text-primary transition-colors">{group.groupName}</span>
+                  {group.isActive === false && <Badge variant="secondary" className="text-[10px] shrink-0">Inactive</Badge>}
                   {isVacant && <Badge variant="outline" className="text-[10px] text-muted-foreground shrink-0">Vacant</Badge>}
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5">
@@ -93,15 +95,16 @@ function PerformanceChart({ groups }: { groups: GroupStat[] }) {
 
 export default function GuideBvTab({ guideId, bvslMode, residencyIds, summaryOnly = false, segment }: Props) {
   const navigate = useNavigate();
+  const supervisionOnly = useSupervisionOnly();
   const [loading, setLoading] = useState(true);
   const [groups, setGroups] = useState<GroupStat[]>([]);
 
-  useEffect(() => { loadGroups(); }, [guideId, bvslMode, residencyIds, segment]);
+  useEffect(() => { loadGroups(); }, [guideId, bvslMode, residencyIds, segment, supervisionOnly]);
 
   const loadGroups = useReactiveLoader(async (read) => {
     !read.background && !read.cancelled && setLoading(true);
     try {
-      const result = await read(() => getGuideGroupStats({ guideId, bvslMode, residencyIds: residencyIds && residencyIds.length > 0 ? residencyIds : undefined, segment }));
+      const result = await read(() => getGuideGroupStats({ guideId, bvslMode, residencyIds: residencyIds && residencyIds.length > 0 ? residencyIds : undefined, segment, supervisionOnly: supervisionOnly || undefined }));
       !read.cancelled && setGroups(result.groups);
     } catch {
       if (read.cancelled) return;
@@ -160,7 +163,12 @@ export default function GuideBvTab({ guideId, bvslMode, residencyIds, summaryOnl
                   const status = group.attendanceRate >= 75 ? 'Good' : group.attendanceRate >= 50 ? 'Fair' : 'Needs Attention';
                   return (
                     <tr key={group.groupId} className="border-b last:border-0">
-                      <td className="px-4 py-3 font-medium">{group.groupName}</td>
+                      <td className="px-4 py-3 font-medium">
+                        <span className="inline-flex items-center gap-2">
+                          {group.groupName}
+                          {group.isActive === false && <Badge variant="secondary" className="text-[10px]">Inactive</Badge>}
+                        </span>
+                      </td>
                       <td className="px-4 py-3 text-muted-foreground">{group.bvslName || 'Unassigned'}</td>
                       <td className="px-4 py-3 text-center">{group.memberCount}</td>
                       <td className="px-4 py-3 text-center">{group.presentCount}/{group.totalSessions}</td>

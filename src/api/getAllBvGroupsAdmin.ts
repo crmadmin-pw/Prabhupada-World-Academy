@@ -108,7 +108,7 @@ export default createEndpoint({
         ? (input.segment || ownDepartment || 'PW')
         : (ownDepartment || input.segment);
       if (segment === 'PW' || segment === 'FOLK') {
-        const directory = await resolveBvDepartmentGroups(segment);
+        const directory = await resolveBvDepartmentGroups(segment, undefined, { includeInactive: true });
         return {
           bvsls: [],
           groups: directory.map(group => {
@@ -209,11 +209,9 @@ async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<strin
     ].filter(Boolean).map(value => String(value).trim().toLowerCase()));
     const [{ records: allGroupRecords }, { records: allBvslUsers }] = await Promise.all([
       BvGroups.findAll({
-        // Fetch active groups with a single filter and apply the guide/RGF
-        // relationship in memory to avoid a deployment-time composite-index
-        // failure.
-        filters: { isActive: true },
-        limit: 500,
+        // Load every group, including deactivated ones, then match the guide
+        // in memory. An isActive filter here removed them from both departments.
+        limit: 1000,
       }),
       readScopedUsers(caller, {
         // Keep this a single-field query; filtering both status and isBvsl can

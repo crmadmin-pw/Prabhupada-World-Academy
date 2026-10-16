@@ -59,7 +59,17 @@ test('PW Admin BV reports return only data in that admin hierarchy across every 
     await BvAttendance.create({ record: { id: records.folkAttendance, group: folkGroup.id, user: folkMember.id, attendanceDate: date, present: true } });
     await BvslPreachingEntries.create({ record: { id: records.pwPreaching, user: pwRgf.email, entryDate: date, totalPreachingMinutes: 90, prCallingTime: 30 } });
     await BvslPreachingEntries.create({ record: { id: records.folkPreaching, user: folkRgf.id, entryDate: date, totalPreachingMinutes: 120, prCallingTime: 40 } });
-    await SadhanaEntries.create({ record: { id: records.pwSadhana, user: pwRgf.email, entryDate: date, totalScore: 16, maxScore: 20, scorePercent: 80 } });
+    await SadhanaEntries.create({ record: {
+      id: records.pwSadhana, user: pwRgf.email, entryDate: date, totalScore: 16, maxScore: 20, scorePercent: 80,
+      fieldValuesJson: JSON.stringify({
+        chanting: 8, reading: 30, hearing: 20, seva: 15,
+        _meta: {
+          pwVersion: 2,
+          scorePercent: 50,
+          pwFields: { wakeUp: 4, sleep: 2, chanting: 8, reading: 4, hearing: 6, submitted: 2, seva: 4, bvAttendance: 10 },
+        },
+      }),
+    } });
     await SadhanaEntries.create({ record: { id: records.folkSadhana, user: folkMember.id, entryDate: date, totalScore: 18, maxScore: 20, scorePercent: 90 } });
 
     const matrix = await getBvSessionMatrix.execute({ input: { guideId: admin.userId, segment: 'PW', startDate: date, endDate: date }, context } as never);
@@ -86,6 +96,15 @@ test('PW Admin BV reports return only data in that admin hierarchy across every 
 
     const sadhanaStats = await getSadhanaStats.execute({ input: { guideId: admin.userId, segment: 'PW', startDate: date, endDate: date, facilitatorMode: true }, context } as never);
     assert.ok(sadhanaStats.userSummaries.some((user: any) => user.fullName === pwRgf.fullName));
+    const trend = sadhanaStats.dailyTrend.find((point: any) => point.date === date);
+    assert.equal(trend?.pwWakeUpPts, 4);
+    assert.equal(trend?.pwSleepPts, 2);
+    assert.equal(trend?.pwHearingPts, 6);
+    assert.equal(trend?.pwSevaPts, 4);
+    assert.equal(trend?.pwSubmittedPts, 2);
+    assert.equal(trend?.pwAttendancePts, 10);
+    assert.equal(trend?.rounds, 8);
+    assert.equal(trend?.reading, 30);
     assert.ok(!sadhanaStats.userSummaries.some((user: any) => user.fullName === folkMember.fullName));
 
     const leaderboard = await getSadhanaLeaderboard.execute({ input: { guideId: admin.userId, segment: 'PW', date, facilitatorMode: true }, context } as never);

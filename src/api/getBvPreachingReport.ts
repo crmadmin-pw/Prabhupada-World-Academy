@@ -7,6 +7,7 @@ import { getGuideIdsForResidencies } from '../lib/guideScope';
 import { bvUserAliases, isBvDepartmentAdmin, isBvSuperAdminUser, resolveBvDepartmentFacilitatorUsers, resolveBvDepartmentGroups, resolveBvGroupFacilitatorUsers, resolveBvGroupMemberUsers, resolveBvScopedGroups } from '../lib/bvGroupMemberScope';
 import { normaliseMemberBvActivity } from '../lib/bvMemberActivity';
 import { serverCacheGetOrFetch } from '../lib/serverCache';
+import { collectOwnerKeys, readEntriesForOwners } from '../lib/scopedEntryReads';
 
 function isFolkMemberLevelFacilitator(user: any): boolean {
   const role = String(user?.role || '').toUpperCase().replace(/\s+/g, '_');
@@ -34,6 +35,7 @@ export default createEndpoint({
     groupId: z.string().optional(),
     residencyIds: z.array(z.string()).optional(),
     segment: z.enum(['PW', 'FOLK']).optional(),
+    supervisionOnly: z.boolean().optional(),
   }),
   outputSchema: z.any(),
   execute: async ({ input, context }: { input: any; context: any }) => {
@@ -90,29 +92,29 @@ async function _fetchBvPreachingReport({ input, context }: { input: any; context
         groupId,
       );
     } else if (isBvDepartmentAdmin(context.user as any) && !isBvSuperAdminUser(context.user as any)) {
-      hierarchyGroups = (await resolveBvScopedGroups(context.user as any, { segment, groupId }))
+      hierarchyGroups = (await resolveBvScopedGroups(context.user as any, { segment, groupId, supervisionOnly: input.supervisionOnly === true }))
         .map(group => group.record);
       bvslUsers = await resolveBvGroupFacilitatorUsers(
         context.user as any,
         ['id', 'userId', 'email', 'fullName', 'ashrayLevel', 'residency', 'residencyApproved', 'phone', 'role', 'isBvAdmin', 'isBvSuperAdmin', 'isBvSubFacilitator'],
-        { segment, groupId },
+        { segment, groupId, supervisionOnly: input.supervisionOnly === true },
       );
     } else if (isSupervisorMode) {
       const rawSegment = String(context.user.segment || 'FOLK').toUpperCase();
       const segment = rawSegment === 'PW' ? 'PW' : 'FOLK';
-      hierarchyGroups = (await resolveBvScopedGroups(context.user as any, { segment, groupId }))
+      hierarchyGroups = (await resolveBvScopedGroups(context.user as any, { segment, groupId, supervisionOnly: input.supervisionOnly === true }))
         .map(group => group.record);
       bvslUsers = await resolveBvGroupFacilitatorUsers(
         context.user as any,
         ['id', 'userId', 'email', 'fullName', 'ashrayLevel', 'residency', 'residencyApproved', 'phone', 'role', 'isBvAdmin', 'isBvSuperAdmin', 'isBvSubFacilitator'],
-        { segment, groupId },
+        { segment, groupId, supervisionOnly: input.supervisionOnly === true },
       );
     } else if (bvslMode) {
       // RGF reports belong to the facilitated groups and their members, not
       // to the signed-in RGF's own Sadhana/preaching record.
       const rawSegment = String(context.user.segment || '').toUpperCase();
       const segment = rawSegment === 'FOLK' || rawSegment === 'PW' ? rawSegment as 'FOLK' | 'PW' : undefined;
-      hierarchyGroups = (await resolveBvScopedGroups(context.user as any, { segment, groupId }))
+      hierarchyGroups = (await resolveBvScopedGroups(context.user as any, { segment, groupId, supervisionOnly: input.supervisionOnly === true }))
         .map(group => group.record);
       bvslUsers = await resolveBvGroupMemberUsers(
         context.user as any,
@@ -203,22 +205,21 @@ async function _fetchBvPreachingReport({ input, context }: { input: any; context
       ? { entryDate: effectiveStart }
       : { entryDate: { gte: effectiveStart, lte: effectiveEnd } };
 
-    let allEntries: any[] = [];
-    let offset = 0;
-    while (true) {
-      const source = isMemberMode ? SadhanaEntries : BvslPreachingEntries;
-      const { records, hasMore } = await source.findAll({
-        filters: dateFilter as any,
-        fields: isMemberMode
-          ? ['id', 'user', 'entryDate', 'preachingMinutes', 'booksDistributed', 'fieldValuesJson', 'submittedAt']
-          : undefined,
-        limit: 2000,
-        offset,
-      });
-      allEntries = allEntries.concat(isMemberMode ? records.map(normaliseMemberBvActivity) : records);
-      if (!hasMore) break;
-      offset += 2000;
-    }
+    const source = isMemberMode ? SadhanaEntries : BvslPreachingEntries;
+    const ownerKeys = collectOwnerKeys(filteredBvslUsers, [
+      'id', 'userId', 'email', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId',
+      'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id',
+      'fullName', 'displayName', 'name',
+    ]);
+    const loadedEntries = await readEntriesForOwners(
+      query => source.findAll(query),
+      ownerKeys,
+      dateFilter as Record<string, unknown>,
+      isMemberMode
+        ? ['id', 'user', 'entryDate', 'preachingMinutes', 'booksDistributed', 'fieldValuesJson', 'submittedAt']
+        : undefined,
+    );
+    const allEntries = isMemberMode ? loadedEntries.map(normaliseMemberBvActivity) : loadedEntries;
 
     const canonicalByAlias = new Map<string, string>();
     filteredBvslUsers.forEach(user => {

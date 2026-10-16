@@ -11,6 +11,7 @@ import { getBvStats, getGuideGroupStats } from '@/lib/endpoints-sdk';
 import FieldTrendChart from '@/components/stats/FieldTrendChart';
 import type { FieldConfig } from '@/components/stats/FieldTrendChart';
 import type { SadhanaGroupOption } from '@/components/guide/ReportsTab';
+import { useSupervisionOnly } from '@/components/guide/supervisionScope';
 
 type Period = '7d' | '30d' | '90d' | 'current_month' | 'prev_month';
 
@@ -64,6 +65,7 @@ interface Props {
 }
 
 export default function BvStatsPanel({ guideId, bvslMode, residencyIds, showIndividualStats, groupOptions = [], segment }: Props) {
+  const supervisionOnly = useSupervisionOnly();
   const [period, setPeriod]               = useState<Period>('30d');
   const [groupStats, setGroupStats]       = useState<any>(null);
   const [groupLoading, setGroupLoading]   = useState(false);
@@ -88,6 +90,7 @@ export default function BvStatsPanel({ guideId, bvslMode, residencyIds, showIndi
         residencyIds: residencyIds && residencyIds.length > 0 ? residencyIds : undefined,
         groupId: selectedGroupId === 'all' ? undefined : selectedGroupId,
         segment,
+        supervisionOnly: supervisionOnly || undefined,
       }));
       setGroupStats(result);
     } catch {
@@ -96,7 +99,7 @@ export default function BvStatsPanel({ guideId, bvslMode, residencyIds, showIndi
     } finally {
       if (!silent) setGroupLoading(false);
     }
-  }, [guideId, start, end, bvslMode, residencyIds, selectedGroupId, segment]);
+  }, [guideId, start, end, bvslMode, residencyIds, selectedGroupId, segment, supervisionOnly]);
 
   useEffect(() => { void loadGroupStats(); }, [loadGroupStats]);
   // A Sadhana submission can include BV activity. Re-query on that event so
@@ -111,6 +114,7 @@ export default function BvStatsPanel({ guideId, bvslMode, residencyIds, showIndi
         bvslMode,
         residencyIds: residencyIds && residencyIds.length > 0 ? residencyIds : undefined,
         segment,
+        supervisionOnly: supervisionOnly || undefined,
       }));
       setLoadedGroupOptions(result.groups.map((group: any) => ({
         id: String(group.groupId),
@@ -121,7 +125,7 @@ export default function BvStatsPanel({ guideId, bvslMode, residencyIds, showIndi
       if (read.cancelled) return;
       setLoadedGroupOptions([]);
     }
-  }, [guideId, bvslMode, residencyIds, segment, groupOptions.length]);
+  }, [guideId, bvslMode, residencyIds, segment, groupOptions.length, supervisionOnly]);
 
   useEffect(() => { void loadGroupOptions(); }, [loadGroupOptions]);
 
@@ -142,6 +146,7 @@ export default function BvStatsPanel({ guideId, bvslMode, residencyIds, showIndi
         groupId: selectedGroupId === 'all' ? undefined : selectedGroupId,
         subjectUserId: selectedUserId,
         segment,
+        supervisionOnly: supervisionOnly || undefined,
       }));
       setIndividualStats(result);
     } catch {
@@ -150,7 +155,7 @@ export default function BvStatsPanel({ guideId, bvslMode, residencyIds, showIndi
     } finally {
       if (!silent) setIndividualLoading(false);
     }
-  }, [guideId, start, end, bvslMode, residencyIds, selectedGroupId, selectedUserId, segment]);
+  }, [guideId, start, end, bvslMode, residencyIds, selectedGroupId, selectedUserId, segment, supervisionOnly]);
 
   useEffect(() => { void loadIndividualStats(); }, [loadIndividualStats]);
 

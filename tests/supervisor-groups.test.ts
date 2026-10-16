@@ -752,7 +752,7 @@ test('BV group cards count only current active members and update after a remova
   }
 });
 
-test('a supervisor who also facilitates a reading group sees that group', async () => {
+test('a supervisor who is an RGF of other groups does not supervise those groups', async () => {
   const supervisorRgf = {
     id: 'DUAL-ROLE-SUPERVISOR-DB',
     userId: 'DUAL-ROLE-SUPERVISOR',
@@ -803,15 +803,62 @@ test('a supervisor who also facilitates a reading group sees that group', async 
       input: {},
       context: { user: { ...supervisorRgf, segment: undefined } },
     } as never);
-    assert.deepEqual(result.groups.map((group: any) => group.groupId).sort(), [
-      ownGroup.groupId,
-      unsegmentedGroup.groupId,
-    ]);
+    assert.deepEqual(result.groups.map((group: any) => group.groupId), []);
   } finally {
     await BvGroups.delete({ id: ownGroup.id }).catch(() => undefined);
     await BvGroups.delete({ id: unsegmentedGroup.id }).catch(() => undefined);
     await BvGroups.delete({ id: otherGroup.id }).catch(() => undefined);
     await Users.delete({ id: supervisorRgf.id }).catch(() => undefined);
+  }
+});
+
+test('an admin assignment limits a supervisor to those groups', async () => {
+  const supervisor = {
+    id: 'ASSIGNED-SUPERVISOR-DB',
+    userId: 'ASSIGNED-SUPERVISOR',
+    email: 'assigned-supervisor@example.invalid',
+    fullName: 'Assigned Supervisor',
+    role: 'User',
+    status: 'Active',
+    segment: 'PW',
+    isPrabhupadaWorldUser: true,
+    isBvSupervisor: true,
+    isBvFacilitator: true,
+    isBvsl: true,
+    bvSupervisedGroupIds: ['ASSIGNED-1-DB', 'ASSIGNED-1', 'ASSIGNED-2-DB', 'ASSIGNED-2', 'ASSIGNED-3-DB', 'ASSIGNED-3', 'ASSIGNED-4-DB', 'ASSIGNED-4'],
+  };
+  const assigned = [1, 2, 3, 4].map(index => ({
+    id: `ASSIGNED-${index}-DB`,
+    groupId: `ASSIGNED-${index}`,
+    groupName: `Assigned ${index}`,
+    bvslId: `OTHER-RGF-${index}`,
+    segment: 'PW',
+    isActive: true,
+    supervisorId: supervisor.id,
+    supervisorUserId: supervisor.userId,
+  }));
+  const ownRgfGroup = {
+    id: 'ASSIGNED-OWN-RGF-DB',
+    groupId: 'ASSIGNED-OWN-RGF',
+    groupName: 'Own RGF Group',
+    bvslId: supervisor.userId,
+    bvslName: supervisor.fullName,
+    segment: 'PW',
+    isActive: true,
+  };
+
+  await Users.create({ record: supervisor });
+  for (const group of [...assigned, ownRgfGroup]) await BvGroups.create({ record: group });
+
+  try {
+    const result = await getBvSupervisorOverview.execute({
+      input: {},
+      context: { user: supervisor },
+    } as never);
+    assert.deepEqual(result.groups.map((group: any) => group.groupId).sort(), assigned.map(group => group.groupId).sort());
+  } finally {
+    for (const group of [...assigned, ownRgfGroup]) await BvGroups.delete({ id: group.id }).catch(() => undefined);
+    await Users.delete({ id: supervisor.id }).catch(() => undefined);
   }
 });
 

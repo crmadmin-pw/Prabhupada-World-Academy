@@ -14,6 +14,7 @@ import SadhanaSection from '@/components/guide/SadhanaSection';
 import BvslOneToOneTab from '@/components/bvsl/BvslOneToOneTab';
 import MeetingsAndMomTab from '@/components/super/MeetingsAndMomTab';
 import TabRouter, { TabConfig } from '@/shared/TabRouter';
+import { SupervisionScopeProvider } from '@/components/guide/supervisionScope';
 
 interface SupervisorGroup {
   id: string;
@@ -127,6 +128,7 @@ export default function BvSupervisorDashboard() {
           <Skeleton className="h-64" />
         </div>
       ) : (
+        <SupervisionScopeProvider>
         <TabRouter tabs={tabs} defaultTab="overview" desktopCols={7} keepAlive preloadTabs={['rgfs']}>
           {(activeTab) => (
             <>
@@ -261,6 +263,7 @@ export default function BvSupervisorDashboard() {
             </>
           )}
         </TabRouter>
+        </SupervisionScopeProvider>
       )}
     </DashboardLayout>
   );

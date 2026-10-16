@@ -294,6 +294,7 @@ export default createEndpoint({
         .map(name => ({
           membershipId: `facilitator-name-${badge}-${name.toLowerCase()}`,
           userId: '',
+          dbId: null,
           fullName: name,
           phone: '',
           ashrayLevel: null,

@@ -84,12 +84,19 @@ export const NR_FIELD_CONFIGS: FieldConfig[] = [
   { key: 'bhaktiVriksha',   label: 'BV',            unit: 'Yes/No', yMax: 1 },
 ];
 
-// Prabhupada World uses the non-resident Sadhana form, but its report also
-// includes the informational preaching and book-distribution values.
+// Shared by every Prabhupada World dashboard chart: BV report Stats, member
+// progress, and user Sadhana trends. Raw chanting and reading stay, and the
+// rest of the 60-point rubric is selectable beside them.
 export const PW_FIELD_CONFIGS: FieldConfig[] = [
   { key: 'scorePercent', label: 'Overall %', unit: '%', yMax: 100 },
+  { key: 'pwWakeUpPts', label: 'Wake-up', unit: 'pts', yMax: 4 },
+  { key: 'pwSleepPts', label: 'Sleep', unit: 'pts', yMax: 4 },
   { key: 'rounds', label: 'Chanting', unit: 'rounds', yMax: 32 },
   { key: 'reading', label: 'Reading', unit: 'min', yMax: 180 },
+  { key: 'pwHearingPts', label: 'Hearing', unit: 'pts', yMax: 8 },
+  { key: 'pwSevaPts', label: 'Seva', unit: 'pts', yMax: 8 },
+  { key: 'pwSubmittedPts', label: 'On time', unit: 'pts', yMax: 2 },
+  { key: 'pwAttendancePts', label: 'BV', unit: 'pts', yMax: 10 },
 ];
 
 interface DataPoint {

@@ -193,6 +193,74 @@ test('a PW role change for someone in several groups asks which group and leaves
   assert.equal(morning.bvslLeader, 'pw-user');
 });
 
+test('an admin assigns the reading groups a supervisor watches', async (t) => {
+  const supervisor = {
+    id: 'supervisor-doc',
+    userId: 'SUP-1',
+    email: 'supervisor@example.test',
+    fullName: 'Supervisor Das',
+    role: 'User',
+    segment: 'PW',
+    isBvFacilitator: true,
+    isBvsl: true,
+  };
+  const admin = {
+    id: 'admin-doc',
+    userId: 'ADMIN-1',
+    email: 'admin@example.test',
+    fullName: 'Admin Das',
+    role: 'Admin',
+    isBvAdmin: true,
+  };
+  const groups = [1, 2, 3, 4].map(index => ({
+    id: `watch-${index}`,
+    groupId: `watch-${index}`,
+    groupName: `Watch ${index}`,
+    segment: 'PW',
+    bvslId: 'someone-else',
+  }));
+  const ownGroup = {
+    id: 'own-rgf-group',
+    groupId: 'own-rgf-group',
+    groupName: 'Own RGF Group',
+    segment: 'PW',
+    bvslId: 'SUP-1',
+    bvslLeader: 'supervisor-doc',
+    supervisorId: 'supervisor-doc',
+    supervisorUserId: 'SUP-1',
+  };
+  const updates = mockDirectory(t, [supervisor, admin]);
+  const groupUpdates: Array<{ id: string; record: any }> = [];
+  t.mock.method(BvGroups, 'findAll', async () => ({ records: [...groups, ownGroup], hasMore: false }));
+  t.mock.method(BvGroups, 'update', async (change: { id: string; record: any }) => {
+    groupUpdates.push(change);
+    return change;
+  });
+
+  await assignBvRole.execute({
+    input: {
+      userId: 'SUP-1',
+      role: 'SUPERVISOR',
+      parentId: 'ADMIN-1',
+      supervisedGroupIds: groups.map(group => group.id),
+      multiRoles: { isSupervisor: true, isFacilitator: true },
+    },
+    context: superAdmin,
+  } as never);
+
+  assert.deepEqual(groupUpdates.map(change => change.id).sort(), ['own-rgf-group', ...groups.map(group => group.id)].sort());
+  for (const group of groups) {
+    const written = groupUpdates.find(change => change.id === group.id);
+    assert.equal(written?.record.supervisorId, 'supervisor-doc');
+    assert.equal(written?.record.supervisorUserId, 'SUP-1');
+  }
+  const cleared = groupUpdates.find(change => change.id === ownGroup.id);
+  assert.equal(cleared?.record.supervisorId, '');
+  assert.ok(updates[0].record.bvSupervisedGroupIds.includes('watch-1'));
+  assert.equal(updates[0].record.bvSupervisedGroupIds.includes('own-rgf-group'), false);
+  assert.equal(updates[0].record.isBvFacilitator, true);
+});
+
 test('a PW user can be RGF of one group and RGSF of another', async (t) => {
   const person = {
     id: 'pw-user',

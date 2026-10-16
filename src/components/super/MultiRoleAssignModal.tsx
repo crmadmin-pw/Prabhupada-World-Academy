@@ -26,6 +26,7 @@ interface Props {
   facilitatorsList: OptionItem[];
   readingGroups?: Array<PwGroupRoleOption & { role: PwGroupRole }>;
   departmentGroups?: Array<PwGroupRoleOption & { supervisorIds?: string[] }>;
+  initialSupervisedIds?: string[];
   onClose: () => void;
   onSaved: (update: { user: any; patch: PendingDirectoryPatch }) => void;
 }
@@ -54,6 +55,7 @@ export default function MultiRoleAssignModal({
   facilitatorsList,
   readingGroups = [],
   departmentGroups = [],
+  initialSupervisedIds = [],
   onClose,
   onSaved,
 }: Props) {
@@ -92,11 +94,14 @@ export default function MultiRoleAssignModal({
       .map(value => String(value || '').trim().toLowerCase())
       .filter(Boolean),
   );
-  const [supervisedIds, setSupervisedIds] = useState<string[]>(() =>
-    departmentGroups
+  const [supervisedIds, setSupervisedIds] = useState<string[]>(() => {
+    const known = new Set(departmentGroups.map(group => group.id));
+    const seeded = initialSupervisedIds.filter(id => known.has(id));
+    const stored = departmentGroups
       .filter(group => (group.supervisorIds || []).some(id => personRefs.has(String(id).trim().toLowerCase())))
-      .map(group => group.id),
-  );
+      .map(group => group.id);
+    return [...new Set([...seeded, ...stored])];
+  });
 
   const [saving, setSaving] = useState(false);
 
@@ -144,7 +149,7 @@ export default function MultiRoleAssignModal({
           rgsfReportsToId: facilitatorParentId,
           rgsfReportsToName: filteredFacilitatorsList.find(f => f.id === facilitatorParentId)?.name || '',
         } : {}),
-        ...(departmentGroups.length > 0 || isSupervisor ? { supervisedGroupIds: isSupervisor ? supervisedIds : [] } : {}),
+        ...(departmentGroups.length > 0 ? { supervisedGroupIds: isSupervisor ? supervisedIds : [] } : {}),
         multiRoles: {
           isAdmin,
           isSupervisor,
@@ -272,6 +277,7 @@ export default function MultiRoleAssignModal({
                           />
                           <Label htmlFor={`supervise-${group.id}`} className="text-xs font-normal cursor-pointer">
                             {group.groupName}
+                            {group.isActive === false ? <span className="text-muted-foreground"> · Inactive</span> : null}
                             {rgfHere ? <span className="text-muted-foreground"> · RGF here</span> : null}
                           </Label>
                         </div>

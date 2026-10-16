@@ -1,5 +1,5 @@
 import { useReactiveLoader } from '@/hooks/useReactiveLoader';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -97,7 +97,9 @@ export default function SuperStatsPanel({ segment, isActive }: SuperStatsPanelPr
     try {
       const [{ guides }, hostels] = await Promise.all([
         read(() => getGuides({ segment: effectiveSegment })),
-        read(() => getAllResidenciesWithStats({})).catch(() => [] as any[]),
+        isPw
+          ? Promise.resolve([] as any[])
+          : read(() => getAllResidenciesWithStats({})).catch(() => [] as any[]),
       ]);
       setTotalHostels((hostels as any[]).filter((h: any) => h.isActive).length);
 
@@ -158,13 +160,20 @@ export default function SuperStatsPanel({ segment, isActive }: SuperStatsPanelPr
   }, []);
 
 
+  const skipFirstActiveRefresh = useRef(true);
+
   useEffect(() => {
     loadData();
   }, [isPw]);
 
-  // Re-fetch silently every time the stats tab becomes visible
+  // Re-fetch silently when the tab is opened again. The first visit is the effect above.
   useEffect(() => {
-    if (isActive) loadData(false);
+    if (!isActive) return;
+    if (skipFirstActiveRefresh.current) {
+      skipFirstActiveRefresh.current = false;
+      return;
+    }
+    loadData(false);
   }, [isActive]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const totalUsers = guideStats.reduce((s, g) => s + g.userCount, 0);

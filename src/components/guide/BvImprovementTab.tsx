@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { getBvPreachingReport } from '@/lib/endpoints-sdk';
 import type { GetBvPreachingReportOutputType } from '@/lib/endpoints-sdk';
 import { useReactiveLoader } from '@/hooks/useReactiveLoader';
+import { useSupervisionOnly } from '@/components/guide/supervisionScope';
 
 type Period = 'prev_week' | 'prev_month' | 'this_month';
 type BvslRow = GetBvPreachingReportOutputType['bvsls'][0];
@@ -126,6 +127,7 @@ function computeLowPerformers(facilitators: BvslRow[], fields: BvFieldDef[]): Lo
 interface Props { guideId: string; bvslMode?: boolean; residencyIds?: string[]; segment?: 'PW' | 'FOLK'; }
 
 export default function BvImprovementTab({ guideId, bvslMode, residencyIds, segment }: Props) {
+  const supervisionOnly = useSupervisionOnly();
   // Show the current work by default. "Previous Week" made a newly submitted
   // entry appear missing until the user manually changed the period.
   const [period, setPeriod]   = useState<Period>('this_month');
@@ -135,13 +137,13 @@ export default function BvImprovementTab({ guideId, bvslMode, residencyIds, segm
   const load = useReactiveLoader(async (read, silent = false) => {
     const params = getPeriodParams(period);
     if (!silent && !read.background) setLoading(true);
-    await read(() => getBvPreachingReport({ guideId, ...params, bvslMode, residencyIds: residencyIds && residencyIds.length > 0 ? residencyIds : undefined, segment }))
+    await read(() => getBvPreachingReport({ guideId, ...params, bvslMode, residencyIds: residencyIds && residencyIds.length > 0 ? residencyIds : undefined, segment, supervisionOnly: supervisionOnly || undefined }))
       .then(res => setData(res as any))
       .catch(() => { if (!read.cancelled && !read.background) toast.error('Failed to load improvement data'); })
       .finally(() => { if (!silent) setLoading(false); });
   }, []);
 
-  useEffect(() => { load(); }, [guideId, period, bvslMode, segment]);
+  useEffect(() => { load(); }, [guideId, period, bvslMode, segment, supervisionOnly]);
   // Event-driven refresh after an RGF submits the Bhakti Vriksha section of
   // Sadhana. This is not polling and keeps improvement in sync with Stats.
 

@@ -5,6 +5,7 @@ import { requireGuideRole } from '../lib/userUtils';
 import { getGuideIdsForResidencies } from '../lib/guideScope';
 import { legacyQuizMatchesGroup, normalizeQuizDepartment } from '../lib/bvQuizAccess';
 import { bvGroupFacilitatorAliases, bvUserAliases, isBvDepartmentAdmin, isBvSuperAdminUser, isBvSupervisorUser, resolveBvDepartmentGroups, resolveBvScopedGroups, resolveBvUsersByAliases } from '../lib/bvGroupMemberScope';
+import { findAllByIn } from '../lib/scopedEntryReads';
 
 export default createEndpoint({
   description: 'BV attendance matrix with FOLK-only quiz results',
@@ -17,6 +18,7 @@ export default createEndpoint({
     bvslMode: z.boolean().optional(),
     residencyIds: z.array(z.string()).optional(),
     segment: z.enum(['PW', 'FOLK']).optional(),
+    supervisionOnly: z.boolean().optional(),
   }),
   outputSchema: z.any(),
   execute: async ({ input, context }) => {
@@ -38,7 +40,7 @@ export default createEndpoint({
     void hierarchyPromise.catch(() => {});
     const permittedGroupsPromise = isBvSuperAdminUser(context.user as any)
       ? null
-      : resolveBvScopedGroups(context.user as any, { segment });
+      : resolveBvScopedGroups(context.user as any, { segment, supervisionOnly: input.supervisionOnly === true });
     void permittedGroupsPromise?.catch(() => {});
 
     // Get groups
@@ -67,12 +69,12 @@ export default createEndpoint({
       }
       groups = (await resolveBvDepartmentGroups(segment, groupId)).map(group => group.record);
     } else if (isBvDepartmentAdmin(context.user as any) && !isBvSuperAdminUser(context.user as any)) {
-      groups = (await resolveBvScopedGroups(context.user as any, { segment, groupId }))
+      groups = (await resolveBvScopedGroups(context.user as any, { segment, groupId, supervisionOnly: input.supervisionOnly === true }))
         .map(group => group.record);
     } else if (bvslMode) {
       const rawSegment = String(context.user.segment || (context.user.isBvSupervisor ? 'FOLK' : '')).toUpperCase();
       const segment = rawSegment === 'FOLK' || rawSegment === 'PW' ? rawSegment as 'FOLK' | 'PW' : undefined;
-      const scopedGroups = await resolveBvScopedGroups(context.user as any, { segment, groupId });
+      const scopedGroups = await resolveBvScopedGroups(context.user as any, { segment, groupId, supervisionOnly: input.supervisionOnly === true });
       groups = scopedGroups.map(group => group.record);
     } else {
       const result = await BvGroups.findAll({
@@ -169,24 +171,13 @@ export default createEndpoint({
         // Query attendance by group+date range directly (new approach)
         let allAttendance: any[] = [];
         if (groupIds.length > 0) {
-          const loadAttendance = async (field: 'group' | 'groupId') => {
-            const records: any[] = [];
-            let offset = 0;
-            while (true) {
-              const result = await BvAttendance.findAll({
-                filters: {
-                  [field]: { in: groupIds },
-                  attendanceDate: { gte: startDate, lte: endDate },
-                } as any,
-                fields: ['id', 'group', 'groupId', 'user', 'present', 'attendanceDate'],
-                limit: 2000,
-                offset,
-              });
-              records.push(...result.records);
-              if (!result.hasMore) return records;
-              offset += 2000;
-            }
-          };
+          const loadAttendance = (field: 'group' | 'groupId') => findAllByIn(
+            query => BvAttendance.findAll(query),
+            field,
+            groupIds,
+            { attendanceDate: { gte: startDate, lte: endDate } },
+            ['id', 'group', 'groupId', 'user', 'present', 'attendanceDate'],
+          );
           const [byGroup, byGroupId] = await Promise.all([loadAttendance('group'), loadAttendance('groupId')]);
           allAttendance = [...byGroup, ...byGroupId]
             .filter((attendance, index, records) => records.findIndex(item => item.id === attendance.id) === index);
@@ -209,15 +200,16 @@ export default createEndpoint({
             )
             .map(quiz => quiz.id);
 
-          let offset = 0;
-          while (quizIds.length > 0) {
-            const { records, hasMore } = await BvQuizSubmissions.findAll({
-              filters: { user: { in: memberUserIds } } as any,
-              fields: ['id', 'user', 'quiz', 'percentage', 'submittedAt'],
-              limit: 2000,
-              offset,
-            });
-            for (const sub of records) {
+          const submissions = quizIds.length > 0
+            ? await findAllByIn(
+              query => BvQuizSubmissions.findAll(query),
+              'user',
+              memberUserIds,
+              {},
+              ['id', 'user', 'quiz', 'percentage', 'submittedAt'],
+            )
+            : [];
+          for (const sub of submissions) {
               const uid = (Array.isArray(sub.user) ? sub.user[0] : sub.user) as string;
               const qid = (Array.isArray(sub.quiz) ? sub.quiz[0] : sub.quiz) as string;
               if (!uid || !qid || !quizIds.includes(qid) || !sub.submittedAt) continue;
@@ -230,9 +222,6 @@ export default createEndpoint({
                 quizScoreMap[uid][subDate] = score;
               }
             }
-            if (!hasMore) break;
-            offset += 2000;
-          }
         }
 
         return quizScoreMap;

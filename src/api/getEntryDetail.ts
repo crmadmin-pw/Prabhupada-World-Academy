@@ -4,8 +4,24 @@ import { NON_RESIDENT_FIELDS, RESIDENT_FIELDS } from '../config/sadhanaFields';
 import { isPwSadhanaUser, PW_SADHANA_FORM_KEYS } from '@/lib/sadhanaDepartment';
 import { formatPwProgress, pwDetailRows, pwScoreFromFieldValues, pwTarget } from '@/lib/pwSadhana';
 
-// Personalized PW scoring only covers chanting and reading. Preaching and book
-// distribution are still stored on the entry and belong in the detail view.
+const PW_FORM_LABELS: Record<string, string> = {
+  wakeUp: 'Wake-up Time',
+  sleep: 'Sleep Time',
+  chanting: 'Chanting (rounds)',
+  reading: 'Reading (minutes)',
+  hearing: 'Hearing (minutes)',
+  heardSbBefore1030: 'Heard SB class before 10:30 AM',
+  seva: 'Seva (minutes)',
+};
+
+function pwFormDisplay(key: string, val: unknown, chantingTarget: number | null, readingTarget: number | null): string {
+  if (key === 'chanting') return formatPwProgress(Number(val), chantingTarget);
+  if (key === 'reading') return formatPwProgress(Number(val), readingTarget);
+  if (key === 'hearing' || key === 'seva') return `${Number(val) || 0} min`;
+  if (key === 'heardSbBefore1030') return val ? 'Yes' : 'No';
+  if (val == null || val === '') return '—';
+  return String(val);
+}
 const PW_ACTIVITY_KEYS = new Set([
   'preaching_raw', 'preaching_minutes', 'preachingMinutes',
   'distribution_raw', 'books_distributed', 'booksDistributed',
@@ -134,7 +150,7 @@ export default createEndpoint({
       const val = rawFieldValues[key];
       if (val === undefined || val === null) continue;
       const displayValue = isPw && PW_SADHANA_FORM_KEYS.has(key)
-        ? formatPwProgress(Number(val), pwTarget(key === 'chanting' ? meta.pwChantingTarget : meta.pwReadingTarget))
+        ? pwFormDisplay(key, val, pwTarget(meta.pwChantingTarget), pwTarget(meta.pwReadingTarget))
         : formatDisplayValue(key, val);
       const points = isPw ? undefined : rawFieldValues[`_pts_${key}`] ?? rawFieldValues[`_nr_pts_${key}`];
       const rawMaxPoints = isPw ? null : (MAX_POINTS_MAP[key] ?? null);
@@ -146,7 +162,7 @@ export default createEndpoint({
       fields.push({
         fieldKey: key,
         fieldLabel: isPw && PW_SADHANA_FORM_KEYS.has(key)
-          ? (key === 'chanting' ? 'Chanting (rounds)' : 'Reading (minutes)')
+          ? (PW_FORM_LABELS[key] || def.fieldLabel || key)
           : (def.fieldLabel || FIELD_LABEL_MAP[key] || key),
         displayValue,
         points: typeof points === 'number' ? points : undefined,
