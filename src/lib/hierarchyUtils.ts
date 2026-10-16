@@ -220,8 +220,9 @@ export function resolveHierarchyScope(caller: any, users: any[], groups: any[] =
     if (group.isActive === false || !eligible(group)) continue;
     const owners = hierarchyRefs([group.bvslId, group.bvslLeader, group.subFacilitatorId, group.rgsfId, group.subFacilitator]);
     const guides = hierarchyRefs(group.guide);
+    const supervisors = hierarchyRefs([group.supervisorId, group.supervisorUserId]);
     if (admin && guides.length && !guides.some(ref => scope.has(ref))) continue;
-    if (owners.some(ref => groupOwners.has(ref)) || (!(rgsf && !admin && !supervisor && !rgf) && guides.some(ref => scope.has(ref)))) {
+    if (owners.some(ref => groupOwners.has(ref)) || supervisors.some(ref => scope.has(ref)) || (!(rgsf && !admin && !supervisor && !rgf) && guides.some(ref => scope.has(ref)))) {
       hierarchyRefs([group.id, group.groupId]).forEach(key => groupIds.add(key));
     }
   }
@@ -250,7 +251,7 @@ const USER_CHAIN_FIELDS = [...HIERARCHY_IDENTITY_FIELDS, 'role', 'guide', 'selec
   'bvReportingAdminId', 'bvReportingSupervisorId', 'bvReportingFacilitatorId', 'bvSupervisorGuideId', 'sadhanaMentor',
   'folkResidencies', 'residency', 'isBvAdmin', 'isBvSuperAdmin', 'isPwAdmin', 'isBvSupervisor', 'isBvMentor',
   'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator', 'isSadhanaMentor'];
-const GROUP_CHAIN_FIELDS = ['id', 'groupId', 'guide', 'segment', 'isActive', 'isPrabhupadaWorldUser', 'bvslId', 'bvslLeader', 'subFacilitatorId', 'rgsfId', 'subFacilitator'];
+const GROUP_CHAIN_FIELDS = ['id', 'groupId', 'guide', 'segment', 'isActive', 'isPrabhupadaWorldUser', 'bvslId', 'bvslLeader', 'subFacilitatorId', 'rgsfId', 'subFacilitator', 'supervisorId', 'supervisorUserId'];
 const MEMBERSHIP_CHAIN_FIELDS = ['id', 'user', 'userId', 'memberId', 'group', 'groupId', 'isActive', 'status'];
 const GUIDE_CHAIN_FIELDS = ['id', 'guideId', 'email', 'userId', 'folkResidencies', ...HIERARCHY_IDENTITY_FIELDS];
 const RESIDENCY_CHAIN_FIELDS = ['id', 'residencyId', 'residencyName', 'guideIds', 'guides'];

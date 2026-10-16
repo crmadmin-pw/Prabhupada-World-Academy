@@ -65,7 +65,7 @@ export default createEndpoint({
       throw new AppError({ code: 'FORBIDDEN', message: 'Supervisor access required' });
     }
 
-    const callerFields = ['id', 'userId', 'email', 'fullName', 'segment', 'isPrabhupadaWorldUser', 'isBvFacilitator', 'isBvsl', 'bvGroupId', 'bvGroupName'];
+    const callerFields = ['id', 'userId', 'email', 'fullName', 'segment', 'isPrabhupadaWorldUser', 'isBvFacilitator', 'isBvsl', 'bvGroupId', 'bvGroupName', 'bvSupervisedGroupIds'];
     const storedCaller = await Users.findOne({ id: context.user.id, fields: callerFields })
       || (context.user.userId ? (await Users.findAll({ filters: { userId: context.user.userId }, fields: callerFields, limit: 1 })).records[0] : null)
       || (context.user.email ? (await Users.findAll({ filters: { email: context.user.email }, fields: callerFields, limit: 5 })).records
@@ -82,12 +82,12 @@ export default createEndpoint({
     // Groups without an isActive flag are still running. A Firestore equality
     // filter on true would hide them from the supervisor who facilitates them.
     const { records: rawGroups } = await BvGroups.findAll({ limit: 1000 });
-    // A supervisor sees groups led by RGFs who report to them, plus groups they
-    // personally facilitate. People further down the chain — members and
-    // sub-facilitators — are not group owners, so their other groups stay hidden.
+    // A supervisor sees the groups an admin assigned. Until that selection is
+    // saved, they still see groups led by RGFs who report to them. A group
+    // they only facilitate is not one of those groups.
     const plainSupervisor = !isHierarchyAdmin(caller) && !isHierarchySuperAdmin(caller);
     const supervisedIds = plainSupervisor
-      ? new Set((await resolveBvScopedGroups(caller, { segment: userSegment }))
+      ? new Set((await resolveBvScopedGroups(caller, { segment: userSegment, supervisionOnly: true }))
         .flatMap(group => normalizedRefs([group.id, group.groupId, group.record?.id, group.record?.groupId])))
       : null;
     let groups = rawGroups.filter((g: any) => g.isActive !== false).filter((g: any) => {

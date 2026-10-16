@@ -25,6 +25,7 @@ interface Props {
   supervisorsList: OptionItem[];
   facilitatorsList: OptionItem[];
   readingGroups?: Array<PwGroupRoleOption & { role: PwGroupRole }>;
+  departmentGroups?: Array<PwGroupRoleOption & { supervisorIds?: string[] }>;
   onClose: () => void;
   onSaved: (update: { user: any; patch: PendingDirectoryPatch }) => void;
 }
@@ -52,6 +53,7 @@ export default function MultiRoleAssignModal({
   supervisorsList,
   facilitatorsList,
   readingGroups = [],
+  departmentGroups = [],
   onClose,
   onSaved,
 }: Props) {
@@ -85,6 +87,16 @@ export default function MultiRoleAssignModal({
   const [adminParentId, setAdminParentId] = useState(() => resolveInitialParentId(user?.bvReportingAdminId, filteredAdminsList));
   const [supervisorParentId, setSupervisorParentId] = useState(() => resolveInitialParentId(user?.bvReportingSupervisorId, filteredSupervisorsList));
   const [facilitatorParentId, setFacilitatorParentId] = useState(() => resolveInitialParentId(user?.bvReportingFacilitatorId, filteredFacilitatorsList));
+  const personRefs = new Set(
+    [user?.id, user?.userId, user?.userDbId, user?.email]
+      .map(value => String(value || '').trim().toLowerCase())
+      .filter(Boolean),
+  );
+  const [supervisedIds, setSupervisedIds] = useState<string[]>(() =>
+    departmentGroups
+      .filter(group => (group.supervisorIds || []).some(id => personRefs.has(String(id).trim().toLowerCase())))
+      .map(group => group.id),
+  );
 
   const [saving, setSaving] = useState(false);
 
@@ -132,6 +144,7 @@ export default function MultiRoleAssignModal({
           rgsfReportsToId: facilitatorParentId,
           rgsfReportsToName: filteredFacilitatorsList.find(f => f.id === facilitatorParentId)?.name || '',
         } : {}),
+        ...(departmentGroups.length > 0 || isSupervisor ? { supervisedGroupIds: isSupervisor ? supervisedIds : [] } : {}),
         multiRoles: {
           isAdmin,
           isSupervisor,
@@ -215,7 +228,7 @@ export default function MultiRoleAssignModal({
               </Label>
             </div>
             <p className="text-[11px] text-muted-foreground pl-6">
-              Supervises RGFs and monitors sector reports.
+              Watches the reading groups you check. Being an RGF of another group does not add that group.
             </p>
             {isSupervisor && (
               <div className="pl-6 pt-1 space-y-1">
@@ -234,6 +247,38 @@ export default function MultiRoleAssignModal({
                     )}
                   </SelectContent>
                 </Select>
+              </div>
+            )}
+            {isSupervisor && (
+              <div className="pl-6 pt-1 space-y-1.5">
+                <Label className="text-xs font-medium">Reading groups to supervise</Label>
+                {departmentGroups.length === 0 ? (
+                  <p className="text-[11px] text-muted-foreground">No reading groups in this department yet.</p>
+                ) : (
+                  <div className="max-h-40 space-y-1.5 overflow-y-auto rounded-md border p-2">
+                    {departmentGroups.map(group => {
+                      const checked = supervisedIds.includes(group.id);
+                      const rgfHere = (group.rgfIds || group.facilitatorIds || []).some(id => personRefs.has(String(id).trim().toLowerCase()));
+                      return (
+                        <div key={group.id} className="flex items-center gap-2">
+                          <Checkbox
+                            id={`supervise-${group.id}`}
+                            checked={checked}
+                            onCheckedChange={(value) => {
+                              setSupervisedIds(current => value
+                                ? [...new Set([...current, group.id])]
+                                : current.filter(id => id !== group.id));
+                            }}
+                          />
+                          <Label htmlFor={`supervise-${group.id}`} className="text-xs font-normal cursor-pointer">
+                            {group.groupName}
+                            {rgfHere ? <span className="text-muted-foreground"> · RGF here</span> : null}
+                          </Label>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
           </div>

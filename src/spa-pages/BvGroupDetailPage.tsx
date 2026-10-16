@@ -24,7 +24,7 @@ import { format, startOfWeek, endOfWeek, subWeeks } from 'date-fns';
 import { Calendar } from 'lucide-react';
 import { DashboardLayout } from '@/layouts';
 import { useUserProfile } from '@/contexts/UserProfileContext';
-import { canOpenBvGroupMemberProfile, detailBackTarget, getBvGroupMemberProfileBasePath, memberProfileNavigationState, viewerDetailHome } from '@/lib/bvGroupMemberProfileNavigation';
+import { canOpenBvGroupMemberProfile, deletedGroupReturnPath, detailBackTarget, getBvGroupMemberProfileBasePath, memberProfileNavigationState, viewerDetailHome } from '@/lib/bvGroupMemberProfileNavigation';
 
 type GroupDetail = GetBvGroupDetailOutputType;
 type MatrixData = GetBvAttendanceMatrixOutputType;
@@ -492,7 +492,7 @@ export default function BvGroupDetailPage() {
     try {
       const result = await deleteBvGroup({ groupId });
       toast.success(`Group deleted. ${result.membersUnassigned} member${result.membersUnassigned === 1 ? '' : 's'} unassigned.`, { id: 'bv-group-deleted' });
-      navigate(detailBackTarget(location.state, homePath));
+      navigate(deletedGroupReturnPath(profile), { replace: true });
     } catch (error: any) {
       toast.error(error?.message || 'Failed to delete group.');
       isDeletingRef.current = false;

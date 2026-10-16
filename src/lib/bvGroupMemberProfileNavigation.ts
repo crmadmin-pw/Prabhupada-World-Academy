@@ -123,3 +123,12 @@ export function viewerDetailHome(profile?: (BvProfileViewer & { segment?: string
   if (role === 'GUIDE' || folk) return '/folk-guide/dashboard';
   return '/pw-admin/dashboard';
 }
+
+/** The group list for this dashboard. A deleted group must not fall through to Sadhana. */
+export function deletedGroupReturnPath(profile?: Parameters<typeof viewerDetailHome>[0]): string {
+  const home = viewerDetailHome(profile);
+  if (home === '/pw-admin/dashboard' || home === '/folk-guide/dashboard') return `${home}#bhakti-vriksha`;
+  if (home === '/bvsl/dashboard' || home === '/rgsf/dashboard') return `${home}#groups`;
+  if (home === '/bv-supervisor/dashboard') return `${home}#rgfs`;
+  return home;
+}

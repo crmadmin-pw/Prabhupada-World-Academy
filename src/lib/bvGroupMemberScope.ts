@@ -17,6 +17,11 @@ export interface BvGroupScopeOptions {
   segment?: 'FOLK' | 'PW';
   /** Report screens should show people under the caller, not the caller. */
   excludeCaller?: boolean;
+  /**
+   * Supervisor dashboard. Groups this person only facilitates stay out.
+   * An admin's saved selection replaces the older "every group of a reporting RGF" list.
+   */
+  supervisionOnly?: boolean;
 }
 
 export interface BvScopedGroup {
@@ -158,7 +163,7 @@ export async function resolveBvDepartmentGroups(
   groupId?: string,
 ): Promise<BvScopedGroup[]> {
   const { records: allGroups } = await BvGroups.findAll({
-      fields: ['id', 'groupId', 'groupName', 'description', 'segment', 'guide', 'isActive', 'bvslLeader', 'bvslId', 'bvslName', 'subFacilitatorId', 'rgsfId', 'subFacilitator'],
+      fields: ['id', 'groupId', 'groupName', 'description', 'segment', 'guide', 'isActive', 'bvslLeader', 'bvslId', 'bvslName', 'subFacilitatorId', 'rgsfId', 'subFacilitator', 'supervisorId', 'supervisorUserId'],
       limit: 1000,
   });
   const requestedGroup = groupId ? new Set(refs(groupId)) : null;
@@ -236,7 +241,7 @@ export async function resolveBvScopedGroups(
     'id', 'userId', 'email', 'fullName', 'displayName', 'name', 'role', 'segment', 'guide',
     'isBvAdmin', 'isPwAdmin', 'isBvSuperAdmin',
     'isBvSupervisor', 'isBvMentor', 'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator',
-    'bvReportingFacilitatorId', 'bvGroupId', 'bvGroupName',
+    'bvReportingFacilitatorId', 'bvGroupId', 'bvGroupName', 'bvSupervisedGroupIds',
   ];
   const caller = await Users.findOne({ id: contextUser.id, fields: callerFields }) ||
     await Users.findOne({ filters: { userId: contextUser.userId || contextUser.id }, fields: callerFields }) ||
@@ -356,7 +361,7 @@ export async function resolveBvScopedGroups(
   }
 
   const { records: allGroups } = await BvGroups.findAll({
-    fields: ['id', 'groupId', 'groupName', 'description', 'segment', 'guide', 'isActive', 'bvslLeader', 'bvslId', 'bvslName', 'subFacilitatorId', 'rgsfId', 'subFacilitator', 'joinToken', 'meetingTime', 'preferredTimeSlot'],
+    fields: ['id', 'groupId', 'groupName', 'description', 'segment', 'guide', 'isActive', 'bvslLeader', 'bvslId', 'bvslName', 'subFacilitatorId', 'rgsfId', 'subFacilitator', 'supervisorId', 'supervisorUserId', 'joinToken', 'meetingTime', 'preferredTimeSlot'],
     limit: 1000,
   });
   let groups = allGroups.filter(group => {
@@ -377,11 +382,26 @@ export async function resolveBvScopedGroups(
     }
     if (isAdmin || isSupervisor) {
       const legacyGuideRefs = refs(group.guide);
-      return leaderRefs.some(ref => reportingRgfAliases.has(ref)) ||
-        leaderRefs.some(ref => callerAliases.has(ref)) ||
-        legacyGuideRefs.some(ref => callerAliases.has(ref)) ||
-        legacyNameMatch ||
-        assignedToCaller;
+      const supervisorRefs = refs([group.supervisorId, group.supervisorUserId]);
+      const explicitMine = supervisorRefs.some(ref => callerAliases.has(ref));
+      const explicitOther = supervisorRefs.length > 0 && !explicitMine;
+      const ledByReportingRgf = leaderRefs.some(ref => reportingRgfAliases.has(ref));
+      const ledByCaller = leaderRefs.some(ref => callerAliases.has(ref));
+      const legacyGuide = legacyGuideRefs.some(ref => callerAliases.has(ref));
+      const facilitates = ledByCaller || legacyNameMatch || assignedToCaller;
+      const savedSupervision = Array.isArray(caller?.bvSupervisedGroupIds) || Array.isArray(contextUser.bvSupervisedGroupIds)
+        ? new Set(refs(caller?.bvSupervisedGroupIds ?? contextUser.bvSupervisedGroupIds))
+        : null;
+      const listed = !!savedSupervision && refs([group.id, group.groupId]).some(ref => savedSupervision.has(ref));
+      // The supervisor dashboard lists only the groups an admin assigned.
+      // Facilitating a different group does not add it to that list.
+      if (options.supervisionOnly && isSupervisor && !isAdmin) {
+        if (explicitOther) return false;
+        if (savedSupervision) return explicitMine || listed;
+        if (explicitMine) return true;
+        return ledByReportingRgf || legacyGuide;
+      }
+      return explicitMine || ledByReportingRgf || facilitates || legacyGuide;
     }
     if (isRgsf) {
       return leaderRefs.some(ref => callerAliases.has(ref)) ||

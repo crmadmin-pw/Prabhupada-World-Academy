@@ -190,6 +190,51 @@ async function applyPwGroupScopedRoles(
   };
 }
 
+const SUPERVISOR_FIELDS = [
+  'id', 'groupId', 'groupName', 'segment', 'isActive',
+  'supervisorId', 'supervisorUserId', 'supervisorName',
+];
+
+/** The admin's checklist is the set of groups this person supervises. */
+async function applySupervisorAssignments(user: any, groupIds: string[]): Promise<string[]> {
+  const wanted = new Set(groupIds.map(id => String(id || '').trim().toLowerCase()).filter(Boolean));
+  const { records } = await BvGroups.findAll({ fields: SUPERVISOR_FIELDS, limit: 500 });
+  const aliases = personAliases(user);
+  const department = userDepartment(user);
+  const departmentGroups = (records || []).filter((group: any) => sameDepartment(group, department));
+  const chosen = departmentGroups.filter((group: any) =>
+    referenceValues([group.id, group.groupId]).some(key => wanted.has(key)),
+  );
+  if (wanted.size > 0 && chosen.length === 0) {
+    throw new AppError({ code: 'NOT_FOUND', message: 'Those Reading Groups were not found.' });
+  }
+  const chosenIds = new Set(chosen.flatMap((group: any) => referenceValues([group.id, group.groupId])));
+  const missing = [...wanted].filter(id => !chosenIds.has(id));
+  if (missing.length > 0) {
+    throw new AppError({ code: 'NOT_FOUND', message: 'One of those Reading Groups was not found.' });
+  }
+
+  const personId = String(user.id || '');
+  const personUserId = String(user.userId || user.id || '');
+  const personName = String(user.fullName || user.email || '');
+  for (const group of departmentGroups) {
+    const selected = referenceValues([group.id, group.groupId]).some(key => wanted.has(key));
+    const current = referenceValues([group.supervisorId, group.supervisorUserId]).some(key => aliases.has(key));
+    if (selected) {
+      await BvGroups.update({
+        id: group.id,
+        record: { supervisorId: personId, supervisorUserId: personUserId, supervisorName: personName },
+      });
+    } else if (current) {
+      await BvGroups.update({
+        id: group.id,
+        record: { supervisorId: '', supervisorUserId: '', supervisorName: '' },
+      });
+    }
+  }
+  return [...new Set(chosen.flatMap((group: any) => [group.id, group.groupId].filter(Boolean).map(String)))];
+}
+
 /** Drop a person from every reading group that still lists them as an RGF. */
 async function releaseFacilitatorAssignments(user: any) {
   const aliases = new Set(
@@ -232,6 +277,9 @@ export default createEndpoint({
       groupId: z.string().min(1),
       role: z.enum(['FACILITATOR', 'SUB_FACILITATOR', 'MEMBER']),
     })).max(20).optional(),
+    // Reading groups this supervisor watches. Omitted leaves the current
+    // selection alone. An empty list means they supervise no groups.
+    supervisedGroupIds: z.array(z.string().min(1)).max(50).optional(),
     rgfReportsToId: z.string().optional(),
     rgfReportsToName: z.string().optional(),
     rgsfReportsToId: z.string().optional(),
@@ -311,6 +359,19 @@ export default createEndpoint({
     // PW and FOLK keep RGF and RGSF on the reading group. Throw before any
     // profile write when the person is in several groups and no group was chosen.
     const pwGroupRoles = await applyPwGroupScopedRoles(targetUser, input);
+    const supervisorStays = input.isBvMember === false
+      ? false
+      : input.multiRoles
+        ? !!input.multiRoles.isSupervisor
+        : input.role === 'SUPERVISOR';
+    const requestedSupervision = Array.isArray(input.supervisedGroupIds)
+      ? input.supervisedGroupIds
+      : input.isBvMember === false
+        ? []
+        : null;
+    const savedSupervision = requestedSupervision
+      ? await applySupervisorAssignments(targetUser, supervisorStays ? requestedSupervision : [])
+      : null;
 
     // Multi-role support: preserve existing role flags and enable new assigned role
     const updates: any = {
@@ -327,6 +388,7 @@ export default createEndpoint({
       bvReportingSupervisorName: targetUser.bvReportingSupervisorName || '',
       bvReportingFacilitatorId: targetUser.bvReportingFacilitatorId || '',
       bvReportingFacilitatorName: targetUser.bvReportingFacilitatorName || '',
+      ...(savedSupervision ? { bvSupervisedGroupIds: savedSupervision } : {}),
     };
 
     if (input.isBvMember === false) {

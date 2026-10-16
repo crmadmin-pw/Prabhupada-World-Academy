@@ -81,7 +81,7 @@ function mergePendingGroupAssignments(list: User[], pending: Map<string, Pending
   });
 }
 type GuideEntry = GetGuidesOutputType['guides'][0];
-type BvGroupOption = { id: string; groupId: string; groupName: string; segment?: string | null; isActive?: boolean; facilitatorIds?: string[]; rgfIds?: string[]; rgsfIds?: string[] };
+type BvGroupOption = { id: string; groupId: string; groupName: string; segment?: string | null; isActive?: boolean; facilitatorIds?: string[]; rgfIds?: string[]; rgsfIds?: string[]; supervisorIds?: string[] };
 
 function groupsLedBy(
   parentId: string,
@@ -503,6 +503,7 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
         ].map((value: unknown) => String(value || '').trim()).filter(Boolean))],
         rgfIds: Array.isArray(group.rgfIds) ? group.rgfIds : undefined,
         rgsfIds: Array.isArray(group.rgsfIds) ? group.rgsfIds : undefined,
+        supervisorIds: Array.isArray(group.supervisorIds) ? group.supervisorIds : undefined,
       })));
 
       setSadhanaMentors(mergePendingMentors(mentorsList || [], pendingMentors.current));
@@ -1784,6 +1785,12 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
             if (!segment) return true;
             return isPwMode ? segment === 'PW' || segment === 'PRABHUPADAWORLD' : segment === 'FOLK';
           }))}
+          departmentGroups={bvGroups.filter(group => {
+            if (group.isActive === false) return false;
+            const segment = String(group.segment || '').trim().toUpperCase().replace(/[\s_-]+/g, '');
+            if (!segment) return true;
+            return isPwMode ? segment === 'PW' || segment === 'PRABHUPADAWORLD' : segment === 'FOLK';
+          })}
           onClose={() => setMultiRoleUser(null)}
           onSaved={(update) => {
             rememberDirectoryPatch(update.user, update.patch);

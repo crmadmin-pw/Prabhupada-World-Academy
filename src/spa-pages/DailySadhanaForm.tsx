@@ -756,10 +756,7 @@ function WaiveOffControl({ flag, reasonKey, on, reason, onFieldChange }: {
   return (
     <div className="mt-3 space-y-2 border-t pt-3">
       <div className="flex items-center justify-between gap-3">
-        <div>
-          <Label htmlFor={flag} className="text-sm font-medium">Waive-off</Label>
-          <p className="text-xs text-muted-foreground">A reason gives full points for this field.</p>
-        </div>
+        <Label htmlFor={flag} className="text-sm font-medium">Waive-off</Label>
         <Switch id={flag} checked={on} onCheckedChange={(checked) => onFieldChange(flag, checked)} />
       </div>
       {on && (

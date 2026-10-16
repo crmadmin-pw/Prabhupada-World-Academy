@@ -9,6 +9,15 @@ export function facilitatorIdentityRefs(group: { bvslLeader?: unknown; bvslId?: 
   return [...new Set([...groupFacilitatorRefs(group), ...textList(group.bvslName)])];
 }
 
+export function supervisorIdentityRefs(group: { supervisorId?: unknown; supervisorUserId?: unknown }): string[] {
+  return [...new Set(
+    [group.supervisorId, group.supervisorUserId]
+      .flatMap(value => textList(value))
+      .map(value => value.trim())
+      .filter(Boolean),
+  )];
+}
+
 export function rgsfIdentityRefs(group: { subFacilitatorId?: unknown; rgsfId?: unknown; subFacilitator?: unknown }): string[] {
   return [...new Set(
     [group.subFacilitatorId, group.rgsfId, group.subFacilitator]
@@ -85,6 +94,7 @@ export default createEndpoint({
       facilitatorIds: z.array(z.string()).optional(),
       rgfIds: z.array(z.string()).optional(),
       rgsfIds: z.array(z.string()).optional(),
+      supervisorIds: z.array(z.string()).optional(),
       bvslLeaderName: z.string().nullable(),
       bvslName: z.string().nullable(),
       meetingTime: z.string().nullable(),
@@ -118,6 +128,7 @@ export default createEndpoint({
               facilitatorIds,
               rgfIds: facilitatorIds,
               rgsfIds: rgsfIdentityRefs(group.record),
+              supervisorIds: supervisorIdentityRefs(group.record),
               bvslLeaderName: null,
               bvslName: null,
               meetingTime: null,
@@ -341,6 +352,7 @@ async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<strin
         facilitatorIds,
         rgfIds: facilitatorIds,
         rgsfIds: rgsfIdentityRefs(g),
+        supervisorIds: supervisorIdentityRefs(g),
         bvslLeaderName: bvslName,
         bvslName,
         meetingTime: g.meetingTime || g.preferredTimeSlot || null,

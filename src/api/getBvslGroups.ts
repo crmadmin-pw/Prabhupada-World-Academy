@@ -277,6 +277,7 @@ const groupSchema = z.object({
   facilitatorIds: z.array(z.string()),
   rgfIds: z.array(z.string()),
   rgsfIds: z.array(z.string()),
+  supervisorIds: z.array(z.string()),
 });
 
 export default createEndpoint({
@@ -624,6 +625,12 @@ export default createEndpoint({
         )],
         rgsfIds: [...new Set(
           [g.subFacilitatorId, g.rgsfId, g.subFacilitator]
+            .flatMap((value: unknown) => textList(value))
+            .map((value: string) => value.trim())
+            .filter(Boolean),
+        )],
+        supervisorIds: [...new Set(
+          [g.supervisorId, g.supervisorUserId]
             .flatMap((value: unknown) => textList(value))
             .map((value: string) => value.trim())
             .filter(Boolean),

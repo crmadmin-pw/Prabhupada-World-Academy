@@ -877,6 +877,7 @@ export async function markReportingChainsStale(): Promise<void> {
 const GROUP_CHAIN_FIELDS = new Set([
   'bvslLeader', 'bvslId', 'guide', 'isActive', 'segment',
   'subFacilitatorId', 'rgsfId', 'subFacilitator',
+  'supervisorId', 'supervisorUserId', 'supervisorName',
 ]);
 
 /** A join-token or invite-text write does not change who reports to whom.

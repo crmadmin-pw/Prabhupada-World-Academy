@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { canOpenBvGroupMemberProfile, detailBackTarget, getBvGroupMemberProfileBasePath, isBvGroupProfileAdministrator, isManagedDetailPath, memberProfileNavigationState, profileBackNavigation, safeReturnPath, viewerDetailHome } from '../src/lib/bvGroupMemberProfileNavigation';
+import { canOpenBvGroupMemberProfile, deletedGroupReturnPath, detailBackTarget, getBvGroupMemberProfileBasePath, isBvGroupProfileAdministrator, isManagedDetailPath, memberProfileNavigationState, profileBackNavigation, safeReturnPath, viewerDetailHome } from '../src/lib/bvGroupMemberProfileNavigation';
 
 test('PW admins and super admins can open a BV group member profile', () => {
   assert.equal(canOpenBvGroupMemberProfile({ role: 'PW_ADMIN' }), true);
@@ -33,6 +33,8 @@ test('back from a group never returns to the member profile that opened it', () 
   assert.equal(viewerDetailHome({ role: 'SADHANA_MENTOR', isSadhanaMentor: true }), '/mentor/dashboard');
   assert.equal(viewerDetailHome({ role: 'PW_ADMIN', segment: 'PW' }), '/pw-admin/dashboard');
   assert.equal(viewerDetailHome({ role: 'User', isBvFacilitator: true }), '/bvsl/dashboard');
+  assert.equal(deletedGroupReturnPath({ role: 'PW_ADMIN', segment: 'PW' }), '/pw-admin/dashboard#bhakti-vriksha');
+  assert.equal(deletedGroupReturnPath({ role: 'SUPER_GUIDE', segment: 'FOLK' }), '/folk-guide/dashboard#bhakti-vriksha');
 });
 
 test('RGF back from a group member returns to the members tab, then the groups list', () => {

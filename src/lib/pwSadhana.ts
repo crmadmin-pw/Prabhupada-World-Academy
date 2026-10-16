@@ -448,13 +448,13 @@ export function pwFormFields(targets: PwTargets, source: string) {
     helpText?: string; minValue?: number; maxValue?: number;
   }> = [
     { fieldKey: 'wakeUp', fieldLabel: 'Wake-up time', fieldType: 'time', isRequired: true, helpText: targetText('Wake-up', pwTime(targets.wakeUp)), maxValue: 0 },
-    { fieldKey: 'waiveWakeUp', fieldLabel: 'Request waive-off for wake-up', fieldType: 'toggle', isRequired: false, helpText: 'A reason gives full points for this field.' },
+    { fieldKey: 'waiveWakeUp', fieldLabel: 'Request waive-off for wake-up', fieldType: 'toggle', isRequired: false },
     { fieldKey: 'waiveWakeUpReason', fieldLabel: 'Wake-up waive-off reason', fieldType: 'text', isRequired: false },
     { fieldKey: 'sleep', fieldLabel: 'Sleep time', fieldType: 'time', isRequired: true, helpText: targetText('Sleep', pwTime(targets.sleep)), maxValue: 0 },
-    { fieldKey: 'waiveSleep', fieldLabel: 'Request waive-off for sleep', fieldType: 'toggle', isRequired: false, helpText: 'A reason gives full points for this field.' },
+    { fieldKey: 'waiveSleep', fieldLabel: 'Request waive-off for sleep', fieldType: 'toggle', isRequired: false },
     { fieldKey: 'waiveSleepReason', fieldLabel: 'Sleep waive-off reason', fieldType: 'text', isRequired: false },
     { fieldKey: 'chanting', fieldLabel: 'Chanting (rounds)', fieldType: 'number', isRequired: true, helpText: targetText('Chanting', pwTarget(targets.chanting), ' rounds'), minValue: 0, maxValue: 192 },
-    { fieldKey: 'waiveChanting', fieldLabel: 'Request waive-off for chanting', fieldType: 'toggle', isRequired: false, helpText: 'A reason gives full points for this field.' },
+    { fieldKey: 'waiveChanting', fieldLabel: 'Request waive-off for chanting', fieldType: 'toggle', isRequired: false },
     { fieldKey: 'waiveChantingReason', fieldLabel: 'Chanting waive-off reason', fieldType: 'text', isRequired: false },
     { fieldKey: 'reading', fieldLabel: 'Reading (minutes)', fieldType: 'number', isRequired: true, helpText: targetText('Reading', pwTarget(targets.readingMin), ' min'), minValue: 0, maxValue: 1440 },
     { fieldKey: 'hearing', fieldLabel: 'Hearing (minutes)', fieldType: 'number', isRequired: true, helpText: targetText('Hearing', pwTarget(targets.hearingMin), ' min'), minValue: 0, maxValue: 1440 },
