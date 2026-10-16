@@ -4,7 +4,8 @@ import { scopeRealtimeDependencies } from '@/lib/requestQueries';
 import { getReportReferenceData } from '../lib/reportReferenceData';
 import { createEndpoint, Users, Guides, FolkResidencies, SadhanaEntries } from '@/lib/backend-sdk';
 import { requireGuideRole, normalizeAshrayLevel } from '../lib/userUtils';
-import { getDashboardHierarchyScope, isHierarchyAdmin, isHierarchySuperAdmin, readScopedUsers } from '../lib/hierarchyUtils';
+import { folkGuideIdentityRefs, isPrabhupadaWorldDirectoryMember } from '../lib/directoryDepartment';
+import { getDashboardHierarchyScope, isHierarchyAdmin, isHierarchySuperAdmin, isPwDepartmentAdmin, readScopedUsers } from '../lib/hierarchyUtils';
 import getGuides from './getGuides';
 import getAllResidencies from './getAllResidencies';
 import { resolveBvGroupMemberUsers } from '../lib/bvGroupMemberScope';
@@ -16,7 +17,7 @@ import { pwScoreFromFieldValues, pwTarget, PW_FIELDS } from '@/lib/pwSadhana';
 import { resolveBvAdminFacilitators } from '@/lib/bvAdminFacilitatorScope';
 import { residencyMatchesDepartment } from '../lib/residencyCategory';
 
-const USER_FIELDS = ['status', 'id', 'userId', 'fullName', 'email', 'phone', 'segment', 'isPrabhupadaWorldUser', 'sadhanaMentor', 'ashrayLevel', 'residency', 'residencyApproved', 'temporaryResidencyEnabled', 'temporaryResidency', 'residencyJoinDate', 'scholarSince', 'residentSince', 'currentStreak', 'lastStreakUpdatedAt', 'guide', 'role', 'isBvSuperAdmin', 'isBvAdmin', 'pwChantingTarget', 'pwReadingTarget', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
+const USER_FIELDS = ['status', 'id', 'userId', 'fullName', 'email', 'phone', 'segment', 'isPrabhupadaWorldUser', 'isFolkUser', 'isFolkLead', 'sadhanaMentor', 'ashrayLevel', 'residency', 'residencyApproved', 'temporaryResidencyEnabled', 'temporaryResidency', 'residencyJoinDate', 'scholarSince', 'residentSince', 'currentStreak', 'lastStreakUpdatedAt', 'guide', 'role', 'isBvSuperAdmin', 'isBvAdmin', 'isPwAdmin', 'pwChantingTarget', 'pwReadingTarget', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
 const ENTRY_FIELDS = [
   'id', 'user', 'entryDate', 'totalScore', 'maxScore', 'scorePercent',
   'flagSick', 'flagOs', 'submittedAt', 'templateMode',
@@ -25,6 +26,40 @@ const ENTRY_FIELDS = [
   'spReadingMinutes', 'spReadingPoints', 'japaFinishTime', 'sleepMinutes', 'studyMinutes', 'preachingMinutes',
   'booksDistributed', 'fieldValuesJson',
 ];
+
+/** Sadhana for a PW admin covers the member directory, not peer administrators. */
+function isExcludedFromPwAdminSadhana(user: any): boolean {
+  const role = String(user?.role || '').trim().toUpperCase().replace(/[\s_-]+/g, '');
+  return user?.isBvSuperAdmin === true
+    || user?.isBvAdmin === true
+    || user?.isPwAdmin === true
+    || role === 'SUPERADMIN'
+    || role === 'ADMIN'
+    || role === 'ADMINISTRATOR'
+    || role === 'PWADMIN';
+}
+
+function folkGuideRefsForDirectory(users: any[], guides: any[]): Set<string> {
+  const refs = folkGuideIdentityRefs(users);
+  const folkGuideEmails = new Set<string>();
+  for (const user of users) {
+    const role = String(user?.role || '').trim().toUpperCase().replace(/[\s_-]+/g, '');
+    if (role !== 'GUIDE' && role !== 'SUPERGUIDE') continue;
+    const email = String(user?.email || '').trim().toLowerCase();
+    if (email) folkGuideEmails.add(email);
+  }
+  for (const guide of guides || []) {
+    const guideSegment = String(guide?.segment || '').trim().toUpperCase().replace(/[\s_-]+/g, '');
+    if (guideSegment === 'PW' || guideSegment === 'PRABHUPADAWORLD') continue;
+    const email = String(guide?.email || '').trim().toLowerCase();
+    if (guideSegment !== 'FOLK' && !(email && folkGuideEmails.has(email))) continue;
+    for (const ref of [guide.id, guide.guideId, guide.email, guide.fullName, guide.name]) {
+      const text = String(ref || '').trim().toLowerCase();
+      if (text) refs.add(text);
+    }
+  }
+  return refs;
+}
 
 function parseFieldValues(json: string | null | undefined): Record<string, any> {
   if (!json) return {};
@@ -767,8 +802,15 @@ export default createEndpoint({
     void referencePromise.catch(() => {});
 
     const isPwMentor = !!mentorMode && input.segment === 'PW';
+    // A Prabhupada World admin's sadhana report matches the member directory:
+    // every PW member, including people who report to another admin. Super
+    // admins, other PW admins, and FOLK members stay out of this report.
+    const pwDepartmentSadhana = input.segment === 'PW'
+      && !bvslMode && !mentorMode && !facilitatorMode
+      && isPwDepartmentAdmin(context.user)
+      && !isHierarchySuperAdmin(context.user);
     const residencyMentorScope = await getSadhanaMentorResidencyScope(context.user);
-    const hierarchyPromise = residencyMentorScope ? Promise.resolve(null) : getDashboardHierarchyScope(context.user, inputGuideId);
+    const hierarchyPromise = residencyMentorScope || pwDepartmentSadhana ? Promise.resolve(null) : getDashboardHierarchyScope(context.user, inputGuideId);
     void hierarchyPromise.catch(() => {});
     const mentorRecord = isPwMentor
       ? (await Users.findOne({ id: context.user.id, fields: ['id', 'userId', 'email'] })
@@ -904,10 +946,21 @@ export default createEndpoint({
       }
       users = Array.from(allUsersMap.values());
     } else {
-      // ALL = super guide — show all Active users, scoped by segment if provided
+      // ALL = super guide — show all Active users, scoped by segment if provided.
+      // A PW admin reads the whole active directory, then the department filter
+      // below keeps Prabhupada World members and drops FOLK and administrators.
       const allUsersFilter: any = { status: 'Active' };
-      if (input.segment) allUsersFilter.segment = input.segment;
-      const { records } = await readScopedUsers(context.user, { filters: allUsersFilter, fields: USER_FIELDS, limit: 2000 });
+      if (input.segment && !pwDepartmentSadhana) allUsersFilter.segment = input.segment;
+      const records: any[] = [];
+      let offset = 0;
+      while (true) {
+        const page = pwDepartmentSadhana
+          ? await Users.findAll({ filters: allUsersFilter, fields: USER_FIELDS, limit: 2000, offset })
+          : await readScopedUsers(context.user, { filters: allUsersFilter, fields: USER_FIELDS, limit: 2000, offset });
+        records.push(...(page.records || []));
+        if (!page.hasMore || !page.records?.length) break;
+        offset += page.records.length;
+      }
       // Dedup: the same person can have two Firestore documents (one auto-ID and one keyed by email).
       // Keep the first occurrence (Firestore returns documents ordered by insertion time, so the
       // most-recently-updated record typically comes first via query ordering).
@@ -971,6 +1024,15 @@ export default createEndpoint({
 
       return true;
     });
+
+    if (pwDepartmentSadhana) {
+      const { records: guideRecords } = await Guides.findAll({
+        fields: ['id', 'guideId', 'email', 'fullName', 'name', 'segment'],
+        limit: 500,
+      });
+      const folkGuideRefs = folkGuideRefsForDirectory(users, guideRecords);
+      users = users.filter(user => isPrabhupadaWorldDirectoryMember(user, folkGuideRefs) && !isExcludedFromPwAdminSadhana(user));
+    }
 
     // NR-VIS FIX: Non-residents must only appear for their own assigned guide.
     // Users are fetched broadly by residency above, so without this filter an NR whose guide is

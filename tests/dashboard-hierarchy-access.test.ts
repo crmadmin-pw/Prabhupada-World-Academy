@@ -149,7 +149,11 @@ test('Sadhana report rows, stats, leaderboard and guide filters exclude foreign 
     assert.equal(missing.stats.totalUsers, ownActive.length - 1);
     assert.deepEqual(missing.guides.map((g: any) => g.id), [admin.userId]);
     const report = await call(getGuideDetailedReport, input);
-    assert.deepEqual(sorted(report.users.map((u: any) => u.id)), sorted(ownActive.filter(id => id !== admin.id)));
+    // The PW admin sadhana report follows the member directory, not the
+    // reporting chain. Super admins, other PW admins, and FOLK members stay out.
+    const departmentSadhana = ['supervisor-a', 'rgf-a', 'rgsf-a', 'direct-a', 'group-member-a', 'mentor-a', 'member-b', 'rgf-b', 'mentor-b', 'unassigned', 'stale-guide'];
+    assert.deepEqual(sorted(report.users.map((u: any) => u.id)), sorted(departmentSadhana));
+    assert.ok(!report.users.some((u: any) => ['admin-a', 'admin-b', 'super', 'folk-outsider', 'pending-a'].includes(u.id)));
     assert.deepEqual(report.availableGuides.map((g: any) => g.guideId), [admin.userId]);
     const stats = await call(getSadhanaStats, input);
     assert.ok(stats.userSummaries.every((u: any) => ownActive.includes(u.userId || u.id) || ownActive.includes(u.fullName)));
