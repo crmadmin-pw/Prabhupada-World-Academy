@@ -77,11 +77,21 @@ const GROUP_ROLE_FIELDS = [
   'subFacilitatorId', 'rgsfId', 'subFacilitator',
 ];
 
-function isPwDepartment(user: any): boolean {
-  const segment = String(user?.segment || '').trim().toUpperCase().replace(/[\s_-]+/g, '');
-  if (segment === 'FOLK') return false;
-  if (segment === 'PW' || segment === 'PRABHUPADAWORLD') return true;
-  return user?.isPrabhupadaWorldUser === true;
+function departmentOf(value: unknown): 'PW' | 'FOLK' | '' {
+  const segment = String(value || '').trim().toUpperCase().replace(/[\s_-]+/g, '');
+  if (segment === 'FOLK') return 'FOLK';
+  if (segment === 'PW' || segment === 'PRABHUPADAWORLD') return 'PW';
+  return '';
+}
+
+function userDepartment(user: any): 'PW' | 'FOLK' | '' {
+  return departmentOf(user?.segment) || (user?.isPrabhupadaWorldUser === true ? 'PW' : '');
+}
+
+function sameDepartment(group: any, department: 'PW' | 'FOLK' | ''): boolean {
+  if (!department) return true;
+  const groupDepartment = departmentOf(group?.segment);
+  return !groupDepartment || groupDepartment === department;
 }
 
 function personAliases(user: any): Set<string> {
@@ -112,12 +122,12 @@ function withoutPerson(list: GroupFacilitator[], aliases: Set<string>): GroupFac
   return list.filter(item => !facilitatorIdentityKeys(item).some(key => aliases.has(key)));
 }
 
-/** PW reading-group roles stay on the group. A change names one group and leaves the others alone. */
+/** Reading-group roles stay on the group for both PW and FOLK. A change names one group and leaves the others alone. */
 async function applyPwGroupScopedRoles(
   user: any,
   input: any,
 ): Promise<{ isFacilitator: boolean; isSubFacilitator: boolean } | null> {
-  if (!isPwDepartment(user) || input.isBvMember === false) return null;
+  if (input.isBvMember === false) return null;
 
   const explicit = Array.isArray(input.groupRoles) && input.groupRoles.length > 0
     ? input.groupRoles
@@ -132,7 +142,9 @@ async function applyPwGroupScopedRoles(
 
   const { records } = await BvGroups.findAll({ fields: GROUP_ROLE_FIELDS, limit: 500 });
   const aliases = personAliases(user);
-  const involved = (records || []).filter((group: any) => personInReadingGroup(group, user, aliases));
+  const department = userDepartment(user);
+  const departmentGroups = (records || []).filter((group: any) => sameDepartment(group, department));
+  const involved = departmentGroups.filter((group: any) => personInReadingGroup(group, user, aliases));
   const assignments = explicit || (
     involved.length === 1 && (input.role === 'FACILITATOR' || input.role === 'SUB_FACILITATOR')
       ? [{ groupId: involved[0].id, role: input.role }]
@@ -157,7 +169,7 @@ async function applyPwGroupScopedRoles(
   };
   for (const assignment of assignments) {
     const requested = String(assignment.groupId || '').trim().toLowerCase();
-    const group = (records || []).find((item: any) =>
+    const group = departmentGroups.find((item: any) =>
       referenceValues([item.id, item.groupId]).includes(requested),
     );
     if (!group) {
@@ -173,8 +185,8 @@ async function applyPwGroupScopedRoles(
   }
 
   return {
-    isFacilitator: (records || []).some((group: any) => groupHasFacilitator(group, aliases)),
-    isSubFacilitator: (records || []).some((group: any) => groupHasSubFacilitator(group, aliases)),
+    isFacilitator: departmentGroups.some((group: any) => groupHasFacilitator(group, aliases)),
+    isSubFacilitator: departmentGroups.some((group: any) => groupHasSubFacilitator(group, aliases)),
   };
 }
 
@@ -296,8 +308,8 @@ export default createEndpoint({
     }
     if (!pName) pName = 'Admin';
 
-    // PW keeps RGF and RGSF on the reading group. Throw before any profile
-    // write when the person is in several groups and no group was chosen.
+    // PW and FOLK keep RGF and RGSF on the reading group. Throw before any
+    // profile write when the person is in several groups and no group was chosen.
     const pwGroupRoles = await applyPwGroupScopedRoles(targetUser, input);
 
     // Multi-role support: preserve existing role flags and enable new assigned role

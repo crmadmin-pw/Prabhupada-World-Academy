@@ -1779,7 +1779,11 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
           adminsList={bvAdminsList}
           supervisorsList={bvSupervisorsList}
           facilitatorsList={bvFacilitatorsList}
-          readingGroups={isPwMode ? pwReadingGroups(multiRoleUser, bvGroups) : []}
+          readingGroups={pwReadingGroups(multiRoleUser, bvGroups.filter(group => {
+            const segment = String(group.segment || '').trim().toUpperCase().replace(/[\s_-]+/g, '');
+            if (!segment) return true;
+            return isPwMode ? segment === 'PW' || segment === 'PRABHUPADAWORLD' : segment === 'FOLK';
+          }))}
           onClose={() => setMultiRoleUser(null)}
           onSaved={(update) => {
             rememberDirectoryPatch(update.user, update.patch);

@@ -249,6 +249,70 @@ test('a PW user can be RGF of one group and RGSF of another', async (t) => {
   assert.equal(updates[0].record.isBvSubFacilitator, true);
 });
 
+test('a FOLK role change applies only to the chosen group', async (t) => {
+  const person = {
+    id: 'folk-user',
+    userId: 'FOLK-USER',
+    email: 'folk@example.test',
+    fullName: 'Folk User',
+    role: 'User',
+    segment: 'FOLK',
+    isBvFacilitator: true,
+    isBvsl: true,
+  };
+  const morning = {
+    id: 'folk-morning',
+    groupId: 'folk-morning',
+    groupName: 'Folk Morning',
+    segment: 'FOLK',
+    bvslLeader: 'folk-user',
+    bvslId: 'FOLK-USER',
+    bvslName: 'Folk User',
+  };
+  const evening = {
+    id: 'folk-evening',
+    groupId: 'folk-evening',
+    groupName: 'Folk Evening',
+    segment: 'FOLK',
+    bvslLeader: 'folk-user',
+    bvslId: 'FOLK-USER',
+    bvslName: 'Folk User',
+  };
+  const updates = mockDirectory(t, [person, parent]);
+  const groupUpdates: Array<{ id: string; record: any }> = [];
+  t.mock.method(BvGroups, 'findAll', async () => ({ records: [morning, evening], hasMore: false }));
+  t.mock.method(BvGroups, 'update', async (change: { id: string; record: any }) => {
+    groupUpdates.push(change);
+    return change;
+  });
+
+  await assert.rejects(
+    () => assignBvRole.execute({
+      input: { userId: 'FOLK-USER', role: 'SUB_FACILITATOR', parentId: 'USER-001' },
+      context: superAdmin,
+    } as never),
+    (error: any) => error.code === 'CONFLICT' && /Folk Morning/.test(error.message) && /Folk Evening/.test(error.message),
+  );
+  assert.equal(groupUpdates.length, 0);
+  assert.equal(updates.length, 0);
+
+  await assignBvRole.execute({
+    input: {
+      userId: 'FOLK-USER',
+      role: 'SUB_FACILITATOR',
+      parentId: 'USER-001',
+      groupRoles: [{ groupId: 'folk-evening', role: 'SUB_FACILITATOR' }],
+    },
+    context: superAdmin,
+  } as never);
+
+  assert.equal(morning.bvslLeader, 'folk-user');
+  assert.deepEqual(groupUpdates.map(change => change.id), ['folk-evening']);
+  assert.equal(groupUpdates[0].record.subFacilitatorId, 'folk-user');
+  assert.equal(updates[0].record.isBvFacilitator, true);
+  assert.equal(updates[0].record.isBvSubFacilitator, true);
+});
+
 test('changing an RGF to RGSF removes them when the group stored facilitators as comma-separated text', async (t) => {
   const parentRgf = {
     id: 'parent-rgf',
