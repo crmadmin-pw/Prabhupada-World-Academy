@@ -197,6 +197,7 @@ const ATTENDANCE_READS = [
   'getBvSessionMatrix',
   'getBvSessionReport',
   'getBvSupervisorOverview',
+  'getBvSupervisorReport',
   'getBvslGroups',
   'getBvslOwnReport',
   'getGuideGroupStats',

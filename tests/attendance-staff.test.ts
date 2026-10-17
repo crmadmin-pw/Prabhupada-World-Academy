@@ -39,10 +39,10 @@ const group = {
   subFacilitator: rgsf.fullName,
 };
 
-function mockDatabase(t: any, attendance: any[] = []) {
+function mockDatabase(t: any, attendance: any[] = [], extras?: { users?: any[]; group?: Record<string, unknown> }) {
   const fixture: Record<string, any[]> = {
-    Users: [rgf, rgsf, devotee],
-    BvGroups: [group],
+    Users: [rgf, rgsf, devotee, ...(extras?.users || [])],
+    BvGroups: [{ ...group, ...(extras?.group || {}) }],
     BvGroupMembers: [
       { id: 'staff-member', group: group.id, groupId: group.groupId, user: devotee.id, userId: devotee.userId },
     ],
@@ -186,4 +186,90 @@ test('saving attendance records the RGF and RGSF and ignores someone outside the
     { user: rgf.id, present: true, attendedMinutes: 50 },
     { user: rgsf.id, present: false, attendedMinutes: 0 },
   ]);
+});
+
+test('the supervisor is listed with a badge and their minutes are saved without a membership', async (t) => {
+  const supervisor = {
+    id: 'staff-supervisor-doc',
+    userId: 'STAFF-SUPERVISOR',
+    fullName: 'Madhava Supervisor',
+    email: 'madhava@example.invalid',
+    status: 'Active',
+    isBvSupervisor: true,
+  };
+  const created = mockDatabase(t, [
+    {
+      id: 'att-supervisor',
+      group: group.id,
+      user: supervisor.id,
+      present: true,
+      attendedMinutes: 30,
+      totalMeetingMinutes: 45,
+      attendanceDate: '2026-10-15',
+    },
+  ], { users: [supervisor], group: { supervisorId: supervisor.id, supervisorUserId: supervisor.userId, supervisorName: supervisor.fullName } });
+
+  const listed = await getAttendanceForDate.execute({
+    input: { groupId: group.id, date: '2026-10-15' },
+    context: { user: rgf },
+  } as never);
+  assert.deepEqual(listed.members.map((member: any) => ({
+    name: member.fullName,
+    role: member.roleLabel,
+    supervisor: member.supervisor,
+    minutes: member.attendedMinutes,
+  })), [
+    { name: 'Richa Dewan', role: 'RGF', supervisor: false, minutes: 0 },
+    { name: 'Nitya RGSF', role: 'RGSF', supervisor: false, minutes: 0 },
+    { name: 'Madhava Supervisor', role: null, supervisor: true, minutes: 30 },
+    { name: 'Geetha Nagaraju', role: null, supervisor: false, minutes: 0 },
+  ]);
+
+  await conductBvSession.execute({
+    input: {
+      bvslId: rgf.userId,
+      groupId: group.id,
+      sessionDate: '2026-10-16',
+      totalMeetingMinutes: 45,
+      memberAttendance: [
+        { userDbId: devotee.id, present: true, attendedMinutes: 45 },
+        { userDbId: rgf.id, present: false, attendedMinutes: 0 },
+        { userDbId: rgsf.id, present: false, attendedMinutes: 0 },
+        { userDbId: supervisor.id, present: true, attendedMinutes: 20 },
+        { userDbId: 'stranger', present: true, attendedMinutes: 45 },
+      ],
+    },
+    context: { user: { id: rgf.id, userId: rgf.userId, email: rgf.email, fullName: rgf.fullName } },
+  } as never);
+
+  const supervisorRows = created.filter(record => record.user === supervisor.id);
+  assert.equal(supervisorRows.length, 1);
+  assert.equal(supervisorRows[0].present, true);
+  assert.equal(supervisorRows[0].attendedMinutes, 20);
+  assert.equal(supervisorRows[0].totalMeetingMinutes, 45);
+  assert.equal(created.some(record => record.user === 'stranger'), false);
+});
+
+test('a supervisor recorded only on the RGF still appears for attendance', async (t) => {
+  const supervisor = {
+    id: 'reporting-supervisor-doc',
+    userId: 'REPORTING-SUPERVISOR',
+    fullName: 'Kesava Supervisor',
+    status: 'Active',
+    isBvSupervisor: true,
+  };
+  (rgf as { bvReportingSupervisorId?: string }).bvReportingSupervisorId = supervisor.id;
+  t.after(() => {
+    delete (rgf as { bvReportingSupervisorId?: string }).bvReportingSupervisorId;
+  });
+  mockDatabase(t, [], { users: [supervisor] });
+
+  const listed = await getAttendanceForDate.execute({
+    input: { groupId: group.id, date: '2026-10-17' },
+    context: { user: rgf },
+  } as never);
+  const row = listed.members.find((member: any) => member.fullName === supervisor.fullName);
+  assert.equal(row.supervisor, true);
+  assert.equal(row.roleLabel, null);
+  assert.equal(listed.members.filter((member: any) => member.fullName === supervisor.fullName).length, 1);
 });

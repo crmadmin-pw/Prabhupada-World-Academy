@@ -1,12 +1,13 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, BvSessions, BvAttendance, Users, AppError } from '@/lib/backend-sdk';
 import { bvUserAliases } from '../lib/bvGroupMemberScope';
-import { facilitatorRoleLabel, loadGroupFacilitators } from '@/lib/bvGroupFacilitators';
+import { facilitatorRoleLabel, loadGroupFacilitators, loadGroupSupervisors } from '@/lib/bvGroupFacilitators';
 
 const GROUP_FIELDS = [
   'id', 'groupId', 'groupName',
   'bvslLeader', 'bvslId', 'bvslName',
   'rgsfId', 'subFacilitatorId', 'subFacilitator',
+  'supervisorId', 'supervisorUserId', 'supervisorName',
 ];
 
 function refs(value: unknown): string[] {
@@ -125,6 +126,12 @@ export default createEndpoint({
     }
 
     const staff = await loadGroupFacilitators(group);
+    const supervisors = await loadGroupSupervisors(group, staff);
+    const supervisorAliasSets = supervisors.map(user => new Set(bvUserAliases(user)));
+    const isSupervisor = (user: any) => {
+      const aliases = bvUserAliases(user);
+      return supervisorAliasSets.some(keys => aliases.some(alias => keys.has(alias)));
+    };
     const roleFor = (user: any): 'RGF' | 'RGSF' | null => {
       if (!user) return null;
       const aliases = new Set(bvUserAliases(user));
@@ -162,6 +169,7 @@ export default createEndpoint({
           present: isPresent,
           attendedMinutes: sessionExists ? (saved.minutes ?? (isPresent ? totalMeetingMinutes : 0)) : 0,
           roleLabel: roleFor(u),
+          supervisor: isSupervisor(u),
         };
       })
       .filter(member => member !== null);
@@ -179,12 +187,37 @@ export default createEndpoint({
         present: isPresent,
         attendedMinutes: sessionExists ? (saved.minutes ?? (isPresent ? totalMeetingMinutes : 0)) : 0,
         roleLabel: facilitatorRoleLabel(entry.badges),
+        supervisor: isSupervisor(entry.user),
+      });
+      aliases.forEach(alias => covered.add(alias));
+    }
+    for (const supervisor of supervisors) {
+      const aliases = bvUserAliases(supervisor);
+      const alreadyListed = members.find((member: any) =>
+        aliases.includes(String(member.userDbId || '').trim().toLowerCase())
+        || aliases.includes(String(member.userId || '').trim().toLowerCase()),
+      );
+      if (alreadyListed) {
+        alreadyListed.supervisor = true;
+        continue;
+      }
+      if (aliases.some(alias => covered.has(alias))) continue;
+      const saved = savedFor(supervisor, []);
+      const isPresent = sessionExists ? saved.present : null;
+      members.push({
+        userDbId: supervisor.id,
+        userId: supervisor.userId || supervisor.id,
+        fullName: supervisor.fullName || '',
+        present: isPresent,
+        attendedMinutes: sessionExists ? (saved.minutes ?? (isPresent ? totalMeetingMinutes : 0)) : 0,
+        roleLabel: null,
+        supervisor: true,
       });
       aliases.forEach(alias => covered.add(alias));
     }
 
-    const roleRank = (role: string | null) => (role === 'RGF' ? 0 : role === 'RGSF' ? 1 : 2);
-    members.sort((a: any, b: any) => roleRank(a.roleLabel) - roleRank(b.roleLabel) || a.fullName.localeCompare(b.fullName));
+    const roleRank = (member: any) => (member.roleLabel === 'RGF' ? 0 : member.roleLabel === 'RGSF' ? 1 : member.supervisor ? 2 : 3);
+    members.sort((a: any, b: any) => roleRank(a) - roleRank(b) || a.fullName.localeCompare(b.fullName));
 
     return {
       members,

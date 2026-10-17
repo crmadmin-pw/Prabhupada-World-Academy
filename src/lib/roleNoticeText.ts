@@ -1,3 +1,36 @@
+export type AcknowledgementPopup =
+  | 'ashray_notice_approved'
+  | 'ashray_notice_rejected'
+  | 'bv_approval_notice'
+  | 'bv_rejection_notice'
+  | 'bv_group_assignment_notice'
+  | 'bv_group_removal_notice'
+  | 'bv_role_notice';
+
+type AcknowledgementProfile = {
+  pendingBvApprovalNotice?: boolean | null;
+  pendingBvRejectionNotice?: boolean | null;
+  pendingBvGroupAssignmentNotice?: boolean | null;
+  pendingBvGroupRemovalNotice?: boolean | null;
+  roleNoticeAcknowledged?: boolean | null;
+  pendingRoleNotice?: unknown;
+  pendingAshrayNoticeStatus?: string | null;
+  ashrayNoticeAcknowledged?: boolean | null;
+};
+
+/** Which one-time notice is waiting, in the order the acknowledgement dialog shows them. */
+export function acknowledgementPopup(profile: AcknowledgementProfile | null | undefined): AcknowledgementPopup | null {
+  if (!profile) return null;
+  if (profile.pendingBvApprovalNotice) return 'bv_approval_notice';
+  if (profile.pendingBvRejectionNotice) return 'bv_rejection_notice';
+  if (profile.pendingBvGroupAssignmentNotice && !profile.roleNoticeAcknowledged) return 'bv_group_assignment_notice';
+  if (profile.pendingBvGroupRemovalNotice && !profile.roleNoticeAcknowledged) return 'bv_group_removal_notice';
+  if (profile.pendingRoleNotice && !profile.roleNoticeAcknowledged) return 'bv_role_notice';
+  if (profile.pendingAshrayNoticeStatus === 'approved' && !profile.ashrayNoticeAcknowledged) return 'ashray_notice_approved';
+  if (profile.pendingAshrayNoticeStatus === 'rejected' && !profile.ashrayNoticeAcknowledged) return 'ashray_notice_rejected';
+  return null;
+}
+
 export type RoleNoticeParts = {
   assigned: string[];
   removed: string[];

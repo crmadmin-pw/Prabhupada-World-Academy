@@ -38,14 +38,19 @@ export default function PublicAttendPage() {
     }
   }, [user]);
 
-  if (loading || authLoading) return <LoadingSkeleton />;
+  if (loading) return <LoadingSkeleton />;
   if (notFound || !session) return <NotFoundView />;
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center px-4 py-8">
       <div className="w-full max-w-md">
         <SessionHeader session={session} />
-        {user ? (
+        {authLoading ? (
+          <div className="space-y-3" role="status" aria-label="Checking sign-in">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-12 w-full" />
+          </div>
+        ) : user ? (
           <LoggedInAttendance session={session} token={token!} userId={user.id || ''} userName={profile?.fullName || user.email || 'Devotee'} />
         ) : (
           <PhoneAttendance session={session} token={token!} />

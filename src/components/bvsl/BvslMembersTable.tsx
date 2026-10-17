@@ -226,7 +226,7 @@ export default function BvslMembersTable({ bvslId, detailBasePath = '/guide/user
                       <th className="text-left p-2 font-medium bg-card">Group</th>
                       <th className="text-left p-2 font-medium bg-card">Ashray Level</th>
                       {isFolk && <th className="text-left p-2 font-medium bg-card">Type</th>}
-                      {canAssignSadhana && <th className="text-left p-2 font-medium bg-card">Sadhana targets</th>}
+                      {canAssignSadhana && <th className="text-left p-2 font-medium bg-card">Assign Sadhana</th>}
                       <th className="text-left p-2 font-medium bg-card">Contact</th>
                       {canManageGroups && <th className="text-left p-2 font-medium bg-card">Actions</th>}
                     </tr>

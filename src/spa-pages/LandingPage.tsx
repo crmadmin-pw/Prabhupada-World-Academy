@@ -52,19 +52,11 @@ export default function LandingPage({ isPw = false }: { isPw?: boolean }) {
 
   return (
     <div className="min-h-screen w-full bg-[#fefdfa] flex items-center justify-center p-4">
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-        className="w-full max-w-[400px] text-center space-y-8"
-      >
+      <div className="w-full max-w-[400px] text-center space-y-8">
 
         {/* Logo / Brand */}
         <div className="flex flex-col items-center gap-4">
-          <motion.img
-            initial={{ scale: 0.5, rotate: -10, opacity: 0 }}
-            animate={{ scale: 1, rotate: 0, opacity: 1 }}
-            transition={{ type: "spring", stiffness: 200, damping: 15 }}
+          <img
             src={PWA_LOGO}
             alt="Prabhupada World Academy Logo"
             width={112}
@@ -73,14 +65,9 @@ export default function LandingPage({ isPw = false }: { isPw?: boolean }) {
             className="w-28 h-28 object-contain"
           />
           <div>
-            <motion.h1 
-              initial={{ opacity: 0, y: -5 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.2 }}
-              className="text-[28px] font-bold text-gray-900 tracking-tight leading-tight"
-            >
+            <h1 className="text-[28px] font-bold text-gray-900 tracking-tight leading-tight">
               Prabhupada World Academy
-            </motion.h1>
+            </h1>
           </div>
         </div>
 
@@ -102,12 +89,7 @@ export default function LandingPage({ isPw = false }: { isPw?: boolean }) {
         </AnimatePresence>
 
         {/* Buttons / Actions */}
-        <motion.div 
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.2 }}
-          className="space-y-4"
-        >
+        <div className="space-y-4">
           {canCreateNewPwAccount && (
             <div className="rounded-lg border border-orange-100 bg-orange-50 p-3 text-sm text-orange-800">
               Your previous registration was rejected. Sign out to create another Prabhupada World account.
@@ -132,9 +114,9 @@ export default function LandingPage({ isPw = false }: { isPw?: boolean }) {
           <p className="text-xs text-gray-500 font-medium">
             New users will be guided through registration.
           </p>
-        </motion.div>
+        </div>
 
-      </motion.div>
+      </div>
     </div>
   );
 }

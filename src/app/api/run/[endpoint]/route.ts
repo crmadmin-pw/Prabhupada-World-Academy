@@ -260,7 +260,7 @@ export async function POST(
     }
 
     // 3. Setup context
-    const context: { user: ApiUserContext | null } = { user: null };
+    const context: { user: ApiUserContext | null; loadedProfile: ApiDatabaseUser | null } = { user: null, loadedProfile: null };
     let resolvedProfile: unknown;
 
     if (token) {
@@ -281,6 +281,7 @@ export async function POST(
         // Reactive reads must reauthorize against the current stored profile.
         const dbUser = await resolveDatabaseUser(decodedUser, req.headers.get('X-Realtime-Query') === '1');
         resolvedProfile = dbUser;
+        context.loadedProfile = dbUser;
         context.user = buildApiUserContext(decodedUser, dbUser);
         authDurationMs = Date.now() - authStartedAt;
       } catch (authError: unknown) {
@@ -377,7 +378,10 @@ export async function POST(
         `(auth ${authDurationMs}ms, endpoint ${endpointDurationMs}ms)`,
       );
     }
-    await whenServerCacheShared();
+    // Reference-cache replication is for the next instance, not this response.
+    // Reads return with the data they already computed. A mutation still waits,
+    // briefly, so the shared copy exists before the client continues.
+    if (!isReadOnlyEndpoint(endpoint)) await whenServerCacheShared();
     return response;
 
   } catch (error: unknown) {
@@ -385,7 +389,6 @@ export async function POST(
     if (failure.code !== 'TOO_MANY_REQUESTS') {
       console.error(`[API Router] Error running ${endpoint}:`, error);
     }
-    await whenServerCacheShared();
     return NextResponse.json(
       { message: failure.message, code: failure.code },
       {

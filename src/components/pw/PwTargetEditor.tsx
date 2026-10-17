@@ -85,12 +85,12 @@ export default function PwTargetEditor({ userId, fullName, targets }: {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={event => event.stopPropagation()}>
-          Targets
+          Assign Sadhana
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-md" onClick={event => event.stopPropagation()}>
         <DialogHeader>
-          <DialogTitle>Sadhana targets for {fullName}</DialogTitle>
+          <DialogTitle>Assign sadhana for {fullName}</DialogTitle>
         </DialogHeader>
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">

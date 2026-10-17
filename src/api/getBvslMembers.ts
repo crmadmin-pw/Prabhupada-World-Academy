@@ -23,6 +23,11 @@ function isRgsfUser(user: any) {
   return !!(user?.isBvSubFacilitator || role.includes('RGSF'));
 }
 
+function isFacilitatorUser(user: any) {
+  const role = String(user?.role || '').toUpperCase().replace(/[\s-]+/g, '_');
+  return !!(user?.isBvFacilitator || user?.isBvsl || ['RGF', 'BVSL', 'FACILITATOR'].includes(role));
+}
+
 export default createEndpoint({
   description: 'Get members for BV groups the caller manages',
   authenticated: true,
@@ -73,10 +78,10 @@ async function fetchBvslMembers({ input, context }: { input: any; context: any }
       throw new AppError({ code: 'FORBIDDEN', message: 'This group leader is outside your chain' });
     }
     const viewingSelf = [...leaderAliases].some(alias => callerAliases.has(alias));
-    // An RGSF dashboard asks for its own id, but its groups belong to the
-    // reporting RGF. Keep the inherited group scope instead of requiring the
-    // RGSF to be stored as the group leader.
-    targetGroups = viewingSelf && isRgsfUser(caller)
+    // An RGSF-only dashboard asks for its own id, but its groups belong to the
+    // reporting RGF. An RGF keeps the groups they facilitate, even when a stale
+    // RGSF flag is still stored on the profile.
+    targetGroups = viewingSelf && isRgsfUser(caller) && !isFacilitatorUser(caller)
       ? scopedGroups
       : scopedGroups.filter(group =>
         refs([group.record.bvslLeader, group.record.bvslId, group.record.subFacilitatorId, group.record.rgsfId, group.record.subFacilitator])

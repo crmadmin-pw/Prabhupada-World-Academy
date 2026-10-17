@@ -1,4 +1,5 @@
 import { AppError, BvGroups, BvGroupMembers, Users } from '@/lib/backend-sdk';
+import { listedReadingRoles } from '@/lib/bvGroupFacilitators';
 import { getScopedHierarchyUserIds, isHierarchyAdmin, isUserInHierarchy, hierarchyRefs, readScopedUsers } from './hierarchyUtils';
 
 const IDENTITY_FIELDS = [
@@ -166,7 +167,7 @@ export async function resolveBvDepartmentGroups(
   options?: { includeInactive?: boolean },
 ): Promise<BvScopedGroup[]> {
   const { records: allGroups } = await BvGroups.findAll({
-      fields: ['id', 'groupId', 'groupName', 'description', 'segment', 'guide', 'isActive', 'bvslLeader', 'bvslId', 'bvslName', 'subFacilitatorId', 'rgsfId', 'subFacilitator', 'supervisorId', 'supervisorUserId'],
+      fields: ['id', 'groupId', 'groupName', 'description', 'segment', 'guide', 'isActive', 'bvslLeader', 'bvslId', 'bvslName', 'subFacilitatorId', 'rgsfId', 'subFacilitator', 'supervisorId', 'supervisorUserId', 'supervisorName'],
       limit: 1000,
   });
   const requestedGroup = groupId ? new Set(refs(groupId)) : null;
@@ -306,8 +307,8 @@ export async function resolveBvScopedGroups(
     role === 'SUPERVISOR' || role === 'BV_SUPERVISOR' ||
     callerRole === 'SUPERVISOR' || callerRole === 'BV_SUPERVISOR'
   );
-  const isRgsf = !!(contextUser.isBvSubFacilitator || caller?.isBvSubFacilitator || role.includes('RGSF') || callerRole.includes('RGSF'));
-  const isFacilitator = isRgsf || !!(
+  let isRgsf = !!(contextUser.isBvSubFacilitator || caller?.isBvSubFacilitator || role.includes('RGSF') || callerRole.includes('RGSF'));
+  let isFacilitator = isRgsf || !!(
     contextUser.isBvFacilitator || contextUser.isBvsl ||
     caller?.isBvFacilitator || caller?.isBvsl ||
     ['RGF', 'BVSL', 'FACILITATOR', 'BV_FACILITATOR'].includes(role) ||
@@ -368,6 +369,16 @@ export async function resolveBvScopedGroups(
     fields: ['id', 'groupId', 'groupName', 'description', 'segment', 'guide', 'isActive', 'bvslLeader', 'bvslId', 'bvslName', 'subFacilitatorId', 'rgsfId', 'subFacilitator', 'supervisorId', 'supervisorUserId', 'joinToken', 'meetingTime', 'preferredTimeSlot'],
     limit: 1000,
   });
+  const listed = listedReadingRoles(allGroups, {
+    id: caller?.id || contextUser.id,
+    userId: caller?.userId || contextUser.userId,
+    email: caller?.email || contextUser.email,
+    fullName: caller?.fullName || contextUser.fullName,
+  });
+  if (listed.listed) {
+    isRgsf = listed.isSubFacilitator;
+    isFacilitator = listed.isFacilitator || listed.isSubFacilitator;
+  }
   let groups = allGroups.filter(group => {
     if (!options.includeInactive && group.isActive === false) return false;
     const leaderRefs = refs([group.bvslLeader, group.bvslId]);

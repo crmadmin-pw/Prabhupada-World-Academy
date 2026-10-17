@@ -9,7 +9,7 @@ import TransferNoticeModal from '@/components/TransferNoticeModal';
 import { useMeetingReminderScheduler } from '@/hooks/useMeetingReminderScheduler';
 import { getDepartmentLandingUrl, getUserDashboardPath, isManagementProfile } from '@/lib/userDashboardRoutes';
 
-const FOLK_LOGO = 'https://images.fillout.com/orgid-615562/flowpublicid-u91plgmzcu/widgetid-default/q1fJEkENG5kbvfjYaFbDeT/pasted-image-1773145742081.png';
+const FOLK_LOGO = '/folk-mark.webp';
 
 interface DashboardLayoutProps {
   hasBottomNavigation?: boolean;
@@ -189,7 +189,7 @@ export default function DashboardLayout({
         <div className="mx-auto px-3 py-2 md:px-6 md:py-3">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-2.5 flex-1 min-w-0">
-              <img src={FOLK_LOGO} alt="FOLK" className="w-9 h-9 object-contain shrink-0" />
+              <img src={FOLK_LOGO} alt="FOLK" width={36} height={36} decoding="async" className="w-9 h-9 object-contain shrink-0" />
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h1 className="text-sm md:text-lg font-bold text-primary leading-tight line-clamp-2">{title}</h1>

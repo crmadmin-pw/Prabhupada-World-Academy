@@ -3,6 +3,7 @@ import { createEndpoint, Users, Guides } from '@/lib/backend-sdk';
 import { ACCOUNT_DELETED_LOGIN_MESSAGE, isAccountDeleted } from '@/lib/accountDeletionPolicy';
 import { ensureAccountLinkReview, findAccountDeletedProfile, isCompleteProfile, isLoginLinkedToProfile } from '@/lib/accountLinkReview';
 import { getUserDashboardPath, getUserDepartment } from '../lib/userDashboardRoutes';
+import { loadEffectiveReadingRoles } from '@/lib/bvGroupFacilitators';
 
 function roleToRoute(role: string, isBvsl?: boolean, isSadhanaMentor?: boolean, isBvSupervisor?: boolean, isBvFacilitator?: boolean, isBvSubFacilitator?: boolean, email?: string, segment?: string): string {
   const isFolk = segment === 'FOLK';
@@ -12,11 +13,12 @@ function roleToRoute(role: string, isBvsl?: boolean, isSadhanaMentor?: boolean, 
   if (role === 'Super Guide' || role === 'SUPER_GUIDE') return '/folk-guide/dashboard';
   // BV role flags take priority over base role for Guide-level users
   if (isBvSupervisor) return '/bv-supervisor/dashboard';
+  // An RGF assigns sadhana for the group. That dashboard wins when the same
+  // person is also an RGSF; an RGSF-only account still opens the RGSF dashboard.
+  if (role === 'BVSL' || isBvsl || isBvFacilitator) return '/bvsl/dashboard';
   if (isBvSubFacilitator) return '/rgsf/dashboard';
   if (role === 'Guide' || role === 'GUIDE') return '/folk-guide/dashboard';
-  if (role === 'BVSL') return '/bvsl/dashboard';
   if (role === 'Sadhana Mentor') return '/mentor/dashboard';
-  if (isBvsl || isBvFacilitator) return '/bvsl/dashboard';
   if (isSadhanaMentor) return '/mentor/dashboard';
   return getUserDashboardPath({ segment });
 }
@@ -104,13 +106,16 @@ export default createEndpoint({
 
     // Determine route based on status and role
     const status = userRecord.status;
+    const readingRoles = status === 'Active' ? await loadEffectiveReadingRoles(userRecord) : null;
+    const isFacilitator = readingRoles ? readingRoles.isFacilitator : !!(userRecord.isBvFacilitator || userRecord.isBvsl);
+    const isSubFacilitator = readingRoles ? readingRoles.isSubFacilitator : !!userRecord.isBvSubFacilitator;
     let route = '/pending';
     if (status === 'Rejected') {
       route = '/rejected';
     } else if (status === 'Inactive') {
       route = '/inactive';
     } else if (status === 'Active') {
-      route = roleToRoute(userRecord.role || 'User', userRecord.isBvsl, userRecord.isSadhanaMentor, userRecord.isBvSupervisor || userRecord.isBvMentor, userRecord.isBvFacilitator || userRecord.isBvsl, userRecord.isBvSubFacilitator, userRecord.email, getUserDepartment(userRecord));
+      route = roleToRoute(userRecord.role || 'User', isFacilitator, userRecord.isSadhanaMentor, userRecord.isBvSupervisor || userRecord.isBvMentor, isFacilitator, isSubFacilitator, userRecord.email, getUserDepartment(userRecord));
     }
 
     return {
@@ -133,14 +138,14 @@ export default createEndpoint({
         ashrayLevel: userRecord.ashrayLevel || null,
         residencyName: null,
         guideName: null,
-        isBvsl: userRecord.isBvsl || false,
+        isBvsl: isFacilitator,
         isSadhanaMentor: userRecord.isSadhanaMentor || false,
         isBvMentor: userRecord.isBvMentor || false,
         isBvSuperAdmin: !!(userRecord.isBvSuperAdmin || userRecord.role === 'Super Admin' || userRecord.role === 'SUPER_ADMIN'),
         isBvAdmin: !!(userRecord.isBvAdmin || userRecord.isBvSuperAdmin || userRecord.role === 'Admin' || userRecord.role === 'ADMIN' || userRecord.role === 'Super Admin' || userRecord.role === 'SUPER_ADMIN'),
         isBvSupervisor: !!(userRecord.isBvSupervisor || userRecord.isBvMentor),
-        isBvFacilitator: !!(userRecord.isBvFacilitator || userRecord.isBvsl),
-        isBvSubFacilitator: !!(userRecord.isBvSubFacilitator),
+        isBvFacilitator: isFacilitator,
+        isBvSubFacilitator: isSubFacilitator,
         isBvMember: userRecord.isBvMember || false,
         segment: getUserDepartment(userRecord),
       },

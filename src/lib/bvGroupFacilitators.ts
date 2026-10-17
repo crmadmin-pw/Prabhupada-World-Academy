@@ -1,3 +1,4 @@
+import { BvGroups } from '@/lib/backend-sdk';
 import { bvUserAliases, resolveBvUsersByAliases } from './bvGroupMemberScope';
 
 export type GroupFacilitator = {
@@ -157,6 +158,64 @@ export function facilitatorWrite(facilitators: GroupFacilitator[]): {
   };
 }
 
+export type ListedReadingRoles = {
+  /** At least one group names this person as RGF or RGSF. */
+  listed: boolean;
+  isFacilitator: boolean;
+  isSubFacilitator: boolean;
+};
+
+function identityAliases(user: { id?: unknown; userId?: unknown; email?: unknown; fullName?: unknown } | null | undefined): Set<string> {
+  return new Set(
+    [user?.id, user?.userId, user?.email, user?.fullName]
+      .map(value => String(value || '').trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
+/** Roles actually stored on reading groups. A profile flag can stay behind
+ * after a person stops being RGSF of every group. */
+export function listedReadingRoles(groups: readonly any[], user: { id?: unknown; userId?: unknown; email?: unknown; fullName?: unknown } | null | undefined): ListedReadingRoles {
+  const aliases = identityAliases(user);
+  let isFacilitator = false;
+  let isSubFacilitator = false;
+  for (const group of groups) {
+    if (!isFacilitator && groupHasFacilitator(group, aliases)) isFacilitator = true;
+    if (!isSubFacilitator && groupHasSubFacilitator(group, aliases)) isSubFacilitator = true;
+  }
+  return { listed: isFacilitator || isSubFacilitator, isFacilitator, isSubFacilitator };
+}
+
+/** Group assignments win once a group names the person. With no group, the
+ * stored flags still apply, so a role assigned before its group row exists
+ * is not dropped. */
+export function effectiveReadingRoles(
+  stored: { isBvFacilitator?: boolean | null; isBvsl?: boolean | null; isBvSubFacilitator?: boolean | null },
+  listed: ListedReadingRoles | null,
+): { isFacilitator: boolean; isSubFacilitator: boolean } {
+  if (!listed?.listed) {
+    return {
+      isFacilitator: !!(stored.isBvFacilitator || stored.isBvsl),
+      isSubFacilitator: !!stored.isBvSubFacilitator,
+    };
+  }
+  return { isFacilitator: listed.isFacilitator, isSubFacilitator: listed.isSubFacilitator };
+}
+
+/** Reads the reading groups once. A failed read keeps the stored flags. */
+export async function loadEffectiveReadingRoles(user: { id?: unknown; userId?: unknown; email?: unknown; fullName?: unknown; isBvFacilitator?: boolean | null; isBvsl?: boolean | null; isBvSubFacilitator?: boolean | null } | null | undefined): Promise<{ isFacilitator: boolean; isSubFacilitator: boolean }> {
+  if (!user) return { isFacilitator: false, isSubFacilitator: false };
+  try {
+    const { records } = await BvGroups.findAll({
+      fields: ['bvslLeader', 'bvslId', 'bvslName', 'subFacilitatorId', 'rgsfId', 'subFacilitator'],
+      limit: 1000,
+    });
+    return effectiveReadingRoles(user, listedReadingRoles(records || [], user));
+  } catch {
+    return effectiveReadingRoles(user, null);
+  }
+}
+
 export function groupHasFacilitator(
   group: { bvslLeader?: unknown; bvslId?: unknown; bvslName?: unknown },
   aliases: Set<string>,
@@ -201,7 +260,7 @@ export async function loadGroupFacilitators(group: any): Promise<Array<{ user: a
 
   const users = await resolveBvUsersByAliases(lookupAliases, [
     'id', 'userId', 'fullName', 'email', 'phone', 'ashrayLevel', 'status',
-    'bvGroupId', 'isBvMember',
+    'bvGroupId', 'isBvMember', 'bvReportingSupervisorId', 'bvReportingSupervisorName',
   ]);
   const rgfAliases = rgfIds.size > 0 ? rgfIds : rgfNames;
   const roster: Array<{ user: any; badges: FacilitatorBadge[] }> = [];
@@ -214,6 +273,27 @@ export async function loadGroupFacilitators(group: any): Promise<Array<{ user: a
     if (badges.length > 0) roster.push({ user, badges });
   }
   return roster;
+}
+
+/**
+ * The supervisor assigned to this reading group. Older groups stored the
+ * supervisor only on the RGF, as the person that facilitator reports to.
+ * Inactive profiles are left out. This does not make the supervisor a member.
+ */
+export async function loadGroupSupervisors(
+  group: any,
+  facilitators?: Array<{ user: any }>,
+): Promise<any[]> {
+  let aliases = [...aliasSet([group?.supervisorId, group?.supervisorUserId])];
+  if (aliases.length === 0) {
+    const staff = facilitators ?? await loadGroupFacilitators(group);
+    aliases = [...aliasSet(staff.map(entry => entry.user?.bvReportingSupervisorId))];
+  }
+  if (aliases.length === 0) return [];
+  const users = await resolveBvUsersByAliases(aliases, [
+    'id', 'userId', 'fullName', 'email', 'status', 'firebaseUid', 'uid', 'authUid',
+  ]);
+  return users.filter(user => !user?.status || String(user.status).toLowerCase() === 'active');
 }
 
 export function facilitatorRoleLabel(badges: FacilitatorBadge[]): FacilitatorBadge | null {

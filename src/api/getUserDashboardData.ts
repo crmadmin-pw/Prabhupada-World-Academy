@@ -13,6 +13,13 @@ const ENTRY_FIELDS = ['id', 'entryId', 'user', 'entryDate', 'totalScore', 'maxSc
   'cleanlinessPoints', 'reportSendingPoints', 'dailyServicePoints',
   'roundsPoints', 'spReadingPoints', 'sleepQualityPoints'];
 
+async function findDashboardUser(idOrAlias: string) {
+  if (!idOrAlias) return null;
+  return await Users.findOne({ id: idOrAlias, fields: USER_FIELDS })
+    || await Users.findOne({ filters: { userId: idOrAlias }, fields: USER_FIELDS })
+    || await Users.findOne({ filters: { email: idOrAlias }, fields: USER_FIELDS });
+}
+
 function getISOWeekStartEnd(date: Date): { start: string; end: string; weekNum: number } {
   const d = new Date(date);
   const day = d.getDay();
@@ -72,12 +79,13 @@ export default createEndpoint({
       : { gte: windowStart, lte: todayStr };
     const authenticatedUserId = context.user.id;
     const requestedUserId = typeof input.userId === 'string' ? input.userId : '';
-    const userRecord = await Users.findOne({ id: authenticatedUserId, fields: USER_FIELDS });
-    const requestedUserRecord = requestedUserId
-      ? await Users.findOne({ id: requestedUserId, fields: USER_FIELDS })
-        || await Users.findOne({ filters: { userId: requestedUserId }, fields: USER_FIELDS })
-        || await Users.findOne({ filters: { email: requestedUserId }, fields: USER_FIELDS })
-      : null;
+    // The signed-in document and the requested alias are independent lookups.
+    // Member dashboards pass the public user id, which is not the document id,
+    // so these used to wait on each other before any Sadhana read could start.
+    const [userRecord, requestedUserRecord] = await Promise.all([
+      Users.findOne({ id: authenticatedUserId, fields: USER_FIELDS }),
+      findDashboardUser(requestedUserId),
+    ]);
     const contextEmail = String(context.user.email || '').toLowerCase();
     const requestedBelongsToCurrentUser = !!requestedUserRecord && (
       requestedUserRecord.id === authenticatedUserId ||

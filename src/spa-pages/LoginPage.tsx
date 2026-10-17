@@ -47,31 +47,16 @@ export default function LoginPage({ mode = 'signin', isPw = false }: { mode?: 's
 
   return (
     <div className="min-h-dvh w-full bg-[#fefdfa] flex items-center justify-center p-4">
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-        className="w-full max-w-[440px] bg-white border border-gray-200/80 rounded-2xl shadow-[0_10px_35px_rgba(0,0,0,0.05),_0_1px_6px_rgba(0,0,0,0.02)] p-5 sm:p-8 md:p-10 text-center"
-      >
+      <div className="w-full max-w-[440px] bg-white border border-gray-200/80 rounded-2xl shadow-[0_10px_35px_rgba(0,0,0,0.05),_0_1px_6px_rgba(0,0,0,0.02)] p-5 sm:p-8 md:p-10 text-center">
         
         {/* Title */}
-        <motion.h1 
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.2 }}
-          className="text-3xl font-bold text-gray-900 tracking-tight mb-2"
-        >
+        <h1 className="text-3xl font-bold text-gray-900 tracking-tight mb-2">
           {mode === 'signin' ? 'Sign in' : 'Sign up'}
-        </motion.h1>
+        </h1>
         
-        <motion.p 
-          initial={{ opacity: 0, y: -5 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.2 }}
-          className="text-xs text-gray-500 mb-6"
-        >
+        <p className="text-xs text-gray-500 mb-6">
           Sign in securely using your Google account to access your dashboard.
-        </motion.p>
+        </p>
 
         <AnimatePresence mode="wait">
           {error && (
@@ -90,12 +75,7 @@ export default function LoginPage({ mode = 'signin', isPw = false }: { mode?: 's
           )}
         </AnimatePresence>
 
-        <motion.div 
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.2 }}
-          className="space-y-4 text-left mt-6"
-        >
+        <div className="space-y-4 text-left mt-6">
           <motion.button
             type="button"
             whileHover={{ scale: 1.01, backgroundColor: "#f9fafb" }}
@@ -122,15 +102,10 @@ export default function LoginPage({ mode = 'signin', isPw = false }: { mode?: 's
             </svg>
             {loading ? 'Continuing...' : 'Continue with Google'}
           </motion.button>
-        </motion.div>
+        </div>
 
         {/* Footer Link */}
-        <motion.p 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.2 }}
-          className="text-sm text-gray-500 mt-6"
-        >
+        <p className="text-sm text-gray-500 mt-6">
           {mode === 'signin' ? (
             <>
               Don't have an account? 
@@ -152,9 +127,9 @@ export default function LoginPage({ mode = 'signin', isPw = false }: { mode?: 's
               </span>
             </>
           )}
-        </motion.p>
+        </p>
 
-      </motion.div>
+      </div>
     </div>
   );
 }

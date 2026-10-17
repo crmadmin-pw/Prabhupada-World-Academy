@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { noticeForRoleUpdate, parseRoleNotice } from '../src/lib/roleNoticeText';
+import { acknowledgementPopup, noticeForRoleUpdate, parseRoleNotice } from '../src/lib/roleNoticeText';
 
 test('a combined role notice keeps the assigned role separate from the removed role', () => {
   assert.deepEqual(parseRoleNotice('Assigned role: RGSF | Removed role: RGF'), {
@@ -21,6 +21,22 @@ test('older responsibility wording and several names still parse', () => {
     removed: ['RGSF'],
     reportsTo: null,
   });
+});
+
+test('acknowledgement notices keep their existing priority', () => {
+  assert.equal(acknowledgementPopup(null), null);
+  assert.equal(acknowledgementPopup({
+    pendingBvApprovalNotice: true,
+    pendingBvRejectionNotice: true,
+  }), 'bv_approval_notice');
+  assert.equal(acknowledgementPopup({
+    pendingBvGroupAssignmentNotice: true,
+    roleNoticeAcknowledged: true,
+    pendingRoleNotice: 'Assigned role: RGF',
+  }), null);
+  assert.equal(acknowledgementPopup({
+    pendingAshrayNoticeStatus: 'rejected',
+  }), 'ashray_notice_rejected');
 });
 
 test('changing only the reporting parent names that person', () => {

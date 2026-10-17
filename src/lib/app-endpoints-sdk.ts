@@ -2513,6 +2513,7 @@ export const approveAndAssignBvMember = createSdkInvoker<typeof import('../api/a
 export const assignBvRole = createSdkInvoker<typeof import('../api/assignBvRole')['default']>('assignBvRole');
 export const transferBvGroupMember = createSdkInvoker<typeof import('../api/transferBvGroupMember')['default']>('transferBvGroupMember');
 export const getBvSupervisorOverview = createSdkInvoker<typeof import('../api/getBvSupervisorOverview')['default']>('getBvSupervisorOverview');
+export const getBvSupervisorReport = createSdkInvoker<typeof import('../api/getBvSupervisorReport')['default']>('getBvSupervisorReport');
 export const registerBvMember = createSdkInvoker<typeof import('../api/registerBvMember')['default']>('registerBvMember');
 export const tagUserAsBvAdmin = createSdkInvoker<typeof import('../api/tagUserAsBvAdmin')['default']>('tagUserAsBvAdmin');
 export const tagUserAsBvFacilitator = createSdkInvoker<typeof import('../api/tagUserAsBvFacilitator')['default']>('tagUserAsBvFacilitator');

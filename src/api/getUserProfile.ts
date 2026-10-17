@@ -4,6 +4,7 @@ import { isAccountDeleted } from '@/lib/accountDeletionPolicy';
 import { normalizeRole, normalizeStatus } from './resolveUserLogin';
 import { isCompleteProfile, isLoginLinkedToProfile } from '@/lib/accountLinkReview';
 import { getUserDepartment } from '../lib/userDashboardRoutes';
+import { loadEffectiveReadingRoles } from '@/lib/bvGroupFacilitators';
 
 export const profileCacheKey = (userId: string) => `user_profile:${userId}`;
 
@@ -31,11 +32,15 @@ export default createEndpoint({
   execute: async ({ context }: any) => {
     if (!context.user) throw new Error('Unauthorized');
     const authUid = String(context.user.uid || context.user.id || '');
-    let userRecord = await Users.findOne({ id: context.user.id, fields: USER_FIELDS });
-    if (!isCompleteProfile(userRecord) && authUid && authUid !== String(context.user.id || '')) {
+    // The API route already loaded this profile to authorize the request.
+    // Reusing that fresh record removes a second sequential user read from
+    // every page. Direct callers, and incomplete login stubs, still read here.
+    const alreadyLoaded = reusableAuthorizedProfile(context, authUid);
+    let userRecord = alreadyLoaded || await Users.findOne({ id: context.user.id, fields: USER_FIELDS });
+    if (!alreadyLoaded && !isCompleteProfile(userRecord) && authUid && authUid !== String(context.user.id || '')) {
       userRecord = await Users.findOne({ id: authUid, fields: USER_FIELDS }) || userRecord;
     }
-    if (!isCompleteProfile(userRecord) && authUid) {
+    if (!alreadyLoaded && !isCompleteProfile(userRecord) && authUid) {
       const linked = await Users.findOne({ filters: { firebaseUid: authUid } });
       if (isCompleteProfile(linked) && isLoginLinkedToProfile(linked, authUid)) userRecord = linked;
     }
@@ -76,7 +81,17 @@ export default createEndpoint({
     const validRoles = ['USER', 'ADMIN', 'GUIDE', 'SUPER_GUIDE', 'SUPER_ADMIN', 'BVSL', 'SADHANA_MENTOR'];
     const primaryRole = validRoles.includes(normalizedRole) ? normalizedRole : 'USER';
 
-    const isBvsl = !!(userRecord.isBvsl || primaryRole === 'BVSL');
+    // A reading group is the source of RGF and RGSF. The profile flags are a
+    // cache and can still say RGSF after the person was removed from every group.
+    const readingRoles = await loadEffectiveReadingRoles(userRecord);
+    const facilitatesGroup = readingRoles.isFacilitator || primaryRole === 'BVSL';
+    userRecord = {
+      ...userRecord,
+      isBvFacilitator: facilitatesGroup,
+      isBvsl: facilitatesGroup,
+      isBvSubFacilitator: readingRoles.isSubFacilitator,
+    };
+    const isBvsl = facilitatesGroup;
     const isSadhanaMentor = !!(userRecord.isSadhanaMentor || primaryRole === 'SADHANA_MENTOR');
     const isServiceAllocator = !!(userRecord.isServiceAllocator);
     const isBvMentor = !!(userRecord.isBvMentor);
@@ -128,34 +143,65 @@ export default createEndpoint({
  * Profile flags are derived/cache fields and may be stale immediately after
  * approval or on older records; they must never hide Attendance from a
  * member whose Reading Group page is already active. */
-async function syncBvMembership(userRecord: any, userIdentities: string[]) {
-  const [byUser, byUserId] = await Promise.all([
-    BvGroupMembers.findAll({
-      filters: { user: { in: userIdentities } },
-      fields: ['id', 'group', 'groupId', 'user', 'userId'],
+const MEMBERSHIP_FIELDS = ['id', 'group', 'groupId', 'user', 'userId', 'memberId'];
+
+/** The route's authorization read is for this same request and this same login. */
+function reusableAuthorizedProfile(context: any, authUid: string): any | null {
+  const loaded = context.loadedProfile;
+  if (!loaded || typeof loaded !== 'object' || !isCompleteProfile(loaded)) return null;
+  const sameDocument = String(loaded.id || '') === String(context.user?.id || '');
+  if (!sameDocument && !isLoginLinkedToProfile(loaded, authUid)) return null;
+  return { ...loaded };
+}
+
+function membershipIdentityHits(membership: any, keys: Set<string>): boolean {
+  return [membership?.user, membership?.userId, membership?.memberId]
+    .flatMap(value => Array.isArray(value) ? value : [value])
+    .filter(Boolean)
+    .some(value => keys.has(String(value).trim().toLowerCase()));
+}
+
+function profileClaimsBvMembership(userRecord: any): boolean {
+  return !!(
+    userRecord?.isBvMember
+    || userRecord?.bvGroupId
+    || userRecord?.bvGroupName
+    || String(userRecord?.bvRegistrationStatus || '').toLowerCase() === 'approved'
+  );
+}
+
+/** Indexed lookups cover the stored shapes: scalar user, userId, memberId, and
+ * legacy arrays of those fields. A full collection read remains only for a
+ * profile that already claims a membership the indexes did not find, so a
+ * missed row cannot clear a real member. Everyone else skips that scan. */
+async function findBvMembership(userIdentities: string[], userRecord: any) {
+  const keys = [...new Set(userIdentities.map(value => String(value).trim()).filter(Boolean))].slice(0, 30);
+  const keySet = new Set(keys.map(value => value.toLowerCase()));
+  if (keys.length) {
+    const filters = ['user', 'userId', 'memberId'].flatMap(field => [
+      { [field]: { in: keys } },
+      { [field]: { arrayContainsAny: keys } },
+    ]);
+    const results = await Promise.all(filters.map(filter => BvGroupMembers.findAll({
+      filters: filter,
+      fields: MEMBERSHIP_FIELDS,
       limit: 5,
-    }),
-    BvGroupMembers.findAll({
-      filters: { userId: { in: userIdentities } },
-      fields: ['id', 'group', 'groupId', 'user', 'userId'],
-      limit: 5,
-    }),
-  ]);
-  let rawMembership = byUser.records[0] || byUserId.records[0];
-  if (!rawMembership) {
-    const membershipKeys = new Set(userIdentities.map(value => value.toLowerCase()));
-    const { records: allMemberships } = await BvGroupMembers.findAll({
-      fields: ['id', 'group', 'groupId', 'user', 'userId', 'memberId'],
-      limit: 5000,
-    });
-    rawMembership = allMemberships.find((membership: any) => [
-      membership.user,
-      membership.userId,
-      membership.memberId,
-    ].flatMap(value => Array.isArray(value) ? value : [value])
-      .filter(Boolean)
-      .some(value => membershipKeys.has(String(value).trim().toLowerCase())));
+    })));
+    for (const result of results) {
+      const match = result.records.find(record => membershipIdentityHits(record, keySet));
+      if (match) return match;
+    }
   }
+  if (!profileClaimsBvMembership(userRecord)) return undefined;
+  const { records: allMemberships } = await BvGroupMembers.findAll({
+    fields: MEMBERSHIP_FIELDS,
+    limit: 5000,
+  });
+  return allMemberships.find(membership => membershipIdentityHits(membership, keySet));
+}
+
+async function syncBvMembership(userRecord: any, userIdentities: string[]) {
+  const rawMembership = await findBvMembership(userIdentities, userRecord);
   const membership = rawMembership;
   const hasBvMembership = !!membership;
   const groupId = membership

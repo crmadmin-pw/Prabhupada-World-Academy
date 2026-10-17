@@ -8,15 +8,18 @@ const SuperGuideBvSection = lazy(() => import('./SuperGuideBvSection'));
 const SuperBvPreachingAnalytics = lazy(() => import('./SuperBvPreachingAnalytics'));
 import { getGuides } from '@/lib/endpoints-sdk';
 import type { GetGuidesOutputType } from '@/lib/endpoints-sdk';
-import { BarChart3, TrendingUp } from 'lucide-react';
+import { BarChart3, ClipboardCheck, TrendingUp } from 'lucide-react';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { useEndpointQuery } from '@/hooks/useEndpointQuery';
 
-type SubTab = 'overview' | 'preaching';
+const SupervisorReportPanel = lazy(() => import('./SupervisorReportPanel'));
+
+type SubTab = 'overview' | 'preaching' | 'supervisors';
 
 const SUB_TABS: { value: SubTab; label: string; icon: React.ElementType; desc: string }[] = [
   { value: 'overview',  label: 'BV Overview',         icon: BarChart3,   desc: 'Attendance, sessions, and group stats' },
   { value: 'preaching', label: 'Preaching Analytics', icon: TrendingUp,  desc: 'Center-wise RGF/RGSF preaching field breakdown' },
+  { value: 'supervisors', label: 'Supervisor Report', icon: ClipboardCheck, desc: 'Whether each reading group supervisor joined the sessions' },
 ];
 
 interface SuperBvReportTabProps {
@@ -39,9 +42,14 @@ export default function SuperBvReportTab({ isPwAdmin = false, segment, guideId, 
   const [selectedGuide, setSelectedGuide] = useState(() => (isSuperAdmin ? 'all' : scopedGuideId));
   const [subTab, setSubTab]               = useState<SubTab>('overview');
 
+  const canSeeSupervisorReport = isSuperAdmin || isPwAdmin || !!profile?.isBvAdmin;
   const effectiveSegment = segment || (isPwAdmin ? 'PW' : 'FOLK');
-  const visibleSubTabs = effectiveSegment === 'PW' ? SUB_TABS.filter(tab => tab.value !== 'preaching') : SUB_TABS;
-  const activeSubTab = effectiveSegment === 'PW' && subTab === 'preaching' ? 'overview' : subTab;
+  const visibleSubTabs = SUB_TABS.filter(tab => {
+    if (tab.value === 'preaching' && effectiveSegment === 'PW') return false;
+    if (tab.value === 'supervisors' && !canSeeSupervisorReport) return false;
+    return true;
+  });
+  const activeSubTab = visibleSubTabs.some(tab => tab.value === subTab) ? subTab : 'overview';
 
   const guideQuery = useEndpointQuery<GetGuidesOutputType>('getGuides', { segment: effectiveSegment });
   const guides = guideQuery.data?.guides || [];
@@ -100,6 +108,14 @@ export default function SuperBvReportTab({ isPwAdmin = false, segment, guideId, 
 
       {effectiveSegment !== 'PW' && (
       <DashboardPanel active={activeSubTab === 'preaching'}><Suspense fallback={<Skeleton className="h-40 w-full" />}><SuperBvPreachingAnalytics /></Suspense></DashboardPanel>
+      )}
+
+      {canSeeSupervisorReport && (
+        <DashboardPanel active={activeSubTab === 'supervisors'}>
+          <Suspense fallback={<Skeleton className="h-40 w-full" />}>
+            <SupervisorReportPanel segment={effectiveSegment} />
+          </Suspense>
+        </DashboardPanel>
       )}
     </div>
   );

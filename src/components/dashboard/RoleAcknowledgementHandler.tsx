@@ -4,7 +4,7 @@ import { acknowledgeBvRoleNotice, acknowledgeBvApprovalNotice, acknowledgeBvReje
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Sparkles, XCircle, CheckCircle } from 'lucide-react';
-import { parseRoleNotice } from '@/lib/roleNoticeText';
+import { acknowledgementPopup, parseRoleNotice } from '@/lib/roleNoticeText';
 
 export default function RoleAcknowledgementHandler() {
   const { profile, refreshProfile } = useUserProfile();
@@ -12,31 +12,9 @@ export default function RoleAcknowledgementHandler() {
   const [busy, setBusy] = useState(false);
   const [groupInfo, setGroupInfo] = useState<{ groupName?: string; bvslName?: string; rgsfName?: string } | null>(null);
 
-  // Determine what type of popup to show
-  let popupType: 'ashray_notice_approved' | 'ashray_notice_rejected' | 'bv_approval_notice' | 'bv_rejection_notice' | 'bv_group_assignment_notice' | 'bv_group_removal_notice' | 'bv_role_notice' | null = null;
-
-  // This handler is mounted at the application root, so authenticated users
-  // see pending account/approval notices as soon as they open any page. Do not
-  // gate them to `/profile`: role and approval changes should be acknowledged
-  // on the user's next visit to the website, regardless of which dashboard or
-  // deep link they open.
-  if (profile) {
-    if ((profile as any).pendingBvApprovalNotice) {
-      popupType = 'bv_approval_notice';
-    } else if ((profile as any).pendingBvRejectionNotice) {
-      popupType = 'bv_rejection_notice';
-    } else if ((profile as any).pendingBvGroupAssignmentNotice && !(profile as any).roleNoticeAcknowledged) {
-      popupType = 'bv_group_assignment_notice';
-    } else if ((profile as any).pendingBvGroupRemovalNotice && !(profile as any).roleNoticeAcknowledged) {
-      popupType = 'bv_group_removal_notice';
-    } else if ((profile as any).pendingRoleNotice && !(profile as any).roleNoticeAcknowledged) {
-      popupType = 'bv_role_notice';
-    } else if (profile.pendingAshrayNoticeStatus === 'approved' && !profile.ashrayNoticeAcknowledged) {
-      popupType = 'ashray_notice_approved';
-    } else if (profile.pendingAshrayNoticeStatus === 'rejected' && !profile.ashrayNoticeAcknowledged) {
-      popupType = 'ashray_notice_rejected';
-    }
-  }
+  // Same order as the gate that loads this dialog. Authenticated users see a
+  // pending notice on whichever page they open, not only on /profile.
+  const popupType = acknowledgementPopup(profile);
 
   // Fetch Reading Group details when the notice opens. Bypass the client
   // cache: this session's last status read still says the member is unassigned.

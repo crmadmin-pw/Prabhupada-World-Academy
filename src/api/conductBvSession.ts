@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, BvSessions, BvAttendance, AppError } from '@/lib/backend-sdk';
 import { callerFacilitatesReadingGroup } from '@/lib/bvAttendanceAccess';
 import { bvUserAliases } from '@/lib/bvGroupMemberScope';
-import { loadGroupFacilitators } from '@/lib/bvGroupFacilitators';
+import { loadGroupFacilitators, loadGroupSupervisors } from '@/lib/bvGroupFacilitators';
 
 export default createEndpoint({
   description: 'Save BV session attendance for a group and date. Idempotent — creates the session if needed, updates existing attendance. Also writes attendanceDate and group directly to attendance records.',
@@ -24,12 +24,12 @@ export default createEndpoint({
     // Resolve group — try custom groupId first, then DB UUID
     let group = await BvGroups.findOne({
       filters: { groupId: input.groupId },
-      fields: ['id', 'groupId', 'groupName', 'bvslLeader', 'bvslId', 'bvslName', 'rgsfId', 'subFacilitatorId', 'subFacilitator'],
+      fields: ['id', 'groupId', 'groupName', 'bvslLeader', 'bvslId', 'bvslName', 'rgsfId', 'subFacilitatorId', 'subFacilitator', 'supervisorId', 'supervisorUserId', 'supervisorName'],
     });
     if (!group) {
       group = await BvGroups.findOne({
         id: input.groupId,
-        fields: ['id', 'groupId', 'groupName', 'bvslLeader', 'bvslId', 'bvslName', 'rgsfId', 'subFacilitatorId', 'subFacilitator'],
+        fields: ['id', 'groupId', 'groupName', 'bvslLeader', 'bvslId', 'bvslName', 'rgsfId', 'subFacilitatorId', 'subFacilitator', 'supervisorId', 'supervisorUserId', 'supervisorName'],
       });
     }
     if (!group) throw new AppError({ code: 'NOT_FOUND', message: 'Group not found' });
@@ -95,6 +95,23 @@ export default createEndpoint({
         continue;
       }
       addPerson(entry.user.id, [entry.user.id, entry.user.userId, ...aliases]);
+    }
+    const supervisors = await loadGroupSupervisors(group, staff);
+    for (const supervisor of supervisors) {
+      const aliases = bvUserAliases(supervisor);
+      if (aliases.some(alias => covered.has(alias))) {
+        const person = roster.find(item => item.keys.some(key => aliases.includes(key.toLowerCase())));
+        if (person) {
+          for (const alias of [supervisor.id, supervisor.userId, ...aliases]) {
+            const key = String(alias || '').trim();
+            if (!key || person.keys.some(existing => existing.toLowerCase() === key.toLowerCase())) continue;
+            person.keys.push(key);
+            covered.add(key.toLowerCase());
+          }
+        }
+        continue;
+      }
+      addPerson(supervisor.id, [supervisor.id, supervisor.userId, ...aliases]);
     }
 
     // Load existing attendance records for this group+date (new approach)

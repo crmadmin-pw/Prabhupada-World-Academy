@@ -5,7 +5,6 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { registerServiceWorker } from './utils/sadhanaNotification';
 import { Toaster } from '@/components/ui/sonner';
 import UserProfileProvider, { useUserProfile } from './contexts/UserProfileContext';
-import RoleAcknowledgementHandler from '@/components/dashboard/RoleAcknowledgementHandler';
 import RealtimeSyncProvider from '@/components/RealtimeSyncProvider';
 import { Skeleton } from '@/components/ui/skeleton';
 import ErrorBoundary from './layouts/ErrorBoundary';
@@ -21,66 +20,71 @@ import LandingPage from './spa-pages/LandingPage';
 import LoginPage from './spa-pages/LoginPage';
 import AuthCallbackPage from './spa-pages/AuthCallbackPage';
 import AccountLinkPendingPage from './spa-pages/AccountLinkPendingPage';
-const GuideLoginPage = lazy(() => import('./spa-pages/GuideLoginPage'));
-const RegistrationPage = lazy(() => import('./spa-pages/RegistrationPage'));
-const PendingApprovalPage = lazy(() => import('./spa-pages/PendingApprovalPage'));
-const RejectedPage = lazy(() => import('./spa-pages/RejectedPage'));
-const AccountDeletionPage = lazy(() => import('./spa-pages/AccountDeletionPage'));
-const AccountDeletedPage = lazy(() => import('./spa-pages/AccountDeletedPage'));
-const InactivePage = lazy(() => import('./spa-pages/InactivePage'));
-const BvslEntryPage = lazy(() => import('./spa-pages/BvslEntryPage'));
+import { acknowledgementPopup } from '@/lib/roleNoticeText';
+import {
+  loadAccountDeletedPage,
+  loadAccountDeletionPage,
+  loadAttendanceDashboardPage,
+  loadAttendanceManagePage,
+  loadBhaktiVrikshaPage,
+  loadBvGroupDetailPage,
+  loadBvJoinPage,
+  loadBvslEntryPage,
+  loadBvSupervisorDashboard,
+  loadDailySadhanaForm,
+  loadFolkGuideDashboard,
+  loadFolkUserDashboard,
+  loadGuideFieldSetupPage,
+  loadGuideLoginPage,
+  loadGuideUserDetailPage,
+  loadHistoryPage,
+  loadInactivePage,
+  loadJoinGroupPage,
+  loadPendingApprovalPage,
+  loadProfilePage,
+  loadPublicAttendPage,
+  loadPwAdminDashboard,
+  loadPwUserDashboard,
+  loadRegistrationPage,
+  loadRejectedPage,
+  loadRgfDashboard,
+  loadRgsfDashboard,
+  loadSadhanaMentorDashboard,
+  loadServiceManagementPage,
+  preloadRoute,
+} from '@/lib/routePreload';
 
-// Route-level chunks keep unrelated departments and dashboards out of the
-// first bundle. Their frequently used inner tabs preload after dashboard idle.
-const FolkUserDashboard = lazy(() => import('./spa-pages/FolkUserDashboard'));
-const PwUserDashboard = lazy(() => import('./spa-pages/PwUserDashboard'));
-const DailySadhanaForm = lazy(() => import('./spa-pages/DailySadhanaForm'));
-const HistoryPage = lazy(() => import('./spa-pages/HistoryPage'));
-const BhaktiVrikshaPage = lazy(() => import('./spa-pages/BhaktiVrikshaPage'));
-const ProfilePage = lazy(() => import('./spa-pages/ProfilePage'));
-const GuideFieldSetupPage = lazy(() => import('./spa-pages/GuideFieldSetupPage'));
-const GuideUserDetailPage = lazy(() => import('./spa-pages/GuideUserDetailPage'));
-const BvGroupDetailPage = lazy(() => import('./spa-pages/BvGroupDetailPage'));
+const RoleAcknowledgementDialog = lazy(() => import('@/components/dashboard/RoleAcknowledgementHandler'));
 
-import { useAuth } from '@/lib/auth-sdk';
-
-// ── Super Guide & Admin pages ──
-const loadPwAdminDashboard = () => import('./spa-pages/PwAdminDashboard');
-const loadFolkGuideDashboard = () => import('./spa-pages/FolkGuideDashboard');
+const GuideLoginPage = lazy(loadGuideLoginPage);
+const RegistrationPage = lazy(loadRegistrationPage);
+const PendingApprovalPage = lazy(loadPendingApprovalPage);
+const RejectedPage = lazy(loadRejectedPage);
+const AccountDeletionPage = lazy(loadAccountDeletionPage);
+const AccountDeletedPage = lazy(loadAccountDeletedPage);
+const InactivePage = lazy(loadInactivePage);
+const BvslEntryPage = lazy(loadBvslEntryPage);
+const FolkUserDashboard = lazy(loadFolkUserDashboard);
+const PwUserDashboard = lazy(loadPwUserDashboard);
+const DailySadhanaForm = lazy(loadDailySadhanaForm);
+const HistoryPage = lazy(loadHistoryPage);
+const BhaktiVrikshaPage = lazy(loadBhaktiVrikshaPage);
+const ProfilePage = lazy(loadProfilePage);
+const GuideFieldSetupPage = lazy(loadGuideFieldSetupPage);
+const GuideUserDetailPage = lazy(loadGuideUserDetailPage);
+const BvGroupDetailPage = lazy(loadBvGroupDetailPage);
 const PwAdminDashboard = lazy(loadPwAdminDashboard);
 const FolkGuideDashboard = lazy(loadFolkGuideDashboard);
-
-// Download the dashboard (and its default report) code while sign-in and the
-// profile are still resolving. Code only: routing and access still wait for
-// the verified profile.
-if (typeof window !== 'undefined') {
-  const path = window.location.pathname;
-  if (path.startsWith('/pw-admin/') || path.startsWith('/super-admin/')) {
-    void loadPwAdminDashboard().catch(() => {});
-    void import('./components/guide/ReportsTab').catch(() => {});
-  } else if (path.startsWith('/folk-guide/') || path.startsWith('/super/')) {
-    void loadFolkGuideDashboard().catch(() => {});
-    void import('./components/guide/ReportsTab').catch(() => {});
-  }
-}
-
-// ── BVSL, RGF & RGSF pages ──
-const RgfDashboard = lazy(() => import('./spa-pages/RgfDashboard'));
-const RgsfDashboard = lazy(() => import('./spa-pages/RgsfDashboard'));
-const JoinGroupPage = lazy(() => import('./spa-pages/JoinGroupPage'));
-const BvJoinPage = lazy(() => import('./spa-pages/BvJoinPage'));
-
-// ── Sadhana Mentor pages ──
-const SadhanaMentorDashboard = lazy(() => import('./spa-pages/SadhanaMentorDashboard'));
-
-// ── BV Mentor pages ──
-const BvSupervisorDashboard = lazy(() => import('./spa-pages/BvSupervisorDashboard'));
-const ServiceManagementPage = lazy(() => import('./spa-pages/ServiceManagementPage'));
-
-// ── Attendance pages ──
-const PublicAttendPage = lazy(() => import('./spa-pages/attendance/PublicAttendPage'));
-const AttendanceManagePage = lazy(() => import('./spa-pages/attendance/AttendanceManagePage'));
-const AttendanceDashboardPage = lazy(() => import('./spa-pages/attendance/AttendanceDashboardPage'));
+const RgfDashboard = lazy(loadRgfDashboard);
+const RgsfDashboard = lazy(loadRgsfDashboard);
+const JoinGroupPage = lazy(loadJoinGroupPage);
+const BvJoinPage = lazy(loadBvJoinPage);
+const SadhanaMentorDashboard = lazy(loadSadhanaMentorDashboard);
+const BvSupervisorDashboard = lazy(loadBvSupervisorDashboard);
+const ServiceManagementPage = lazy(loadServiceManagementPage);
+const PublicAttendPage = lazy(loadPublicAttendPage);
+const AttendanceManagePage = lazy(loadAttendanceManagePage);
+const AttendanceDashboardPage = lazy(loadAttendanceDashboardPage);
 
 // Roles that can access user-level pages (everyone except Guide/Super Guide)
 const USER_ROLES = ['USER', 'BVSL', 'SADHANA_MENTOR'] as const;
@@ -95,7 +99,7 @@ export default function App() {
         <InstallBanner />
         <UserProfileProvider>
           <RealtimeSyncProvider />
-          <RoleAcknowledgementHandler />
+          <RoleAcknowledgementGate />
           <Suspense fallback={<RouteLoadingFallback />}>
           <Routes>
             {/* Auth — guarded to prevent active users from re-visiting */}
@@ -218,20 +222,35 @@ function SafeToaster() {
   return <Toaster />;
 }
 
+function RoleAcknowledgementGate() {
+  const { profile } = useUserProfile();
+  // The dialog chunk stays out of the first download. The same notice order
+  // still opens it on any page once the profile says one is waiting.
+  if (!acknowledgementPopup(profile)) return null;
+  return (
+    <Suspense fallback={null}>
+      <RoleAcknowledgementDialog />
+    </Suspense>
+  );
+}
+
 function DashboardRouter() {
   const { profile, isLoading } = useUserProfile();
-  const { user } = useAuth();
+  const redirectTo = (path: string) => {
+    preloadRoute(path.split(/[?#]/)[0]);
+    return <Navigate to={path} replace />;
+  };
   if (isLoading) return (
     <div className="min-h-screen flex items-center justify-center bg-background">
       <Skeleton className="h-32 w-64" />
     </div>
   );
-  if (!profile) return <Navigate to="/register" replace />;
-  if (profile.status === 'ACCOUNT_DELETED') return <Navigate to="/account-deleted" replace />;
-  if (profile.status === 'PENDING_DELETION') return <Navigate to="/account-deletion" replace />;
-  if (profile.status === 'PENDING_APPROVAL') return <Navigate to="/pending" replace />;
-  if (profile.status === 'REJECTED') return <Navigate to="/rejected" replace />;
-  if ((profile.status as string) === 'INACTIVE') return <Navigate to="/inactive" replace />;
+  if (!profile) return redirectTo('/register');
+  if (profile.status === 'ACCOUNT_DELETED') return redirectTo('/account-deleted');
+  if (profile.status === 'PENDING_DELETION') return redirectTo('/account-deletion');
+  if (profile.status === 'PENDING_APPROVAL') return redirectTo('/pending');
+  if (profile.status === 'REJECTED') return redirectTo('/rejected');
+  if ((profile.status as string) === 'INACTIVE') return redirectTo('/inactive');
 
   const suffix = typeof window !== 'undefined' ? `${window.location.search}${window.location.hash}` : '';
 
@@ -249,25 +268,25 @@ function DashboardRouter() {
   );
 
   if (isSuperAdmin || profile.isBvAdmin || (profile.role as string) === 'ADMIN') {
-    return isPw ? <Navigate to={`/pw-admin/dashboard${suffix}`} replace /> : <Navigate to={`/folk-guide/dashboard${suffix}`} replace />;
+    return redirectTo(isPw ? `/pw-admin/dashboard${suffix}` : `/folk-guide/dashboard${suffix}`);
   }
 
   // Sadhana Mentor
   if (profile.isSadhanaMentor || (profile.role as string) === 'SADHANA_MENTOR' || (profile.role as string) === 'Sadhana Mentor') {
-    return <Navigate to={`/mentor/dashboard${suffix}`} replace />;
+    return redirectTo(`/mentor/dashboard${suffix}`);
   }
 
   // Supervisor
-  if (profile.isBvSupervisor || profile.isBvMentor) return <Navigate to={`/bv-supervisor/dashboard${suffix}`} replace />;
+  if (profile.isBvSupervisor || profile.isBvMentor) return redirectTo(`/bv-supervisor/dashboard${suffix}`);
 
   // RGSF (Sub-Facilitator)
   if (profile.isBvSubFacilitator && !profile.isBvFacilitator && !profile.isBvsl) {
-    return <Navigate to={`/rgsf/dashboard${suffix}`} replace />;
+    return redirectTo(`/rgsf/dashboard${suffix}`);
   }
 
   // RGF (Reading Group Facilitator) / BVSL
   if (profile.isBvFacilitator || profile.isBvsl) {
-    return <Navigate to={`/rgf/dashboard${suffix}`} replace />;
+    return redirectTo(`/rgf/dashboard${suffix}`);
   }
 
   // Guide. FOLK guides use the guide dashboard. A Prabhupada World account whose
@@ -277,11 +296,11 @@ function DashboardRouter() {
   const normalizedGuideRole = userRoleStr.trim().toUpperCase().replace(/[\s-]+/g, '_');
   if (normalizedGuideRole === 'SUPER_GUIDE' || normalizedGuideRole === 'GUIDE') {
     if (normalizedGuideRole === 'GUIDE' && isPw) {
-      return <Navigate to={`${getUserDashboardPath(profile)}${suffix}`} replace />;
+      return redirectTo(`${getUserDashboardPath(profile)}${suffix}`);
     }
-    return isPw ? <Navigate to={`/pw-admin/dashboard${suffix}`} replace /> : <Navigate to={`/folk-guide/dashboard${suffix}`} replace />;
+    return redirectTo(isPw ? `/pw-admin/dashboard${suffix}` : `/folk-guide/dashboard${suffix}`);
   }
 
   // Default: regular user — route by department (determined by mentor chosen at registration)
-  return <Navigate to={`${getUserDashboardPath(profile)}${suffix}`} replace />;
+  return redirectTo(`${getUserDashboardPath(profile)}${suffix}`);
 }
