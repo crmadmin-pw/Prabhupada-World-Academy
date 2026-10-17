@@ -426,3 +426,62 @@ test('changing an RGF to RGSF removes them when the group stored facilitators as
   assert.equal(groupUpdates[0].record.bvslId, 'PARENT-RGF');
   assert.equal(groupUpdates[0].record.bvslName, 'Punya');
 });
+
+test('saving unchanged per-group roles clears a stale RGSF flag', async (t) => {
+  const person = {
+    id: 'richa-doc',
+    userId: 'USER-216',
+    email: 'richa-role@example.test',
+    fullName: 'Richa Dewan',
+    role: 'User',
+    segment: 'PW',
+    isBvFacilitator: true,
+    isBvsl: true,
+    isBvSubFacilitator: true,
+    bvGroupId: 'temple-doc',
+  };
+  const temple = {
+    id: 'temple-doc',
+    groupId: 'temple-doc',
+    groupName: 'Temple REnamed',
+    segment: 'PW',
+    bvslLeader: 'other-doc',
+    bvslId: 'USER-OTHER',
+    bvslName: 'Other Leader',
+  };
+  const nityananda = {
+    id: 'nityananda-new',
+    groupId: 'nityananda-new',
+    groupName: 'Nityananda new',
+    segment: 'PW',
+    bvslLeader: 'richa-doc',
+    bvslId: 'USER-216',
+    bvslName: 'Richa Dewan',
+    subFacilitatorId: 'geetha-doc',
+    rgsfId: 'USER-231',
+    subFacilitator: 'Geetha',
+  };
+  const updates = mockDirectory(t, [person, parent]);
+  const groupUpdates: Array<{ id: string; record: any }> = [];
+  t.mock.method(BvGroups, 'findAll', async () => ({ records: [temple, nityananda], hasMore: false }));
+  t.mock.method(BvGroups, 'update', async (change: { id: string; record: any }) => {
+    groupUpdates.push(change);
+    return change;
+  });
+
+  const result = await assignBvRole.execute({
+    input: {
+      userId: 'USER-216',
+      role: 'FACILITATOR',
+      parentId: 'USER-001',
+      multiRoles: { isFacilitator: true, isSubFacilitator: false },
+    },
+    context: superAdmin,
+  } as never);
+
+  assert.equal(result.success, true);
+  assert.equal(groupUpdates.length, 0);
+  assert.equal(updates[0].record.isBvFacilitator, true);
+  assert.equal(updates[0].record.isBvsl, true);
+  assert.equal(updates[0].record.isBvSubFacilitator, false);
+});

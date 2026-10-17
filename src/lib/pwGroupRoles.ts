@@ -55,3 +55,22 @@ export function pwReadingGroups(user: PersonRef, groups: PwGroupRoleOption[]): A
   }
   return found;
 }
+
+/** Badges follow the groups once any group names this person. A stored RGSF
+ * flag stays only when no group has listed them as RGF or RGSF yet. */
+export function readingRolesForDirectory(
+  user: PersonRef & { isBvFacilitator?: boolean; isBvsl?: boolean; isBvSubFacilitator?: boolean; role?: string },
+  groups: PwGroupRoleOption[],
+): { isFacilitator: boolean; isSubFacilitator: boolean } {
+  const memberships = pwReadingGroups(user, groups);
+  const listedFacilitator = memberships.some(group => group.role === 'FACILITATOR');
+  const listedSubFacilitator = memberships.some(group => group.role === 'SUB_FACILITATOR');
+  if (listedFacilitator || listedSubFacilitator) {
+    return { isFacilitator: listedFacilitator, isSubFacilitator: listedSubFacilitator };
+  }
+  const role = String(user.role || '').toUpperCase().replace(/[\s-]+/g, '_');
+  return {
+    isFacilitator: user.isBvFacilitator === true || user.isBvsl === true || role === 'FACILITATOR' || role === 'RGF' || role === 'BVSL',
+    isSubFacilitator: user.isBvSubFacilitator === true || role === 'SUB_FACILITATOR' || role === 'RGSF',
+  };
+}

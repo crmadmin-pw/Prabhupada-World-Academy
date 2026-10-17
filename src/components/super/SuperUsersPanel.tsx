@@ -34,7 +34,7 @@ import { bvRolePatch, mergePendingDirectoryPatches, mergePendingMentors, type Pe
 import { EmptyState, ConfirmDialog } from '@/shared';
 
 import MultiRoleAssignModal from './MultiRoleAssignModal';
-import { pwReadingGroups } from '@/lib/pwGroupRoles';
+import { pwReadingGroups, readingRolesForDirectory } from '@/lib/pwGroupRoles';
 import BulkUserManagement from '@/components/guide/BulkUserManagement';
 
 function NaLabel() {
@@ -354,8 +354,9 @@ function isFolkResidentUser(user: ResidentLikeUser): boolean {
 
 // BV roles are independent flags, so a member may legitimately have several
 // of them at once. Keep all selected roles available for the table renderer.
-const getBvRoleLabels = (user: any): Array<{ key: string; label: string; className: string }> => {
+const getBvRoleLabels = (user: any, groups: BvGroupOption[] = []): Array<{ key: string; label: string; className: string }> => {
   const role = String(user?.role || '').toUpperCase().replace(/[\s-]+/g, '_');
+  const readingRoles = readingRolesForDirectory(user, groups);
   const roles: Array<{ key: string; label: string; className: string }> = [];
   if (user?.isBvAdmin === true || user?.isBvSuperAdmin === true || role === 'BV_ADMIN') {
     roles.push({ key: 'admin', label: 'Admin', className: 'bg-red-100 text-red-700' });
@@ -363,10 +364,10 @@ const getBvRoleLabels = (user: any): Array<{ key: string; label: string; classNa
   if (user?.isBvSupervisor === true || user?.isBvMentor === true || role === 'SUPERVISOR' || role === 'BV_SUPERVISOR') {
     roles.push({ key: 'supervisor', label: 'Supervisor', className: 'bg-amber-100 text-amber-700' });
   }
-  if (user?.isBvFacilitator === true || user?.isBvsl === true || role === 'FACILITATOR' || role === 'RGF' || role === 'BVSL') {
+  if (readingRoles.isFacilitator) {
     roles.push({ key: 'facilitator', label: 'RGF', className: 'bg-purple-100 text-purple-700' });
   }
-  if (user?.isBvSubFacilitator === true || role === 'SUB_FACILITATOR' || role === 'RGSF') {
+  if (readingRoles.isSubFacilitator) {
     roles.push({ key: 'sub-facilitator', label: 'RGSF', className: 'bg-blue-100 text-blue-700' });
   }
   return roles;
@@ -1237,7 +1238,7 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                     (myId && uEmail && myId === uEmail)
                   );
                   const isBvUser = isBhaktiVrikshaDirectoryMember(u);
-                  const bvRoleLabels = getBvRoleLabels(u);
+                  const bvRoleLabels = getBvRoleLabels(u, bvGroups);
                   const currentBvRole = ((u as any).isBvAdmin || (u as any).isBvSuperAdmin) ? 'ADMIN' :
                     (u as any).isBvSupervisor ? 'SUPERVISOR' :
                     ((u as any).isBvFacilitator || (u as any).isBvsl) ? 'FACILITATOR' :

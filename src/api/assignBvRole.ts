@@ -152,6 +152,13 @@ async function applyPwGroupScopedRoles(
   );
 
   if (!assignments) {
+    const listedFacilitator = departmentGroups.some((group: any) => groupHasFacilitator(group, aliases));
+    const listedSubFacilitator = departmentGroups.some((group: any) => groupHasSubFacilitator(group, aliases));
+    // The assign-roles dialog already chose a role for every group. Saving it
+    // without moving a dropdown still drops a profile flag that no group has.
+    if (input.multiRoles && (listedFacilitator || listedSubFacilitator)) {
+      return { isFacilitator: listedFacilitator, isSubFacilitator: listedSubFacilitator };
+    }
     if (involved.length > 1) {
       const names = involved.map((group: any) => group.groupName || 'Reading Group').join(', ');
       throw new AppError({
