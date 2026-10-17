@@ -554,7 +554,7 @@ test('supervisor groups include only groups led by reporting RGFs with RGF card 
   }
 });
 
-test('normal PW admins see only groups under their reporting RGFs', async () => {
+test('a PW admin sees every reading group in the department', async () => {
   const admin = {
     id: 'PW-ADMIN-SCOPE-DB',
     userId: 'PW-ADMIN-SCOPE',
@@ -612,18 +612,23 @@ test('normal PW admins see only groups under their reporting RGFs', async () => 
     await BvGroups.create({ record: unrelatedGroup });
 
     const groups = await resolveBvScopedGroups(admin, { segment: 'PW' });
-    assert.deepEqual(groups.map(group => group.id), [assignedGroup.id]);
+    const groupIds = groups.map(group => group.id);
+    assert.ok(groupIds.includes(assignedGroup.id));
+    assert.ok(groupIds.includes(unrelatedGroup.id));
     const reportGroups = await getGuideGroupStats.execute({
       input: { guideId: admin.userId, segment: 'PW' },
       context: { user: admin },
     } as never);
-    assert.deepEqual(reportGroups.groups.map((group: any) => group.groupId), [assignedGroup.groupId]);
-    // 'ALL' from a non-super admin must never widen to the whole department.
+    const reportIds = reportGroups.groups.map((group: any) => group.groupId);
+    assert.ok(reportIds.includes(assignedGroup.groupId));
+    assert.ok(reportIds.includes(unrelatedGroup.groupId));
     const allRequest = await getGuideGroupStats.execute({
       input: { guideId: 'ALL', segment: 'PW' },
       context: { user: admin },
     } as never);
-    assert.deepEqual(allRequest.groups.map((group: any) => group.groupId), [assignedGroup.groupId]);
+    const allIds = allRequest.groups.map((group: any) => group.groupId);
+    assert.ok(allIds.includes(assignedGroup.groupId));
+    assert.ok(allIds.includes(unrelatedGroup.groupId));
     assert.equal(isBvSuperAdminUser(admin), false);
     assert.equal(isBvSuperAdminUser({ role: 'SUPER_ADMIN' }), true);
   } finally {

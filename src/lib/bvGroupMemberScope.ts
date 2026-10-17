@@ -1,6 +1,6 @@
 import { AppError, BvGroups, BvGroupMembers, Users } from '@/lib/backend-sdk';
 import { listedReadingRoles } from '@/lib/bvGroupFacilitators';
-import { getScopedHierarchyUserIds, isHierarchyAdmin, isUserInHierarchy, hierarchyRefs, readScopedUsers } from './hierarchyUtils';
+import { getScopedHierarchyUserIds, isHierarchyAdmin, isPwDepartmentAdmin, isUserInHierarchy, hierarchyRefs, readScopedUsers } from './hierarchyUtils';
 
 const IDENTITY_FIELDS = [
   'id', 'userId', 'email', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId',
@@ -222,6 +222,16 @@ export async function resolveBvScopedGroups(
   contextUser: UserRecord,
   options: BvGroupScopeOptions = {},
 ): Promise<BvScopedGroup[]> {
+  // A Prabhupada World admin monitors every reading group in the department.
+  // The supervisor dashboard still uses the groups assigned to that person.
+  if (isPwDepartmentAdmin(contextUser) && options.supervisionOnly !== true && options.segment !== 'FOLK') {
+    const groups = await resolveBvDepartmentGroups('PW', undefined, { includeInactive: options.includeInactive });
+    if (!options.groupId) return groups;
+    const requested = new Set(refs(options.groupId));
+    const selected = groups.filter(group => groupAliases(group.record).some(ref => requested.has(ref)));
+    if (!selected.length) throw new AppError({ code: 'FORBIDDEN', message: 'This reading group is not assigned to your hierarchy' });
+    return selected;
+  }
   if (isHierarchyAdmin(contextUser)) {
     const scope = await getScopedHierarchyUserIds(contextUser);
     const groups = options.segment
@@ -476,7 +486,9 @@ export async function resolveBvGroupMemberUsers(
   // Membership is authoritative. Do not require one exact status spelling;
   // this keeps Sadhana reports consistent with the Group Members tab.
   const users = await resolveCanonicalUsersByAliases(memberAliases, userFields);
-  const hierarchy = isHierarchyAdmin(contextUser) ? await getScopedHierarchyUserIds(contextUser) : null;
+  const hierarchy = isHierarchyAdmin(contextUser) && !isPwDepartmentAdmin(contextUser)
+    ? await getScopedHierarchyUserIds(contextUser)
+    : null;
   const callerAliases = new Set(bvUserAliases(contextUser));
   // Facilitators can appear in a legacy group-membership record. A report
   // opened by an RGF/RGSF is a member report, so never surface the RGF or
@@ -551,6 +563,8 @@ export async function resolveBvGroupFacilitatorUsers(
     ]).forEach(alias => facilitatorAliases.add(alias));
   }
   const users = await resolveCanonicalUsersByAliases(facilitatorAliases, userFields);
-  const hierarchy = isHierarchyAdmin(contextUser) ? await getScopedHierarchyUserIds(contextUser) : null;
+  const hierarchy = isHierarchyAdmin(contextUser) && !isPwDepartmentAdmin(contextUser)
+    ? await getScopedHierarchyUserIds(contextUser)
+    : null;
   return users.filter(user => isUserInHierarchy(user, hierarchy));
 }

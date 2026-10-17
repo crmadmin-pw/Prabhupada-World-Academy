@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { getScopedHierarchyUserIds, isUserInHierarchy, readScopedUsers } from '../lib/hierarchyUtils';
+import { getScopedHierarchyUserIds, isPwDepartmentAdmin, isUserInHierarchy, readScopedUsers } from '../lib/hierarchyUtils';
 import { scopeRealtimeDependencies } from '@/lib/requestQueries';
 import { createEndpoint, AppError, Users, Guides, BvslPreachingEntries, SadhanaEntries } from '@/lib/backend-sdk';
 import { requireGuideRole } from '../lib/userUtils';
@@ -142,7 +142,7 @@ async function _fetchBvStats({ input, context }: { input: any; context: any }) {
       }
     }
 
-    const hierarchy = await getScopedHierarchyUserIds(context.user);
+    const hierarchy = isPwDepartmentAdmin(context.user) ? null : await getScopedHierarchyUserIds(context.user);
     bvslUsers = bvslUsers.filter(user => isUserInHierarchy(user, hierarchy));
 
     // The individual trend view is allowed only for a facilitator already

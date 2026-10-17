@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { getScopedHierarchyUserIds, isUserInHierarchy } from '../lib/hierarchyUtils';
+import { getScopedHierarchyUserIds, isPwDepartmentAdmin, isUserInHierarchy } from '../lib/hierarchyUtils';
 import { createEndpoint, AppError, Users, BvGroups, BvGroupMembers, BvAttendance, BvQuizzes, BvQuizSubmissions, FolkResidencies } from '@/lib/backend-sdk';
 import { requireGuideRole } from '../lib/userUtils';
 import { getGuideIdsForResidencies } from '../lib/guideScope';
@@ -230,7 +230,7 @@ export default createEndpoint({
 
     const callerAliases = new Set(bvUserAliases(context.user as any));
     const facilitatorAliases = new Set(groups.flatMap(group => bvGroupFacilitatorAliases(group)));
-    const hierarchy = await hierarchyPromise;
+    const hierarchy = isPwDepartmentAdmin(context.user) ? null : await hierarchyPromise;
     const permittedUsers = users.filter(user => isUserInHierarchy(user, hierarchy));
     // Prabhupada World reports list a facilitator who is also a group member.
     // FOLK reports stay limited to the people that facilitator is monitoring.

@@ -90,8 +90,8 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
           setGuides([]);
           return;
         }
-        // Guide view is server-scoped to this guide. Do not load every FOLK
-        // group and attempt to hide unrelated groups in the browser.
+        // The server returns every Prabhupada World group for a PW admin, and
+        // only this guide's chain for a FOLK admin. Do not filter again here.
         const scoped = await read(() => getAllBvGroupsAdmin({ guideId }));
         setGroups((scoped.groups || []).map((g: any) => ({
           ...g,

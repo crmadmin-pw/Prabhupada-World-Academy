@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, BvAttendance, Users, Guides } from '@/lib/backend-sdk';
 import { serverCacheGetOrFetch, serverCacheInvalidate } from '../lib/serverCache';
 import { isBvDepartmentAdmin, isBvSuperAdminUser, resolveBvDepartmentGroups } from '../lib/bvGroupMemberScope';
-import { callerDirectoryDepartment, getScopedHierarchyUserIds, isUserInHierarchy, hierarchyRefs, readScopedUsers } from '../lib/hierarchyUtils';
+import { callerDirectoryDepartment, getScopedHierarchyUserIds, isPwDepartmentAdmin, isUserInHierarchy, hierarchyRefs, readScopedUsers } from '../lib/hierarchyUtils';
 import { joinFacilitatorNames, readGroupFacilitators, textList } from '@/lib/bvGroupFacilitators';
 
 export function facilitatorIdentityRefs(group: { bvslLeader?: unknown; bvslId?: unknown; bvslName?: unknown }): string[] {
@@ -138,9 +138,16 @@ export default createEndpoint({
         };
       }
     }
-    // A normal admin is always scoped to their own hierarchy, even if a
-    // different guide ID is supplied by a modified client. Super admins may
-    // intentionally select another guide or department-wide view.
+    // A Prabhupada World admin sees every reading group in the department.
+    // A different guide ID from the client cannot narrow or widen that list.
+    // Super admins may still select one guide. FOLK admins stay on their own chain.
+    if (isPwDepartmentAdmin(context?.user) && !isBvSuperAdminUser(context?.user)) {
+      return serverCacheGetOrFetch(
+        'allBvGroupsAdmin:department:PW',
+        () => _fetchAllBvGroupsAdmin(String(context.user.id || ''), null, context.user, 'PW'),
+        30_000,
+      );
+    }
     const effectiveGuideId = isBvSuperAdminUser(context?.user)
       ? input.guideId
       : String(context?.user?.id || '');
@@ -158,7 +165,7 @@ export default createEndpoint({
 
 export { serverCacheInvalidate as _invalidateAllBvGroupsAdmin };
 
-async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<string> | null, caller: any) {
+async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<string> | null, caller: any, department?: 'PW' | 'FOLK') {
 
     // Resolve legacy identity forms in one batch and reuse the records. Keep
     // the same precedence: Guides document, linked user email, custom guide ID.
@@ -176,7 +183,7 @@ async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<strin
       : undefined;
     const resolvedGuide = directGuide || guideByEmail || guideByCustomId;
     const guideDbId: string | null = resolvedGuide?.id || null;
-    if (!guideDbId && !linkedGuideUser) return { bvsls: [], groups: [], error: null };
+    if (!department && !guideDbId && !linkedGuideUser) return { bvsls: [], groups: [], error: null };
 
     if (!linkedGuideUser && resolvedGuide?.email) {
       linkedGuideUser = await Users.findOne({ filters: { email: resolvedGuide.email }, fields: userFields });
@@ -207,6 +214,10 @@ async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<strin
       (linkedGuideUser as any)?.id,
       (linkedGuideUser as any)?.userId,
     ].filter(Boolean).map(value => String(value).trim().toLowerCase()));
+    const departmentGroups = department
+      ? await resolveBvDepartmentGroups(department, undefined, { includeInactive: true })
+      : null;
+    const departmentGroupIds = departmentGroups ? new Set(departmentGroups.map(group => group.id)) : null;
     const [{ records: allGroupRecords }, { records: allBvslUsers }] = await Promise.all([
       BvGroups.findAll({
         // Load every group, including deactivated ones, then match the guide
@@ -236,6 +247,7 @@ async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<strin
     });
     const rgfAliases = new Set(bvslUserRecords.flatMap((u: any) => [u.id, u.userId]).filter(Boolean).map((v: any) => String(v).toLowerCase()));
     const groupRecords = allGroupRecords.filter((g: any) => {
+      if (departmentGroupIds) return departmentGroupIds.has(String(g.id));
       if (hierarchy !== null) {
         const guideRefs = hierarchyRefs(g.guide);
         if (guideRefs.length && !guideRefs.some(ref => hierarchy.has(ref))) return false;

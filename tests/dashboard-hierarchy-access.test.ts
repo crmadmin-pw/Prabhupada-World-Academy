@@ -173,21 +173,21 @@ test('Sadhana report rows, stats, leaderboard and guide filters exclude foreign 
   }
 });
 
-test('BV reports and dropdowns include indirect groups and reject a forged group selection', async t => {
+test('BV reports list every Prabhupada World reading group for a department admin', async t => {
   mockDatabase(t);
   for (const guideId of ['ALL', otherAdmin.id]) {
     const input = { guideId, segment: 'PW', date, reportType: 'daily', startDate: date, endDate: date };
     const matrix = await call(getBvSessionMatrix, input);
-    assert.deepEqual(matrix.groups.map((g: any) => g.id), ['group-a']);
-    assert.deepEqual(matrix.members.map((u: any) => u.fullName), ['group-member-a']);
+    assert.deepEqual(sorted(matrix.groups.map((g: any) => g.id)), ['group-a', 'group-b']);
+    assert.deepEqual(sorted(matrix.members.map((u: any) => u.fullName)), ['group-member-a', 'member-b']);
     const preaching = await call(getBvPreachingReport, input);
-    assert.deepEqual(preaching.bvsls.map((u: any) => u.fullName), ['rgf-a']);
+    assert.deepEqual(sorted(preaching.bvsls.map((u: any) => u.fullName)), ['rgf-a', 'rgf-b']);
     const stats = await call(getBvStats, input);
-    assert.deepEqual(stats.userSummaries.map((u: any) => u.fullName), ['rgf-a']);
+    assert.deepEqual(sorted(stats.userSummaries.map((u: any) => u.fullName)), ['rgf-a', 'rgf-b']);
     const groupStats = await call(getGuideGroupStats, input);
-    assert.deepEqual(groupStats.groups.map((g: any) => g.groupName), ['Group A']);
+    assert.deepEqual(sorted(groupStats.groups.map((g: any) => g.groupName)), ['Group A', 'Group B']);
   }
-  await assert.rejects(resolveBvScopedGroups(admin, { groupId: 'group-b', segment: 'PW' }), /not assigned/);
+  assert.deepEqual((await resolveBvScopedGroups(admin, { groupId: 'group-b', segment: 'PW' })).map(g => g.id), ['group-b']);
   assert.deepEqual((await resolveBvScopedGroups(superAdmin, { segment: 'PW' })).map(g => g.id), ['group-a', 'group-b']);
 });
 
@@ -201,7 +201,7 @@ test('PW admin sees the full member directory while reports stay in their hierar
   assert.deepEqual(subscriptions.subscribers.map((u: any) => u.name), ['direct-a']);
   const attendance = await call(getSuperGuideAttendanceReport, { segment: 'PW' });
   assert.ok(JSON.stringify(attendance).includes('group-member-a'));
-  assert.ok(!JSON.stringify(attendance).includes('member-b'));
+  assert.ok(JSON.stringify(attendance).includes('member-b'));
   const directory = await call(getGuideUsers, { guideId: 'ALL', statusFilter: 'all', minimal: true });
   const directoryIds = directory.users.map((user: any) => user.userId);
   assert.ok(directoryIds.includes('member-b'));
@@ -349,8 +349,8 @@ test('preaching analytics aggregate only the current admin hierarchy and super a
   assert.equal(all.overall.bvslCount, 2);
   assert.ok(JSON.stringify(all).includes('rgf-b'));
   const management = await call(getAllBvGroupsAdmin, { guideId: otherAdmin.id });
-  assert.deepEqual(management.groups.map((group: any) => group.groupName), ['Group A']);
-  assert.equal(management.groups[0].meetingTime, '7:45 PM – 8:15 PM (Everyday)');
+  assert.deepEqual(sorted(management.groups.map((group: any) => group.groupName)), ['Group A', 'Group B']);
+  assert.equal(management.groups.find((group: any) => group.groupName === 'Group A').meetingTime, '7:45 PM – 8:15 PM (Everyday)');
   const directory = await call(getAllBvGroupsAdmin, { guideId: admin.id, departmentWide: true, segment: 'PW' });
   assert.deepEqual(sorted(directory.groups.map((group: any) => group.groupName)), ['Group A', 'Group B']);
   assert.ok(directory.groups.every((group: any) => group.joinToken == null));
@@ -387,8 +387,9 @@ test('the group RGF list includes a facilitator of a visible group who reports t
 
   const result = await call(getAllBvGroupsAdmin, { guideId: admin.id });
   assert.ok(result.groups.some((group: any) => group.groupName === 'Outside Led'));
+  assert.ok(result.groups.some((group: any) => group.groupName === 'Group B'));
   assert.ok(result.bvsls.some((row: any) => row.email === outside.email));
-  assert.ok(!result.bvsls.some((row: any) => row.fullName === 'rgf-b'));
+  assert.ok(result.bvsls.some((row: any) => row.fullName === 'rgf-b'));
 });
 
 test('FOLK administrators cannot read another guide users or residency statistics', async t => {
