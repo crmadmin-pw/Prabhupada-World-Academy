@@ -7,7 +7,7 @@ import { withDeadline } from '@/lib/withDeadline';
 import { Leaf, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-const FOLK_LOGO = '/logo.png';
+const FOLK_LOGO = '/logo-mark.webp';
 
 export default function BvJoinPage() {
   const [params] = useSearchParams();
@@ -82,7 +82,7 @@ export default function BvJoinPage() {
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
       <div className="w-full max-w-sm text-center space-y-6">
         <div className="flex flex-col items-center gap-3">
-          <img src={FOLK_LOGO} alt="FOLK" className="w-14 h-14 object-contain" />
+          <img src={FOLK_LOGO} alt="Prabhupada World Academy" width={56} height={56} className="w-14 h-14 object-contain" />
           <h1 className="text-xl font-bold text-primary">Bhakti Vriksha Group</h1>
         </div>
 

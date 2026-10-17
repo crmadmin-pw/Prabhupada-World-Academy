@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { authCallbackPath, rememberRegistrationDepartment } from '@/lib/registrationDepartment';
 
-const PWA_LOGO = '/logo.png';
+const PWA_LOGO = '/logo-mark.webp';
 
 export default function LandingPage({ isPw = false }: { isPw?: boolean }) {
   const navigate = useNavigate();
@@ -43,8 +43,8 @@ export default function LandingPage({ isPw = false }: { isPw?: boolean }) {
 
   if (isLoading || signingIn || (user && profileLoading)) {
     return (
-      <div className="min-h-screen bg-[#fefdfa] flex flex-col items-center justify-center gap-2.5">
-        <Loader2 className="w-8 h-8 text-gray-400 animate-spin" />
+      <div className="min-h-screen bg-[#fefdfa] flex flex-col items-center justify-center gap-2.5" role="status">
+        <Loader2 className="w-8 h-8 text-gray-400 animate-spin" aria-hidden="true" />
         <span className="text-sm text-gray-500 font-medium">Connecting to Google Auth...</span>
       </div>
     );
@@ -67,6 +67,9 @@ export default function LandingPage({ isPw = false }: { isPw?: boolean }) {
             transition={{ type: "spring", stiffness: 200, damping: 15 }}
             src={PWA_LOGO}
             alt="Prabhupada World Academy Logo"
+            width={112}
+            height={112}
+            fetchPriority="high"
             className="w-28 h-28 object-contain"
           />
           <div>

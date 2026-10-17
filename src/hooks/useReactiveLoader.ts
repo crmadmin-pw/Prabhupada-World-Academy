@@ -103,8 +103,21 @@ export function useReactiveLoader<Args extends unknown[], Result>(
     const current = state.current;
     current.mounted = true;
     const invalidate = (event: Event) => {
-      const detail = (event as CustomEvent<{ keys?: string[]; identityChanged?: boolean }>).detail;
+      const detail = (event as CustomEvent<{ keys?: string[]; identityChanged?: boolean; retained?: Record<string, string> }>).detail;
       if (detail?.identityChanged) {
+        const retained = detail.retained;
+        if (retained && !current.running && current.keys.size && [...current.keys].every(key => key in retained)) {
+          // This loader's completed reads are the source of the new identity
+          // (the signed-in user's own profile). They were authorized against
+          // the authority the new scope describes; follow them to their new
+          // keys rather than issuing the same request a second time.
+          const keys = new Set([...current.keys].map(key => retained[key]));
+          current.pins.forEach(release => release());
+          current.pins.clear();
+          for (const key of keys) current.pins.set(key, retainEndpointQuery(key));
+          current.keys = keys;
+          return;
+        }
         current.generation++;
         current.running = false;
         current.dirty = true;

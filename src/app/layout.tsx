@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   title: "Prabhupada World Academy",
   description: "Track your Sadhana and Services",
   icons: {
-    icon: "/logo.png",
+    icon: "/favicon.png",
   },
 };
 

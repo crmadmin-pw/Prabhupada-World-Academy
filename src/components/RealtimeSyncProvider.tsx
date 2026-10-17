@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useLayoutEffect } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import { dashboardScope } from '@/lib/dashboardScope';
 import { useAuth } from '@/lib/auth-sdk';
-import { useUserProfile } from '@/contexts/UserProfileContext';
-import { receiveEndpointRevision, setEndpointPermissionScope, subscribeEndpointCache, getEndpointRealtimeTokens, getRealtimeEndpointNames, forgetEndpointRevisionToken } from '@/lib/app-endpoints-sdk';
+import { profileQueryInput, useUserProfile } from '@/contexts/UserProfileContext';
+import { queryCacheKey, receiveEndpointRevision, setEndpointPermissionScope, subscribeEndpointCache, getEndpointRealtimeTokens, getRealtimeEndpointNames, forgetEndpointRevisionToken } from '@/lib/app-endpoints-sdk';
 import { getRealtimeFirestore } from '@/lib/realtimeFirestore';
 import { realtimeListenerBatches } from '@/lib/realtimeListenerBatches';
 import { triggerInAppOrNativeNotification } from '@/utils/sadhanaNotification';
@@ -23,21 +23,36 @@ try {
 
 export default function RealtimeSyncProvider() {
   const { user } = useAuth();
-  const { profile } = useUserProfile();
-  const permissionScope = dashboardScope(profile, user?.id || user?.email);
+  const { profile, isLoading: profileLoading } = useUserProfile();
+  const identity = user?.id || user?.email || undefined;
+  const permissionScope = dashboardScope(profile, identity);
+  const scopedIdentity = useRef<string | undefined>(undefined);
   useLayoutEffect(() => {
     // Authority changes are the only reason to discard all of this user's
     // cached data. Routine realtime updates preserve every unaffected query.
-    setEndpointPermissionScope(permissionScope);
-  }, [permissionScope]);
+    // The profile read that produced this authority is the one exception: for
+    // the same signed-in user it is carried across, not requested a second time.
+    const sameUser = scopedIdentity.current === identity;
+    scopedIdentity.current = identity;
+    setEndpointPermissionScope(permissionScope, sameUser && user?.email
+      ? [queryCacheKey('getUserProfile', profileQueryInput(user.email))]
+      : []);
+  }, [permissionScope]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!user?.id) return;
     return startOfflineSync();
   }, [user?.id]);
 
+  // Nothing but the profile read itself exists before the profile has loaded,
+  // and loading the profile changes the authority scope. Connecting after it
+  // settles avoids tearing the listeners down again moments later and keeps
+  // the Firestore SDK download off the first screen's critical path. Server
+  // revisions persist, so a write during this window is still delivered by
+  // the initial snapshot (see receiveEndpointRevision).
+  const profileSettled = !profileLoading;
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || !profileSettled) return;
     let disposed = false;
     let unsubscribe: (() => void) | undefined;
     let unsubscribeNotifications: (() => void) | undefined;
@@ -153,6 +168,6 @@ export default function RealtimeSyncProvider() {
       toast.dismiss(statusToast);
       document.removeEventListener('visibilitychange', resume);
     };
-  }, [user?.id, permissionScope]);
+  }, [user?.id, permissionScope, profileSettled]);
   return null;
 }

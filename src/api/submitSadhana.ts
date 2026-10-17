@@ -1,13 +1,13 @@
 import { z } from 'zod';
 import { AppError, createEndpoint, SadhanaEntries, BvslPreachingEntries, Users } from '@/lib/backend-sdk';
 import { nextSadhanaEntryId, nextBvEntryId } from '../lib/entryIdCounter';
-import { getNRMaxScore, fillingSameDayApplies } from '../lib/userUtils';
+import { fillingSameDayApplies } from '../lib/userUtils';
 import { TEMPLATE_MODES, TIME_BUCKETS } from '../types/enums';
 import { refreshUserPeriodSummaries } from '../lib/sadhanaPeriodSummary';
 import { getUserDepartment } from '../lib/userDashboardRoutes';
 import { scoreStoredPwDay } from '../lib/pwSadhana';
 import { resolvePwTargetsForUser } from '../lib/pwTargetResolver';
-import { computeSingleFieldScore } from '../lib/scoring';
+import { calculateTotalScore, computeSingleFieldScore } from '../lib/scoring';
 import { NON_RESIDENT_FIELDS, RESIDENT_FIELDS, toFormField } from '../config/sadhanaFields';
 import { ACCOUNT_DELETED_LOGIN_MESSAGE, isAccountDeleted } from '@/lib/accountDeletionPolicy';
 
@@ -25,6 +25,28 @@ const ENTRY_FIND_FIELDS = ['id', 'entryId'];
 function isResidentTemplate(templateMode: string | undefined): boolean {
   const upper = (templateMode || '').toUpperCase();
   return upper.includes('RESIDENT') && !upper.includes('NON_RESIDENT');
+}
+
+function isSickOrOsSubmission(input: any): boolean {
+  const fv = input.fieldValues || {};
+  return Boolean(input.flagSick || input.flagOs
+    || (Array.isArray(fv.flags) && (fv.flags.includes('Sick') || fv.flags.includes('OS'))));
+}
+
+/** Non-resident denominator, computed with the same scoring engine the form
+ * uses. A sick/OS day scores only chanting and reading, so its maximum is
+ * lower than the healthy per-level maximum; the browser's value is a claim. */
+function nrMaxScore(input: any, ashrayLevel: string, sick: boolean): number {
+  const fields = NON_RESIDENT_FIELDS.map(field => toFormField(field));
+  return calculateTotalScore({
+    fields: fields as any,
+    values: input.fieldValues || {},
+    ashrayLevel,
+    entryDate: String(input.entryDate || '').split('T')[0],
+    residencyBucket: TIME_BUCKETS.ZERO_TO_THREE,
+    isSickOrOs: sick,
+    isResident: false,
+  }).maxScore;
 }
 
 /** Points the raw answers can earn. Client-supplied `_per_field` values are
@@ -85,8 +107,8 @@ function assertScoresMatchAnswers(input: any, ashrayLevel: string) {
   if (Number(input.totalScore) > earned + sameDayAllowance) {
     throw new AppError({ code: 'BAD_REQUEST', message: 'Submitted scores do not match the recorded sadhana' });
   }
-  const sick = input.flagSick || input.flagOs || (Array.isArray(fv.flags) && (fv.flags.includes('Sick') || fv.flags.includes('OS')));
-  const maxScore = resident ? (sick ? 8 : 20) : getNRMaxScore(ashrayLevel);
+  const sick = isSickOrOsSubmission(input);
+  const maxScore = resident ? (sick ? 8 : 20) : nrMaxScore(input, ashrayLevel, sick);
   const percentCeiling = maxScore > 0 ? Math.min(100, Math.round(((earned + sameDayAllowance) / maxScore) * 100)) : 0;
   if (input.scorePercent != null && Number(input.scorePercent) > percentCeiling) {
     throw new AppError({ code: 'BAD_REQUEST', message: 'Submitted scores do not match the recorded sadhana' });
@@ -113,7 +135,9 @@ function normalizeTime(v: any): string {
   return s;
 }
 
-function buildEntryRecord(input: any, context: any, entryId: string, now: string): any {
+/** `ashrayLevel` is the member's database level (see execute). The request
+ * context carries authorization fields only, not the profile. */
+function buildEntryRecord(input: any, context: any, entryId: string, now: string, ashrayLevel: string): any {
   const fv = input.fieldValues;
   const flagSick = input.flagSick ?? (Array.isArray(fv.flags) ? fv.flags.includes('Sick') : Boolean(fv.flag_sick));
   const flagOs = input.flagOs ?? (Array.isArray(fv.flags) ? fv.flags.includes('OS') : Boolean(fv.flag_os));
@@ -150,6 +174,8 @@ function buildEntryRecord(input: any, context: any, entryId: string, now: string
   let correctedTotalScore: number;
   let correctedMaxScore: number;
   let correctedScorePercent: number;
+  // fillingSameDay points written to the stored NR field values (0 for residents).
+  let nrFillingSameDayStored = 0;
 
   if (isResidentEntry) {
     if (flagSick || flagOs) {
@@ -180,16 +206,19 @@ function buildEntryRecord(input: any, context: any, entryId: string, now: string
     const bhaktiPts     = Number(fv._pts_bhaktiVriksha ?? perField.bhaktiVriksha ?? 0);
 
     // fillingSameDay: server-authoritative day-delay rule, but ONLY for eligible levels
-    // (Jigyasa and Shraddhavan have '-' for this field — they don't earn fillingSameDay pts)
-    const ashrayLevel = context.user.ashrayLevel || 'Jigyasa';
-    const nrFillingSameDayFinal = fillingSameDayApplies(ashrayLevel) ? nrFillingSameDayServerPts : 0;
+    // (Jigyasa and Shraddhavan have '-' for this field — they don't earn fillingSameDay pts).
+    // A sick/OS day scores chanting and reading only, matching the scoring engine.
+    const nrFillingSameDayFinal = !(flagSick || flagOs) && fillingSameDayApplies(ashrayLevel) ? nrFillingSameDayServerPts : 0;
+    nrFillingSameDayStored = nrFillingSameDayFinal;
 
     correctedTotalScore = chantingPts + readingPts + hearingPts + nrFillingSameDayFinal
       + wakeUptimePts + sleepTimePts + sevaPts + bhaktiPts;
-    // Use frontend-provided maxScore when available (computed by scoring engine),
-    // fall back to dynamic per-level max based on which fields are applicable.
-    correctedMaxScore   = input.maxScore ?? getNRMaxScore(ashrayLevel);
-    correctedScorePercent = Math.max(0, Math.min(100, Math.round((correctedTotalScore / correctedMaxScore) * 100)));
+    // Denominator from the scoring engine for this level and day type; the
+    // browser's maxScore is not stored because it would change the percentage.
+    correctedMaxScore   = nrMaxScore(input, ashrayLevel, Boolean(flagSick || flagOs));
+    correctedScorePercent = correctedMaxScore > 0
+      ? Math.max(0, Math.min(100, Math.round((correctedTotalScore / correctedMaxScore) * 100)))
+      : 0;
   }
 
   return {
@@ -206,9 +235,9 @@ function buildEntryRecord(input: any, context: any, entryId: string, now: string
       ...fv,
       // Overwrite fillingSameDay pts with server-authoritative value for NR (day-delay rule)
       ...(!isResidentEntry && {
-        _pts_fillingSameDay: fillingSameDayApplies(context.user.ashrayLevel) ? nrFillingSameDayServerPts : 0,
-        _nr_pts_fillingSameDay: fillingSameDayApplies(context.user.ashrayLevel) ? nrFillingSameDayServerPts : 0,
-        ...(fv._per_field ? { _per_field: { ...fv._per_field, fillingSameDay: fillingSameDayApplies(context.user.ashrayLevel) ? nrFillingSameDayServerPts : 0 } } : {}),
+        _pts_fillingSameDay: nrFillingSameDayStored,
+        _nr_pts_fillingSameDay: nrFillingSameDayStored,
+        ...(fv._per_field ? { _per_field: { ...fv._per_field, fillingSameDay: nrFillingSameDayStored } } : {}),
       }),
       _meta: {
         maxScore: correctedMaxScore,
@@ -337,8 +366,12 @@ export default createEndpoint({
     if (isFolk && (!/^\d{4}-\d{2}-\d{2}$/.test(entryDate) || Number.isNaN(entryDateObj.getTime()))) throw new Error('Invalid entry date');
     if (isFolk ? entryDate > submissionTodayIST : entryDateObj > oneDayAhead) throw new Error('Cannot submit for a future date');
     if (!isFolk && entryDateObj < sevenDaysAgo) throw new Error('Cannot submit for dates older than 7 days');
+    // The member's database level decides targets, same-day eligibility and the
+    // maximum. `ashrayLevelUsed` from the browser is only a fallback for profiles
+    // that have no level recorded yet.
+    const ashrayLevel: string = userRec?.ashrayLevel || input.ashrayLevelUsed || 'Jigyasa';
     if (getUserDepartment(userRec) !== 'PW') {
-      assertScoresMatchAnswers(input, userRec?.ashrayLevel || input.ashrayLevelUsed || 'Jigyasa');
+      assertScoresMatchAnswers(input, ashrayLevel);
     }
 
     // Never trust a row or user ID supplied by the client.  First locate the
@@ -379,6 +412,7 @@ export default createEndpoint({
       context,
       entryId,
       now,
+      ashrayLevel,
     );
     if (getUserDepartment(userRec) === 'PW') {
       const waiveMissing = [

@@ -75,25 +75,45 @@ export default createEndpoint({
     if (!isUserInHierarchy(user, await getScopedHierarchyUserIds(context.user))) throw new Error('This user is not assigned to your hierarchy');
     const userAliases = new Set(identityAliases(user));
     userAliases.add(String(input.userId).trim().toLowerCase());
+    // Query the stored id and its lowercase form. Matching stays
+    // case-insensitive below, and the date index is user + entryDate.
+    const queryIds = [...new Set(
+      USER_IDENTITY_FIELDS
+        .flatMap(field => Array.isArray(user?.[field]) ? user[field] : [user?.[field]])
+        .concat(input.userId)
+        .filter(Boolean)
+        .flatMap(value => {
+          const text = String(value).trim();
+          return text ? [text, text.toLowerCase()] : [];
+        }),
+    )];
+    const readOwned = async (
+      findAll: (query: any) => Promise<{ records: any[]; hasMore: boolean }>,
+      filters: Record<string, unknown>,
+      fields: string[],
+    ) => {
+      const pages = await Promise.all(queryIds.map(async id => {
+        const records: any[] = [];
+        for (let offset = 0; ; offset += 500) {
+          const page = await findAll({ filters: { ...filters, user: id }, fields, limit: 500, offset });
+          records.push(...page.records);
+          if (!page.hasMore || records.length > 5000) break;
+        }
+        return records;
+      }));
+      return pages.flat();
+    };
 
     const [allEntries, allAttendance] = await Promise.all([
-      (async () => {
-        const records: any[] = [];
-        for (let offset = 0; ; offset += 2000) {
-          const page = await SadhanaEntries.findAll({
-            // Query by date first to avoid a composite index and then match
-            // every supported identity alias in memory.
-            filters: { entryDate: { gte: startDate, lte: today } } as any,
-            fields: ['id', 'entryDate', 'scorePercent', 'totalScore', 'maxScore', 'templateMode', 'fieldValuesJson',
-              'roundsCount', 'spReadingMinutes', 'preachingMinutes', 'booksDistributed',
-              'nrChantingRounds', 'nrReadingMinutes', 'nrHearingMinutes', 'flagSick', 'flagOs', 'user'],
-            limit: 2000,
-            offset,
-          });
-          records.push(...page.records);
-          if (!page.hasMore) return records;
-        }
-      })(),
+      readOwned(
+        query => SadhanaEntries.findAll(query),
+        { entryDate: { gte: startDate, lte: today } },
+        ['id', 'entryDate', 'scorePercent', 'totalScore', 'maxScore', 'templateMode', 'fieldValuesJson',
+          'roundsCount', 'spReadingMinutes', 'preachingMinutes', 'booksDistributed',
+          'nrChantingRounds', 'nrReadingMinutes', 'nrHearingMinutes', 'flagSick', 'flagOs', 'user'],
+      ),
+      // No user + attendanceDate index is deployed, so this stays a date-window
+      // read and the member match below is unchanged.
       (async () => {
         const records: any[] = [];
         for (let offset = 0; ; offset += 2000) {
@@ -109,10 +129,10 @@ export default createEndpoint({
       })(),
     ]);
 
-    const entries = allEntries.filter((entry: any) => {
+    const entries = [...new Map(allEntries.filter((entry: any) => {
       const owner = Array.isArray(entry.user) ? entry.user[0] : entry.user;
       return userAliases.has(String(owner || '').trim().toLowerCase());
-    });
+    }).map(entry => [String(entry.id), entry])).values()];
     const attendance = allAttendance.filter((record: any) => {
       const owner = Array.isArray(record.user) ? record.user[0] : record.user;
       const isPresent = record.present === true || ['present', 'p', 'true', '1'].includes(String(record.status || '').trim().toLowerCase());

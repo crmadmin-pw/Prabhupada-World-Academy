@@ -6,6 +6,9 @@ import { serverCacheInvalidate } from '../lib/serverCache';
 export default createEndpoint({
   description: 'Approve or reject an Ashray level upgrade request (two-step: approve→then pass/fail)',
   authenticated: true,
+  // Same gate as the approval queues this action is taken from
+  // (getPendingApprovals / getGuideRequests / approveUser).
+  requiredCapabilities: 'users.approve',
   inputSchema: z.object({
     requestId: z.string().optional(),
     logId: z.string().optional(),

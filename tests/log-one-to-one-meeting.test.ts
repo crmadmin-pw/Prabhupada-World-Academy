@@ -37,6 +37,11 @@ function collection() {
     },
     doc(id: string) {
       return {
+        // Table.update reads the current document before writing it.
+        async get() {
+          const data = docs.get(id);
+          return { id, exists: data !== undefined, data: () => data, readTime: { seconds: 1, nanoseconds: 0 } };
+        },
         async set(data: Record<string, unknown>, options?: { merge?: boolean }) {
           const next = options?.merge ? { ...(docs.get(id) || {}), ...data } : data;
           docs.set(id, next);

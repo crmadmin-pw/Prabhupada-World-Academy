@@ -302,6 +302,13 @@ export default createEndpoint({
     let callerKeys = new Set<string>();
     let userRecord: any = null;
 
+    // The caller's own authorized group scope depends only on the signed-in
+    // user, so it resolves alongside the lookups below instead of after them.
+    const scopedGroupsPromise = isBvSuperAdminUser(context.user)
+      ? null
+      : resolveBvScopedGroups(context.user, { includeInactive: true });
+    void scopedGroupsPromise?.catch(() => {});
+
     if (input.bvslId === 'ALL' || !input.bvslId) {
       if (!isBvSuperAdminUser(context?.user)) {
         throw new AppError({ code: 'FORBIDDEN', message: 'Viewing all BV groups requires super admin access' });
@@ -309,6 +316,9 @@ export default createEndpoint({
       const { records } = await BvGroups.findAll({ limit: 500 });
       groupRecords = records;
     } else {
+      // The group catalogue does not depend on the caller record; read both together.
+      const catalogueRead = BvGroups.findAll({ limit: 1000 });
+      void catalogueRead.catch(() => {});
       userRecord = await Users.findOne({ filters: { userId: input.bvslId }, fields: PROFILE_FIELDS })
         ?? await Users.findOne({ id: input.bvslId, fields: PROFILE_FIELDS });
       rememberUser(identity, userRecord);
@@ -318,9 +328,7 @@ export default createEndpoint({
       defaultBvslName = userRecord?.fullName || '';
       const isRgsfView = input.viewRole === 'RGSF';
  
-      const { records } = await BvGroups.findAll({
-        limit: 1000,
-      });
+      const { records } = await catalogueRead;
       callerKeys = new Set(
         [
           input.bvslId,
@@ -345,9 +353,13 @@ export default createEndpoint({
       const parentRgfKeys = new Set<string>();
       if (parentRgfId) parentRgfKeys.add(String(parentRgfId).toLowerCase());
       if (parentRgfId) {
-        const parent = await Users.findOne({ filters: { userId: String(parentRgfId) }, fields: PROFILE_FIELDS }) ||
-          await Users.findOne({ id: String(parentRgfId), fields: PROFILE_FIELDS }) ||
-          await Users.findOne({ filters: { email: String(parentRgfId) }, fields: PROFILE_FIELDS });
+        // userId, then document id, then email: the same precedence as the
+        // former one-after-another lookups, resolved in a single round trip.
+        const parent = (await Promise.all([
+          Users.findOne({ filters: { userId: String(parentRgfId) }, fields: PROFILE_FIELDS }),
+          Users.findOne({ id: String(parentRgfId), fields: PROFILE_FIELDS }),
+          Users.findOne({ filters: { email: String(parentRgfId) }, fields: PROFILE_FIELDS }),
+        ])).find(Boolean);
         [parent?.id, parent?.userId, parent?.email].filter(Boolean).forEach(value => parentRgfKeys.add(String(value).toLowerCase()));
         rememberUser(identity, parent);
       }
@@ -382,8 +394,8 @@ export default createEndpoint({
       });
     }
 
-    if (!isBvSuperAdminUser(context.user)) {
-      const allowedGroups = await resolveBvScopedGroups(context.user, { includeInactive: true });
+    if (scopedGroupsPromise) {
+      const allowedGroups = await scopedGroupsPromise;
       const allowed = new Set(allowedGroups.map(group => group.id));
       const selfAliases = [context.user?.id, context.user?.userId, context.user?.email, context.user?.fullName]
         .filter(Boolean)
@@ -439,6 +451,14 @@ export default createEndpoint({
 
     const isAll = input.bvslId === 'ALL' || !input.bvslId;
     const todayDate = getTodayIST();
+    // Attendance statistics and pending join requests are not read for the
+    // ALL view. For a facilitator they are read for all of their groups at
+    // once (30 group references per query) and attributed per group below,
+    // instead of two attendance reads and one request read per group.
+    const attendanceStatsPromise = isAll ? null : loadAttendanceStats(groupRecords, todayDate);
+    const pendingRequestsPromise = isAll ? null : loadPendingRequestCount(groupRecords);
+    void attendanceStatsPromise?.catch(() => {});
+    void pendingRequestsPromise?.catch(() => {});
 
     // Facilitator, guide, and member identity share one cache for this request.
     // Firestore `in` filters stay at or below 30 values. Member auth-id fields
@@ -496,7 +516,8 @@ export default createEndpoint({
       }
     }
 
-    const groups = await Promise.all(groupRecords.map(async (g) => {
+    const attendanceStats = attendanceStatsPromise ? await attendanceStatsPromise : null;
+    const groups = groupRecords.map((g) => {
       const facilitatorRefs = textList(g.bvslId).concat(textList(g.bvslLeader));
       const matchedFacilitators: any[] = [];
       const seenFacilitators = new Set<string>();
@@ -564,20 +585,10 @@ export default createEndpoint({
       }
       const guideRes = guideMap.get(Array.isArray(g.guide) ? g.guide[0] : g.guide);
       
-      let totalSessions = 0;
-      let presentToday = 0;
-
-      // Only fetch attendance stats if it's not the ALL view (to save API calls)
-      if (!isAll) {
-        const attendanceGroupRefs = [...new Set([g.id, g.groupId].filter(Boolean))];
-        const [allGroupAtt, todayPresentAtt] = await Promise.all([
-          BvAttendance.findAll({ filters: { group: attendanceGroupRefs.length > 1 ? { in: attendanceGroupRefs } : g.id } as any, fields: ['attendanceDate'], limit: 2000 }),
-          BvAttendance.findAll({ filters: { group: attendanceGroupRefs.length > 1 ? { in: attendanceGroupRefs } : g.id, attendanceDate: todayDate, present: true } as any, fields: ['id'], limit: 200 }),
-        ]);
-        const distinctDates = new Set(allGroupAtt.records.map((a: any) => a.attendanceDate).filter(Boolean));
-        totalSessions = distinctDates.size;
-        presentToday = todayPresentAtt.records.length;
-      }
+      // Only present outside the ALL view (to save API calls)
+      const stats = attendanceStats?.get(String(g.id));
+      const totalSessions = stats?.sessionDates.size || 0;
+      const presentToday = stats?.presentToday || 0;
 
       return {
         id: g.id,
@@ -634,21 +645,87 @@ export default createEndpoint({
             .filter(Boolean),
         )],
       };
-    }));
+    });
 
     // Count pending join requests (only if not ALL view)
-    let pendingRequestCount = 0;
-    if (!isAll) {
-      for (const g of groupRecords) {
-        const { records: reqs } = await BvGroupRequests.findAll({
-          filters: { group: g.id, status: 'Pending' },
-          limit: 100,
-          fields: ['id'],
-        });
-        pendingRequestCount += reqs.length;
-      }
-    }
+    const pendingRequestCount = pendingRequestsPromise ? await pendingRequestsPromise : 0;
 
     return { groups, pendingRequestCount, error: null };
   },
 });
+
+type AttendanceStats = { sessionDates: Set<string>; presentToday: number };
+
+/** Per-group distinct session dates (at most 2000 rows per group, as before)
+ * and today's present count (at most 200 per group, as before), read for all
+ * groups together. Rows are attributed by their stored group reference. */
+async function loadAttendanceStats(groupRecords: readonly any[], todayDate: string): Promise<Map<string, AttendanceStats>> {
+  const stats = new Map<string, AttendanceStats>();
+  // A reference normally names one group; a legacy record may reuse another
+  // group's reference, in which case the row counts for both, as before.
+  const groupsByRef = new Map<string, string[]>();
+  for (const group of groupRecords) {
+    const id = String(group.id);
+    stats.set(id, { sessionDates: new Set(), presentToday: 0 });
+    for (const ref of new Set([group.id, group.groupId].filter(Boolean).map(String))) {
+      groupsByRef.set(ref, [...(groupsByRef.get(ref) || []), id]);
+    }
+  }
+  const refs = [...groupsByRef.keys()];
+  if (refs.length === 0) return stats;
+  const batches = chunkValues(refs);
+  const groupsPerBatch = (batch: string[]) => new Set(batch.flatMap(ref => groupsByRef.get(ref) || [])).size;
+  const [sessionPages, todayPages] = await Promise.all([
+    Promise.all(batches.map(batch => BvAttendance.findAll({
+      filters: { group: batch.length > 1 ? { in: batch } : batch[0] } as any,
+      fields: ['group', 'attendanceDate'],
+      limit: 2000 * groupsPerBatch(batch),
+    }))),
+    Promise.all(batches.map(batch => BvAttendance.findAll({
+      filters: { group: batch.length > 1 ? { in: batch } : batch[0], attendanceDate: todayDate, present: true } as any,
+      fields: ['id', 'group'],
+      limit: 200 * groupsPerBatch(batch),
+    }))),
+  ]);
+  const rowCounts = new Map<string, number>();
+  for (const page of sessionPages) {
+    for (const row of page.records) {
+      for (const id of groupsByRef.get(firstStoredValue(row.group)) || []) {
+        const seen = (rowCounts.get(id) || 0) + 1;
+        rowCounts.set(id, seen);
+        if (seen > 2000) continue;
+        if (row.attendanceDate) stats.get(id)!.sessionDates.add(String(row.attendanceDate));
+      }
+    }
+  }
+  for (const page of todayPages) {
+    for (const row of page.records) {
+      for (const id of groupsByRef.get(firstStoredValue(row.group)) || []) {
+        const entry = stats.get(id);
+        if (entry && entry.presentToday < 200) entry.presentToday += 1;
+      }
+    }
+  }
+  return stats;
+}
+
+/** Pending join requests across all groups, at most 100 per group as before. */
+async function loadPendingRequestCount(groupRecords: readonly any[]): Promise<number> {
+  const groupIds = [...new Set(groupRecords.map(group => String(group.id || '')).filter(Boolean))];
+  if (groupIds.length === 0) return 0;
+  const pages = await Promise.all(chunkValues(groupIds).map(batch => BvGroupRequests.findAll({
+    filters: { group: batch.length > 1 ? { in: batch } : batch[0], status: 'Pending' } as any,
+    fields: ['id', 'group'],
+    limit: 100 * batch.length,
+  })));
+  const counts = new Map<string, number>();
+  for (const page of pages) {
+    for (const row of page.records) {
+      const id = firstStoredValue(row.group);
+      counts.set(id, Math.min(100, (counts.get(id) || 0) + 1));
+    }
+  }
+  let total = 0;
+  for (const id of groupIds) total += counts.get(id) || 0;
+  return total;
+}

@@ -126,6 +126,11 @@ function buildProfile(userObj: any): ProfileData {
 
 const MAX_RETRIES = 4;
 
+/** The one profile read whose response defines this session's authorization.
+ * Profile state drives authorization and one-time notices, so it always
+ * bypasses the short client cache: opening a page cannot reuse a stale role. */
+export const profileQueryInput = (email: string) => ({ email, _nocache: true as const });
+
 export default function UserProfileProvider({ children }: { children: React.ReactNode }) {
   const { user, isLoading: authLoading, logout } = useAuth();
 
@@ -212,9 +217,7 @@ export default function UserProfileProvider({ children }: { children: React.Reac
     }, timeoutMs);
 
     try {
-      // Profile state drives authorization and one-time notices. Always bypass
-      // the short client cache so opening a page cannot reuse a stale role.
-      const res = await read(() => getUserProfile({ email, _nocache: true }));
+      const res = await read(() => getUserProfile(profileQueryInput(email)));
       if (timedOut) return null;
       clearTimeout(timeoutId);
       let built: ProfileData = null;

@@ -18,6 +18,8 @@ async function resolveUserFromKeys(keys: string[]) {
 export default createEndpoint({
   description: 'Remove a member from a BV group',
   authenticated: true,
+  // Same gate as the other BV group management endpoints (transferBvGroupMember, getBvGroupDetail).
+  requiredCapabilities: 'bv.manage',
   inputSchema: z.object({
     membershipId: z.string().optional(),
     groupId: z.string().optional(),

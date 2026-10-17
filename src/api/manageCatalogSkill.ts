@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createEndpoint, SkillCatalog, AppError } from '@/lib/backend-sdk';
+import { assertCanManageServices } from '../lib/serviceManagementAccess';
 
 export default createEndpoint({
   description: 'Create, update, or deactivate a skill in the catalog',
@@ -11,7 +12,8 @@ export default createEndpoint({
     description: z.string().optional(),
   }),
   outputSchema: z.any(),
-  execute: async ({ input }) => {
+  execute: async ({ input, context }) => {
+    assertCanManageServices(context.user);
     // Map legacy action names
     const action = input.action === 'add' ? 'create' : input.action === 'remove' ? 'deactivate' : input.action;
 

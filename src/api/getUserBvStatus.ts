@@ -138,12 +138,20 @@ export default createEndpoint({
       const groups = availGroupsRes.records;
       const memberCountMap: Record<string, number> = {};
       if (groups.length > 0) {
-        await Promise.all(groups.map(async (g: any) => {
-          const { records: mems } = await BvGroupMembers.findAll({
-            filters: { group: g.id }, fields: ['id'], limit: 1000,
-          });
-          memberCountMap[g.id] = mems.length;
-        }));
+        // One membership read per 30 groups instead of one per group. Each
+        // group's count is still its own rows, capped at the former 1000.
+        const groupIds: string[] = groups.map((g: any) => g.id);
+        const chunks = Array.from({ length: Math.ceil(groupIds.length / 30) }, (_, index) => groupIds.slice(index * 30, index * 30 + 30));
+        const pages = await Promise.all(chunks.map(chunk => BvGroupMembers.findAll({
+          filters: { group: { in: chunk } }, fields: ['id', 'group'], limit: 1000 * chunk.length,
+        })));
+        for (const id of groupIds) memberCountMap[id] = 0;
+        for (const { records: mems } of pages) {
+          for (const member of mems) {
+            const groupId = String(member.group ?? '');
+            if (groupId in memberCountMap && memberCountMap[groupId] < 1000) memberCountMap[groupId] += 1;
+          }
+        }
       }
 
       const leaderIds = [...new Set(groups.flatMap((g: any) => textList(g.bvslLeader)))] as string[];

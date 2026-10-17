@@ -5,6 +5,8 @@ import { groupHasFacilitator } from '@/lib/bvGroupFacilitators';
 export default createEndpoint({
   description: 'Get pending BV group join requests for a specific BVSL or group',
   authenticated: true,
+  // Same gate as getPendingBvRegistrations, which lists the same applicants.
+  requiredCapabilities: 'bv.manage',
   inputSchema: z.object({
     groupId: z.string().optional(),
     bvslId: z.string().optional(),

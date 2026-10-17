@@ -60,15 +60,15 @@ export default createEndpoint({
     guideName: z.string(),
   }),
   execute: async ({ context }: any) => {
-    const currentUser = await Users.findOne({
-      id: context.user!.id,
-      fields: ['id', 'userId', 'fullName', 'guide', 'bvReportingAdminId', 'bvReportingAdminName', 'role', 'isBvAdmin', 'isBvSuperAdmin', 'segment', 'isPrabhupadaWorldUser'],
-    }) || (context.user?.email
-      ? await Users.findOne({
-          filters: { email: context.user.email },
-          fields: ['id', 'userId', 'fullName', 'guide', 'bvReportingAdminId', 'bvReportingAdminName', 'role', 'isBvAdmin', 'isBvSuperAdmin', 'segment', 'isPrabhupadaWorldUser'],
-        })
-      : null);
+    const callerFields = ['id', 'userId', 'fullName', 'guide', 'bvReportingAdminId', 'bvReportingAdminName', 'role', 'isBvAdmin', 'isBvSuperAdmin', 'segment', 'isPrabhupadaWorldUser'];
+    // The caller record and the FOLK Sadhana residency scope both depend only
+    // on the signed-in user, so they are read together.
+    const [currentUser, residencyMentorScope] = await Promise.all([
+      Users.findOne({ id: context.user!.id, fields: callerFields }).then(found => found || (context.user?.email
+        ? Users.findOne({ filters: { email: context.user.email }, fields: callerFields })
+        : null)),
+      getSadhanaMentorResidencyScope(context.user),
+    ]);
 
     const guideId = Array.isArray(currentUser?.guide)
       ? currentUser!.guide[0]
@@ -76,21 +76,20 @@ export default createEndpoint({
 
     const adminId = (currentUser as any)?.bvReportingAdminId || guideId || (currentUser as any)?.id;
 
-    const guideRecord = guideId
-      ? await Guides.findOne({ id: guideId, fields: ['id', 'fullName'] })
-      : null;
-    const isPw = currentUser?.segment === 'PW' || !!(currentUser as any)?.isPrabhupadaWorldUser;
-    const guideName = isPw ? 'Prabhupada World' : ((guideRecord as any)?.fullName || (currentUser as any)?.bvReportingAdminName || 'FOLK Guide');
-
-    const residencyMentorScope = await getSadhanaMentorResidencyScope(context.user);
     const memberQuery = {
       filters: { status: 'Active' },
       fields: ['status', 'role', 'isBvAdmin', 'isBvSuperAdmin', 'segment', 'isPrabhupadaWorldUser', 'id', 'userId', 'fullName', 'email', 'phone', 'ashrayLevel', 'residency', 'residencyApproved', 'residencyJoinDate', 'scholarSince', 'residentSince', 'currentStreak', 'lastStreakUpdatedAt', 'guide', 'bvReportingAdminId', 'sadhanaMentor', 'pwTargets', 'pwChantingTarget', 'pwReadingTarget'],
       limit: 1000,
     };
-    const { records: allUsers } = residencyMentorScope
-      ? await Users.findAll(memberQuery)
-      : await readScopedUsers(context.user, memberQuery);
+    // The guide label, the member rows, and the caller's hierarchy scope are
+    // independent of one another (the scope computation is memoized per request).
+    const [guideRecord, { records: allUsers }, hierarchy] = await Promise.all([
+      guideId ? Guides.findOne({ id: guideId, fields: ['id', 'fullName'] }) : Promise.resolve(null),
+      residencyMentorScope ? Users.findAll(memberQuery) : readScopedUsers(context.user, memberQuery),
+      residencyMentorScope ? Promise.resolve(null) : getScopedHierarchyUserIds(context.user),
+    ]);
+    const isPw = currentUser?.segment === 'PW' || !!(currentUser as any)?.isPrabhupadaWorldUser;
+    const guideName = isPw ? 'Prabhupada World' : ((guideRecord as any)?.fullName || (currentUser as any)?.bvReportingAdminName || 'FOLK Guide');
 
     // Filter users under this Admin (or all users if Super Admin / Admin)
     const isSuperOrAdmin = !!(currentUser?.isBvSuperAdmin || currentUser?.isBvAdmin || (currentUser?.role || '').toUpperCase().includes('ADMIN'));
@@ -99,7 +98,6 @@ export default createEndpoint({
     const currentUid = String(currentUser?.userId || '').toLowerCase();
     const currentEmail = String(context.user?.email || '').toLowerCase();
 
-    const hierarchy = residencyMentorScope ? null : await getScopedHierarchyUserIds(context.user);
     const users = allUsers.filter((u: any) => {
       if (residencyMentorScope) return !residencyMentorScope.isSelf(u) && residencyMentorScope.includes(u);
       if (!isUserInHierarchy(u, hierarchy)) return false;
@@ -156,23 +154,22 @@ export default createEndpoint({
       users.map(u => Array.isArray(u.residency) ? u.residency[0] : u.residency).filter(Boolean) as string[]
     )];
     const residencyNameMap: Record<string, string> = {};
-    if (residencyIds.length > 0) {
-      const recs = await Promise.all(
-        residencyIds.map(id => FolkResidencies.findOne({ id, fields: ['id', 'residencyName'] }))
-      );
-      recs.forEach(r => { if (r && r.id) residencyNameMap[r.id] = (r as any).residencyName || ''; });
-    }
 
     // 100 days: enough for streak calculation (consecutive days) + performanceStatus (last 10 entries)
     const todayStr = getTodayIST();
     const cutoffStr = daysAgo(todayStr, 100);
 
-    const entries = await readEntriesForOwners(
-      query => SadhanaEntries.findAll(query),
-      users.map(user => user.id).filter(Boolean),
-      { entryDate: { gte: cutoffStr } },
-      ['id', 'user', 'entryDate', 'scorePercent', 'submittedAt'],
-    );
+    // Residency labels and the entry history are independent reads.
+    const [residencyRecords, entries] = await Promise.all([
+      Promise.all(residencyIds.map(id => FolkResidencies.findOne({ id, fields: ['id', 'residencyName'] }))),
+      readEntriesForOwners(
+        query => SadhanaEntries.findAll(query),
+        users.map(user => user.id).filter(Boolean),
+        { entryDate: { gte: cutoffStr } },
+        ['id', 'user', 'entryDate', 'scorePercent', 'submittedAt'],
+      ),
+    ]);
+    residencyRecords.forEach(r => { if (r && r.id) residencyNameMap[r.id] = (r as any).residencyName || ''; });
 
     const entriesByUser = new Map<string, { entryDate: string; scorePercent: number | null; submittedAt: string }[]>();
     for (const e of entries) {

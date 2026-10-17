@@ -4,6 +4,8 @@ import { createEndpoint, BvGroups, BvGroupMembers, Users, AppError } from '@/lib
 export default createEndpoint({
   description: 'Add a member to a BV group',
   authenticated: true,
+  // Same gate as the other BV group management endpoints (transferBvGroupMember, getBvGroupDetail).
+  requiredCapabilities: 'bv.manage',
   inputSchema: z.object({
     groupId: z.string(),
     userId: z.string(),

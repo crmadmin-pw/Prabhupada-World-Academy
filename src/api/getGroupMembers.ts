@@ -18,6 +18,8 @@ function firstValue(value: unknown): string {
 export default createEndpoint({
   description: 'Get members of a specific BV group with user details',
   authenticated: true,
+  // Same gate as getBvGroupDetail / getBvslMembers, which expose the same member data.
+  requiredCapabilities: 'bv.manage',
   inputSchema: z.object({ groupDbId: z.string() }),
   outputSchema: z.any(),
   execute: async ({ input }: any) => {

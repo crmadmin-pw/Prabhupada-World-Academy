@@ -274,6 +274,51 @@ test('approving a member drops the cached directory so the next read cannot reus
   assert.equal(sdk.getEndpointCacheSnapshot('getGuideUsers', { guideId: 'ALL', statusFilter: 'all' }).data.users[0].fullName, 'New Devotee');
 });
 
+test('the profile read that produced a new authority scope is carried across with its realtime registration', async () => {
+  const { sdk, pending, flush, reply, load } = setup();
+  const { dashboardScope } = load('dashboardScope');
+  const events = [];
+  globalThis.window = { dispatchEvent: event => { events.push(event); return true; } };
+  try {
+    const email = 'member@example.com';
+    sdk.setEndpointPermissionScope(dashboardScope(null, 'AdminA'));
+    const profileRead = sdk.queryEndpoint('getUserProfile', { email, _nocache: true });
+    const meetings = sdk.queryEndpoint('getMeetings', { department: 'PW' });
+    await flush();
+    reply(0, { user: { userId: 'user-1', role: 'ADMIN', status: 'Active' } }, 200, { 'X-Realtime-Token': 'profile-token', 'X-Realtime-Version': '0005' });
+    reply(1, { meetings: [] }, 200, { 'X-Realtime-Token': 'meetings-token', 'X-Realtime-Version': '0005' });
+    await Promise.all([profileRead, meetings]);
+    const previousKey = sdk.queryCacheKey('getUserProfile', { email, _nocache: true });
+    assert.deepEqual(sdk.getEndpointRealtimeTokens(), ['meetings-token', 'profile-token']);
+
+    events.length = 0;
+    sdk.setEndpointPermissionScope(dashboardScope({ userId: 'user-1', role: 'ADMIN', status: 'Active', email }, 'AdminA'), [previousKey]);
+    const nextKey = sdk.queryCacheKey('getUserProfile', { email });
+    assert.notEqual(nextKey, previousKey);
+    assert.equal(sdk.getEndpointCacheSnapshot('getMeetings', { department: 'PW' }), undefined, 'other reads are re-authorized under the new scope');
+    assert.equal(sdk.getEndpointCacheSnapshot('getUserProfile', { email }).data.user.role, 'ADMIN');
+    assert.equal(sdk.isEndpointQueryFresh('getUserProfile', { email }), true);
+    assert.deepEqual(sdk.getEndpointRealtimeTokens(), ['profile-token'], 'the profile keeps its realtime subscription');
+    assert.deepEqual(sdk.getRealtimeEndpointNames(['profile-token']), ['getUserProfile']);
+    assert.equal(events.length, 1);
+    assert.equal(events[0].detail.identityChanged, true);
+    assert.deepEqual(events[0].detail.retained, { [previousKey]: nextKey });
+
+    // A later profile revision still reaches the carried-over key.
+    events.length = 0;
+    sdk.receiveEndpointRevision('profile-token', '0009');
+    assert.deepEqual(events[0].detail.keys, [nextKey]);
+    assert.equal(sdk.isEndpointQueryFresh('getUserProfile', { email }), false);
+
+    // A different signed-in user carries nothing across.
+    sdk.setEndpointPermissionScope(dashboardScope({ userId: 'user-2', role: 'USER', status: 'Active' }, 'AdminB'));
+    assert.deepEqual(sdk.getEndpointRealtimeTokens(), []);
+    assert.equal(sdk.getEndpointCacheSnapshot('getUserProfile', { email }), undefined);
+  } finally {
+    delete globalThis.window;
+  }
+});
+
 test('an evicted in-flight request cannot overwrite the same query after re-registration', async () => {
   const { sdk, pending, flush, reply } = setup();
   const old = sdk.queryEndpoint('getMeetings', { page: 'evicted' });

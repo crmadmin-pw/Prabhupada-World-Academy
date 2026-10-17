@@ -5,6 +5,8 @@ import { joinFacilitatorNames, textList } from '@/lib/bvGroupFacilitators';
 export default createEndpoint({
   description: 'Get BV attendance matrix table — members and attendance dates, scoped to a guide',
   authenticated: true,
+  // Same gate as getBvAttendanceMatrix, which serves the same attendance data.
+  requiredCapabilities: 'bv.manage',
   inputSchema: z.object({
     guideId: z.string().optional(),
     startDate: z.string().optional(),

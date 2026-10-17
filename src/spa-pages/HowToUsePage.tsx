@@ -10,7 +10,7 @@ import {
   UserCheck, TreePine, Shield
 } from 'lucide-react';
 
-const PWA_LOGO = '/logo.png';
+const PWA_LOGO = '/logo-mark.webp';
 
 function Step({ num, title, desc }: { num: number; title: string; desc: string }) {
   return (
@@ -179,7 +179,7 @@ export default function HowToUsePage() {
             <ArrowLeft className="w-4 h-4" /> Back
           </Button>
           <div className="flex items-center gap-2">
-            <img src={PWA_LOGO} alt="PWA" className="w-7 h-7 object-contain" />
+            <img src={PWA_LOGO} alt="Prabhupada World Academy" width={28} height={28} className="w-7 h-7 object-contain" />
             <span className="font-semibold text-foreground text-sm">How to Use the App</span>
           </div>
         </div>

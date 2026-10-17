@@ -11,9 +11,10 @@ export default createEndpoint({
     const todayStr = getTodayIST();
     const uid = context.user!.id;
 
-    // Only check this user's allocations up to today
+    // Only check this user's allocations up to today. `weekDate` is a
+    // YYYY-MM-DD string, so the bound must be a string too.
     const res = await ServiceAllocations.findAll({
-      filters: { user: uid, status: 'Scheduled', weekDate: { lt: new Date(todayStr) } },
+      filters: { user: uid, status: 'Scheduled', weekDate: { lt: todayStr } as any },
       limit: 50,
       fields: ['id', 'status', 'weekDate', 'dayOfWeek'],
     });

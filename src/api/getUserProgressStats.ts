@@ -435,28 +435,26 @@ export default createEndpoint({
 
     const entryOwnerIds = userIdentityAliases(targetUser);
     if (entryOwnerIds.length === 0 && targetUserId) entryOwnerIds.push(targetUserId);
-    const entryOwnerSet = new Set(entryOwnerIds.map(String));
     const loadEntries = async (filters: Record<string, unknown>, limit = 500) => {
-      // A user equality plus entryDate range requires a composite Firestore
-      // index. Query the indexed date field first and resolve canonical user
-      // aliases in memory, just like the aggregate Stats endpoint does.
+      // user + entryDate is an existing composite index. Read this member's
+      // rows for the requested dates. A date-only scan used to pull every
+      // member's entries and discard them. Entries store user as a string id.
       if (filters.entryDate !== undefined) {
-        const records: any[] = [];
-        const pageSize = 2000;
-        for (let offset = 0; ; offset += pageSize) {
-          const result = await SadhanaEntries.findAll({
-            filters: { entryDate: filters.entryDate } as any,
-            fields: ENTRY_FIELDS,
-            limit: pageSize,
-            offset,
-          });
-          records.push(...result.records);
-          if (!result.hasMore) break;
-        }
-        return dedupeEntries([{ records: records.filter(entry => {
-          const owner = String(Array.isArray(entry.user) ? entry.user[0] : entry.user || '').trim();
-          return entryOwnerSet.has(owner);
-        }) }]);
+        const pages = await Promise.all(entryOwnerIds.map(async user => {
+          const records: any[] = [];
+          for (let offset = 0; ; offset += 500) {
+            const result = await SadhanaEntries.findAll({
+              filters: { user, entryDate: filters.entryDate } as any,
+              fields: ENTRY_FIELDS,
+              limit: 500,
+              offset,
+            });
+            records.push(...result.records);
+            if (!result.hasMore || records.length > 5000) break;
+          }
+          return { records };
+        }));
+        return dedupeEntries(pages);
       }
       const results = await Promise.all(entryOwnerIds.map(user => SadhanaEntries.findAll({
         filters: { ...filters, user } as any,
@@ -506,8 +504,18 @@ export default createEndpoint({
       days = Math.max(1, Math.floor((rangeEnd - rangeStart) / 86400000) + 1);
     }
 
-    const trendEntries = await loadEntries({ entryDate: { gte: startDate, lte: endDate } });
-    const attendanceByDate = await loadAttendanceByDate();
+    // The trend range, attendance, and the insight window do not depend on each
+    // other. Start all of them before the first result is needed.
+    const insightYesterday = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+    insightYesterday.setDate(insightYesterday.getDate() - 1);
+    const insightYesterdayStr = insightYesterday.toISOString().split('T')[0];
+    const [trendEntries, attendanceByDate, prefetchedInsightEntries] = await Promise.all([
+      loadEntries({ entryDate: { gte: startDate, lte: endDate } }),
+      loadAttendanceByDate(),
+      insightMode
+        ? (period === 'daily' ? loadEntries({ entryDate: insightYesterdayStr }, 1) : loadEntries({}, 200))
+        : Promise.resolve(null as any[] | null),
+    ]);
 
     const trendSorted = [...trendEntries].sort((a, b) =>
       (a.entryDate as string).localeCompare(b.entryDate as string)
@@ -610,13 +618,11 @@ export default createEndpoint({
 
     if (insightMode) {
       // Use IST (UTC+5:30) — all users are in India, server runs UTC
-      const yesterdayIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
-      yesterdayIST.setDate(yesterdayIST.getDate() - 1);
-      const yesterdayStr = yesterdayIST.toISOString().split('T')[0];
+      const yesterdayStr = insightYesterdayStr;
 
       if (period === 'daily') {
         // Yesterday's entry specifically
-        const yEntries = await loadEntries({ entryDate: yesterdayStr }, 1);
+        const yEntries = prefetchedInsightEntries || [];
         insightEntries = yEntries;
         noEntry = yEntries.length === 0;
         insightPeriodLabel = 'yesterday';
@@ -625,7 +631,7 @@ export default createEndpoint({
         // Last N entries by count (not date range)
         const n = period === 'weekly' ? 7 : 30;
         insightPeriodLabel = period === 'weekly' ? 'your last 7 entries' : 'your last 30 entries';
-        const recentEntries = await loadEntries({}, 200);
+        const recentEntries = prefetchedInsightEntries || [];
         // Sort desc by entryDate, take top N
         insightEntries = [...recentEntries]
           .sort((a, b) => (b.entryDate as string).localeCompare(a.entryDate as string))

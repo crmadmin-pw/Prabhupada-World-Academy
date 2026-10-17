@@ -66,12 +66,22 @@ export default createEndpoint({
     }
 
     const callerFields = ['id', 'userId', 'email', 'fullName', 'segment', 'isPrabhupadaWorldUser', 'isBvFacilitator', 'isBvsl', 'bvGroupId', 'bvGroupName', 'bvSupervisedGroupIds'];
-    const storedCaller = await Users.findOne({ id: context.user.id, fields: callerFields })
+    const readStoredCaller = async () => await Users.findOne({ id: context.user.id, fields: callerFields })
       || (context.user.userId ? (await Users.findAll({ filters: { userId: context.user.userId }, fields: callerFields, limit: 1 })).records[0] : null)
       || (context.user.email ? (await Users.findAll({ filters: { email: context.user.email }, fields: callerFields, limit: 5 })).records
         .find((row: any) => normalizedRefs(row.email).includes(String(context.user.email).toLowerCase())) : null);
+    // The caller record, the hierarchy scope, and the three catalogue reads do
+    // not depend on one another; they are issued together.
+    const [storedCaller, scopedUserIds, { records: rawGroups }, { records: rawMembers }, { records: rawPending }] = await Promise.all([
+      readStoredCaller(),
+      getScopedHierarchyUserIds(context.user),
+      // Groups without an isActive flag are still running. A Firestore equality
+      // filter on true would hide them from the supervisor who facilitates them.
+      BvGroups.findAll({ limit: 1000 }),
+      BvGroupMembers.findAll({ limit: 2000 }),
+      BvMemberRegistrations.findAll({ filters: { status: 'Pending Approval' }, limit: 500 }),
+    ]);
     const caller = { ...context.user, ...storedCaller };
-    const scopedUserIds = await getScopedHierarchyUserIds(context.user);
     const userSegment = supervisorDepartment(caller);
     const callerAliases = new Set(normalizedRefs([
       caller.id, caller.userId, caller.uid, caller.email, caller.fullName,
@@ -79,9 +89,6 @@ export default createEndpoint({
     const callerIsRgf = !!(caller.isBvFacilitator || caller.isBvsl);
     const assignedGroupRefs = new Set(normalizedRefs(caller.bvGroupId));
 
-    // Groups without an isActive flag are still running. A Firestore equality
-    // filter on true would hide them from the supervisor who facilitates them.
-    const { records: rawGroups } = await BvGroups.findAll({ limit: 1000 });
     // A supervisor sees the groups an admin assigned. Until that selection is
     // saved, they still see groups led by RGFs who report to them. A group
     // they only facilitate is not one of those groups.
@@ -108,7 +115,6 @@ export default createEndpoint({
       return normalizedRefs(g.guide).some(guide => scopedUserIds.has(guide));
     });
 
-    const { records: rawMembers } = await BvGroupMembers.findAll({ limit: 2000 });
     const groupByAlias = new Map<string, any>();
     groups.forEach((group: any) => {
       normalizedRefs([group.id, group.groupId]).forEach(alias => groupByAlias.set(alias, group));
@@ -126,7 +132,6 @@ export default createEndpoint({
     });
     const members = [...membershipsByGroup.values()].flatMap(groupMembers => [...groupMembers.values()]);
 
-    const { records: rawPending } = await BvMemberRegistrations.findAll({ filters: { status: 'Pending Approval' }, limit: 500 });
     const pending = scopedUserIds === null
       ? rawPending
       : rawPending.filter((p: any) => {
@@ -144,13 +149,11 @@ export default createEndpoint({
     ));
 
     const today = getTodayIST();
-    const mappedGroups = await Promise.all(groups.map(async (g: any) => {
-      const groupRefs = [...new Set([g.id, g.groupId].filter(Boolean))];
-      const { records: attendance } = await BvAttendance.findAll({
-        filters: { group: groupRefs.length > 1 ? { in: groupRefs } : groupRefs[0] } as any,
-        fields: ['id', 'attendanceDate', 'present'],
-        limit: 5000,
-      });
+    // One attendance read covers every visible group (30 references per query,
+    // 5000 rows reserved per group, the same cap as the former per-group read).
+    const attendanceByGroup = await loadGroupAttendance(groups);
+    const mappedGroups = groups.map((g: any) => {
+      const attendance = attendanceByGroup.get(String(g.id || g.groupId)) || [];
       const sessionDates = new Set(attendance.map((entry: any) => String(entry.attendanceDate || '').slice(0, 10)).filter(Boolean));
       const groupKey = String(g.id || g.groupId);
 
@@ -172,7 +175,7 @@ export default createEndpoint({
         segment: g.segment || userSegment,
         isActive: g.isActive ?? true,
       };
-    }));
+    });
 
     return {
       rgfCount: uniqueRgfs.size,
@@ -183,3 +186,53 @@ export default createEndpoint({
     };
   },
 });
+
+const ATTENDANCE_PER_GROUP = 5000;
+const FIRESTORE_IN_LIMIT = 30;
+
+function chunkValues<T>(values: readonly T[], size = FIRESTORE_IN_LIMIT): T[][] {
+  const batches: T[][] = [];
+  for (let index = 0; index < values.length; index += size) batches.push(values.slice(index, index + size));
+  return batches;
+}
+
+function storedGroupRef(value: unknown): string {
+  return String(Array.isArray(value) ? value[0] || '' : value || '');
+}
+
+/** Attendance for every group, attributed by the stored group reference.
+ * A reference shared by two groups counts for both, and each group keeps at
+ * most the 5000 rows its own query used to return. */
+async function loadGroupAttendance(groups: readonly any[]): Promise<Map<string, any[]>> {
+  const rowsByGroup = new Map<string, any[]>();
+  const groupsByRef = new Map<string, string[]>();
+  for (const group of groups) {
+    const key = String(group.id || group.groupId);
+    rowsByGroup.set(key, []);
+    for (const ref of new Set([group.id, group.groupId].filter(Boolean).map((value: unknown) => String(value)))) {
+      const owners = groupsByRef.get(ref) || [];
+      if (!owners.includes(key)) owners.push(key);
+      groupsByRef.set(ref, owners);
+    }
+  }
+  const refs = [...groupsByRef.keys()];
+  if (refs.length === 0) return rowsByGroup;
+  const batches = chunkValues(refs);
+  const pages = await Promise.all(batches.map(batch => {
+    const groupsInBatch = new Set(batch.flatMap(ref => groupsByRef.get(ref) || [])).size;
+    return BvAttendance.findAll({
+      filters: { group: batch.length > 1 ? { in: batch } : batch[0] } as any,
+      fields: ['id', 'group', 'attendanceDate', 'present'],
+      limit: ATTENDANCE_PER_GROUP * groupsInBatch,
+    });
+  }));
+  for (const page of pages) {
+    for (const row of page.records || []) {
+      for (const key of groupsByRef.get(storedGroupRef(row.group)) || []) {
+        const rows = rowsByGroup.get(key);
+        if (rows && rows.length < ATTENDANCE_PER_GROUP) rows.push(row);
+      }
+    }
+  }
+  return rowsByGroup;
+}

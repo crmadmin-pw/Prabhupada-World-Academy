@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { createEndpoint, BvslPreachingEntries, Users } from '@/lib/backend-sdk';
+import { AppError, createEndpoint, BvslPreachingEntries, Users } from '@/lib/backend-sdk';
+import { getScopedHierarchyUserIds, HIERARCHY_IDENTITY_FIELDS, isUserInHierarchy } from '@/lib/hierarchyUtils';
 import { getTodayIST } from '../lib/streakUtils';
 
 export default createEndpoint({
@@ -17,8 +18,18 @@ export default createEndpoint({
     // Resolve DB user id
     let userDbId = context.user.id;
     if (input.userId && input.userId !== context.user.id && input.userId !== context.user.userId) {
-      const userRecord = await Users.findOne({ filters: { userId: input.userId }, fields: ['id'] });
-      if (userRecord) userDbId = userRecord.id;
+      const fields = [...HIERARCHY_IDENTITY_FIELDS];
+      const userRecord = await Users.findOne({ filters: { userId: input.userId }, fields })
+        || await Users.findOne({ id: input.userId, fields });
+      if (userRecord) {
+        // Same rule as the profile's CRM data and the sadhana entry detail:
+        // another member's entry is visible only inside the caller's hierarchy.
+        if (userRecord.id !== context.user.id
+          && !isUserInHierarchy(userRecord, await getScopedHierarchyUserIds(context.user))) {
+          throw new AppError({ code: 'FORBIDDEN', message: 'This user is not assigned to your hierarchy' });
+        }
+        userDbId = userRecord.id;
+      }
     }
 
     const entry = await BvslPreachingEntries.findOne({

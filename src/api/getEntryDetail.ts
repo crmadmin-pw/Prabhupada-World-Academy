@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { createEndpoint, SadhanaEntries, Users } from '@/lib/backend-sdk';
+import { AppError, createEndpoint, SadhanaEntries, Users } from '@/lib/backend-sdk';
+import { getScopedHierarchyUserIds, HIERARCHY_IDENTITY_FIELDS, isUserInHierarchy } from '@/lib/hierarchyUtils';
 import { NON_RESIDENT_FIELDS, RESIDENT_FIELDS } from '../config/sadhanaFields';
 import { isPwSadhanaUser, PW_SADHANA_FORM_KEYS } from '@/lib/sadhanaDepartment';
 import { formatPwProgress, pwDetailRows, pwScoreFromFieldValues, pwTarget } from '@/lib/pwSadhana';
@@ -89,14 +90,30 @@ export default createEndpoint({
     entryDate: z.string().optional(),
   }),
   outputSchema: z.any(),
-  execute: async ({ input }: { input: any }) => {
+  execute: async ({ input, context }: { input: any; context: any }) => {
+    if (!context.user) throw new Error('Unauthorized');
     let entry: any;
+    const ownerFields = [...HIERARCHY_IDENTITY_FIELDS, 'segment', 'isPrabhupadaWorldUser'];
+    // Same rule as the profile's CRM data: a member sees their own entry, and
+    // guides, mentors and BV leaders see the members in their hierarchy.
+    const callerKeys = new Set([context.user.id, context.user.userId, context.user.uid].filter(Boolean).map(String));
+    const assertCanView = async (owner: any, ownerId: string) => {
+      const isOwn = [owner?.id, owner?.userId, ownerId].some(value => value && callerKeys.has(String(value)));
+      if (isOwn) return;
+      if (!isUserInHierarchy(owner || { id: ownerId }, await getScopedHierarchyUserIds(context.user))) {
+        throw new AppError({ code: 'FORBIDDEN', message: 'This user is not assigned to your hierarchy' });
+      }
+    };
 
+    let owner: any = null;
     if (input.entryId) {
       entry = await SadhanaEntries.findOne({ filters: { entryId: input.entryId } });
     } else if (input.userId && input.entryDate) {
-      const userRecord = await Users.findOne({ filters: { userId: input.userId }, fields: ['id'] });
+      const userRecord = await Users.findOne({ filters: { userId: input.userId }, fields: ownerFields })
+        || await Users.findOne({ id: input.userId, fields: ownerFields });
       if (userRecord) {
+        await assertCanView(userRecord, userRecord.id);
+        owner = userRecord;
         entry = await SadhanaEntries.findOne({
           filters: { user: userRecord.id, entryDate: input.entryDate },
         });
@@ -106,11 +123,14 @@ export default createEndpoint({
     if (!entry) return { found: false, entry: null };
 
     const ownerId = String(Array.isArray(entry.user) ? entry.user[0] : entry.user || '');
-    const ownerFields = ['segment', 'isPrabhupadaWorldUser'];
-    const owner = ownerId ? (
-      await Users.findOne({ id: ownerId, fields: ownerFields }) ||
-      await Users.findOne({ filters: { userId: ownerId }, fields: ownerFields })
-    ) : null;
+    if (!owner) {
+      // Looked up by entryId: the owner is only known once the entry is loaded.
+      owner = ownerId ? (
+        await Users.findOne({ id: ownerId, fields: ownerFields }) ||
+        await Users.findOne({ filters: { userId: ownerId }, fields: ownerFields })
+      ) : null;
+      await assertCanView(owner, ownerId);
+    }
     const isPw = isPwSadhanaUser(owner);
 
     // Parse stored field values

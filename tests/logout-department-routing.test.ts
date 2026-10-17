@@ -1,7 +1,18 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getDepartmentLandingPath, getUserDepartment } from '../src/lib/userDashboardRoutes';
-import { authCallbackPath, isPwRegistrationFlow, registrationPath } from '../src/lib/registrationDepartment';
+import { authCallbackPath, isPwRegistrationFlow, registrationPath, sameOriginRedirect } from '../src/lib/registrationDepartment';
+
+test('the post-login redirect only ever stays on this site', () => {
+  const origin = 'https://app.example';
+  const fallback = `${origin}/auth-callback?flow=folk`;
+  assert.equal(sameOriginRedirect(null, fallback, origin), fallback);
+  assert.equal(sameOriginRedirect(`${origin}/bvsl/dashboard`, fallback, origin), `${origin}/bvsl/dashboard`);
+  assert.equal(sameOriginRedirect('/guide-login', fallback, origin), `${origin}/guide-login`);
+  for (const hostile of ['https://elsewhere.example/login', '//elsewhere.example/x', 'javascript:alert(1)', 'http://app.example/', 'https://app.example.evil/']) {
+    assert.equal(sameOriginRedirect(hostile, fallback, origin), fallback, hostile);
+  }
+});
 
 test('logout destinations follow the user department', () => {
   assert.equal(getUserDepartment({ segment: 'FOLK' }), 'FOLK');

@@ -9,6 +9,31 @@
       ]
     },
     {
+      "collectionGroup": "ServiceAllocations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "user", "order": "ASCENDING" },
+        { "fieldPath": "weekDate", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "ServiceAllocations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "user", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "weekDate", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "CleanlinessInspections",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "room", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "BvslPreachingEntries",
       "queryScope": "COLLECTION",
       "fields": [

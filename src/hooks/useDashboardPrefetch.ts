@@ -23,7 +23,9 @@ function plan({ segment, isSuperAdmin, guideId }: Options): Query[] {
     { tab: 'missing-sadhana', name: 'getMissingSadhanaReport', input: { startDate: date(startOfISOWeek(previousWeek)), endDate: date(endOfISOWeek(previousWeek)), segment } },
     // Directories/group management can include many records and history. Load
     // them on navigation intent, never as an unconditional login download.
-    { tab: 'users', name: 'getGuideUsers', input: { guideId: 'ALL', statusFilter: 'all' }, intentOnly: true },
+    // Must match SuperUsersPanel's directory read exactly, including the PW
+    // segment, or the intent prefetch is a wasted copy of the heaviest query.
+    { tab: 'users', name: 'getGuideUsers', input: { guideId: 'ALL', statusFilter: 'all', ...(segment === 'PW' ? { segment } : {}) }, intentOnly: true },
     { tab: 'bhakti-vriksha', name: isSuperAdmin ? 'getBvslGroups' : 'getAllBvGroupsAdmin', input: isSuperAdmin ? { bvslId: 'ALL' } : { guideId }, intentOnly: true },
   ];
 }

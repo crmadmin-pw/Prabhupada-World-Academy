@@ -5,7 +5,7 @@ import { useUserProfile } from '@/contexts/UserProfileContext';
 import { AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
-import { authCallbackPath, registrationPath, rememberRegistrationDepartment } from '@/lib/registrationDepartment';
+import { authCallbackPath, registrationPath, rememberRegistrationDepartment, sameOriginRedirect } from '@/lib/registrationDepartment';
 
 export default function LoginPage({ mode = 'signin', isPw = false }: { mode?: 'signin' | 'signup', isPw?: boolean }) {
   const navigate = useNavigate();
@@ -38,8 +38,12 @@ export default function LoginPage({ mode = 'signin', isPw = false }: { mode?: 's
     }
   }, [user, profile, navigate, department]);
 
-  // Get the redirectUrl from query parameters, default to /auth-callback
-  const redirectUrl = searchParams.get('redirectUrl') || `${window.location.origin}${authCallbackPath(department)}`;
+  // Get the redirectUrl from query parameters (same-origin only), default to /auth-callback
+  const redirectUrl = sameOriginRedirect(
+    searchParams.get('redirectUrl'),
+    `${window.location.origin}${authCallbackPath(department)}`,
+    window.location.origin,
+  );
 
   return (
     <div className="min-h-dvh w-full bg-[#fefdfa] flex items-center justify-center p-4">

@@ -16,8 +16,17 @@ export default createEndpoint({
     const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
     const endMonth = month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, '0')}-01`;
 
+    // `weekDate` is stored as a YYYY-MM-DD string (the week's Sunday), so the
+    // range must compare strings; a Date bound never matches a string field.
+    // The week containing the 1st can start in the previous month, so the
+    // lower bound reaches back six days; the per-day filter below keeps only
+    // dates inside the requested month.
+    const firstWeekStart = new Date(startDate + 'T00:00:00');
+    firstWeekStart.setDate(firstWeekStart.getDate() - 6);
+    const weekDateFrom = firstWeekStart.toISOString().split('T')[0];
+
     const allocRes = await ServiceAllocations.findAll({
-      filters: { user: uid, weekDate: { gte: new Date(startDate), lt: new Date(endMonth) } },
+      filters: { user: uid, weekDate: { gte: weekDateFrom, lt: endMonth } as any },
       limit: 200,
       fields: ['id', 'allocationId', 'service', 'dayOfWeek', 'weekDate', 'status'],
     });

@@ -44,10 +44,6 @@ export default createEndpoint({
     // valid only after the registration flow has assigned both fields.
     if (!userRecord?.userId || !userRecord?.status) return { user: null };
 
-    // A real BvGroupMembers row is the authoritative BV membership record.
-    // Profile flags are derived/cache fields and may be stale immediately after
-    // approval or on older records; they must never hide Attendance from a
-    // member whose Reading Group page is already active.
     const userIdentities = [...new Set([
       context.user.id,
       context.user.userId,
@@ -56,110 +52,23 @@ export default createEndpoint({
       userRecord.userId,
       userRecord.email,
     ].filter(Boolean).map(String))];
-    const [byUser, byUserId] = await Promise.all([
-      BvGroupMembers.findAll({
-        filters: { user: { in: userIdentities } },
-        fields: ['id', 'group', 'groupId', 'user', 'userId'],
-        limit: 5,
-      }),
-      BvGroupMembers.findAll({
-        filters: { userId: { in: userIdentities } },
-        fields: ['id', 'group', 'groupId', 'user', 'userId'],
-        limit: 5,
-      }),
-    ]);
-    let rawMembership = byUser.records[0] || byUserId.records[0];
-    if (!rawMembership) {
-      const membershipKeys = new Set(userIdentities.map(value => value.toLowerCase()));
-      const { records: allMemberships } = await BvGroupMembers.findAll({
-        fields: ['id', 'group', 'groupId', 'user', 'userId', 'memberId'],
-        limit: 5000,
-      });
-      rawMembership = allMemberships.find((membership: any) => [
-        membership.user,
-        membership.userId,
-        membership.memberId,
-      ].flatMap(value => Array.isArray(value) ? value : [value])
-        .filter(Boolean)
-        .some(value => membershipKeys.has(String(value).trim().toLowerCase())));
-    }
-    const membership = rawMembership;
-    const hasBvMembership = !!membership;
-    const groupId = membership
-      ? (Array.isArray(membership.group) ? membership.group[0] : (membership.group || membership.groupId || ''))
-      : '';
-    const needsMembershipSync = hasBvMembership
-      ? (!userRecord.isBvMember || userRecord.bvRegistrationStatus !== 'Approved' || (groupId && userRecord.bvGroupId !== groupId))
-      : (!!userRecord.isBvMember || !!userRecord.bvGroupId || !!userRecord.bvGroupName);
-    // A group assigned moments ago can be missing from the indexed membership
-    // lookup. Keep that assignment and its one-time notice until the member
-    // acknowledges it, instead of clearing the group on this read.
-    const preservePendingAssignment = !hasBvMembership && !!userRecord.pendingBvGroupAssignmentNotice;
-
-    if (!isAccountDeleted(userRecord.status) && !preservePendingAssignment && needsMembershipSync) {
-      const membershipFields = hasBvMembership
-        ? {
-            isBvMember: true,
-            bvRegistrationStatus: 'Approved',
-            ...(groupId ? { bvGroupId: groupId } : {}),
-          }
-        : {
-            isBvMember: false,
-            bvGroupId: '',
-            bvGroupName: '',
-            ...(userRecord.pendingBvApprovalNotice ? { pendingBvApprovalNotice: false } : {}),
-          };
-      await Users.update({ id: userRecord.id, record: membershipFields });
-      userRecord = { ...userRecord, ...membershipFields };
-    }
-
     const rawGuideId = Array.isArray(userRecord.guide) ? userRecord.guide[0] : userRecord.guide;
     const residencyId = Array.isArray(userRecord.residency) ? userRecord.residency[0] : userRecord.residency;
 
-    let guideRecord: any = undefined;
-    let guideId: string | null = null;
-
-    if (rawGuideId) {
-      // Try by document ID first
-      guideRecord = await Guides.findOne({ id: rawGuideId, fields: GUIDE_FIELDS });
-      if (!guideRecord) {
-        // Fallback: try search by fullName
-        guideRecord = await Guides.findOne({
-          filters: { fullName: rawGuideId },
-          fields: GUIDE_FIELDS,
-        });
-        if (!guideRecord) {
-          // Fallback: try search by email
-          guideRecord = await Guides.findOne({
-            filters: { email: rawGuideId },
-            fields: GUIDE_FIELDS,
-          });
-        }
-      }
-      if (guideRecord) {
-        guideId = guideRecord.id;
-      } else {
-        guideId = rawGuideId;
-        // Fallback: Resolve guide name from Users collection if not found in Guides
-        const userGuideRecord = await Users.findOne({ id: rawGuideId }) ||
-                           await Users.findOne({ filters: { userId: rawGuideId } }) ||
-                           await Users.findOne({ filters: { email: rawGuideId } }) ||
-                           await Users.findOne({ filters: { email: rawGuideId.toLowerCase() } });
-        if (userGuideRecord) {
-          guideRecord = {
-            id: userGuideRecord.id,
-            fullName: userGuideRecord.fullName || userGuideRecord.email,
-            email: userGuideRecord.email,
-          };
-        }
-      }
-    }
-
-    const [residencyRecord] = await Promise.all([
+    // The membership reconciliation, guide/residency labels and request history
+    // depend only on the record read above, so they share one round trip.
+    // Each branch keeps its original lookup order and fallbacks.
+    const [membershipSync, guideResolution, residencyRecord, requestState] = await Promise.all([
+      syncBvMembership(userRecord, userIdentities),
+      resolveGuide(rawGuideId),
       residencyId
         ? FolkResidencies.findOne({ id: residencyId, fields: RESIDENCY_FIELDS })
         : Promise.resolve(undefined),
+      loadRequestState(context.user.id, userRecord.userId),
     ]);
+    const { hasBvMembership, preservePendingAssignment } = membershipSync;
+    if (membershipSync.membershipFields) userRecord = { ...userRecord, ...membershipSync.membershipFields };
+    const { guideRecord, guideId } = guideResolution;
 
     const rawRole = userRecord.role || 'User';
     const normalizedRole = normalizeRole(rawRole);
@@ -179,13 +88,7 @@ export default createEndpoint({
       lastLoginAt = now;
     }
 
-    const [pendingGuideTransfer, pendingResidencyTransfer, guideRequestsRes, residencyRequestsRes, ashrayRequestsRes] = await Promise.all([
-      GuideTransferRequests.findOne({ filters: { user: context.user.id, status: 'Pending' } }),
-      ResidencyTransferRequests.findOne({ filters: { user: context.user.id, status: 'Pending' } }),
-      GuideTransferRequests.findAll({ filters: { user: context.user.id } }),
-      ResidencyTransferRequests.findAll({ filters: { user: context.user.id } }),
-      AshrayUpgradeRequests.findAll({ filters: { userId: { in: [context.user.id, userRecord.userId].filter(Boolean) } } }),
-    ]);
+    const { pendingGuideTransfer, pendingResidencyTransfer, guideRequestsRes, residencyRequestsRes, ashrayRequestsRes } = requestState;
 
     const sortedGuideRequests = (guideRequestsRes?.records || []).sort((a: any, b: any) => 
       new Date(b.requestedAt || 0).getTime() - new Date(a.requestedAt || 0).getTime()
@@ -220,6 +123,122 @@ export default createEndpoint({
     return result;
   },
 });
+
+/** A real BvGroupMembers row is the authoritative BV membership record.
+ * Profile flags are derived/cache fields and may be stale immediately after
+ * approval or on older records; they must never hide Attendance from a
+ * member whose Reading Group page is already active. */
+async function syncBvMembership(userRecord: any, userIdentities: string[]) {
+  const [byUser, byUserId] = await Promise.all([
+    BvGroupMembers.findAll({
+      filters: { user: { in: userIdentities } },
+      fields: ['id', 'group', 'groupId', 'user', 'userId'],
+      limit: 5,
+    }),
+    BvGroupMembers.findAll({
+      filters: { userId: { in: userIdentities } },
+      fields: ['id', 'group', 'groupId', 'user', 'userId'],
+      limit: 5,
+    }),
+  ]);
+  let rawMembership = byUser.records[0] || byUserId.records[0];
+  if (!rawMembership) {
+    const membershipKeys = new Set(userIdentities.map(value => value.toLowerCase()));
+    const { records: allMemberships } = await BvGroupMembers.findAll({
+      fields: ['id', 'group', 'groupId', 'user', 'userId', 'memberId'],
+      limit: 5000,
+    });
+    rawMembership = allMemberships.find((membership: any) => [
+      membership.user,
+      membership.userId,
+      membership.memberId,
+    ].flatMap(value => Array.isArray(value) ? value : [value])
+      .filter(Boolean)
+      .some(value => membershipKeys.has(String(value).trim().toLowerCase())));
+  }
+  const membership = rawMembership;
+  const hasBvMembership = !!membership;
+  const groupId = membership
+    ? (Array.isArray(membership.group) ? membership.group[0] : (membership.group || membership.groupId || ''))
+    : '';
+  const needsMembershipSync = hasBvMembership
+    ? (!userRecord.isBvMember || userRecord.bvRegistrationStatus !== 'Approved' || (groupId && userRecord.bvGroupId !== groupId))
+    : (!!userRecord.isBvMember || !!userRecord.bvGroupId || !!userRecord.bvGroupName);
+  // A group assigned moments ago can be missing from the indexed membership
+  // lookup. Keep that assignment and its one-time notice until the member
+  // acknowledges it, instead of clearing the group on this read.
+  const preservePendingAssignment = !hasBvMembership && !!userRecord.pendingBvGroupAssignmentNotice;
+
+  let membershipFields: Record<string, unknown> | null = null;
+  if (!isAccountDeleted(userRecord.status) && !preservePendingAssignment && needsMembershipSync) {
+    membershipFields = hasBvMembership
+      ? {
+          isBvMember: true,
+          bvRegistrationStatus: 'Approved',
+          ...(groupId ? { bvGroupId: groupId } : {}),
+        }
+      : {
+          isBvMember: false,
+          bvGroupId: '',
+          bvGroupName: '',
+          ...(userRecord.pendingBvApprovalNotice ? { pendingBvApprovalNotice: false } : {}),
+        };
+    await Users.update({ id: userRecord.id, record: membershipFields });
+  }
+  return { hasBvMembership, preservePendingAssignment, membershipFields };
+}
+
+/** Precedence of concurrent lookups: the earliest non-empty result wins. */
+function firstMatch<T>(candidates: readonly (T | null | undefined)[]): T | undefined {
+  for (const candidate of candidates) if (candidate) return candidate;
+  return undefined;
+}
+
+async function resolveGuide(rawGuideId: any): Promise<{ guideRecord: any; guideId: string | null }> {
+  let guideRecord: any = undefined;
+  let guideId: string | null = null;
+  if (!rawGuideId) return { guideRecord, guideId };
+
+  // Document ID first, then fullName, then email. The lookups are independent,
+  // so they run together and the first match in that order wins, exactly as the
+  // former one-after-another chain resolved it.
+  guideRecord = firstMatch(await Promise.all([
+    Guides.findOne({ id: rawGuideId, fields: GUIDE_FIELDS }),
+    Guides.findOne({ filters: { fullName: rawGuideId }, fields: GUIDE_FIELDS }),
+    Guides.findOne({ filters: { email: rawGuideId }, fields: GUIDE_FIELDS }),
+  ]));
+  if (guideRecord) {
+    guideId = guideRecord.id;
+  } else {
+    guideId = rawGuideId;
+    // Fallback: Resolve guide name from Users collection if not found in Guides
+    const userGuideRecord = firstMatch(await Promise.all([
+      Users.findOne({ id: rawGuideId }),
+      Users.findOne({ filters: { userId: rawGuideId } }),
+      Users.findOne({ filters: { email: rawGuideId } }),
+      Users.findOne({ filters: { email: rawGuideId.toLowerCase() } }),
+    ]));
+    if (userGuideRecord) {
+      guideRecord = {
+        id: userGuideRecord.id,
+        fullName: userGuideRecord.fullName || userGuideRecord.email,
+        email: userGuideRecord.email,
+      };
+    }
+  }
+  return { guideRecord, guideId };
+}
+
+async function loadRequestState(contextUserId: string, profileUserId: string | undefined) {
+  const [pendingGuideTransfer, pendingResidencyTransfer, guideRequestsRes, residencyRequestsRes, ashrayRequestsRes] = await Promise.all([
+    GuideTransferRequests.findOne({ filters: { user: contextUserId, status: 'Pending' } }),
+    ResidencyTransferRequests.findOne({ filters: { user: contextUserId, status: 'Pending' } }),
+    GuideTransferRequests.findAll({ filters: { user: contextUserId } }),
+    ResidencyTransferRequests.findAll({ filters: { user: contextUserId } }),
+    AshrayUpgradeRequests.findAll({ filters: { userId: { in: [contextUserId, profileUserId].filter(Boolean) } } }),
+  ]);
+  return { pendingGuideTransfer, pendingResidencyTransfer, guideRequestsRes, residencyRequestsRes, ashrayRequestsRes };
+}
 
 function buildProfileResult({
   userRecord, guideId, residencyId, guideRecord, residencyRecord,

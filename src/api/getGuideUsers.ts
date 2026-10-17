@@ -23,6 +23,8 @@ const USER_FIELDS = ['id', 'userId', 'fullName', 'phone', 'email', 'role', 'role
 const USER_IDENTITY_FIELDS = [...new Set([...HIERARCHY_IDENTITY_FIELDS, 'userId', 'id', 'email'])];
 // Minimal fields for today's entries
 const ENTRY_TODAY_FIELDS = ['id', 'user', 'entryDate'];
+// Fields for each member's latest-entry lookup
+const ENTRY_HISTORY_FIELDS = ['id', 'user', 'entryDate', 'scorePercent', 'submittedAt'];
 // Minimal fields for residency
 const RESIDENCY_FIELDS = ['id', 'residencyId', 'residencyName'];
 
@@ -197,35 +199,34 @@ export default createEndpoint({
     const historyPromise = (async () => {
       if (input.minimal || users.length === 0) return [];
       const cutoffStr = daysAgo(todayStr, 100);
-      const entries: any[] = [];
       const scopedEntryUserIds = Array.from(new Set(users.map(user => user.id).filter(Boolean)));
-      if (scopedEntryUserIds.length > 0 && scopedEntryUserIds.length <= 300) {
+      if (scopedEntryUserIds.length === 0) return [];
+      if (scopedEntryUserIds.length <= 300) {
         const chunks = Array.from({ length: Math.ceil(scopedEntryUserIds.length / 30) }, (_, index) =>
           scopedEntryUserIds.slice(index * 30, index * 30 + 30)
         );
-        const batches = await Promise.all(chunks.map(ids => SadhanaEntries.findAll({
-          filters: { user: { in: ids }, entryDate: { gte: cutoffStr } } as any,
-          fields: ['id', 'user', 'entryDate', 'scorePercent', 'submittedAt'],
+        const batches = await Promise.all(chunks.map(chunk => SadhanaEntries.findAll({
+          filters: { user: { in: chunk }, entryDate: { gte: cutoffStr } } as any,
+          fields: ENTRY_HISTORY_FIELDS,
           limit: 2000,
         })));
-        batches.forEach(batch => entries.push(...(batch.records || [])));
-      } else {
-        // A full super-admin catalogue is cheaper as one paged query than many
-        // dozens of small `in` queries. It remains bounded to the last 100 days.
-        let entryOffset = 0;
-        while (true) {
-          const { records, hasMore } = await SadhanaEntries.findAll({
-            filters: { entryDate: { gte: cutoffStr } } as any,
-            fields: ['id', 'user', 'entryDate', 'scorePercent', 'submittedAt'],
-            limit: 2000,
-            offset: entryOffset,
-          });
-          entries.push(...records);
-          if (!hasMore || entries.length > 6000) break;
-          entryOffset += 2000;
-        }
+        return batches.flatMap(batch => batch.records || []);
       }
-
+      // A full super-admin catalogue is cheaper as one paged query than many
+      // dozens of small `in` queries. It remains bounded to the last 100 days.
+      const entries: any[] = [];
+      let entryOffset = 0;
+      while (true) {
+        const { records, hasMore } = await SadhanaEntries.findAll({
+          filters: { entryDate: { gte: cutoffStr } } as any,
+          fields: ENTRY_HISTORY_FIELDS,
+          limit: 2000,
+          offset: entryOffset,
+        });
+        entries.push(...records);
+        if (!hasMore || entries.length > 6000) break;
+        entryOffset += 2000;
+      }
       return entries;
     })();
 

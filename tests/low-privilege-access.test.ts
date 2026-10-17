@@ -42,6 +42,8 @@ const secretGroup = {
 };
 const rentSecret = 'rent-secret-note';
 const pendingSecret = 'pending-secret-phone';
+const entrySecret = 'stranger-entry-secret-note';
+const preachingSecret = 777123;
 
 const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
 const keys = generateKeyPairSync('rsa', { modulusLength: 2048 });
@@ -108,15 +110,21 @@ test('a signed-in member is blocked from sensitive pages and tampered scores', a
     [sdk.BvGroupMembers, { name: 'BvGroupMembers', rows: [] }],
     [sdk.Trips, { name: 'Trips', rows: [{ id: 'trip-secret', user: stranger.id, tripName: 'Secret Trip', totalAmount: 900 }] }],
     [sdk.RentPayments, { name: 'RentPayments', rows: [{ id: 'rent-secret', user: stranger.id, amountDue: 500, notes: rentSecret }] }],
-    [sdk.AshrayUpgradeRequests, { name: 'AshrayUpgradeRequests', rows: [] }],
-    [sdk.SadhanaEntries, { name: 'SadhanaEntries', rows: [] }],
-    [sdk.BvslPreachingEntries, { name: 'BvslPreachingEntries', rows: [] }],
+    [sdk.AshrayUpgradeRequests, { name: 'AshrayUpgradeRequests', rows: [{ id: 'ashray-req', userId: stranger.userId, status: 'Pending', currentLevel: 'Jigyasa', requestedLevel: 'Shraddhavan' }] }],
+    [sdk.SadhanaEntries, { name: 'SadhanaEntries', rows: [{
+      id: 'stranger-entry', entryId: 'ENTRY-STRANGER', user: stranger.id, entryDate: '2026-01-05', totalScore: 10, maxScore: 16,
+      templateMode: 'NON_RESIDENT_TEMPLATE', fieldValuesJson: JSON.stringify({ chanting: 16, notes: entrySecret }),
+    }] }],
+    [sdk.BvslPreachingEntries, { name: 'BvslPreachingEntries', rows: [{ id: 'stranger-preaching', user: stranger.id, entryDate: '2026-01-05', prBooksDistributed: preachingSecret }] }],
+    [sdk.Services, { name: 'Services', rows: [] }],
+    [sdk.SkillCatalog, { name: 'SkillCatalog', rows: [] }],
     [sdk.Config, { name: 'Config', rows: [{ id: 'counter', configKey: 'counter:sadhanaEntryN', configValue: '3' }] }],
     [sdk.Guides, { name: 'Guides', rows: [] }],
     [sdk.FolkResidencies, { name: 'FolkResidencies', rows: [] }],
   ]);
   const reads: string[] = [];
   const sadhanaWrites: string[] = [];
+  let lastSadhanaRecord: any;
   for (const [table, fixture] of fixtures) {
     const query = (options: any = {}) => {
       reads.push(fixture.name);
@@ -125,12 +133,15 @@ test('a signed-in member is blocked from sensitive pages and tampered scores', a
     };
     t.mock.method(table, 'findAll', async (options: any) => ({ records: query(options), hasMore: false }));
     t.mock.method(table, 'findOne', async (options: any) => query(options)[0]);
-    const recordSadhanaWrite = () => {
-      if (fixture.name === 'SadhanaEntries') sadhanaWrites.push(fixture.name);
+    const recordSadhanaWrite = (args: any) => {
+      if (fixture.name === 'SadhanaEntries') {
+        sadhanaWrites.push(fixture.name);
+        lastSadhanaRecord = args?.record;
+      }
       return { id: 'saved' };
     };
-    t.mock.method(table, 'create', async () => recordSadhanaWrite());
-    t.mock.method(table, 'update', async () => recordSadhanaWrite());
+    t.mock.method(table, 'create', async (args: any) => recordSadhanaWrite(args));
+    t.mock.method(table, 'update', async (args: any) => recordSadhanaWrite(args));
     t.mock.method(table, 'delete', async () => { if (fixture.name === 'SadhanaEntries') sadhanaWrites.push(fixture.name); });
   }
 
@@ -163,6 +174,19 @@ test('a signed-in member is blocked from sensitive pages and tampered scores', a
     ['pending approvals', 'getPendingApprovals', { role: 'SUPER_ADMIN' }, pendingSecret],
     ['admin group directory', 'getAllBvGroupsAdmin', { guideId: 'ALL', role: 'SUPER_ADMIN' }, secretGroup.joinToken],
     ['group deletion', 'hardDeleteBvGroups', { deleteAll: true, confirmationPhrase: BV_DELETE_CONFIRMATION, role: 'SUPER_ADMIN' }, 'deleted'],
+    ['another member\'s sadhana entry by date', 'getEntryDetail', { userId: stranger.userId, entryDate: '2026-01-05' }, entrySecret],
+    ['another member\'s sadhana entry by id', 'getEntryDetail', { entryId: 'ENTRY-STRANGER' }, entrySecret],
+    ['another member\'s preaching entry', 'getBvPreachingEntry', { userId: stranger.userId, entryDate: '2026-01-05' }, String(preachingSecret)],
+    ['ashray upgrade approval', 'approveAshrayUpgrade', { requestId: 'ashray-req', action: 'pass' }, 'Passed'],
+    ['adding a group member', 'addGroupMember', { groupId: secretGroup.groupId, userId: stranger.userId }, secretGroup.joinToken],
+    ['removing a group member', 'removeGroupMember', { groupId: secretGroup.groupId, userId: stranger.userId }, secretGroup.joinToken],
+    ['group member list', 'getGroupMembers', { groupDbId: secretGroup.id }, stranger.phone],
+    ['pending join requests', 'getPendingBvJoinRequests', { groupId: secretGroup.groupId }, stranger.phone],
+    ['BV attendance table', 'getBvAdminTable', { guideId: 'ALL' }, stranger.phone],
+    ['creating a service', 'createService', { serviceName: 'Kitchen' }, 'Kitchen'],
+    ['editing the skill catalog', 'manageCatalogSkill', { action: 'create', skillName: 'Cooking' }, 'Cooking'],
+    ['the member export', 'exportUserData', {}, stranger.phone],
+    ['another member\'s 1:1 eligibility', 'saveOneToOneEligibility', { userId: stranger.id, eligibility: 'Not Eligible' }, 'success":true'],
   ] as const;
 
   for (const [page, endpoint, body, secret] of blocked) {
@@ -201,7 +225,7 @@ test('a signed-in member is blocked from sensitive pages and tampered scores', a
     assert.equal(sadhanaWrites.length, before + 1);
   });
 
-  await t.test('tampered scores are rejected and nothing is saved', async () => {
+  await t.test('tampered scores never reach storage', async () => {
     const before = sadhanaWrites.length;
     const result = await call('submitSadhana', {
       userId: member.id,
@@ -217,8 +241,13 @@ test('a signed-in member is blocked from sensitive pages and tampered scores', a
         _pts_chanting: 8,
       },
     });
-    assert.equal(result.status, 400, JSON.stringify(result.body));
-    assert.match(result.body.message, /do not match the recorded sadhana/);
-    assert.equal(sadhanaWrites.length, before);
+    // Prabhupada World days are scored on the server from the raw answers, so
+    // the claimed points and percentage are discarded rather than stored.
+    assert.equal(result.status, 200, JSON.stringify(result.body));
+    assert.equal(result.body.totalScore, 0);
+    assert.equal(result.body.scorePercent, 0);
+    assert.equal(sadhanaWrites.length, before + 1);
+    assert.equal(lastSadhanaRecord.totalScore, 0);
+    assert.equal(lastSadhanaRecord.scorePercent, 0);
   });
 });

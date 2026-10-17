@@ -54,12 +54,33 @@ export const subscribeEndpointCache = (listener: () => void) => {
   return () => { cacheListeners.delete(listener); };
 };
 function notifyCacheListeners() { cacheListeners.forEach(listener => listener()); }
+type IdentitySource = {
+  key: string;
+  metadata: NonNullable<ReturnType<typeof queryMetadata.get>>;
+  cache?: { data: any; timestamp: number };
+  token?: { token: string; readVersion: string };
+  version?: number;
+};
+
 /** `scope` is the signed-in user plus authorization (see `dashboardScope`).
- * Display-only profile updates must pass the same scope and keep cached reads. */
-export function setEndpointPermissionScope(scope: string) {
+ * Display-only profile updates must pass the same scope and keep cached reads.
+ * `identitySources` are the exact query keys whose responses produced the new
+ * scope (the signed-in user's own profile). Those reads were authorized against
+ * the authority the new scope describes, so they move to the new identity with
+ * their realtime registration instead of being discarded and requested again. */
+export function setEndpointPermissionScope(scope: string, identitySources: readonly string[] = []) {
   if (scope === permissionScope) return;
+  const sources: IdentitySource[] = identitySources
+    .filter(key => queryMetadata.has(key))
+    .map(key => ({
+      key,
+      metadata: queryMetadata.get(key)!,
+      cache: clientCache.get(key),
+      token: queryTokens.get(key),
+      version: queryVersions.get(key),
+    }));
   permissionScope = scope;
-  clearEndpointClientCache();
+  clearEndpointClientCache(sources);
 }
 
 type EndpointPerformanceSample = {
@@ -186,17 +207,32 @@ export function forgetEndpointRevisionToken(token: string): void {
   invalidateEndpointQueryKeys(keys);
 }
 
-export function clearEndpointClientCache(): void {
+export function clearEndpointClientCache(identitySources: readonly IdentitySource[] = []): void {
   cacheGeneration++;
+  const retainedVersions = new Map(identitySources
+    .filter(source => source.token)
+    .map(source => [source.token!.token, receivedVersions.get(source.token!.token)] as const));
   clientCache.clear();
   inFlightRequests.clear();
   queryMetadata.clear();
   queryTokens.clear();
   receivedVersions.clear();
   queryVersions.clear();
+  // The identity sources re-enter under the new identity's keys. Their
+  // consumers (see useReactiveLoader) follow this mapping instead of reloading.
+  const retained: Record<string, string> = {};
+  for (const source of identitySources) {
+    const key = queryCacheKey(source.metadata.name, source.metadata.input);
+    retained[source.key] = key;
+    queryMetadata.set(key, { ...source.metadata, lastAccessedAt: Date.now() });
+    if (source.cache) clientCache.set(key, source.cache);
+    if (source.token) queryTokens.set(key, source.token);
+    if (source.version) queryVersions.set(key, source.version);
+  }
+  for (const [token, version] of retainedVersions) if (version) receivedVersions.set(token, version);
   notifyCacheListeners();
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(REALTIME_INVALIDATION_EVENT, {
-    detail: { identityChanged: true },
+    detail: { identityChanged: true, ...(identitySources.length ? { retained } : {}) },
   }));
 }
 

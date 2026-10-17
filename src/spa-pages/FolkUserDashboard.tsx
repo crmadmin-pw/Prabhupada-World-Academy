@@ -3,7 +3,7 @@ import { lazy, Suspense, useState, useMemo, useCallback, useEffect, useRef } fro
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { BookOpen, Leaf, Trophy, ClipboardCheck, Sparkles, Building2, Settings2 } from 'lucide-react';
 import { FEATURES } from '@/config/features';
-import { getUserDashboardData, getSadhanaLeaderboard } from '@/lib/endpoints-sdk';
+import { getMyGuideOneToOne, getUserDashboardData, getSadhanaLeaderboard, getUserProgressStats } from '@/lib/endpoints-sdk';
 import { DASHBOARD_RECENT_DAYS } from '@/lib/sadhanaHistoryWindow';
 import { format } from 'date-fns';
 import { useUserProfile } from '@/contexts/UserProfileContext';
@@ -45,6 +45,19 @@ export default function FolkUserDashboard() {
     void scheduleSadhanaReminder(hasSubmittedToday(), 'FOLK');
     return stopVisibilityCheck;
   }, []);
+
+  // The Sadhana tab is not mounted until the dashboard summary arrives. Its
+  // default chart, insight, and guide card reads depend only on the member id,
+  // so they start with that summary and are reused from the client cache.
+  useEffect(() => {
+    if (!profile?.userId) return;
+    const hash = window.location.hash.slice(1);
+    if (hash && hash !== 'sadhana') return;
+    const userId = profile.userId;
+    void getUserProgressStats({ userId, days: 45, period: 'daily', includeToday: true }).catch(() => {});
+    void getUserProgressStats({ userId, period: 'daily', insightMode: true }).catch(() => {});
+    void getMyGuideOneToOne({}).catch(() => {});
+  }, [profile?.userId]);
 
   useEffect(() => {
     const onPop = () => {

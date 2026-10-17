@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createEndpoint, Services, FolkResidencies, AppError } from '@/lib/backend-sdk';
 import { invalidateServiceReferenceData } from '../lib/serviceReferenceData';
+import { assertCanManageServices } from '../lib/serviceManagementAccess';
 
 export default createEndpoint({
   description: 'Create a new service',
@@ -21,7 +22,8 @@ export default createEndpoint({
     isActive: z.boolean().optional(),
   }),
   outputSchema: z.any(),
-  execute: async ({ input }) => {
+  execute: async ({ input, context }) => {
+    assertCanManageServices(context.user);
     if (!input.serviceName) throw new AppError({ code: 'BAD_REQUEST', message: 'serviceName is required' });
 
     // Resolve custom residency ID (e.g. "RES-001") to UUID for the linked record field

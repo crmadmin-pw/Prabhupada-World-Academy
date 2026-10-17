@@ -39,3 +39,16 @@ export function authCallbackPath(department: RegistrationDepartment): string {
 export function registrationPath(department: RegistrationDepartment): string {
   return `/register?flow=${department === 'PW' ? 'pw' : 'folk'}`;
 }
+
+/** Resolves a requested post-login destination, keeping only same-origin URLs.
+ * A link such as /login?redirectUrl=https://elsewhere.example must not send a
+ * member to another site straight after a genuine Google sign-in here. */
+export function sameOriginRedirect(candidate: string | null | undefined, fallback: string, origin: string): string {
+  if (!candidate) return fallback;
+  try {
+    const url = new URL(candidate, origin);
+    return url.origin === origin ? url.href : fallback;
+  } catch {
+    return fallback;
+  }
+}

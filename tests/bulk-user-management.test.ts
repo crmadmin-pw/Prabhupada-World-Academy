@@ -3,7 +3,13 @@ import test from 'node:test';
 import { BULK_USER_CSV_HEADERS, parseCsv } from '../src/config/bulkUserCsv';
 import { deriveApiCapabilities } from '../src/lib/apiAuthorization';
 import { createBulkUser, getBulkExportData, previewBulkUsers, requireBulkUserManager } from '../src/lib/bulkUserManagement';
-import { BvMemberRegistrations, Guides, Users } from '../src/lib/app-backend-sdk';
+import { BvMemberRegistrations, FolkResidencies, Guides, Users } from '../src/lib/app-backend-sdk';
+
+// The preview resolves `selectedFolkResidency` against the FolkResidencies
+// table; the in-memory store starts empty, so seed the center the rows use.
+const residencyId = 'RES-BULK-TEST-FIXTURE';
+test.before(() => FolkResidencies.create({ record: { id: residencyId, residencyId, residencyName: 'FOLK Powai', isActive: true } }));
+test.after(() => FolkResidencies.delete({ id: residencyId }));
 
 test('bulk import template is the combined FOLK registration shape without privileged fields', () => {
   for (const field of ['email', 'fullName', 'phone', 'selectedFolkResidency', 'whatsappNumber', 'address', 'ashrayLevel', 'timePreference']) {

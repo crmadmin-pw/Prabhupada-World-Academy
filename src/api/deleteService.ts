@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createEndpoint, Services, AppError } from '@/lib/backend-sdk';
 import { invalidateServiceReferenceData } from '../lib/serviceReferenceData';
+import { assertCanManageServices } from '../lib/serviceManagementAccess';
 
 export default createEndpoint({
   description: 'Soft delete (deactivate) a service',
@@ -10,7 +11,8 @@ export default createEndpoint({
     rowId: z.string().optional(),
   }),
   outputSchema: z.any(),
-  execute: async ({ input }) => {
+  execute: async ({ input, context }) => {
+    assertCanManageServices(context.user);
     const service = await Services.findOne({ id: input.serviceId });
     if (!service) throw new AppError({ code: 'NOT_FOUND', message: 'Service not found' });
 
