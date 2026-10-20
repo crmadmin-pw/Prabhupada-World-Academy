@@ -1,7 +1,8 @@
 import { z } from 'zod';
-import { createEndpoint, BvGroups, BvGroupMembers, BvSessions, BvAttendance, Users, AppError } from '@/lib/backend-sdk';
+import { createEndpoint, BvGroupMembers, BvSessions, BvAttendance, Users, AppError } from '@/lib/backend-sdk';
+import { findAttendanceGroup } from '@/lib/bvAttendanceAccess';
 import { bvUserAliases } from '../lib/bvGroupMemberScope';
-import { facilitatorRoleLabel, loadGroupFacilitators, loadGroupSupervisors } from '@/lib/bvGroupFacilitators';
+import { countsAsGroupMember, facilitatorRoleLabel, loadGroupFacilitators, loadGroupSupervisors } from '@/lib/bvGroupFacilitators';
 
 const GROUP_FIELDS = [
   'id', 'groupId', 'groupName',
@@ -24,17 +25,7 @@ export default createEndpoint({
   }),
   outputSchema: z.any(),
   execute: async ({ input }) => {
-    // Resolve group — try custom groupId field first, then DB UUID
-    let group = await BvGroups.findOne({
-      filters: { groupId: input.groupId },
-      fields: GROUP_FIELDS,
-    });
-    if (!group) {
-      group = await BvGroups.findOne({
-        id: input.groupId,
-        fields: GROUP_FIELDS,
-      });
-    }
+    const group = await findAttendanceGroup(input.groupId, GROUP_FIELDS);
     if (!group) throw new AppError({ code: 'NOT_FOUND', message: 'Group not found' });
 
     const groupKeys = [group.id, group.groupId].filter(Boolean);
@@ -54,7 +45,7 @@ export default createEndpoint({
       .filter((member: any, index: number, records: any[]) => records.findIndex(item => item.id === member.id) === index);
 
     const identityValues = [...new Set(memberRecords.flatMap((member: any) => [member.user, member.userId, member.memberId]).filter(Boolean).map(String))];
-    const userFields = ['id', 'userId', 'fullName', 'firebaseUid', 'uid', 'authUid'];
+    const userFields = ['id', 'userId', 'fullName', 'email', 'firebaseUid', 'uid', 'authUid', 'status', 'role', 'isBvMember', 'bvGroupId', 'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator'];
     const userQueries = identityValues.length > 0
       ? await Promise.all([
         Users.findAll({ filters: { id: { in: identityValues } } as any, fields: userFields, limit: 500 }),
@@ -126,7 +117,7 @@ export default createEndpoint({
     }
 
     const staff = await loadGroupFacilitators(group);
-    const supervisors = await loadGroupSupervisors(group, staff);
+    const supervisors = await loadGroupSupervisors(group);
     const supervisorAliasSets = supervisors.map(user => new Set(bvUserAliases(user)));
     const isSupervisor = (user: any) => {
       const aliases = bvUserAliases(user);
@@ -162,6 +153,7 @@ export default createEndpoint({
         if (!u) return null;
         const saved = savedFor(u, [u.id, dbId]);
         const isPresent = sessionExists ? saved.present : null;
+        if (!countsAsGroupMember(u, group)) return null;
         return {
           userDbId: u.id,
           userId: u.userId || u.id,
@@ -175,22 +167,6 @@ export default createEndpoint({
       .filter(member => member !== null);
 
     const covered = new Set(members.flatMap(member => bvUserAliases({ id: member.userDbId, userId: member.userId })));
-    for (const entry of staff) {
-      const aliases = bvUserAliases(entry.user);
-      if (aliases.some(alias => covered.has(alias))) continue;
-      const saved = savedFor(entry.user, []);
-      const isPresent = sessionExists ? saved.present : null;
-      members.push({
-        userDbId: entry.user.id,
-        userId: entry.user.userId || entry.user.id,
-        fullName: entry.user.fullName || '',
-        present: isPresent,
-        attendedMinutes: sessionExists ? (saved.minutes ?? (isPresent ? totalMeetingMinutes : 0)) : 0,
-        roleLabel: facilitatorRoleLabel(entry.badges),
-        supervisor: isSupervisor(entry.user),
-      });
-      aliases.forEach(alias => covered.add(alias));
-    }
     for (const supervisor of supervisors) {
       const aliases = bvUserAliases(supervisor);
       const alreadyListed = members.find((member: any) =>

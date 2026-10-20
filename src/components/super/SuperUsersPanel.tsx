@@ -27,7 +27,7 @@ import { fmt } from '@/lib/fmt';
 import { scoreColor } from '@/lib/scoring';
 import { isAccountDeleted } from '@/lib/accountDeletionPolicy';
 import { isActiveDirectoryMember } from '@/lib/memberDirectoryStatus';
-import { folkGuideIdentityRefs, isPrabhupadaWorldDirectoryMember } from '@/lib/directoryDepartment';
+import { folkGuideIdentityRefs, isPrabhupadaWorldDirectoryMember, organizationalDepartment } from '@/lib/directoryDepartment';
 import { isBhaktiVrikshaDirectoryMember } from '@/lib/bvDirectoryMembership';
 import { MEMBER_DIRECTORY_CHANGED_EVENT, mergeApprovedDirectoryMembers, type ApprovedDirectoryMember } from '@/lib/memberDirectorySync';
 import { bvRolePatch, mergePendingDirectoryPatches, mergePendingMentors, type PendingDirectoryPatch, type PendingMentor } from '@/lib/pendingDirectoryPatch';
@@ -486,9 +486,9 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
     if (!silent) !read.background && setLoading(true);
     try {
       const [{ guides: guideList }, groupsResult, mentorsList, allUsersRes] = await Promise.all([
-        read(() => getGuides({ segment: isPwAdmin ? 'PW' : 'FOLK' })),
+        read(() => getGuides({ segment: isPwMode ? 'PW' : 'FOLK' })),
         (isSuperAdmin
-          ? read(() => getBvslGroups({ bvslId: 'ALL' }))
+          ? read(() => getBvslGroups({ bvslId: 'ALL', segment: isPwMode ? 'PW' : 'FOLK' }))
           : read(() => getAllBvGroupsAdmin({
               guideId: profile?.userId || userEmail || 'ALL',
               // Department admins assign members to any group in the department,
@@ -500,7 +500,7 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
         read(() => getGuideUsers({
           guideId: 'ALL',
           statusFilter: 'all',
-          ...(isPwMode ? { segment: 'PW' } : {}),
+          segment: isPwMode ? 'PW' : 'FOLK',
         })).then(result => {
           // A superseded directory read must not put the pre-approval list back.
           if (read.cancelled) return result;
@@ -512,7 +512,9 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
           }));
           const merged = mergeApprovedDirectoryMembers(listed, directoryRowFromApproval);
           setUsers(projectUsers(
-            isPwMode ? restrictToPrabhupadaWorld(merged) : merged,
+            isPwMode
+              ? restrictToPrabhupadaWorld(merged)
+              : merged.filter((user: any) => organizationalDepartment(user) !== 'PW'),
           ));
           setLoading(false);
           return result;
@@ -550,6 +552,7 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
         if (g.userId) guideNameMap.set(g.userId, name);
       });
       rawUsers.forEach((u: any) => {
+        if (!isPwMode && organizationalDepartment(u) === 'PW') return;
         const name = u.fullName || u.name || '';
         if (u.userId) guideNameMap.set(u.userId, name);
         if (u.id) guideNameMap.set(u.id, name);
@@ -572,7 +575,9 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
       });
 
       const merged = mergeApprovedDirectoryMembers(all, directoryRowFromApproval);
-      const departmentUsers = isPwMode ? restrictToPrabhupadaWorld(merged) : merged;
+      const departmentUsers = isPwMode
+        ? restrictToPrabhupadaWorld(merged)
+        : merged.filter((user: any) => organizationalDepartment(user) !== 'PW');
       if (!read.cancelled) setUsers(projectUsers(departmentUsers));
     } catch {
       if (read.cancelled) return;
@@ -839,12 +844,9 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
   };
 
   const isUserInCurrentDepartment = useCallback((u: any, isPw: boolean) => {
-    const segment = String(u?.segment || '').trim().toUpperCase().replace(/[\s_-]+/g, '');
-    // An explicit department always wins, so a FOLK member never appears in PW.
-    if (segment === 'FOLK') return !isPw;
-    if (segment === 'PW' || segment === 'PRABHUPADAWORLD') return isPw;
-    if (u?.isPrabhupadaWorldUser === true) return isPw;
-    // Records without a segment are not assigned to either dashboard.
+    const department = organizationalDepartment(u);
+    if (department) return isPw ? department === 'PW' : department === 'FOLK';
+    // Records without a segment or leadership role stay off both dashboards.
     return false;
   }, []);
 
@@ -1253,8 +1255,7 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                   });
                   const currentBvGroup = availableBvGroups.find(group =>
                     group.id === (u as any).bvGroupId ||
-                    group.groupId === (u as any).bvGroupId ||
-                    (!!(u as any).bvGroupName && group.groupName === (u as any).bvGroupName)
+                    group.groupId === (u as any).bvGroupId
                   );
                   const userRole = String((u as any).role || '').trim().replace(/[\s-]+/g, '_').toUpperCase();
                   const isRgf = !!((u as any).isBvFacilitator || (u as any).isBvsl || ['RGF', 'BVSL', 'FACILITATOR'].includes(userRole));

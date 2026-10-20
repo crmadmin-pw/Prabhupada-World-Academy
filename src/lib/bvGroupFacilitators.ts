@@ -62,9 +62,9 @@ function expandCommaSeparatedFacilitator(facilitators: GroupFacilitator[]): Grou
   if (count <= 1) return facilitators;
   const expanded: GroupFacilitator[] = [];
   for (let index = 0; index < count; index += 1) {
-    const id = ids.length === count ? ids[index] : '';
-    const userId = userIds.length === count ? userIds[index] : '';
-    const name = names.length === count ? names[index] : '';
+    const id = ids[index] || '';
+    const userId = userIds[index] || '';
+    const name = names[index] || '';
     if (!id && !userId && !name) continue;
     expanded.push({ id, userId, name });
   }
@@ -225,6 +225,39 @@ export function groupHasFacilitator(
   );
 }
 
+/**
+ * A membership row counts only for someone who still belongs to this group.
+ * A current RGF or RGSF keeps their seat when their profile points elsewhere.
+ * Someone who facilitates a different group does not, even if an old membership
+ * row or profile group name is still stored.
+ */
+export function countsAsGroupMember(user: any, group: {
+  id?: unknown;
+  groupId?: unknown;
+  bvslLeader?: unknown;
+  bvslId?: unknown;
+  bvslName?: unknown;
+  subFacilitatorId?: unknown;
+  rgsfId?: unknown;
+  subFacilitator?: unknown;
+} | null | undefined): boolean {
+  if (!user || !group) return false;
+  if (user.status && String(user.status).toLowerCase() !== 'active') return false;
+  const aliases = new Set(
+    [user.id, user.userId, user.email, user.fullName]
+      .map(value => String(value || '').trim().toLowerCase())
+      .filter(Boolean),
+  );
+  const assignedHere = groupHasFacilitator(group, aliases) || groupHasSubFacilitator(group, aliases);
+  if (isReadingGroupStaff(user) && !assignedHere) return false;
+  if (!assignedHere && user.isBvMember === false) return false;
+  const profileGroupId = Array.isArray(user.bvGroupId) ? user.bvGroupId[0] : user.bvGroupId;
+  const profileKey = String(profileGroupId || '').trim().toLowerCase();
+  if (!profileKey || assignedHere) return true;
+  const keys = new Set([group.id, group.groupId].filter(Boolean).map(value => String(value).toLowerCase()));
+  return keys.has(profileKey);
+}
+
 /** An RGF or RGSF belongs to the groups they facilitate, not to a group they were removed from. */
 export function isReadingGroupStaff(user: any): boolean {
   const role = String(user?.role || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
@@ -276,19 +309,12 @@ export async function loadGroupFacilitators(group: any): Promise<Array<{ user: a
 }
 
 /**
- * The supervisor assigned to this reading group. Older groups stored the
- * supervisor only on the RGF, as the person that facilitator reports to.
- * Inactive profiles are left out. This does not make the supervisor a member.
+ * The supervisor stored on this reading group. A facilitator’s reporting
+ * supervisor is not this group’s supervisor. Inactive profiles are left out.
+ * This does not make the supervisor a member.
  */
-export async function loadGroupSupervisors(
-  group: any,
-  facilitators?: Array<{ user: any }>,
-): Promise<any[]> {
-  let aliases = [...aliasSet([group?.supervisorId, group?.supervisorUserId])];
-  if (aliases.length === 0) {
-    const staff = facilitators ?? await loadGroupFacilitators(group);
-    aliases = [...aliasSet(staff.map(entry => entry.user?.bvReportingSupervisorId))];
-  }
+export async function loadGroupSupervisors(group: any): Promise<any[]> {
+  const aliases = [...aliasSet([group?.supervisorId, group?.supervisorUserId])];
   if (aliases.length === 0) return [];
   const users = await resolveBvUsersByAliases(aliases, [
     'id', 'userId', 'fullName', 'email', 'status', 'firebaseUid', 'uid', 'authUid',

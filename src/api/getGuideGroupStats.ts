@@ -142,25 +142,12 @@ export default createEndpoint({
       const attRecords = hideCaller
         ? attendanceRows.filter(attendance => !isCaller(attendance.user))
         : attendanceRows;
-      const memberAliases = new Set(memberRecords.flatMap(member =>
-        [member.user, member.userId, member.memberId]
-          .flatMap(value => Array.isArray(value) ? value : [value])
-          .map(value => String(value || '').trim().toLowerCase())
-          .filter(Boolean),
-      ));
       const facilitator = bvGroupFacilitatorAliases(g)
         .map(alias => facilitatorByAlias.get(alias))
         .find(Boolean);
-      const facilitatorRole = String(facilitator?.role || '').toUpperCase().replace(/[\s-]+/g, '_');
-      const isPwRgf = isPwGroup && !!(
-        facilitator?.isBvFacilitator || facilitator?.isBvsl ||
-        ['RGF', 'BVSL', 'FACILITATOR', 'BV_FACILITATOR'].includes(facilitatorRole)
-      );
-      const rgfAlreadyCounted = isPwRgf && bvUserAliases(facilitator).some(alias => memberAliases.has(alias));
-      const baseCount = new Set(memberRecords.map(member =>
+      const memberCount = new Set(memberRecords.map(member =>
         String(member.user || member.userId || member.memberId || member.id),
       )).size;
-      const memberCount = baseCount + (isPwRgf && !rgfAlreadyCounted && baseCount === 0 ? 1 : 0);
 
       // Count distinct session dates
       const distinctDates = new Set(attRecords.map((a: any) => a.attendanceDate).filter(Boolean));

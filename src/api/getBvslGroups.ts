@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, BvAttendance, BvGroupRequests, Guides, Users, AppError } from '@/lib/backend-sdk';
 import { getTodayIST } from '../lib/streakUtils';
-import { bvUserAliases, isBvSuperAdminUser, resolveBvScopedGroups } from '../lib/bvGroupMemberScope';
-import { joinFacilitatorNames, readGroupFacilitators, textList } from '@/lib/bvGroupFacilitators';
+import { isBvSuperAdminUser, resolveBvScopedGroups } from '../lib/bvGroupMemberScope';
+import { organizationalDepartment } from '../lib/directoryDepartment';
+import { countsAsGroupMember, joinFacilitatorNames, readGroupFacilitators, textList } from '@/lib/bvGroupFacilitators';
 
 function ownerKeys(group: any): string[] {
   return [group?.bvslLeader, group?.bvslId, group?.bvslName]
@@ -286,6 +287,7 @@ export default createEndpoint({
   inputSchema: z.object({
     bvslId: z.string(), // custom userId field value
     viewRole: z.enum(['RGF', 'RGSF']).optional(),
+    segment: z.enum(['PW', 'FOLK']).optional(),
   }),
   outputSchema: z.object({
     groups: z.array(groupSchema),
@@ -501,15 +503,7 @@ export default createEndpoint({
       const altUid = firstStoredValue(membership.userId);
       const legacyMemberId = firstStoredValue(membership.memberId);
       const user = cachedUser(identity, uid) || cachedUser(identity, altUid) || cachedUser(identity, legacyMemberId);
-      const isActiveUser = !user?.status || String(user.status).toLowerCase() === 'active';
-      const groupAliases = new Set([groupRec.id, groupRec.groupId].filter(Boolean).map((value: unknown) => String(value).toLowerCase()));
-      const profileGroupId = firstStoredValue(user?.bvGroupId).toLowerCase();
-      const isCurrentGroup = !profileGroupId || groupAliases.has(profileGroupId);
-      const isBvMember = user?.isBvMember !== false;
-
-      // Keep legacy records with missing profile fields, but never count an
-      // inactive, explicitly removed, or reassigned user from a stale row.
-      if (user && isActiveUser && isBvMember && isCurrentGroup) {
+      if (countsAsGroupMember(user, groupRec)) {
         const canonicalUserId = String(user.id || user.userId || uid || altUid || legacyMemberId);
         if (!memberIdsByGroup.has(groupRec.id)) memberIdsByGroup.set(groupRec.id, new Set());
         memberIdsByGroup.get(groupRec.id)!.add(canonicalUserId);
@@ -570,19 +564,7 @@ export default createEndpoint({
       }
       const facilitatorName = joinFacilitatorNames(rgfNames);
       const rgsfName = joinFacilitatorNames(rgsfNames);
-      const groupSegment = String(g.segment || facilitatorUser?.segment || '').trim().toUpperCase().replace(/[\s_-]+/g, '');
-      if ((groupSegment === 'PW' || groupSegment === 'PRABHUPADAWORLD') && facilitatorRoleKind(facilitatorUser) === 'rgf' && !(memberIdsByGroup.get(g.id)?.size)) {
-        const countedIds = memberIdsByGroup.get(g.id) || new Set<string>();
-        const alreadyCounted = bvUserAliases(facilitatorUser).some(alias => {
-          const known = cachedUser(identity, alias);
-          const canonical = String(known?.id || known?.userId || alias);
-          return countedIds.has(canonical) || countedIds.has(alias);
-        });
-        if (!alreadyCounted) {
-          countedIds.add(String(facilitatorUser.id || facilitatorUser.userId));
-          memberIdsByGroup.set(g.id, countedIds);
-        }
-      }
+      const explicitDepartment = organizationalDepartment(facilitatorUser) || organizationalDepartment({ segment: g.segment });
       const guideRes = guideMap.get(Array.isArray(g.guide) ? g.guide[0] : g.guide);
       
       // Only present outside the ALL view (to save API calls)
@@ -602,10 +584,12 @@ export default createEndpoint({
         bvslName: facilitatorName || (viewerKind === 'rgsf' ? null : defaultBvslName || null),
         rgsfName: rgsfName || null,
         guideName: guideRes?.fullName || null,
+        guideDepartment: organizationalDepartment(guideRes),
         meetingTime: g.meetingTime || g.preferredTimeSlot || null,
         // Facilitator ownership is authoritative. This also repairs the
         // display of groups created before createBvGroup resolved custom IDs.
-        segment: String(facilitatorUser?.segment || g.segment || 'PW').toUpperCase() === 'FOLK' ? 'FOLK' : 'PW',
+        segment: explicitDepartment || (String(facilitatorUser?.segment || g.segment || 'PW').toUpperCase() === 'FOLK' ? 'FOLK' : 'PW'),
+        explicitDepartment,
         isActive: g.isActive ?? true,
         facilitatorIds: [...new Set(
           [
@@ -650,7 +634,17 @@ export default createEndpoint({
     // Count pending join requests (only if not ALL view)
     const pendingRequestCount = pendingRequestsPromise ? await pendingRequestsPromise : 0;
 
-    return { groups, pendingRequestCount, error: null };
+    const callerDepartment = organizationalDepartment(context?.user);
+    const isolatedGroups = callerDepartment
+      ? groups.filter(group => !group.explicitDepartment || group.explicitDepartment === callerDepartment)
+      : groups;
+    const visibleGroups = isolatedGroups.map(group => {
+      const { explicitDepartment: _explicitDepartment, guideDepartment, ...visible } = group;
+      if (callerDepartment && guideDepartment && guideDepartment !== callerDepartment) visible.guideName = null;
+      return visible;
+    });
+
+    return { groups: visibleGroups, pendingRequestCount, error: null };
   },
 });
 

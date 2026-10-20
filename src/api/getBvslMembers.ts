@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createEndpoint, Users, BvGroupMembers, FolkResidencies, AppError } from '@/lib/backend-sdk';
 import { serverCacheGetOrFetch } from '../lib/serverCache';
 import { bvUserAliases, resolveBvScopedGroups } from '../lib/bvGroupMemberScope';
+import { countsAsGroupMember } from '@/lib/bvGroupFacilitators';
 import { getScopedHierarchyUserIds, hierarchyAliases, isUserInHierarchy } from '../lib/hierarchyUtils';
 
 const formatPhone = (phone?: string) => {
@@ -26,6 +27,71 @@ function isRgsfUser(user: any) {
 function isFacilitatorUser(user: any) {
   const role = String(user?.role || '').toUpperCase().replace(/[\s-]+/g, '_');
   return !!(user?.isBvFacilitator || user?.isBvsl || ['RGF', 'BVSL', 'FACILITATOR'].includes(role));
+}
+
+const MEMBER_FIELDS = [
+  'id', 'userId', 'fullName', 'displayName', 'name', 'phone', 'ashrayLevel', 'email',
+  'residency', 'residencyApproved', 'role', 'roles', 'status', 'isRgsf', 'isBvSuperAdmin',
+  'isBvMember', 'bvGroupId', 'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator',
+  'pwChantingTarget', 'pwReadingTarget', 'pwTargets',
+  'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid',
+  'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id',
+];
+
+const MEMBER_LOOKUP_FIELDS = [
+  'id', 'userId', 'email', 'phone', 'fullName', 'displayName', 'name',
+  'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid',
+  'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id',
+];
+
+function storedValues(value: unknown): string[] {
+  if (Array.isArray(value)) return value.flatMap(storedValues);
+  const text = String(value ?? '').trim();
+  return text ? [text] : [];
+}
+
+/** Membership rows are not always the Users document id. Join approval stores
+ * the Firebase auth id, and older imports store a display name or memberId. */
+async function findMembersByAliases(aliases: string[]): Promise<any[]> {
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  for (const alias of aliases) {
+    const text = String(alias || '').trim();
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    unique.push(text);
+  }
+  const results = new Map<string, any>();
+  const remember = (pages: Array<{ records?: any[] }>) => {
+    for (const page of pages) {
+      for (const user of page.records || []) {
+        const key = String(user.id || user.userId || user.email || '');
+        if (key) results.set(key, user);
+      }
+    }
+  };
+  const lookup = async (values: string[], fields: string[]) => {
+    if (values.length === 0 || fields.length === 0) return;
+    for (let index = 0; index < values.length; index += 30) {
+      const chunk = values.slice(index, index + 30);
+      remember(await Promise.all(fields.map(field =>
+        Users.findAll({
+          filters: { [field]: { in: chunk } } as any,
+          fields: MEMBER_FIELDS,
+          limit: 500,
+        }),
+      )));
+    }
+  };
+
+  const primary = ['id', 'userId', 'email'];
+  await lookup(unique, primary);
+  const covered = new Set<string>();
+  for (const user of results.values()) bvUserAliases(user).forEach(alias => covered.add(alias));
+  const unresolved = unique.filter(alias => !covered.has(alias.trim().toLowerCase()));
+  const secondary = MEMBER_LOOKUP_FIELDS.filter(field => !primary.includes(field));
+  await lookup(unresolved, secondary);
+  return [...results.values()];
 }
 
 export default createEndpoint({
@@ -123,18 +189,8 @@ async function fetchBvslMembers({ input, context }: { input: any; context: any }
   [...memberships, ...membershipsByGroupId].forEach((membership: any) => membershipMap.set(String(membership.id), membership));
   const allMemberships = [...membershipMap.values()];
 
-  const userIds = [...new Set(allMemberships.flatMap((m: any) => [m.user, m.userId]).flatMap((value: any) => Array.isArray(value) ? value : [value]).filter(Boolean))] as string[];
-  let memberUsers: any[] = [];
-  if (userIds.length > 0) {
-    const userQueries = await Promise.all([
-      Users.findAll({ filters: { id: { in: userIds } } as any, fields: ['id', 'userId', 'fullName', 'phone', 'ashrayLevel', 'email', 'residency', 'residencyApproved', 'role', 'roles', 'isRgsf', 'pwChantingTarget', 'pwReadingTarget', 'pwTargets', 'firebaseUid', 'uid', 'authUid'], limit: 500 }),
-      Users.findAll({ filters: { userId: { in: userIds } } as any, fields: ['id', 'userId', 'fullName', 'phone', 'ashrayLevel', 'email', 'residency', 'residencyApproved', 'role', 'roles', 'isRgsf', 'pwChantingTarget', 'pwReadingTarget', 'pwTargets', 'firebaseUid', 'uid', 'authUid'], limit: 500 }),
-      Users.findAll({ filters: { email: { in: userIds } } as any, fields: ['id', 'userId', 'fullName', 'phone', 'ashrayLevel', 'email', 'residency', 'residencyApproved', 'role', 'roles', 'isRgsf', 'pwChantingTarget', 'pwReadingTarget', 'pwTargets', 'firebaseUid', 'uid', 'authUid'], limit: 500 }),
-    ]);
-    const uniqueUsers = new Map<string, any>();
-    userQueries.flatMap(result => result.records || []).forEach((user: any) => uniqueUsers.set(String(user.id), user));
-    memberUsers = [...uniqueUsers.values()];
-  }
+  const memberAliases = allMemberships.flatMap((m: any) => storedValues([m.user, m.userId, m.memberId]));
+  const memberUsers = memberAliases.length > 0 ? await findMembersByAliases(memberAliases) : [];
 
   const userMap: Record<string, any> = {};
   memberUsers.forEach((u: any) => {
@@ -155,6 +211,10 @@ async function fetchBvslMembers({ input, context }: { input: any; context: any }
 
     const uRole = (u.role || '').toUpperCase();
     if (u.isBvSuperAdmin || uRole === 'SUPER ADMIN' || uRole === 'SUPER_ADMIN') return null;
+    const membershipGroup = targetGroups.find(group =>
+      refs([group.id, group.groupId]).some(alias => refs(gid).includes(alias)),
+    );
+    if (!countsAsGroupMember(u, membershipGroup?.record || membershipGroup)) return null;
 
     const showContacts = refs(gid).some(alias => ownGroupIds.has(alias));
     const residencyId = Array.isArray(u.residency) ? u.residency[0] : u.residency;

@@ -73,11 +73,10 @@ test('a group leader can read member contacts and the join token', async t => {
   database(t);
   const detail = await call(reportingLeader);
   assert.equal(detail.group.groupName, group.groupName);
-  assert.equal(detail.members.length, 2);
+  assert.equal(detail.members.length, 1);
   const listedMember = detail.members.find((row: any) => row.fullName === member.fullName);
-  const listedLeader = detail.members.find((row: any) => row.fullName === leader.fullName);
   assert.equal(listedMember?.phone, member.phone);
-  assert.deepEqual(listedLeader?.badges, ['RGF']);
+  assert.equal(detail.members.some((row: any) => row.fullName === leader.fullName), false);
   assert.equal(detail.group.joinToken, group.joinToken);
 });
 
@@ -108,7 +107,7 @@ test('the attendance grid uses the same chain and refuses outsiders', async t =>
   assert.deepEqual(reads, []);
 });
 
-test('RGF and RGSF appear in the member list with attendance scores', async t => {
+test('an RGF and RGSF without a membership row are not members', async t => {
   const rgsf = {
     id: 'detail-rgsf', userId: 'DETAIL-RGSF', email: 'detail-rgsf@example.test',
     fullName: 'Detail RGSF', role: 'RGSF', status: 'Active', segment: 'PW',
@@ -147,16 +146,8 @@ test('RGF and RGSF appear in the member list with attendance scores', async t =>
   }
 
   const detail = await call(reportingLeader);
-  const listedLeader = detail.members.find((row: any) => row.fullName === leader.fullName);
-  const listedRgsf = detail.members.find((row: any) => row.fullName === rgsf.fullName);
-  assert.deepEqual(listedLeader?.badges, ['RGF']);
-  assert.equal(listedLeader?.presentCount, 1);
-  assert.equal(listedLeader?.totalCount, 2);
-  assert.equal(listedLeader?.attendanceRate, 50);
-  assert.deepEqual(listedRgsf?.badges, ['RGSF']);
-  assert.equal(listedRgsf?.presentCount, 1);
-  assert.equal(listedRgsf?.totalCount, 1);
-  assert.equal(listedRgsf?.attendanceRate, 100);
+  assert.equal(detail.members.some((row: any) => row.fullName === leader.fullName), false);
+  assert.equal(detail.members.some((row: any) => row.fullName === rgsf.fullName), false);
   assert.equal(detail.members.find((row: any) => row.fullName === member.fullName)?.badges.length, 0);
 });
 
@@ -196,7 +187,7 @@ test('an RGF removed from the group is not kept on as a member', async t => {
   const detail = await call(reportingLeader);
   assert.equal(detail.members.some((row: any) => row.fullName === 'Asha N'), false);
   assert.equal(detail.members.some((row: any) => row.fullName === member.fullName), true);
-  assert.equal(detail.members.some((row: any) => row.fullName === leader.fullName), true);
+  assert.equal(detail.members.some((row: any) => row.fullName === leader.fullName), false);
 });
 
 test('a member and an outsider are refused before membership records are read', async t => {

@@ -1,8 +1,8 @@
 import { z } from 'zod';
-import { createEndpoint, BvGroups, BvGroupMembers, BvSessions, BvAttendance, AppError } from '@/lib/backend-sdk';
-import { callerFacilitatesReadingGroup } from '@/lib/bvAttendanceAccess';
+import { createEndpoint, BvGroupMembers, BvSessions, BvAttendance, Users, AppError } from '@/lib/backend-sdk';
+import { callerCanRecordGroupAttendance, findAttendanceGroup } from '@/lib/bvAttendanceAccess';
 import { bvUserAliases } from '@/lib/bvGroupMemberScope';
-import { loadGroupFacilitators, loadGroupSupervisors } from '@/lib/bvGroupFacilitators';
+import { countsAsGroupMember, loadGroupFacilitators, loadGroupSupervisors } from '@/lib/bvGroupFacilitators';
 
 export default createEndpoint({
   description: 'Save BV session attendance for a group and date. Idempotent — creates the session if needed, updates existing attendance. Also writes attendanceDate and group directly to attendance records.',
@@ -21,23 +21,14 @@ export default createEndpoint({
   }),
   outputSchema: z.any(),
   execute: async ({ input, context }: any) => {
-    // Resolve group — try custom groupId first, then DB UUID
-    let group = await BvGroups.findOne({
-      filters: { groupId: input.groupId },
-      fields: ['id', 'groupId', 'groupName', 'bvslLeader', 'bvslId', 'bvslName', 'rgsfId', 'subFacilitatorId', 'subFacilitator', 'supervisorId', 'supervisorUserId', 'supervisorName'],
-    });
-    if (!group) {
-      group = await BvGroups.findOne({
-        id: input.groupId,
-        fields: ['id', 'groupId', 'groupName', 'bvslLeader', 'bvslId', 'bvslName', 'rgsfId', 'subFacilitatorId', 'subFacilitator', 'supervisorId', 'supervisorUserId', 'supervisorName'],
-      });
-    }
+    const groupFields = ['id', 'groupId', 'groupName', 'bvslLeader', 'bvslId', 'bvslName', 'rgsfId', 'subFacilitatorId', 'subFacilitator', 'supervisorId', 'supervisorUserId', 'supervisorName'];
+    const group = await findAttendanceGroup(input.groupId, groupFields);
     if (!group) throw new AppError({ code: 'NOT_FOUND', message: 'Group not found' });
 
-    // Every RGF assigned to this group can save attendance. A second RGF is
-    // stored beside the first, and her sign-in id may differ from the id
-    // written on the group.
-    if (!(await callerFacilitatesReadingGroup(group, context.user))) {
+    // The RGF dashboard lists every group assigned to this person. Saving uses
+    // that same assignment, including a second RGF and a sign-in id that
+    // differs from the id written on the group.
+    if (!(await callerCanRecordGroupAttendance(group, context.user))) {
       throw new AppError({ code: 'FORBIDDEN', message: 'Only this Reading Group\'s facilitator can save attendance' });
     }
 
@@ -56,15 +47,42 @@ export default createEndpoint({
       });
     }
 
-    // Get all current group members (skip orphaned ones without a linked user)
-    const { records: members } = await BvGroupMembers.findAll({
-      filters: { group: group.id },
-      fields: ['id', 'user'],
-      limit: 500,
+    // The same membership rows the attendance list counts, by either group id.
+    const groupKeys = [group.id, group.groupId].filter(Boolean);
+    const [byGroup, byGroupId] = await Promise.all([
+      BvGroupMembers.findAll({
+        filters: { group: group.id },
+        fields: ['id', 'user', 'userId', 'memberId', 'group', 'groupId'],
+        limit: 500,
+      }),
+      BvGroupMembers.findAll({
+        filters: { groupId: { in: groupKeys } } as any,
+        fields: ['id', 'user', 'userId', 'memberId', 'group', 'groupId'],
+        limit: 500,
+      }),
+    ]);
+    const members = [...byGroup.records, ...byGroupId.records]
+      .filter((member: any, index: number, records: any[]) => records.findIndex(item => item.id === member.id) === index);
+    const identityValues = [...new Set(members.flatMap((member: any) => [member.user, member.userId, member.memberId]).filter(Boolean).map(String))];
+    const userFields = ['id', 'userId', 'fullName', 'email', 'firebaseUid', 'uid', 'authUid', 'status', 'role', 'isBvMember', 'bvGroupId', 'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator'];
+    const userQueries = identityValues.length > 0
+      ? await Promise.all([
+        Users.findAll({ filters: { id: { in: identityValues } } as any, fields: userFields, limit: 500 }),
+        Users.findAll({ filters: { userId: { in: identityValues } } as any, fields: userFields, limit: 500 }),
+        Users.findAll({ filters: { firebaseUid: { in: identityValues } } as any, fields: userFields, limit: 500 }),
+      ])
+      : [];
+    const userByAlias = new Map<string, any>();
+    userQueries.flatMap(result => result.records || []).forEach((user: any) => {
+      bvUserAliases(user).forEach(alias => userByAlias.set(alias, user));
     });
-    const validMembers = members.filter((m: any) => {
-      const uid = Array.isArray(m.user) ? m.user[0] : m.user;
-      return !!uid;
+    const validMembers = members.flatMap((member: any) => {
+      const dbId = Array.isArray(member.user) ? member.user[0] : member.user;
+      const user = [member.user, member.userId, member.memberId]
+        .map(value => userByAlias.get(String(value || '').trim().toLowerCase()))
+        .find(Boolean);
+      if (!dbId || !user || !countsAsGroupMember(user, group)) return [];
+      return [{ dbId: String(dbId), user }];
     });
     const staff = await loadGroupFacilitators(group);
     const roster: Array<{ writeUserId: string; keys: string[] }> = [];
@@ -77,26 +95,21 @@ export default createEndpoint({
       uniqueKeys.forEach(key => covered.add(key.toLowerCase()));
     };
     for (const member of validMembers) {
-      const dbId = Array.isArray(member.user) ? member.user[0] : member.user as string;
-      addPerson(dbId, [dbId]);
+      addPerson(member.dbId, [member.dbId, member.user.id, member.user.userId]);
     }
     for (const entry of staff) {
       const aliases = bvUserAliases(entry.user);
-      if (aliases.some(alias => covered.has(alias))) {
-        const person = roster.find(item => item.keys.some(key => aliases.includes(key.toLowerCase())));
-        if (person) {
-          for (const alias of [entry.user.id, entry.user.userId, ...aliases]) {
-            const key = String(alias || '').trim();
-            if (!key || person.keys.some(existing => existing.toLowerCase() === key.toLowerCase())) continue;
-            person.keys.push(key);
-            covered.add(key.toLowerCase());
-          }
-        }
-        continue;
+      if (!aliases.some(alias => covered.has(alias))) continue;
+      const person = roster.find(item => item.keys.some(key => aliases.includes(key.toLowerCase())));
+      if (!person) continue;
+      for (const alias of [entry.user.id, entry.user.userId, ...aliases]) {
+        const key = String(alias || '').trim();
+        if (!key || person.keys.some(existing => existing.toLowerCase() === key.toLowerCase())) continue;
+        person.keys.push(key);
+        covered.add(key.toLowerCase());
       }
-      addPerson(entry.user.id, [entry.user.id, entry.user.userId, ...aliases]);
     }
-    const supervisors = await loadGroupSupervisors(group, staff);
+    const supervisors = await loadGroupSupervisors(group);
     for (const supervisor of supervisors) {
       const aliases = bvUserAliases(supervisor);
       if (aliases.some(alias => covered.has(alias))) {

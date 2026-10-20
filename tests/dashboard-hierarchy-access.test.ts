@@ -135,7 +135,8 @@ test('an RGF group name comes from the group they facilitate', async t => {
   mockDatabase(t);
   const directory = await call(getGuideUsers, { guideId: 'ALL', statusFilter: 'all' });
   const rgfRow = directory.users.find((user: any) => user.userId === 'rgf-a');
-  assert.equal(rgfRow?.bvGroupName, 'Group A');
+  assert.equal(rgfRow?.bvGroupName ?? null, null);
+  assert.deepEqual(rgfRow?.facilitatedGroupNames, ['Group A']);
   const memberRow = directory.users.find((user: any) => user.userId === 'direct-a');
   assert.equal(memberRow?.bvGroupName ?? null, null);
 });

@@ -228,12 +228,9 @@ test('supervisor groups include only groups led by reporting RGFs with RGF card 
       context: { user: supervisor },
     } as never);
     assert.equal(detail.group.groupName, supervisedGroup.groupName);
-    assert.equal(detail.members.length, 2);
-    assert.deepEqual(
-      detail.members.map((row: any) => row.fullName).sort(),
-      [member.fullName, reportingRgf.fullName].sort(),
-    );
-    assert.deepEqual(detail.members.find((row: any) => row.userId === reportingRgf.userId)?.badges, ['RGF']);
+    assert.equal(detail.members.length, 1);
+    assert.deepEqual(detail.members.map((row: any) => row.fullName), [member.fullName]);
+    assert.equal(detail.members.some((row: any) => row.userId === reportingRgf.userId), false);
     assert.equal(detail.quizzes.length, 1);
 
     const matrix = await getBvAttendanceMatrix.execute({
@@ -683,10 +680,10 @@ test('BV group detail resolves a legacy memberId membership for the group leader
       context: { user: leader },
     } as never);
 
-    assert.equal(detail.members.length, 2);
+    assert.equal(detail.members.length, 1);
     const listedMember = detail.members.find((row: any) => row.fullName === member.fullName);
     assert.equal(listedMember?.userId, member.userId);
-    assert.deepEqual(detail.members.find((row: any) => row.fullName === leader.fullName)?.badges, ['RGF']);
+    assert.equal(detail.members.some((row: any) => row.fullName === leader.fullName), false);
     assert.equal(detail.group.joinToken, group.joinToken);
 
     await assert.rejects(

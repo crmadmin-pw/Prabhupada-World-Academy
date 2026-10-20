@@ -3,8 +3,8 @@ import { z } from 'zod';
 import { createEndpoint, Users, Guides, FolkResidencies, SadhanaEntries, BvGroups, BvGroupMembers } from '@/lib/backend-sdk';
 import { getTodayIST, daysAgo } from '../lib/streakUtils';
 import { normalizeRole, normalizeStatus } from './resolveUserLogin';
-import { folkGuideIdentityRefs, isPrabhupadaWorldDirectoryMember, normalizeDepartmentToken } from '../lib/directoryDepartment';
-import { callerDirectoryDepartment, getDashboardHierarchyScope, HIERARCHY_IDENTITY_FIELDS, hierarchyRefs, isHierarchySuperAdmin, isPwDepartmentAdmin, memberDirectoryDepartment, readScopedUsers } from '../lib/hierarchyUtils';
+import { folkGuideIdentityRefs, isPrabhupadaWorldDirectoryMember, labelVisibleToCaller, normalizeDepartmentToken, organizationalDepartment } from '../lib/directoryDepartment';
+import { callerDirectoryDepartment, getDashboardHierarchyScope, HIERARCHY_IDENTITY_FIELDS, hierarchyRefs, isHierarchySuperAdmin, isPwDepartmentAdmin, readScopedUsers } from '../lib/hierarchyUtils';
 import { getGuideScope } from '../lib/guideScope';
 import { getReportReferenceData } from '../lib/reportReferenceData';
 
@@ -12,7 +12,7 @@ import { getReportReferenceData } from '../lib/reportReferenceData';
 const GUIDE_FIELDS = ['id', 'email', 'isActive', 'role', 'folkResidencies'];
 // Minimal fields for user listing — avoids fetching large linked-record arrays
 const USER_FIELDS = ['id', 'userId', 'fullName', 'phone', 'email', 'role', 'roles', 'status', 'segment',
-  'isPrabhupadaWorldUser', 'isFolkUser',
+  'isPrabhupadaWorldUser', 'isFolkUser', 'isFolkLead', 'isPwAdmin', 'isPrabhupadaWorldMentor',
   'ashrayLevel', 'residency', 'residencyApproved', 'residencyClaimed', 'residencyGuideVerified',
   'guide', 'isBvsl', 'isBvMember', 'isSadhanaMentor', 'isServiceAllocator', 'isBvMentor',
   'isFolkLead', 'isTripCoordinator', 'isOtherCenter', 'isCleanlinessManager', 'createdAt',
@@ -257,7 +257,11 @@ export default createEndpoint({
       guideLabelPromise,
     ]);
 
-    if (directoryDepartment === 'PW') {
+    if (callerDepartment === 'FOLK') {
+      // Exclude every Prabhupada World account, including admins stored as
+      // "Prabhupada World" or identified by role. Unclassified legacy members stay.
+      users = users.filter(user => organizationalDepartment(user) !== 'PW');
+    } else if (directoryDepartment === 'PW') {
       const folkGuideRefs = folkGuideIdentityRefs(users);
       const folkGuideEmails = new Set<string>();
       for (const user of users) {
@@ -278,8 +282,6 @@ export default createEndpoint({
         }
       }
       users = users.filter(user => isPrabhupadaWorldDirectoryMember(user, folkGuideRefs));
-    } else if (directoryDepartment === 'FOLK') {
-      users = users.filter(user => memberDirectoryDepartment(user) === 'FOLK');
     }
 
     const todayEntries: any[] = sadhanaRes?.records || [];
@@ -295,9 +297,8 @@ export default createEndpoint({
         if (uId && gId) userGroupMap.set(uId, gId);
       }
     });
-    // An RGF is the group's facilitator, not necessarily a member row.
-    // Membership still wins for the single personal group. Every group they
-    // facilitate is kept separately so one RGF can lead more than one group.
+    // Facilitated groups stay on the RGF cell. They are not a membership,
+    // so they do not set the personal group shown in the members table.
     const facilitatedByAlias = new Map<string, { id: string; name: string }[]>();
     allBvGroups.forEach((g: any) => {
       const groupKey = String(g.id || g.groupId || '');
@@ -315,7 +316,6 @@ export default createEndpoint({
         const led = facilitatedByAlias.get(ref) || [];
         if (!led.some(group => group.id === groupKey)) led.push({ id: groupKey, name: groupName });
         facilitatedByAlias.set(ref, led);
-        if (!userGroupMap.has(ref)) userGroupMap.set(ref, groupKey);
       }
     });
 
@@ -352,6 +352,7 @@ export default createEndpoint({
       }
 
       for (const g of reference.guides) {
+        if (!labelVisibleToCaller(context.user, g)) continue;
         if (g.id) {
           guideLookup.set(g.id.toLowerCase(), g.fullName || g.id);
           if (g.fullName) guideLookup.set(g.fullName.toLowerCase(), g.fullName);
@@ -460,7 +461,7 @@ export default createEndpoint({
           isPrabhupadaWorldUser: u.isPrabhupadaWorldUser === true,
           isFolkUser: u.isFolkUser === true,
           isBvsl: u.isBvsl || false,
-          isBvMember: u.isBvMember === true || !!u.bvGroupId,
+          isBvMember: !!userGroupMap.get(String(u.id || '').toLowerCase()) || !!userGroupMap.get(String(u.userId || '').toLowerCase()) || !!userGroupMap.get(String(u.email || '').toLowerCase()),
           bvRegistrationStatus: u.bvRegistrationStatus || null,
           isBvSupervisor: u.isBvSupervisor || false,
           isBvFacilitator: u.isBvFacilitator || false,
@@ -489,7 +490,7 @@ export default createEndpoint({
         const facilitatedGroups = [uId, uUserId, uEmail, uName]
           .flatMap(alias => facilitatedByAlias.get(alias) || [])
           .filter((group, index, list) => list.findIndex(item => item.id === group.id) === index);
-        const assignedGid = u.bvGroupId || userGroupMap.get(uId) || userGroupMap.get(uUserId);
+        const assignedGid = userGroupMap.get(uId) || userGroupMap.get(uUserId) || userGroupMap.get(uEmail) || null;
 
         const groupRgf = assignedGid ? groupRgfMap.get(String(assignedGid)) : null;
 
@@ -525,7 +526,7 @@ export default createEndpoint({
           isResident,
           submittedToday: submittedToday.has(u.id),
           isBvsl: u.isBvsl || false,
-          isBvMember: u.isBvMember === true || !!assignedGid,
+          isBvMember: !!assignedGid,
           bvRegistrationStatus: u.bvRegistrationStatus || null,
           isB: u.isB || false,
           isOtherCenter: (u as any).isOtherCenter || false,
@@ -553,7 +554,7 @@ export default createEndpoint({
           bvReportingFacilitatorName: resolvedFacName,
           supervisorName: u.supervisorName || resolvedFacName || null,
           bvGroupId: assignedGid || null,
-          bvGroupName: groupNameMap.get(String(assignedGid || '')) || u.bvGroupName || null,
+          bvGroupName: assignedGid ? (groupNameMap.get(String(assignedGid)) || null) : null,
           facilitatedGroupIds: facilitatedGroups.map(group => group.id),
           facilitatedGroupNames: facilitatedGroups.map(group => group.name).filter(Boolean),
           // Fields used in UsersTab table

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createEndpoint, Users, OneToOneMeetings, BvGroups, BvGroupMembers } from '@/lib/backend-sdk';
 import { getScopedHierarchyUserIds, isHierarchyAdmin, readScopedUsers } from '../lib/hierarchyUtils';
+import { organizationalDepartment } from '../lib/directoryDepartment';
 import { resolveBvGroupFacilitatorUsers, resolveBvGroupMemberUsers } from '../lib/bvGroupMemberScope';
 
 function getWeeks(weeksBack: number): string[] {
@@ -49,11 +50,14 @@ export default createEndpoint({
     // Get strict hierarchy scoped user IDs for the calling user
     const scopedUserIds = await getScopedHierarchyUserIds(context.user);
 
-    const storedSegment = String(context.user.segment || '').trim().toUpperCase();
-    const callerSegment = input.department || storedSegment || 'PW';
-    if (input.department && storedSegment && input.department !== storedSegment) {
+    const storedDepartment = organizationalDepartment(context.user);
+    const requestedDepartment = input.department
+      ? organizationalDepartment({ segment: input.department })
+      : null;
+    if (requestedDepartment && storedDepartment && requestedDepartment !== storedDepartment) {
       throw new Error('You cannot view one-to-one data for another department');
     }
+    const callerSegment = requestedDepartment || storedDepartment || 'PW';
     const isSupervisor = !!(
       context.user.isBvSupervisor ||
       context.user.isBvMentor ||
@@ -65,6 +69,7 @@ export default createEndpoint({
       'bvReportingAdminId', 'bvReportingAdminName',
       'bvReportingSupervisorId', 'bvReportingSupervisorName',
       'bvReportingFacilitatorId', 'bvReportingFacilitatorName', 'segment',
+      'isPrabhupadaWorldUser', 'isFolkUser', 'isFolkLead', 'isPwAdmin',
       'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator', 'isBvSupervisor', 'isBvMentor', 'isBvAdmin', 'isBvSuperAdmin'
     ];
 
@@ -270,16 +275,6 @@ export default createEndpoint({
       if (!group) return;
       normalizedRefs([m.user, m.userId, m.memberId]).forEach(ref => userToGroupMap.set(ref, group));
     });
-    // RGF/RGSF records are normally not membership rows. Associate them with
-    // their group too, so supervisors can search and filter every level of
-    // their hierarchy in the same table.
-    allBvGroups.forEach((group: any) => {
-      normalizedRefs([group.bvslLeader, group.bvslId, group.subFacilitatorId, group.rgsfId, group.subFacilitator])
-        .forEach(ref => {
-          if (!userToGroupMap.has(ref)) userToGroupMap.set(ref, group);
-        });
-    });
-
     const userNameMap = new Map<string, string>();
     allUsers.forEach((u: any) => {
       if (u.id) userNameMap.set(String(u.id).toLowerCase(), u.fullName || '');
@@ -308,30 +303,21 @@ export default createEndpoint({
       });
     }
 
-    // Collect department-scoped unique Admins for dropdown filtering
-    const isCallerPw = context.user?.segment === 'PW' || context.user?.isPwAdmin || context.user?.isPrabhupadaWorldUser === true;
+    // Admin names come only from accounts in the caller's department. A stored
+    // reporting-admin label is not a person we can classify, so it is not shown.
+    const callerDepartment = organizationalDepartment(context.user)
+      || (callerSegment === 'FOLK' ? 'FOLK' : (callerSegment === 'PW' || callerSegment === 'PRABHUPADAWORLD' ? 'PW' : null));
 
     const allAdminsSet = new Set<string>();
     allUsers.forEach((u: any) => {
       if (scopedUserIds !== null && !normalizedRefs([u.id, u.userId, u.email]).some(ref => scopedUserIds.has(ref))) return;
-      if (u.isBvAdmin || u.isBvSuperAdmin || u.role === 'Admin' || u.role === 'ADMIN' || u.role === 'Super Admin' || u.role === 'SUPER_ADMIN') {
-        const name = u.fullName || u.name || u.email;
-        const isUserFolk = u.segment === 'FOLK';
-        const isUserPw = u.segment === 'PW' || u.isPrabhupadaWorldUser === true;
-        if (isCallerPw) {
-          if (isUserPw || (!isUserFolk && !name.toUpperCase().includes('FOLK'))) {
-            if (name) allAdminsSet.add(name);
-          }
-        } else {
-          if (isUserFolk || (!isUserPw && !name.toUpperCase().includes('PW') && !name.toLowerCase().includes('prabhupada'))) {
-            if (name) allAdminsSet.add(name);
-          }
-        }
-      }
-      if (u.bvReportingAdminName) {
-        if (isCallerPw && !u.bvReportingAdminName.toUpperCase().includes('FOLK')) allAdminsSet.add(u.bvReportingAdminName);
-        if (!isCallerPw && !u.bvReportingAdminName.toUpperCase().includes('PW') && !u.bvReportingAdminName.toLowerCase().includes('prabhupada')) allAdminsSet.add(u.bvReportingAdminName);
-      }
+      const role = String(u.role || '').toUpperCase().replace(/[\s-]+/g, '_');
+      const isAdmin = u.isBvAdmin || u.isBvSuperAdmin || u.isPwAdmin || ['ADMIN', 'PW_ADMIN', 'SUPER_ADMIN', 'ADMINISTRATOR'].includes(role);
+      if (!isAdmin) return;
+      const department = organizationalDepartment(u);
+      if (callerDepartment && department && department !== callerDepartment) return;
+      const name = u.fullName || u.name || u.email;
+      if (name) allAdminsSet.add(name);
     });
     const allAdmins = Array.from(allAdminsSet).filter(Boolean).sort();
 
@@ -343,14 +329,19 @@ export default createEndpoint({
           .map(ref => userToGroupMap.get(ref))
           .find(Boolean);
 
+        const callerIsFolk = organizationalDepartment(context.user) === 'FOLK';
+        const groupIsOtherDepartment = callerIsFolk && organizationalDepartment(uGrp) === 'PW';
         const rgfId = String(u.bvReportingFacilitatorId || uGrp?.bvslLeader || uGrp?.bvslId || '').toLowerCase();
-        const rgfName = u.bvReportingFacilitatorName || uGrp?.bvslName || (rgfId ? userNameMap.get(rgfId) : null) || null;
+        const rgfName = (rgfId ? userNameMap.get(rgfId) : null)
+          || (groupIsOtherDepartment ? null : (u.bvReportingFacilitatorName || uGrp?.bvslName || null));
 
         const supId = String(u.bvReportingSupervisorId || uGrp?.bvReportingSupervisorId || '').toLowerCase();
-        const supervisorName = u.bvReportingSupervisorName || uGrp?.bvReportingSupervisorName || (supId ? userNameMap.get(supId) : null) || null;
+        const supervisorName = (supId ? userNameMap.get(supId) : null)
+          || (groupIsOtherDepartment ? null : (u.bvReportingSupervisorName || uGrp?.bvReportingSupervisorName || null));
 
         const adminId = String(u.bvReportingAdminId || uGrp?.bvReportingAdminId || '').toLowerCase();
-        const adminName = u.bvReportingAdminName || uGrp?.bvReportingAdminName || (adminId ? userNameMap.get(adminId) : null) || null;
+        const adminName = (adminId ? userNameMap.get(adminId) : null)
+          || (groupIsOtherDepartment ? null : (u.bvReportingAdminName || uGrp?.bvReportingAdminName || null));
 
         const rawDelegate = Array.isArray(u.oneToOneDelegate) ? u.oneToOneDelegate[0] : u.oneToOneDelegate;
         const hasDelegate = !!rawDelegate && String(rawDelegate).toLowerCase() !== String(u.id || '').toLowerCase();

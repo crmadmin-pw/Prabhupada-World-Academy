@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, BvSessions, BvAttendance, BvQuizzes, Users, AppError } from '@/lib/backend-sdk';
 import { legacyQuizMatchesGroup, normalizeQuizDepartment } from '@/lib/bvQuizAccess';
 import { bvUserAliases, resolveBvScopedGroups } from '@/lib/bvGroupMemberScope';
-import { isReadingGroupStaff, loadGroupFacilitators, type FacilitatorBadge } from '@/lib/bvGroupFacilitators';
+import { countsAsGroupMember, loadGroupFacilitators, type FacilitatorBadge } from '@/lib/bvGroupFacilitators';
 import { isHierarchyAdmin } from '@/lib/hierarchyUtils';
 
 function normalizeKey(value: unknown): string {
@@ -77,17 +77,6 @@ async function findUsersForKeys(keys: string[]): Promise<any[]> {
   }
 
   return [...results.values()];
-}
-
-function textValues(value: unknown): string[] {
-  if (Array.isArray(value)) return value.flatMap(textValues);
-  const text = String(value ?? '').trim();
-  if (!text) return [];
-  return text.split(',').map(item => item.trim()).filter(Boolean);
-}
-
-function aliasSet(values: unknown[]): Set<string> {
-  return new Set(values.flatMap(textValues).map(value => value.toLowerCase()));
 }
 
 const GROUP_FIELDS = [
@@ -202,46 +191,12 @@ export default createEndpoint({
       return { rawKeys, user, canonicalId };
     };
 
-    const groupAliases = new Set([group.id, group.groupId].filter(Boolean).map(value => normalizeKey(value)));
     const activeMemberships = membershipRecords
       .map((m: any) => {
         const resolved = resolveMember(m);
-        const profileGroupId = normalizeKey(firstValue(resolved.user?.bvGroupId));
-        // The BvGroupMembers row is authoritative. Older user profiles often
-        // lack bvGroupId/isBvMember even though their membership is active.
-        const isCurrentGroup = profileGroupId ? groupAliases.has(profileGroupId) : true;
-        const isActiveUser = !resolved.user?.status || String(resolved.user.status).toLowerCase() === 'active';
-        // An explicit false is written when a member leaves a group; do not
-        // render its leftover legacy membership row. Missing values remain
-        // supported for pre-migration records.
-        const isBvMember = resolved.user?.isBvMember !== false;
-        const facilitatorBadges = badgesForUser(resolved.user);
-        // A group's current RGF/RGSF stays on this roster even when their
-        // personal profile points at another group. An RGF removed from this
-        // group keeps a membership row, but that row is not a member seat.
-        const assignedHere = facilitatorBadges.length > 0;
-        const isActiveMember = !!resolved.user && isActiveUser && (
-          assignedHere || (!isReadingGroupStaff(resolved.user) && isBvMember && isCurrentGroup)
-        );
-        return { record: m, resolved, isActiveMember };
+        return { record: m, resolved, isActiveMember: countsAsGroupMember(resolved.user, group) };
       })
       .filter(item => item.isActiveMember);
-
-    const coveredAliases = new Set(
-      activeMemberships.flatMap(item => bvUserAliases(item.resolved.user)),
-    );
-    for (const entry of facilitatorRoster) {
-      if (bvUserAliases(entry.user).some(alias => coveredAliases.has(alias))) continue;
-      const record = {
-        id: `facilitator-${entry.user.id || entry.user.userId}`,
-        user: entry.user.id,
-        userId: entry.user.userId,
-        role: entry.badges[0],
-        joinedAt: '',
-      };
-      activeMemberships.push({ record, resolved: resolveMember(record), isActiveMember: true });
-      bvUserAliases(entry.user).forEach(alias => coveredAliases.add(alias));
-    }
 
     const memberKeyToCanonical = new Map<string, string>();
     for (const { resolved } of activeMemberships) {
@@ -286,34 +241,6 @@ export default createEndpoint({
       };
     });
 
-    const listedNames = new Set(members.map(member => member.fullName.trim().toLowerCase()));
-    const namedOnly = (values: unknown, badge: FacilitatorBadge) => {
-      if (facilitatorRoster.some(entry => entry.badges.includes(badge))) return [];
-      return textValues(values)
-        .filter(name => name.includes(' ') && !listedNames.has(name.toLowerCase()))
-        .map(name => ({
-          membershipId: `facilitator-name-${badge}-${name.toLowerCase()}`,
-          userId: '',
-          dbId: null,
-          fullName: name,
-          phone: '',
-          ashrayLevel: null,
-          presentCount: 0,
-          totalCount: 0,
-          attendanceRate: 0,
-          lastPresent: null,
-          role: badge,
-          joinedAt: '',
-          badges: [badge],
-        }));
-    };
-    const rgfNameOnly = aliasSet([group.bvslLeader, group.bvslId]).size === 0
-      ? namedOnly(group.bvslName, 'RGF')
-      : [];
-    const rgsfNameOnly = aliasSet([group.subFacilitatorId, group.rgsfId]).size === 0
-      ? namedOnly(group.subFacilitator, 'RGSF')
-      : [];
-    members.push(...rgfNameOnly, ...rgsfNameOnly);
     members.sort((left, right) => {
       const rank = (badges: FacilitatorBadge[]) => (badges.includes('RGF') ? 0 : badges.includes('RGSF') ? 1 : 2);
       return rank(left.badges) - rank(right.badges) || left.fullName.localeCompare(right.fullName);

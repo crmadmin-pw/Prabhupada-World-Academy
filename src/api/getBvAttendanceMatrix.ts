@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, BvAttendance, Users, AppError } from '@/lib/backend-sdk';
 import { resolveBvScopedGroups } from '@/lib/bvGroupMemberScope';
-import { facilitatorRoleLabel, groupHasFacilitator, groupHasSubFacilitator, isReadingGroupStaff, loadGroupFacilitators } from '@/lib/bvGroupFacilitators';
+import { countsAsGroupMember, facilitatorRoleLabel, loadGroupFacilitators } from '@/lib/bvGroupFacilitators';
 import { bvUserAliases } from '@/lib/bvGroupMemberScope';
 
 function firstValue(value: unknown): string {
@@ -68,18 +68,11 @@ export default createEndpoint({
     userRecordsById.records.forEach(addRecord);
     userRecordsByUserId.records.forEach(addRecord);
 
-    const groupAliases = new Set([group.id, group.groupId].filter(Boolean).map(value => String(value).toLowerCase()));
     const activeMembers = membersRes.records.filter((m: any) => {
       const uid = firstValue(m.user);
       const altUid = firstValue(m.userId);
       const u = userMap[uid] || userMap[uid.toLowerCase()] || userMap[altUid] || userMap[altUid.toLowerCase()];
-      const profileGroupId = firstValue(u?.bvGroupId).toLowerCase();
-      const isCurrentGroup = profileGroupId ? groupAliases.has(profileGroupId) : true;
-      const isActiveUser = !u?.status || String(u.status).toLowerCase() === 'active';
-      const aliases = new Set([u?.id, u?.userId, u?.email, u?.fullName].map(value => String(value || '').trim().toLowerCase()).filter(Boolean));
-      const assignedHere = groupHasFacilitator(group, aliases) || groupHasSubFacilitator(group, aliases);
-      if (isReadingGroupStaff(u) && !assignedHere) return false;
-      return !!u && isCurrentGroup && isActiveUser;
+      return countsAsGroupMember(u, group);
     });
 
     // Query by group only. Combining group with an attendanceDate range needs
@@ -135,12 +128,10 @@ export default createEndpoint({
       }
       return role;
     };
-    const listed = new Set<string>();
     const rows = activeMembers.map((m: any) => {
       const uid = firstValue(m.user);
       const altUid = firstValue(m.userId);
       const u = (userMap[uid] || userMap[uid.toLowerCase()] || userMap[altUid] || userMap[altUid.toLowerCase()]) as any;
-      if (u) bvUserAliases(u).forEach(alias => listed.add(alias));
       const attendance: Record<string, number> = {};
       dates.forEach(d => { attendance[d] = userDateMap[uid]?.[d] ?? 0; });
       const weekTotal = Object.values(attendance).reduce((s, v) => s + v, 0);
@@ -153,26 +144,6 @@ export default createEndpoint({
         weekTotal,
       };
     });
-    for (const entry of staff) {
-      const aliases = bvUserAliases(entry.user);
-      if (aliases.some(alias => listed.has(alias))) continue;
-      const keys = [entry.user.id, entry.user.userId, entry.user.email].filter(Boolean).map(String);
-      const attendance: Record<string, number> = {};
-      dates.forEach(date => {
-        const marked = keys.map(key => userDateMap[key]?.[date]).find(value => value !== undefined);
-        attendance[date] = marked ?? 0;
-      });
-      const weekTotal = Object.values(attendance).reduce((sum, value) => sum + value, 0);
-      rows.push({
-        userId: entry.user.userId || entry.user.id,
-        name: entry.user.fullName || '',
-        ashrayLevel: entry.user.ashrayLevel || null,
-        roleLabel: facilitatorRoleLabel(entry.badges),
-        attendance,
-        weekTotal,
-      });
-      aliases.forEach(alias => listed.add(alias));
-    }
 
     return {
       sessions: dates.map(d => ({ sessionId: d, sessionDate: d, topic: '' })),
