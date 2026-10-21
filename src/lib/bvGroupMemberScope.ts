@@ -59,6 +59,12 @@ function profileName(user: UserRecord | null | undefined): string {
   return String(user?.fullName || user?.displayName || user?.name || '').trim();
 }
 
+function withVisibleName(user: UserRecord): UserRecord {
+  const fullName = profileName(user);
+  if (!fullName || fullName === String(user.fullName || '').trim()) return user;
+  return { ...user, fullName };
+}
+
 function profileEmail(user: UserRecord | null | undefined): string {
   return String(user?.email || '').trim();
 }
@@ -470,15 +476,32 @@ export async function resolveBvGroupMemberUsers(
   });
   const memberAliases = new Set<string>();
   const groupRefsByMemberAlias = new Map<string, Set<string>>();
+  const rememberMember = (memberRef: string, groupRefsForMember: string[]) => {
+    memberAliases.add(memberRef);
+    const assignedGroups = groupRefsByMemberAlias.get(memberRef) || new Set<string>();
+    groupRefsForMember.forEach(groupRef => assignedGroups.add(groupRef));
+    groupRefsByMemberAlias.set(memberRef, assignedGroups);
+  };
   for (const membership of memberships) {
     const membershipGroupRefs = refs([membership.group, membership.groupId]);
     if (!membershipGroupRefs.some(ref => scopedGroupAliases.has(ref))) continue;
-    const membershipMemberRefs = refs([membership.user, membership.userId, membership.memberId]);
-    membershipMemberRefs.forEach(memberRef => {
-      memberAliases.add(memberRef);
-      const assignedGroups = groupRefsByMemberAlias.get(memberRef) || new Set<string>();
-      membershipGroupRefs.forEach(groupRef => assignedGroups.add(groupRef));
-      groupRefsByMemberAlias.set(memberRef, assignedGroups);
+    refs([membership.user, membership.userId, membership.memberId])
+      .forEach(memberRef => rememberMember(memberRef, membershipGroupRefs));
+  }
+  // The group's own RGF and RGSF are members even when they have no membership row.
+  const facilitatorAliases = new Set<string>();
+  for (const group of groups) {
+    const staffRefs = refs([
+      group.record.bvslLeader,
+      group.record.bvslId,
+      group.record.subFacilitatorId,
+      group.record.rgsfId,
+      group.record.subFacilitator,
+    ]);
+    const groupRefsForStaff = refs([group.id, group.groupId]);
+    staffRefs.forEach(alias => {
+      facilitatorAliases.add(alias);
+      rememberMember(alias, groupRefsForStaff);
     });
   }
   if (memberAliases.size === 0) return [];
@@ -490,20 +513,12 @@ export async function resolveBvGroupMemberUsers(
     ? await getScopedHierarchyUserIds(contextUser)
     : null;
   const callerAliases = new Set(bvUserAliases(contextUser));
-  // Facilitators can appear in a legacy group-membership record. A report
-  // opened by an RGF/RGSF is a member report, so never surface the RGF or
-  // RGSF as one of the people being monitored.
-  const facilitatorAliases = new Set<string>();
-  if (options.excludeCaller) {
-    for (const group of groups) {
-      bvGroupFacilitatorAliases(group.record).forEach(alias => facilitatorAliases.add(alias));
-    }
-  }
+  // A report can hide the caller, but the group's own RGF and RGSF stay in
+  // the member list and in the headcount.
   const visibleUsers = users
     .filter(user => isUserInHierarchy(user, hierarchy))
-    .filter(user => !options.excludeCaller || !bvUserAliases(user).some(alias =>
-      callerAliases.has(alias) || facilitatorAliases.has(alias)
-    ));
+    .filter(user => !options.excludeCaller || !bvUserAliases(user).some(alias => callerAliases.has(alias))
+      || bvUserAliases(user).some(alias => facilitatorAliases.has(alias)));
   const claimedAliases = new Set<string>([
     ...users.flatMap(user => bvUserAliases(user)),
     ...(options.excludeCaller ? [...callerAliases, ...facilitatorAliases] : []),
@@ -539,9 +554,9 @@ export async function resolveBvGroupMemberUsers(
       bvUserAliases(user).forEach(alias => {
         groupRefsByMemberAlias.get(alias)?.forEach(groupRef => scopedGroupIds.add(groupRef));
       });
-      return { ...user, __bvScopedGroupIds: [...scopedGroupIds] };
+      return withVisibleName({ ...user, __bvScopedGroupIds: [...scopedGroupIds] });
     }),
-    ...unresolvedMembers.values(),
+    ...[...unresolvedMembers.values()].map(withVisibleName),
   ];
 }
 

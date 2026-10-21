@@ -2,10 +2,11 @@ import { z } from 'zod';
 import { createEndpoint, Guides, Users, SadhanaEntries, FolkResidencies, AppError } from '@/lib/backend-sdk';
 import { getTodayIST } from '../lib/streakUtils';
 import { isActiveFolkResidency } from '../lib/residencyCategory';
+import { organizationalDepartment } from '../lib/directoryDepartment';
 
 const GUIDE_FIELDS = ['id', 'email', 'isActive', 'fullName', 'phone', 'abbreviation', 'folkResidencies', 'activeResidencyView'];
 const CURRENT_USER_GUIDE_FIELDS = ['id', 'userId', 'email', 'fullName', 'phone', 'folkResidencies', 'activeResidencyView'];
-const USER_FIELDS = ['id', 'status', 'residencyApproved', 'guide'];
+const USER_FIELDS = ['id', 'status', 'residencyApproved', 'guide', 'segment', 'role', 'isPrabhupadaWorldUser', 'isFolkUser', 'isFolkLead', 'isPwAdmin', 'isBvAdmin', 'isBvSuperAdmin'];
 const ENTRY_FIELDS = ['id', 'user', 'entryDate'];
 const RESIDENCY_FIELDS = ['id', 'residencyName', 'isActive', 'category', 'segment'];
 
@@ -105,7 +106,9 @@ export default createEndpoint({
     for (const res of residencyUsersArr) {
       for (const u of res.records) userMap.set(u.id, u);
     }
-    const allUsers = Array.from(userMap.values());
+    const allUsers = (organizationalDepartment(context.user) === 'FOLK'
+      ? Array.from(userMap.values()).filter(user => organizationalDepartment(user) !== 'PW')
+      : Array.from(userMap.values()));
 
     const activeUsers = allUsers.filter(u => u.status === 'Active');
     const pendingUsers = allUsers.filter(u => u.status === 'Pending Approval');

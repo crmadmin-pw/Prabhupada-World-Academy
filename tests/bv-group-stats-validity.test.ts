@@ -37,14 +37,14 @@ test('group stats hide orphan groups but retain a valid empty RGF group', async 
     } as never);
 
     const validCard = result.groups.find((group: any) => group.groupId === validGroup.groupId);
-    assert.equal(validCard?.memberCount, 0);
+    assert.equal(validCard?.memberCount, 1);
     assert.ok(!result.groups.some((group: any) => group.groupName === orphanGroup.groupName));
 
     const listed = await getBvslGroups.execute({
       input: { bvslId: rgf.userId },
       context: { user: rgf },
     } as never);
-    assert.equal(listed.groups.find((group: any) => group.groupId === validGroup.groupId)?.memberCount, 0);
+    assert.equal(listed.groups.find((group: any) => group.groupId === validGroup.groupId)?.memberCount, 1);
   } finally {
     await BvGroups.delete({ id: validGroup.id }).catch(() => undefined);
     await BvGroups.delete({ id: orphanGroup.id }).catch(() => undefined);

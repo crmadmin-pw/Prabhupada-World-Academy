@@ -13,6 +13,7 @@ import { sendOrQueue } from '@/lib/offlineQueue';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { BULK_USER_ASHRAY_LEVELS } from '@/config/bulkUserCsv';
 import { normalizeBvDepartment, type BvDepartment } from '@/lib/bvRunningTimeSlots';
+import { splitStoredPhone } from '@/lib/phoneNormalize';
 
 interface Props {
   open: boolean;
@@ -54,19 +55,15 @@ const PW_CLASSES = [
   { value: 'None', label: 'None / Not attending currently' },
 ];
 
-const parsePhone = (p?: string) => {
-  if (!p) return { cc: '+91', num: '' };
-  if (p.startsWith('+') && p.length > 10) {
-    return { cc: p.slice(0, -10), num: p.slice(-10) };
-  }
-  return { cc: '+91', num: p.replace(/\D/g, '').slice(-10) };
-};
+const CALLING_CODES = COUNTRY_CODES.map(entry => entry.code);
+const parsePhone = (p?: string | null, countryCode?: string | null) =>
+  splitStoredPhone(p, CALLING_CODES, '+91', countryCode);
 
 export default function BvRegistrationModal({ open, onOpenChange, onSuccess, segment }: Props) {
   const { profile } = useUserProfile();
   const activeSegment = segment || profile?.segment || 'PW';
   
-  const initialPhoneParts = parsePhone((profile as any)?.phone);
+  const initialPhoneParts = parsePhone(profile?.phone, profile?.phoneCountryCode);
 
   const [fullName, setFullName] = useState(profile?.fullName || '');
   const [phoneCountryCode, setPhoneCountryCode] = useState(initialPhoneParts.cc);
@@ -101,14 +98,14 @@ export default function BvRegistrationModal({ open, onOpenChange, onSuccess, seg
     if (profile?.fullName) {
       setFullName(profile.fullName);
     }
-    if (profile?.phone) {
-      const parts = parsePhone(profile.phone);
+    if (profile?.phone || profile?.phoneCountryCode) {
+      const parts = parsePhone(profile.phone, profile.phoneCountryCode);
       setPhoneCountryCode(parts.cc);
       setPhone(parts.num);
       setWhatsappCountryCode(parts.cc);
       setWhatsappNumber(parts.num);
     }
-  }, [profile?.fullName, profile?.phone]);
+  }, [profile?.fullName, profile?.phone, profile?.phoneCountryCode]);
 
   useEffect(() => {
     if (!open) return;
@@ -183,8 +180,8 @@ export default function BvRegistrationModal({ open, onOpenChange, onSuccess, seg
       return;
     }
     const sanitizedWhatsapp = whatsappNumber.replace(/\D/g, '');
-    if (sanitizedWhatsapp.length !== 10) {
-      toast.error('WhatsApp number must be exactly 10 digits');
+    if (sanitizedWhatsapp.length < 7) {
+      toast.error('WhatsApp number must be at least 7 digits');
       return;
     }
     if (!isAtLeastFourteen(dob)) {
@@ -392,8 +389,8 @@ export default function BvRegistrationModal({ open, onOpenChange, onSuccess, seg
                     type="tel"
                     inputMode="numeric"
                     value={whatsappNumber}
-                    onChange={e => setWhatsappNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                    maxLength={10}
+                    onChange={e => setWhatsappNumber(e.target.value.replace(/\D/g, '').slice(0, 15))}
+                    maxLength={15}
                     placeholder={initialPhoneParts.num || "9876543210"}
                     required
                   />

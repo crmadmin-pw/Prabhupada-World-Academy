@@ -71,6 +71,49 @@ function expandCommaSeparatedFacilitator(facilitators: GroupFacilitator[]): Grou
   return expanded.length > 0 ? expanded : facilitators;
 }
 
+export type AssignedStaffSlot = { keys: string[] };
+
+/** One slot per RGF or RGSF assigned on this group, with every stored identity. */
+export function assignedStaffSlots(group: {
+  bvslLeader?: unknown;
+  bvslId?: unknown;
+  bvslName?: unknown;
+  subFacilitatorId?: unknown;
+  rgsfId?: unknown;
+  subFacilitator?: unknown;
+} | null | undefined): AssignedStaffSlot[] {
+  if (!group) return [];
+  const slots: AssignedStaffSlot[] = readGroupFacilitators(group)
+    .map(slot => ({
+      keys: [slot.id, slot.userId, slot.name].map(value => String(value || '').trim()).filter(Boolean),
+    }))
+    .filter(slot => slot.keys.length > 0);
+  const seen = new Set(slots.flatMap(slot => slot.keys.map(key => key.toLowerCase())));
+  const subFacilitators = [group.subFacilitatorId, group.rgsfId, group.subFacilitator]
+    .flatMap(value => textList(value))
+    .flatMap(value => value.split(',').map(part => part.trim()).filter(Boolean));
+  for (const key of subFacilitators) {
+    if (seen.has(key.toLowerCase())) continue;
+    slots.push({ keys: [key] });
+    seen.add(key.toLowerCase());
+  }
+  return slots;
+}
+
+/** How many assigned RGF/RGSF identities are missing from an existing headcount. */
+export function uncountedAssignedStaff(group: Parameters<typeof assignedStaffSlots>[0], counted: Set<string>): number {
+  let extra = 0;
+  for (const slot of assignedStaffSlots(group)) {
+    if (slot.keys.some(key => counted.has(key.toLowerCase()))) {
+      slot.keys.forEach(key => counted.add(key.toLowerCase()));
+      continue;
+    }
+    extra += 1;
+    slot.keys.forEach(key => counted.add(key.toLowerCase()));
+  }
+  return extra;
+}
+
 export function facilitatorIdentityKeys(facilitator: {
   id?: string;
   userId?: string;

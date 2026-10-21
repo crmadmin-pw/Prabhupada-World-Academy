@@ -9,7 +9,7 @@ import { resolveBvAdminFacilitators } from '../lib/bvAdminFacilitatorScope';
 import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
 import { aggregateForAliases, loadLeaderboardFacts, scoreFromAggregate } from '../lib/sadhanaPeriodSummary';
 
-const USER_FIELDS = ['id', 'fullName', 'email', 'segment', 'isPrabhupadaWorldUser', 'ashrayLevel', 'residency', 'residencyApproved', 'guide', 'status', 'userId', 'role', 'currentStreak', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
+const USER_FIELDS = ['id', 'fullName', 'displayName', 'name', 'email', 'segment', 'isPrabhupadaWorldUser', 'ashrayLevel', 'residency', 'residencyApproved', 'guide', 'status', 'userId', 'role', 'currentStreak', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
 
 /** Roles to exclude from the leaderboard — only administrative roles */
 const EXCLUDED_ROLES = new Set(['Guide', 'Super Guide']);
@@ -230,7 +230,7 @@ export default createEndpoint({
 
         return {
           userId: u.userId || u.id,
-          displayName: u.fullName || 'Unknown',
+          displayName: String(u.fullName || u.displayName || u.name || 'Unknown').trim() || 'Unknown',
           guideName: '',
           guideId: Array.isArray(u.guide) ? (u.guide[0] || '') : (u.guide || ''),
           ashrayLevel: u.ashrayLevel || '',

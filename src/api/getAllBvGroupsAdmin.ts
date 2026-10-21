@@ -3,7 +3,8 @@ import { createEndpoint, BvGroups, BvGroupMembers, BvAttendance, Users, Guides }
 import { serverCacheGetOrFetch, serverCacheInvalidate } from '../lib/serverCache';
 import { isBvDepartmentAdmin, isBvSuperAdminUser, resolveBvDepartmentGroups } from '../lib/bvGroupMemberScope';
 import { callerDirectoryDepartment, getScopedHierarchyUserIds, isPwDepartmentAdmin, isUserInHierarchy, hierarchyRefs, readScopedUsers } from '../lib/hierarchyUtils';
-import { joinFacilitatorNames, readGroupFacilitators, textList } from '@/lib/bvGroupFacilitators';
+import { organizationalDepartment } from '../lib/directoryDepartment';
+import { joinFacilitatorNames, readGroupFacilitators, textList, uncountedAssignedStaff } from '@/lib/bvGroupFacilitators';
 
 export function facilitatorIdentityRefs(group: { bvslLeader?: unknown; bvslId?: unknown; bvslName?: unknown }): string[] {
   return [...new Set([...groupFacilitatorRefs(group), ...textList(group.bvslName)])];
@@ -154,7 +155,8 @@ export default createEndpoint({
     if (!effectiveGuideId) return { bvsls: [], groups: [], error: null };
     // Short cache keyed by the server-resolved scope. Table writes invalidate
     // local entries; the TTL bounds freshness across other server instances.
-    const cacheKey = `allBvGroupsAdmin:${effectiveGuideId}`;
+    const callerDepartment = callerDirectoryDepartment(context?.user) || 'unscoped';
+    const cacheKey = `allBvGroupsAdmin:${callerDepartment}:${effectiveGuideId}`;
     // Resolve authorization before any cached result: a recent reassignment
     // must not leave a former admin able to read a group's cached members.
     const hierarchy = await getScopedHierarchyUserIds(context.user);
@@ -229,7 +231,7 @@ async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<strin
         // require a composite index that may not exist immediately after deploy.
         filters: { status: 'Active' },
         limit: 1000,
-        fields: ['id', 'userId', 'fullName', 'email', 'guide', 'selectedGuideId', 'guideName', 'residency', 'role', 'isBvsl', 'isBvFacilitator', 'bvReportingAdminId', 'bvReportingSupervisorId', 'bvReportingAdminName', 'bvReportingSupervisorName'],
+        fields: ['id', 'userId', 'fullName', 'email', 'guide', 'selectedGuideId', 'guideName', 'residency', 'role', 'segment', 'isPrabhupadaWorldUser', 'isPwAdmin', 'isBvAdmin', 'isBvSuperAdmin', 'isBvsl', 'isBvFacilitator', 'bvReportingAdminId', 'bvReportingSupervisorId', 'bvReportingAdminName', 'bvReportingSupervisorName'],
       }),
     ]);
     const bvslUserRecords = allBvslUsers.filter((u: any) => {
@@ -246,7 +248,9 @@ async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<strin
       return matchesGuide || matchesResidency;
     });
     const rgfAliases = new Set(bvslUserRecords.flatMap((u: any) => [u.id, u.userId]).filter(Boolean).map((v: any) => String(v).toLowerCase()));
+    const callerIsFolk = organizationalDepartment(caller) === 'FOLK';
     const groupRecords = allGroupRecords.filter((g: any) => {
+      if (callerIsFolk && organizationalDepartment(g) === 'PW') return false;
       if (departmentGroupIds) return departmentGroupIds.has(String(g.id));
       if (hierarchy !== null) {
         const guideRefs = hierarchyRefs(g.guide);
@@ -266,9 +270,9 @@ async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<strin
     const allGroupIds = groupRecords.map((g: any) => g.id);
 
     const [allMembersRes, allAttRes] = await Promise.all([
-      allGroupIds.length === 0 ? Promise.resolve({ records: [] }) : BvGroupMembers.findAll({
+      allGroupIds.length === 0 ? Promise.resolve({ records: [] }) :       BvGroupMembers.findAll({
         filters: { group: { in: allGroupIds } } as any,
-        fields: ['id', 'group'],
+        fields: ['id', 'group', 'user', 'userId', 'memberId'],
         limit: 5000,
       }),
       allGroupIds.length === 0 ? Promise.resolve({ records: [] }) : BvAttendance.findAll({
@@ -280,9 +284,17 @@ async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<strin
 
     // Build per-group lookup maps from the batch results
     const memberCountByGroup = new Map<string, number>();
+    const countedAliasesByGroup = new Map<string, Set<string>>();
     for (const m of allMembersRes.records) {
       const gid = Array.isArray((m as any).group) ? (m as any).group[0] : (m as any).group;
-      if (gid) memberCountByGroup.set(gid, (memberCountByGroup.get(gid) ?? 0) + 1);
+      if (!gid) continue;
+      memberCountByGroup.set(gid, (memberCountByGroup.get(gid) ?? 0) + 1);
+      if (!countedAliasesByGroup.has(gid)) countedAliasesByGroup.set(gid, new Set());
+      const counted = countedAliasesByGroup.get(gid)!;
+      for (const value of [(m as any).user, (m as any).userId, (m as any).memberId]) {
+        const key = String(value || '').trim().toLowerCase();
+        if (key) counted.add(key);
+      }
     }
     const attByGroup = new Map<string, any[]>();
     for (const a of allAttRes.records) {
@@ -302,7 +314,7 @@ async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<strin
     const missingFacilitators = [...new Set(groupRecords.flatMap(groupFacilitatorRefs))]
       .filter(ref => !usersByAlias.has(aliasKey(ref)));
     if (missingFacilitators.length > 0) {
-      const facilitatorFields = ['id', 'userId', 'fullName', 'email', 'role', 'isBvFacilitator', 'isBvsl'];
+      const facilitatorFields = ['id', 'userId', 'fullName', 'email', 'role', 'segment', 'isPrabhupadaWorldUser', 'isPwAdmin', 'isBvAdmin', 'isBvSuperAdmin', 'isBvFacilitator', 'isBvsl'];
       for (let index = 0; index < missingFacilitators.length; index += 30) {
         const batch = missingFacilitators.slice(index, index + 30);
         const [byId, byUserId, byEmail] = await Promise.all([
@@ -314,10 +326,20 @@ async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<strin
       }
     }
 
+    const displayUsers = callerIsFolk
+      ? indexFacilitatorUsers([...usersByAlias.values()].filter(user => organizationalDepartment(user) !== 'PW'))
+      : usersByAlias;
+    const hiddenNames = new Set(callerIsFolk
+      ? [...usersByAlias.values()]
+        .filter(user => organizationalDepartment(user) === 'PW')
+        .map(user => String(user.fullName || '').trim().toLowerCase())
+        .filter(Boolean)
+      : []);
     const groups = groupRecords.map((g: any) => {
       const bvslDbId = textList(g.bvslLeader)[0] || textList(g.bvslId)[0];
 
-      const memberCount = memberCountByGroup.get(g.id) ?? 0;
+      const counted = countedAliasesByGroup.get(g.id) || new Set<string>();
+      const memberCount = (memberCountByGroup.get(g.id) ?? 0) + uncountedAssignedStaff(g, counted);
       const attRecords = attByGroup.get(g.id) ?? [];
 
       // Count distinct session dates
@@ -336,16 +358,26 @@ async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<strin
       for (const ref of groupFacilitatorRefs(g)) {
         const user = usersByAlias.get(aliasKey(ref));
         if (!user?.id || seenUsers.has(user.id)) continue;
+        if (callerIsFolk && organizationalDepartment(user) === 'PW') continue;
         seenUsers.add(user.id);
         matchedUsers.push(user);
         if (isCurrentFacilitator(user)) listedFacilitators.set(String(user.id), user);
       }
       const bvslUser = matchedUsers[0];
-      const bvslName = facilitatorDisplayName(g, usersByAlias);
+      const resolvedName = facilitatorDisplayName(g, displayUsers);
+      const bvslName = resolvedName && hiddenNames.has(resolvedName.trim().toLowerCase()) ? null : resolvedName;
+      const leaderRecord = usersByAlias.get(aliasKey(bvslDbId));
+      const leaderIsHidden = callerIsFolk && organizationalDepartment(leaderRecord) === 'PW';
       const facilitatorIds = [...new Set([
         ...facilitatorIdentityRefs(g),
         ...matchedUsers.flatMap(user => [user.id, user.userId, user.email, user.fullName]),
-      ].map(value => String(value || '').trim()).filter(Boolean))];
+      ].map(value => String(value || '').trim()).filter(value => {
+        if (!value) return false;
+        if (!callerIsFolk) return true;
+        const known = usersByAlias.get(aliasKey(value));
+        if (known && organizationalDepartment(known) === 'PW') return false;
+        return !hiddenNames.has(value.toLowerCase());
+      }))];
 
       return {
         groupId: g.groupId || g.id,
@@ -358,7 +390,7 @@ async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<strin
         totalSessions: sessionCount,
         avgAttendanceRate,
         joinToken: g.joinToken || null,
-        bvslLeaderId: bvslUser?.userId || bvslDbId || facilitatorIds[0] || null,
+        bvslLeaderId: leaderIsHidden ? null : (bvslUser?.userId || bvslDbId || facilitatorIds[0] || null),
         facilitatorIds,
         rgfIds: facilitatorIds,
         rgsfIds: rgsfIdentityRefs(g),

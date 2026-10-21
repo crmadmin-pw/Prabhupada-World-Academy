@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, Users, Guides, SadhanaEntries } from '@/lib/backend-sdk';
 import { getTodayIST, daysAgo } from '../lib/streakUtils';
-import { joinFacilitatorNames, textList } from '@/lib/bvGroupFacilitators';
+import { assignedStaffSlots, joinFacilitatorNames, textList } from '@/lib/bvGroupFacilitators';
 import { isExcusedFromReporting } from '@/lib/accountDeletionPolicy';
 
 const EMPTY_SUMMARY = { totalGroups: 0, totalMembers: 0, filledToday: 0, pendingToday: 0, fillRate: 0, weeklyAvgRate: 0 };
@@ -36,14 +36,14 @@ export default createEndpoint({
     // --- Fetch active BV groups under this guide ---
     const { records: groups } = await BvGroups.findAll({
       filters: { guide: guideDbId, isActive: true },
-      fields: ['id', 'groupId', 'groupName', 'bvslLeader'],
+      fields: ['id', 'groupId', 'groupName', 'bvslLeader', 'bvslId', 'bvslName', 'subFacilitatorId', 'rgsfId', 'subFacilitator'],
       limit: 200,
     });
     if (groups.length === 0) return { targetDate, summary: { ...EMPTY_SUMMARY, totalGroups: 0 }, groups: [] };
 
     // --- Fetch BVSL leader info ---
     const bvslLeaderIds = [...new Set(
-      groups.flatMap(g => textList(g.bvslLeader))
+      groups.flatMap(g => assignedStaffSlots(g).flatMap(slot => slot.keys))
     )];
     const bvslMap: Record<string, { fullName: string; phone: string }> = {};
     const groupDbIds = groups.map(g => g.id);
@@ -64,9 +64,10 @@ export default createEndpoint({
     ]);
     for (const u of bvslUsers) bvslMap[u.id] = { fullName: u.fullName || '', phone: u.phone || '' };
 
-    const allMemberUserIds = [...new Set(
-      allMemberships.map(m => (Array.isArray(m.user) ? m.user[0] : m.user) as string).filter(Boolean)
-    )];
+    const allMemberUserIds = [...new Set([
+      ...allMemberships.map(m => (Array.isArray(m.user) ? m.user[0] : m.user) as string).filter(Boolean),
+      ...bvslLeaderIds,
+    ])];
 
     // --- Build empty group shells if no members ---
     if (allMemberUserIds.length === 0) {
@@ -82,7 +83,18 @@ export default createEndpoint({
             groupName: g.groupName || '',
             bvslName: joinFacilitatorNames(bvslPeople.map(person => person.fullName)),
             bvslPhone: bvslInfo?.phone || '',
-            memberCount: 0, filledCount: 0, pendingCount: 0, fillPercent: 0, weeklyAvgPercent: 0, members: [],
+            memberCount: assignedStaffSlots(g).length,
+            filledCount: 0,
+            pendingCount: assignedStaffSlots(g).length,
+            fillPercent: 0,
+            weeklyAvgPercent: 0,
+            members: assignedStaffSlots(g).map(slot => ({
+              userId: slot.keys[0],
+              fullName: bvslMap[slot.keys[0]]?.fullName || slot.keys[0],
+              filledToday: false,
+              currentStreak: 0,
+              lastFilledDate: null,
+            })),
           };
         }),
       };
@@ -117,6 +129,9 @@ export default createEndpoint({
       }
       userInfoMap[u.id] = { fullName: u.fullName || '', currentStreak: u.currentStreak ?? 0 };
     }
+    for (const [id, person] of Object.entries(bvslMap)) {
+      if (!userInfoMap[id]) userInfoMap[id] = { fullName: person.fullName, currentStreak: 0 };
+    }
 
     // Entries are already scoped to BV members — no need for extra .includes() checks
     const filledTodaySet = new Set(
@@ -146,23 +161,35 @@ export default createEndpoint({
     const groupResults = groups.map(g => {
       const bvslPeople = textList(g.bvslLeader).map(id => bvslMap[id]).filter(Boolean);
       const bvslInfo = bvslPeople[0];
-      const memberIds = (groupMembershipsMap[g.id] || []).filter(uid => !excusedMemberIds.has(uid));
-      const filledCount = memberIds.filter(uid => filledTodaySet.has(uid)).length;
-      const fillPercent = memberIds.length > 0 ? Math.round((filledCount / memberIds.length) * 100) : 0;
+      const memberIds = [...(groupMembershipsMap[g.id] || [])];
+      const seenMemberIds = new Set(memberIds.map(id => id.toLowerCase()));
+      for (const slot of assignedStaffSlots(g)) {
+        if (slot.keys.some(key => seenMemberIds.has(key.toLowerCase()))) {
+          slot.keys.forEach(key => seenMemberIds.add(key.toLowerCase()));
+          continue;
+        }
+        const resolved = slot.keys.find(key => userInfoMap[key]);
+        if (!resolved || seenMemberIds.has(resolved.toLowerCase())) continue;
+        memberIds.push(resolved);
+        slot.keys.forEach(key => seenMemberIds.add(key.toLowerCase()));
+      }
+      const activeMemberIds = memberIds.filter(uid => uid && !excusedMemberIds.has(uid));
+      const filledCount = activeMemberIds.filter(uid => filledTodaySet.has(uid)).length;
+      const fillPercent = activeMemberIds.length > 0 ? Math.round((filledCount / activeMemberIds.length) * 100) : 0;
 
       let weeklyAvgPercent = 0;
-      if (memberIds.length > 0) {
+      if (activeMemberIds.length > 0) {
         let total = 0;
         for (let i = 0; i < 7; i++) {
           const d = new Date(targetDate + 'T00:00:00Z');
           d.setUTCDate(d.getUTCDate() - (6 - i));
           const ds = d.toISOString().split('T')[0];
-          total += memberIds.filter(uid => userFilledDates[uid]?.has(ds)).length / memberIds.length;
+          total += activeMemberIds.filter(uid => userFilledDates[uid]?.has(ds)).length / activeMemberIds.length;
         }
         weeklyAvgPercent = Math.round((total / 7) * 100);
       }
 
-      const members = memberIds.map(uid => {
+      const members = activeMemberIds.map(uid => {
         const info = userInfoMap[uid] || { fullName: 'Unknown', currentStreak: 0 };
         const filledDates = [...(userFilledDates[uid] || [])].sort().reverse();
         return {
@@ -180,9 +207,9 @@ export default createEndpoint({
         groupName: g.groupName || '',
         bvslName: joinFacilitatorNames(bvslPeople.map(person => person.fullName)),
         bvslPhone: bvslInfo?.phone || '',
-        memberCount: memberIds.length,
+        memberCount: activeMemberIds.length,
         filledCount,
-        pendingCount: memberIds.length - filledCount,
+        pendingCount: activeMemberIds.length - filledCount,
         fillPercent,
         weeklyAvgPercent,
         members,

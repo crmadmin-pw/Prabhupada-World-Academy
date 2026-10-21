@@ -18,6 +18,7 @@ import BvAdminDataTable from '@/components/bv/BvAdminDataTable';
 import BvGroupManagerPanel from './BvGroupManagerPanel';
 
 import { useUserProfile } from '@/contexts/UserProfileContext';
+import { organizationalDepartment } from '@/lib/directoryDepartment';
 
 interface Props { guideId: string; }
 type BvslInfo = GetAllBvGroupsAdminOutputType['bvsls'][0];
@@ -25,7 +26,7 @@ type GuideUser = GetGuideUsersOutputType['users'][0];
 
 export default function BvslManagementTab({ guideId }: Props) {
   const { profile } = useUserProfile();
-  const isPwAdmin = profile?.segment === 'PW';
+  const isPwAdmin = organizationalDepartment(profile) === 'PW';
 
   const [bvsls, setBvsls] = useState<BvslInfo[]>([]);
   const [guideUsers, setGuideUsers] = useState<GuideUser[]>([]);
@@ -62,7 +63,8 @@ export default function BvslManagementTab({ guideId }: Props) {
   // Both sides now use DB UUID (u.id from getGuideUsers = userId, b.userId from getAllBvGroupsAdmin = u.id)
   const bvslIds = new Set(bvsls.map(b => b.userId));
   const eligibleUsers = guideUsers.filter(u => {
-    const matchesSegment = isPwAdmin ? (u as any).segment === 'PW' : (u as any).segment !== 'PW';
+    const department = organizationalDepartment(u);
+    const matchesSegment = isPwAdmin ? department === 'PW' : department !== 'PW';
     return u.status === 'ACTIVE' && matchesSegment && !bvslIds.has(u.userId);
   });
 

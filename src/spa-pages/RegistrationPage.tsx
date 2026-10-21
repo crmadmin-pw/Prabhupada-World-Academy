@@ -187,6 +187,7 @@ export default function RegistrationPage() {
           role: 'USER',
           status: 'PENDING_APPROVAL',
           phone: phoneE164,
+          phoneCountryCode: formData.phoneCountryCode,
           email,
           selectedGuideId: formData.selectedGuideId,
           isPrabhupadaWorldUser: isPwMentorSelected,

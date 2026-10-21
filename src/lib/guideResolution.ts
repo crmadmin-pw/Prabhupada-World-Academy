@@ -1,4 +1,5 @@
 import { Guides, Users } from '@/lib/backend-sdk';
+import { organizationalDepartment } from '@/lib/directoryDepartment';
 
 export type ResolvedGuide = {
   id: string;
@@ -14,14 +15,14 @@ function asGuide(record: any): ResolvedGuide | null {
   const id = String(record.id || record.userId || '');
   if (!id) return null;
 
-  const isPw = record.segment === 'PW' || record.isPrabhupadaWorldUser === true || record.isPrabhupadaWorldMentor === true;
+  const department = organizationalDepartment(record);
   return {
     id,
     userId: record.userId || record.guideId || undefined,
     fullName: record.fullName || record.name || undefined,
     email: record.email || undefined,
-    segment: isPw ? 'PW' : record.segment === 'FOLK' ? 'FOLK' : undefined,
-    isPrabhupadaWorldMentor: isPw,
+    segment: department || undefined,
+    isPrabhupadaWorldMentor: department === 'PW',
   };
 }
 

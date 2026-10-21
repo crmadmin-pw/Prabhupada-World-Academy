@@ -199,10 +199,17 @@ export default createEndpoint({
       .filter(item => item.isActiveMember);
 
     const memberKeyToCanonical = new Map<string, string>();
+    const rememberCanonical = (keys: string[], canonicalId: string) => {
+      for (const key of keys) memberKeyToCanonical.set(normalizeKey(key), canonicalId);
+    };
     for (const { resolved } of activeMemberships) {
-      for (const key of [...resolved.rawKeys, ...bvUserAliases(resolved.user)]) {
-        memberKeyToCanonical.set(normalizeKey(key), resolved.canonicalId);
-      }
+      rememberCanonical([...resolved.rawKeys, ...bvUserAliases(resolved.user)], resolved.canonicalId);
+    }
+    for (const entry of facilitatorRoster) {
+      const canonicalId = String(entry.user?.id || entry.user?.userId || '');
+      const aliases = bvUserAliases(entry.user);
+      if (!canonicalId || aliases.some(alias => memberKeyToCanonical.has(alias))) continue;
+      rememberCanonical(aliases, canonicalId);
     }
 
     const attendanceStats = new Map<string, { presentCount: number; totalCount: number; lastPresent: string }>();
@@ -240,6 +247,32 @@ export default createEndpoint({
         badges: badgesForUser(u),
       };
     });
+
+    const listedAliases = new Set(members.flatMap(member =>
+      [member.userId, member.dbId].map(value => normalizeKey(value)).filter(Boolean),
+    ));
+    for (const entry of facilitatorRoster) {
+      const aliases = bvUserAliases(entry.user);
+      if (aliases.some(alias => listedAliases.has(alias))) continue;
+      const canonicalId = String(entry.user.id || entry.user.userId || '');
+      const stats = attendanceStats.get(canonicalId) || { presentCount: 0, totalCount: 0, lastPresent: '' };
+      members.push({
+        membershipId: '',
+        userId: entry.user.userId || entry.user.id || canonicalId,
+        dbId: entry.user.id || null,
+        fullName: entry.user.fullName || 'Unknown member',
+        phone: entry.user.phone || '',
+        ashrayLevel: entry.user.ashrayLevel || null,
+        presentCount: stats.presentCount,
+        totalCount: stats.totalCount,
+        attendanceRate: stats.totalCount > 0 ? Math.round((stats.presentCount / stats.totalCount) * 100) : 0,
+        lastPresent: stats.lastPresent || null,
+        role: entry.badges.includes('RGF') ? 'RGF' : 'RGSF',
+        joinedAt: '',
+        badges: badgesForUser(entry.user),
+      });
+      aliases.forEach(alias => listedAliases.add(alias));
+    }
 
     members.sort((left, right) => {
       const rank = (badges: FacilitatorBadge[]) => (badges.includes('RGF') ? 0 : badges.includes('RGSF') ? 1 : 2);

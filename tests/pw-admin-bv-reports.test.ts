@@ -74,7 +74,7 @@ test('PW Admin BV reports return only data in that admin hierarchy across every 
 
     const matrix = await getBvSessionMatrix.execute({ input: { guideId: admin.userId, segment: 'PW', startDate: date, endDate: date }, context } as never);
     assert.deepEqual(matrix.groups.map((group: any) => group.id), [pwGroup.id]);
-    assert.deepEqual(matrix.members.map((member: any) => member.fullName), [pwMember.fullName]);
+    assert.deepEqual(matrix.members.map((member: any) => member.fullName), [pwMember.fullName, pwRgf.fullName]);
     assert.equal(matrix.attendance[pwMember.id]?.[date], true);
 
     const preaching = await getBvPreachingReport.execute({ input: { guideId: admin.userId, segment: 'PW', date, reportType: 'daily' }, context } as never);
@@ -87,8 +87,8 @@ test('PW Admin BV reports return only data in that admin hierarchy across every 
 
     const groups = await getGuideGroupStats.execute({ input: { guideId: admin.userId, segment: 'PW' }, context } as never);
     assert.deepEqual(groups.groups.map((group: any) => group.groupName), [pwGroup.groupName]);
-    assert.equal(groups.groups[0].memberCount, 1);
-    assert.equal(groups.groups[0].attendanceRate, 100);
+    assert.equal(groups.groups[0].memberCount, 2);
+    assert.equal(groups.groups[0].attendanceRate, 50);
 
     const sadhana = await getGuideDetailedReport.execute({ input: { guideId: admin.userId, segment: 'PW', date, reportType: 'daily', facilitatorMode: true }, context } as never);
     assert.ok(sadhana.users.some((user: any) => user.fullName === pwRgf.fullName));

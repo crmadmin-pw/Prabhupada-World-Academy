@@ -4,6 +4,7 @@ import { getScopedHierarchyUserIds, isUserInHierarchy, readScopedUsers } from '.
 import { createEndpoint, Users, SadhanaEntries, Guides, FolkResidencies } from '@/lib/backend-sdk';
 import { computeStreak, getTodayIST, daysAgo } from '../lib/streakUtils';
 import { readEntriesForOwners } from '../lib/scopedEntryReads';
+import { organizationalDepartment, visibleToCallerDepartment } from '../lib/directoryDepartment';
 
 const memberSchema = z.object({
   userId: z.string(),
@@ -88,8 +89,12 @@ export default createEndpoint({
       residencyMentorScope ? Users.findAll(memberQuery) : readScopedUsers(context.user, memberQuery),
       residencyMentorScope ? Promise.resolve(null) : getScopedHierarchyUserIds(context.user),
     ]);
-    const isPw = currentUser?.segment === 'PW' || !!(currentUser as any)?.isPrabhupadaWorldUser;
-    const guideName = isPw ? 'Prabhupada World' : ((guideRecord as any)?.fullName || (currentUser as any)?.bvReportingAdminName || 'FOLK Guide');
+    const callerDepartment = organizationalDepartment(context.user);
+    const isPw = callerDepartment === 'PW';
+    const guideRecordIsHidden = callerDepartment === 'FOLK' && organizationalDepartment(guideRecord) === 'PW';
+    const guideName = isPw
+      ? 'Prabhupada World'
+      : (guideRecordIsHidden ? 'FOLK Guide' : ((guideRecord as any)?.fullName || (currentUser as any)?.bvReportingAdminName || 'FOLK Guide'));
 
     // Filter users under this Admin (or all users if Super Admin / Admin)
     const isSuperOrAdmin = !!(currentUser?.isBvSuperAdmin || currentUser?.isBvAdmin || (currentUser?.role || '').toUpperCase().includes('ADMIN'));
@@ -98,7 +103,7 @@ export default createEndpoint({
     const currentUid = String(currentUser?.userId || '').toLowerCase();
     const currentEmail = String(context.user?.email || '').toLowerCase();
 
-    const users = allUsers.filter((u: any) => {
+    const users = visibleToCallerDepartment(context.user, allUsers).filter((u: any) => {
       if (residencyMentorScope) return !residencyMentorScope.isSelf(u) && residencyMentorScope.includes(u);
       if (!isUserInHierarchy(u, hierarchy)) return false;
       // Never expose incomplete profile records as blank member rows. A mentor

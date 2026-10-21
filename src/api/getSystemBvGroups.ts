@@ -1,4 +1,5 @@
 import { createEndpoint, BvGroups, BvGroupMembers, AppError } from '@/lib/backend-sdk';
+import { uncountedAssignedStaff } from '@/lib/bvGroupFacilitators';
 import { z } from 'zod';
 
 export default createEndpoint({
@@ -28,13 +29,16 @@ export default createEndpoint({
     const { records: groups } = await BvGroups.findAll({ limit: 1000 });
 
     const enrichedGroups = await Promise.all(groups.map(async (g) => {
-      const membersRes = await BvGroupMembers.findAll({ filters: { group: g.id }, limit: 1000, fields: ['id'] });
+      const membersRes = await BvGroupMembers.findAll({ filters: { group: g.id }, limit: 1000, fields: ['id', 'user', 'userId', 'memberId'] });
+      const counted = new Set(membersRes.records.flatMap((member: any) =>
+        [member.user, member.userId, member.memberId].map((value: unknown) => String(value || '').trim().toLowerCase()).filter(Boolean),
+      ));
       return {
         id: g.id,
         groupName: g.groupName || '',
         bvslName: g.bvslName || null,
         isActive: g.isActive ?? true,
-        memberCount: membersRes.records.length,
+        memberCount: membersRes.records.length + uncountedAssignedStaff(g, counted),
         segment: g.segment || null,
       };
     }));

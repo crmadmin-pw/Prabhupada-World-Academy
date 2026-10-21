@@ -3,6 +3,7 @@ import { createEndpoint, Users, FolkResidencies, Guides } from '@/lib/backend-sd
 import { getGuideScope } from '../lib/guideScope';
 import { isUserInGuideScope } from '../lib/guideScope';
 import { getScopedHierarchyUserIds, isUserInHierarchy, readScopedUsers } from '../lib/hierarchyUtils';
+import { organizationalDepartment } from '../lib/directoryDepartment';
 
 const USER_FIELDS = ['id', 'fullName', 'phone', 'email', 'ashrayLevel', 'residency', 'selectedFolkResidency',
   'residencyClaimed', 'residencyJoinDate', 'createdAt', 'status', 'guide', 'selectedGuideId', 'guideName', 'isPrabhupadaWorldUser', 'segment'];
@@ -53,7 +54,7 @@ export default createEndpoint({
 
     // PW registrations form a shared admin queue, so that queue still reads the
     // department. Every other caller reads only the people who report to them.
-    const isPwIntakeAdmin = String(context.user.segment || '').toUpperCase() === 'PW' && !!(
+    const isPwIntakeAdmin = organizationalDepartment(context.user) === 'PW' && !!(
       context.user.isBvSuperAdmin || context.user.isBvAdmin || context.user.isPwAdmin ||
       userRole === 'SUPER_ADMIN' || userRole === 'ADMIN' || userRole === 'PW_ADMIN'
     );
@@ -64,11 +65,9 @@ export default createEndpoint({
     const pendingCandidates = pendingCandidatesRaw.filter((user: any) =>
       String(user.status || '').trim().toUpperCase().replace(/[\s_-]+/g, '_') === 'PENDING_APPROVAL'
     );
-    const userSegment = context.user.segment || 'PW';
+    const userSegment = organizationalDepartment(context.user) || 'PW';
 
-    const checkIsPwUser = (u: any) => {
-      return !!u.isPrabhupadaWorldUser || u.segment === 'PW';
-    };
+    const checkIsPwUser = (u: any) => organizationalDepartment(u) === 'PW';
 
     const isPwAdminOrSuperAdmin = !!(
       context.user.isBvSuperAdmin || context.user.isBvAdmin || context.user.isPwAdmin ||

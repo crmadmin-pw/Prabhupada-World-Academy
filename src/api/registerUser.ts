@@ -8,6 +8,7 @@ import { getUserSegment, resolveGuideReference } from '../lib/guideResolution';
 import { ACCOUNT_DELETED_LOGIN_MESSAGE, isAccountDeleted } from '@/lib/accountDeletionPolicy';
 import { ensureAccountLinkReview, findUnlinkedEmailProfiles, isLoginLinkedToProfile } from '@/lib/accountLinkReview';
 import { publishUsersRevision } from '../lib/publishUsersRevision';
+import { canonicalCountryCode } from '@/lib/phoneNormalize';
 
 export default createEndpoint({
   description: 'Register new user — updates the user sync record with profile data. Phone is primary identifier.',
@@ -126,6 +127,7 @@ export default createEndpoint({
     // Check if this phone is already registered (by another user). Stored
     // records may contain either E.164 formatting or digits only.
     const phone = input.phoneE164.replace(/[^0-9]/g, '');
+    const phoneCountryCode = canonicalCountryCode(input.phoneCountryCode);
     const phoneResults = await Promise.all([
       Users.findAll({ filters: { phone }, limit: 5 }),
       input.phoneE164 !== phone
@@ -178,6 +180,7 @@ export default createEndpoint({
       userId,
       fullName: input.fullName,
       phone,
+      phoneCountryCode,
       email: userEmail,
       guide: guideRecord?.id || null,
       residency: residencyRecordId || null,

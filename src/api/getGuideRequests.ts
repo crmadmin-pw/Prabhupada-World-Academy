@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createEndpoint, GuideTransferRequests, Users, Guides, AshrayUpgradeRequests, FolkResidencies } from '@/lib/backend-sdk';
 import { ASHRAY_LEVELS } from '../types/enums';
 import { getScopedHierarchyUserIds, isHierarchySuperAdmin, isUserInHierarchy } from '../lib/hierarchyUtils';
+import { organizationalDepartment } from '../lib/directoryDepartment';
 
 export default createEndpoint({
   description: 'Get guide transfer requests involving the current guide, plus ashray upgrades',
@@ -167,7 +168,7 @@ export default createEndpoint({
         if (u.userId) ashrayUserMap.set(u.userId, u);
       });
 
-      const userSegment = context.user.segment || null;
+      const userSegment = organizationalDepartment(context.user);
       const isHiranyavarnaOrPwAdmin = !!(
         context.user.isBvSuperAdmin ||
         context.user.isBvAdmin ||
@@ -181,7 +182,7 @@ export default createEndpoint({
         const u = ashrayUserMap.get(r.userId);
         if (!u) return false;
         if (!isUserInHierarchy(u, hierarchy)) return false;
-        const isPwMember = !!(u.isPrabhupadaWorldUser) || u.segment === 'PW';
+        const isPwMember = organizationalDepartment(u) === 'PW';
 
         if (userSegment === 'PW') {
           if (!isPwMember) return false;

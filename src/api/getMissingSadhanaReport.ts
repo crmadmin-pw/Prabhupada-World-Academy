@@ -5,11 +5,12 @@ import { createEndpoint } from '@/lib/backend-sdk';
 import { loadMissingSubmissions } from '../lib/reportPeriodSummary';
 import { requireGuideRole } from '../lib/userUtils';
 import { getDashboardHierarchyScope, readScopedUsers } from '../lib/hierarchyUtils';
+import { labelVisibleToCaller, organizationalDepartment } from '../lib/directoryDepartment';
 import { getGuideScope } from '../lib/guideScope';
 import getGuides from './getGuides';
 import { getReportReferenceData } from '../lib/reportReferenceData';
 
-const USER_FIELDS = ['segment', 'isPrabhupadaWorldUser', 'id', 'userId', 'fullName', 'email', 'status', 'role', 'isBvAdmin', 'isBvSuperAdmin', 'residency', 'guide', 'isScholar', 'residencyClaimed', 'residencyApproved', 'residencyGuideVerified', 'residentSince'];
+const USER_FIELDS = ['segment', 'isPrabhupadaWorldUser', 'id', 'userId', 'fullName', 'displayName', 'name', 'email', 'status', 'role', 'isBvAdmin', 'isBvSuperAdmin', 'residency', 'guide', 'isScholar', 'residencyClaimed', 'residencyApproved', 'residencyGuideVerified', 'residentSince'];
 
 // Guides and Super Guides oversee Sadhana; they are not expected to submit a
 // daily member report. Normalize legacy spacing/casing so the rule applies to
@@ -43,6 +44,10 @@ export default createEndpoint({
   outputSchema: z.any(),
   execute: async ({ input, context }: any) => {
     if (!context.user) throw new Error('Unauthorized');
+    const callerDepartment = organizationalDepartment(context.user);
+    if (callerDepartment && input.segment && input.segment !== callerDepartment) {
+      throw new Error('You cannot view users from another department');
+    }
     requireGuideRole(context.user.role, {
       isSadhanaMentor: context.user.isSadhanaMentor,
       isBvsl: context.user.isBvsl,
@@ -106,6 +111,9 @@ export default createEndpoint({
     for (const result of resFetches) for (const user of result.records) userMap.set(user.id, user);
     let allUsers = Array.from(userMap.values());
     if (residencyMentorScope) allUsers = allUsers.filter(residencyMentorScope.includes);
+    if (callerDepartment === 'FOLK' || input.segment === 'FOLK') {
+      allUsers = allUsers.filter(user => organizationalDepartment(user) !== 'PW');
+    }
 
     const scopedUserIds = await hierarchyPromise;
     if (scopedUserIds !== null) {
@@ -131,7 +139,7 @@ export default createEndpoint({
     // super admins are report administrators, not Sadhana-report participants.
     const users = allUsers.filter(u =>
       u.userId &&
-      (u.fullName || '').trim().length > 0 &&
+      String(u.fullName || u.displayName || u.name || '').trim().length > 0 &&
       !isSadhanaExemptUser(u)
     );
 
@@ -181,6 +189,7 @@ export default createEndpoint({
       }
     };
     for (const g of allGuides) {
+      if (!labelVisibleToCaller(context.user, g)) continue;
       addGuideLookup(g);
       if (g.fullName) guideLookup.set(g.fullName.toLowerCase(), g.fullName);
       if (g.abbreviation && g.fullName) guideLookup.set(g.abbreviation.toLowerCase(), g.fullName);
@@ -189,6 +198,7 @@ export default createEndpoint({
     // (for example USER-206) rather than the Guides document id. Resolve those
     // references too so the report never exposes an internal code as a name.
     for (const user of guideUsers) {
+      if (!labelVisibleToCaller(context.user, user)) continue;
       // Legacy guide references may point to a Users record whose current
       // role flag is absent or no longer normalized. The reference itself is
       // authoritative here, so index every active user's stable identifiers.
@@ -246,7 +256,7 @@ export default createEndpoint({
 
         return {
           id: u.id,
-          fullName: u.fullName || '',
+          fullName: String(u.fullName || u.displayName || u.name || '').trim(),
           userId: u.userId || '',
           residencyName: resId ? (residencyMap.get(String(resId)) || residencyMap.get(String(resId).toLowerCase()) || resId) : '',
           guideName: guideId ? (guideLookup.get(String(guideId).toLowerCase()) || guideId) : '',

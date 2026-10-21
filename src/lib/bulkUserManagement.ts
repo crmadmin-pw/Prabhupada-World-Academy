@@ -11,6 +11,7 @@ import {
 } from '@/lib/backend-sdk';
 import { normalizeApiRole, type ApiUserContext } from '@/lib/apiAuthorization';
 import { getGuideScope } from '@/lib/guideScope';
+import { organizationalDepartment } from '@/lib/directoryDepartment';
 import { resolveGuideReference } from '@/lib/guideResolution';
 import {
   BULK_USER_ASHRAY_LEVELS,
@@ -403,10 +404,12 @@ export async function getBulkExportData(
   for (const membership of memberships) for (const ref of [membership.user, membership.userId]) if (ref) membershipByUser.set(String(ref).toLowerCase(), membership);
   const guideNameByRef = new Map<string, string>();
   for (const guide of guides) {
+    if (organizationalDepartment(guide) === 'PW') continue;
     const name = String(guide.fullName || guide.name || guide.email || '');
     for (const ref of [guide.id, guide.guideId, guide.email]) if (ref) guideNameByRef.set(String(ref).toLowerCase(), name);
   }
   for (const possibleGuide of users) {
+    if (organizationalDepartment(possibleGuide) === 'PW') continue;
     const name = String(possibleGuide.fullName || possibleGuide.name || possibleGuide.email || '');
     for (const ref of [possibleGuide.id, possibleGuide.userId, possibleGuide.email]) if (ref) guideNameByRef.set(String(ref).toLowerCase(), name);
   }
@@ -516,16 +519,13 @@ export async function getBulkExportData(
 export async function getBulkExportOptions(manager: Awaited<ReturnType<typeof requireBulkUserManager>>) {
   const [groups, guides, users, memberships] = await Promise.all([
     findAll(BvGroups, ['id', 'groupId', 'groupName', 'guide', 'segment']),
-    findAll(Guides, ['id', 'fullName', 'name', 'email']),
-    findAll(Users, ['id', 'userId', 'guide', 'bvGroupId']),
+    findAll(Guides, ['id', 'fullName', 'name', 'email', 'segment']),
+    findAll(Users, ['id', 'userId', 'guide', 'bvGroupId', 'segment', 'role', 'isPrabhupadaWorldUser', 'isFolkUser', 'isPwAdmin', 'isBvAdmin', 'isBvSuperAdmin']),
     findAll(BvGroupMembers, ['user', 'userId', 'group', 'groupId']),
   ]);
   let scopedGroups = groups;
   if (manager.isSuperGuide) {
-    scopedGroups = groups.filter(group => {
-      const segment = String(group.segment || '').toUpperCase();
-      return segment !== 'PW';
-    });
+    scopedGroups = groups.filter(group => organizationalDepartment(group) !== 'PW');
   } else {
     const guideIdLower = manager.guideScope.guideId.toLowerCase();
     const guideEmailLower = (manager.user.email || '').toLowerCase();
@@ -550,8 +550,7 @@ export async function getBulkExportOptions(manager: Awaited<ReturnType<typeof re
     }
 
     scopedGroups = groups.filter(group => {
-      const segment = String(group.segment || '').toUpperCase();
-      if (segment === 'PW') return false;
+      if (organizationalDepartment(group) === 'PW') return false;
       const refs = refValues(group.guide).map(v => String(v).toLowerCase());
       return refs.some(ref => aliases.has(ref));
     });
@@ -559,7 +558,7 @@ export async function getBulkExportOptions(manager: Awaited<ReturnType<typeof re
   return {
     groups: scopedGroups.map(group => ({ id: String(group.id), name: String(group.groupName || group.groupId || group.id) })).sort((a, b) => a.name.localeCompare(b.name)),
     guides: manager.isSuperGuide
-      ? guides.map(guide => ({ id: String(guide.id), name: String(guide.fullName || guide.name || guide.email || guide.id) })).sort((a, b) => a.name.localeCompare(b.name))
+      ? guides.filter(guide => organizationalDepartment(guide) !== 'PW').map(guide => ({ id: String(guide.id), name: String(guide.fullName || guide.name || guide.email || guide.id) })).sort((a, b) => a.name.localeCompare(b.name))
       : [{ id: manager.guideScope.guideId, name: manager.guideScope.guideName || manager.user.fullName || manager.user.email }],
   };
 }

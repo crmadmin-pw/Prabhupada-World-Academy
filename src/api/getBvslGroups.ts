@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, BvAttendance, BvGroupRequests, Guides, Users, AppError } from '@/lib/backend-sdk';
 import { getTodayIST } from '../lib/streakUtils';
-import { isBvSuperAdminUser, resolveBvScopedGroups } from '../lib/bvGroupMemberScope';
+import { bvUserAliases, isBvSuperAdminUser, resolveBvScopedGroups } from '../lib/bvGroupMemberScope';
 import { organizationalDepartment } from '../lib/directoryDepartment';
 import { countsAsGroupMember, joinFacilitatorNames, readGroupFacilitators, textList } from '@/lib/bvGroupFacilitators';
 
@@ -489,6 +489,7 @@ export default createEndpoint({
     ]);
 
     const memberIdsByGroup = new Map<string, Set<string>>();
+    const countedAliasesByGroup = new Map<string, Set<string>>();
     for (const membership of memberships) {
       const groupRec = [firstStoredValue(membership.group), firstStoredValue(membership.groupId)]
         .filter(Boolean)
@@ -507,6 +508,36 @@ export default createEndpoint({
         const canonicalUserId = String(user.id || user.userId || uid || altUid || legacyMemberId);
         if (!memberIdsByGroup.has(groupRec.id)) memberIdsByGroup.set(groupRec.id, new Set());
         memberIdsByGroup.get(groupRec.id)!.add(canonicalUserId);
+        if (!countedAliasesByGroup.has(groupRec.id)) countedAliasesByGroup.set(groupRec.id, new Set());
+        const counted = countedAliasesByGroup.get(groupRec.id)!;
+        counted.add(canonicalUserId.toLowerCase());
+        if (user) bvUserAliases(user).forEach(alias => counted.add(alias));
+        [uid, altUid, legacyMemberId].forEach(alias => {
+          const key = String(alias || '').trim().toLowerCase();
+          if (key) counted.add(key);
+        });
+      }
+    }
+    for (const groupRec of groupRecords) {
+      if (!memberIdsByGroup.has(groupRec.id)) memberIdsByGroup.set(groupRec.id, new Set());
+      if (!countedAliasesByGroup.has(groupRec.id)) countedAliasesByGroup.set(groupRec.id, new Set());
+      const ids = memberIdsByGroup.get(groupRec.id)!;
+      const counted = countedAliasesByGroup.get(groupRec.id)!;
+      const staffRefs = [
+        ...textList(groupRec.bvslLeader),
+        ...textList(groupRec.bvslId),
+        ...textList(groupRec.subFacilitatorId),
+        ...textList(groupRec.rgsfId),
+        ...textList(groupRec.subFacilitator),
+      ];
+      for (const ref of staffRefs) {
+        const user = facilitatorMap.get(ref) || facilitatorMap.get(String(ref).toLowerCase());
+        if (!user?.id) continue;
+        if (user.status && String(user.status).toLowerCase() !== 'active') continue;
+        const aliases = bvUserAliases(user);
+        if (aliases.some(alias => counted.has(alias)) || ids.has(String(user.id))) continue;
+        ids.add(String(user.id));
+        aliases.forEach(alias => counted.add(alias));
       }
     }
 

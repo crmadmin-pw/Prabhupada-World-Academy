@@ -838,7 +838,7 @@ const REPORTING_CHAIN_USER_FIELDS = new Set([
   'userId', 'email',
 ]);
 export const REPORTING_CHAINS_KEY = 'reportingChainsVersion';
-export const REPORTING_CHAINS_READY = 'ready:1';
+export const REPORTING_CHAINS_READY = 'ready:2';
 
 let reportingChainsLocallyStale = false;
 let reportingChainMarkerInvalidator: (() => void) | undefined;

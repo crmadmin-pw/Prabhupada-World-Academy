@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, Users, Guides, SadhanaEntries } from '@/lib/backend-sdk';
 import { requireGuideRole } from '../lib/userUtils';
-import { joinFacilitatorNames, textList } from '@/lib/bvGroupFacilitators';
+import { assignedStaffSlots, joinFacilitatorNames, textList } from '@/lib/bvGroupFacilitators';
 import { isExcusedFromReporting } from '@/lib/accountDeletionPolicy';
 
 function isSadhanaExemptLeadershipRole(role: unknown): boolean {
@@ -88,9 +88,10 @@ export default createEndpoint({
     ]);
     for (const u of bvslUsers) bvslMap[u.id] = u.fullName || '';
 
-    const allMemberUserIds = [...new Set(
-      memberships.map(m => (Array.isArray(m.user) ? m.user[0] : m.user) as string).filter(Boolean)
-    )];
+    const allMemberUserIds = [...new Set([
+      ...memberships.map(m => (Array.isArray(m.user) ? m.user[0] : m.user) as string).filter(Boolean),
+      ...groups.flatMap(group => assignedStaffSlots(group).flatMap(slot => slot.keys.filter(key => !key.includes(' ')))),
+    ])];
 
     if (allMemberUserIds.length === 0) {
       const groupsList = groups.map(g => ({ id: g.id, name: g.groupName || '' }));
@@ -125,6 +126,11 @@ export default createEndpoint({
         role: (u.role as string) || '',
       };
     }
+    for (const [id, name] of Object.entries(bvslMap)) {
+      if (!userInfoMap[id]) {
+        userInfoMap[id] = { fullName: name, phone: '', email: '', status: 'Active', role: 'RGF' };
+      }
+    }
 
     // Build per-user entry map
     const userEntryMap: Record<string, Array<{ entryDate: string; submittedAt: string | null }>> = {};
@@ -158,7 +164,15 @@ export default createEndpoint({
     const members: any[] = [];
     for (const group of groups) {
       const bvslName = joinFacilitatorNames(textList(group.bvslLeader).map(id => bvslMap[id]));
-      const memberIds = groupMembershipsMap[group.id] || [];
+      const memberIds = [...(groupMembershipsMap[group.id] || [])];
+      const seenMemberIds = new Set(memberIds.map(id => id.toLowerCase()));
+      for (const slot of assignedStaffSlots(group)) {
+        if (slot.keys.some(key => seenMemberIds.has(key.toLowerCase()))) continue;
+        const resolved = slot.keys.find(key => userInfoMap[key] || bvslMap[key]);
+        if (!resolved) continue;
+        memberIds.push(resolved);
+        slot.keys.forEach(key => seenMemberIds.add(key.toLowerCase()));
+      }
 
       for (const uid of memberIds) {
         const userInfo = userInfoMap[uid];

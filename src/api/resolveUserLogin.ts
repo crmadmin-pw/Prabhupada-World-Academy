@@ -127,6 +127,7 @@ export default createEndpoint({
         role: normalizeRole(userRecord.role || 'User'),
         status: normalizeStatus(status),
         phone: userRecord.phone || '',
+        phoneCountryCode: userRecord.phoneCountryCode || '',
         email: userRecord.email || context.user.email,
         selectedGuideId: Array.isArray(userRecord.guide) ? userRecord.guide[0] : (userRecord.guide || null),
         selectedFolkResidency: Array.isArray(userRecord.residency) ? userRecord.residency[0] : (userRecord.residency || null),

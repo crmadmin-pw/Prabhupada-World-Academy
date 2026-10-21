@@ -40,7 +40,7 @@ export default function PendingApprovalPage() {
 
   const loadGuideInfo = useReactiveLoader(async (read) => {
     try {
-      const guidesRes = await read(() => getGuides({}));
+      const guidesRes = await read(() => getGuides({ segment: 'FOLK' }));
       if (profile?.selectedGuideId) {
         const guide = guidesRes.guides.find((g: any) => g.guideId === profile.selectedGuideId);
         if (guide) !read.cancelled && setGuideName(guide.name);

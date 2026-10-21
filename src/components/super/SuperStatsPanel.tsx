@@ -109,7 +109,7 @@ export default function SuperStatsPanel({ segment, isActive }: SuperStatsPanelPr
         // Fetch all active users once and group them by the current Admin
         // dropdown assignment, with the BV reporting hierarchy as a fallback
         // for older records that do not yet have a guide assignment.
-        const allUsersRes = await read(() => getGuideUsers({ guideId: 'ALL', statusFilter: 'active' })).catch(() => ({ users: [] }));
+        const allUsersRes = await read(() => getGuideUsers({ guideId: 'ALL', statusFilter: 'active', segment: 'PW' })).catch(() => ({ users: [] }));
         const allUsers: any[] = allUsersRes.users;
 
         const adminsByIdentity = new Map<string, Guide>();

@@ -81,7 +81,7 @@ function mockDatabase(t: any, attendance: any[] = [], extras?: { users?: any[]; 
   return created;
 }
 
-test('attendance lists members only, not an RGF or RGSF without a membership row', async (t) => {
+test('attendance lists the group RGF and RGSF with the members', async (t) => {
   mockDatabase(t, [
     {
       id: 'att-rgf',
@@ -105,6 +105,8 @@ test('attendance lists members only, not an RGF or RGSF without a membership row
     present: member.present,
     minutes: member.attendedMinutes,
   })), [
+    { name: 'Richa Dewan', role: 'RGF', supervisor: false, present: true, minutes: 40 },
+    { name: 'Nitya RGSF', role: 'RGSF', supervisor: false, present: null, minutes: 0 },
     { name: 'Geetha Nagaraju', role: null, supervisor: false, present: null, minutes: 0 },
   ]);
 });
@@ -175,13 +177,15 @@ test('saving attendance records the RGF and RGSF and ignores someone outside the
   } as never);
 
   assert.equal(saved.success, true);
-  assert.equal(saved.message.includes('1/1'), true);
+  assert.equal(saved.message.includes('2/3'), true);
   assert.deepEqual(created.map(record => ({
     user: record.user,
     present: record.present,
     attendedMinutes: record.attendedMinutes,
   })), [
     { user: devotee.id, present: true, attendedMinutes: 50 },
+    { user: rgf.id, present: true, attendedMinutes: 50 },
+    { user: rgsf.id, present: false, attendedMinutes: 0 },
   ]);
 });
 
@@ -216,6 +220,8 @@ test('the supervisor is listed with a badge and their minutes are saved without 
     supervisor: member.supervisor,
     minutes: member.attendedMinutes,
   })), [
+    { name: 'Richa Dewan', role: 'RGF', supervisor: false, minutes: 0 },
+    { name: 'Nitya RGSF', role: 'RGSF', supervisor: false, minutes: 0 },
     { name: 'Madhava Supervisor', role: null, supervisor: true, minutes: 30 },
     { name: 'Geetha Nagaraju', role: null, supervisor: false, minutes: 0 },
   ]);

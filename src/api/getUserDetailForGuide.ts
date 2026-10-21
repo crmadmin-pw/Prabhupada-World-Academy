@@ -271,7 +271,7 @@ export default createEndpoint({
 
     const callerDepartment = callerDirectoryDepartment(context.user);
     const targetDepartment = memberDirectoryDepartment(userRecord);
-    if (!onRoster && !groupMember && callerDepartment && targetDepartment && callerDepartment !== targetDepartment) {
+    if (callerDepartment && targetDepartment && callerDepartment !== targetDepartment) {
       throw new AppError({ code: 'FORBIDDEN', message: 'This user belongs to another department' });
     }
     const inHierarchy = onRoster || isPwDepartmentAdmin(context.user) || isUserInHierarchy(userRecord, await getScopedHierarchyUserIds(context.user));

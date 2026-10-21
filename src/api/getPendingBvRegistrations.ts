@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { getScopedHierarchyUserIds, isUserInHierarchy } from '../lib/hierarchyUtils';
+import { organizationalDepartment } from '../lib/directoryDepartment';
 import { createEndpoint, BvMemberRegistrations, BvGroupMembers, BvGroupRequests, BvGroups, Users, AppError } from '@/lib/backend-sdk';
 import { getGuideScope, isUserInGuideScope } from '../lib/guideScope';
 
@@ -95,7 +96,7 @@ export default createEndpoint({
           continue;
         }
 
-        const isPw = !!(u.isPrabhupadaWorldUser) || u.segment === 'PW';
+        const isPw = organizationalDepartment(u) === 'PW';
         records.push({
           id: `BVREG-${u.id}`,
           userId: u.userId || u.id,
@@ -163,7 +164,7 @@ export default createEndpoint({
         const group = groupMap[gid];
         const applicantKeys = [uid, applicant?.id, applicant?.userId, (applicant?.email || '').toLowerCase()].filter(Boolean).map(String);
         if (applicantKeys.some(key => existingApplicants.has(key))) continue;
-        const isPw = !!(applicant?.isPrabhupadaWorldUser) || applicant?.segment === 'PW' || group?.segment === 'PW';
+        const isPw = organizationalDepartment(applicant) === 'PW' || organizationalDepartment(group) === 'PW';
         records.push({
           id: request.id,
           source: 'group-join',
@@ -217,15 +218,17 @@ export default createEndpoint({
     }
 
     // Filter according to requested segment (PW vs FOLK)
-    const targetSegment = input?.segment || (
-      context.user.isBvSuperAdmin ? 'PW' : 'FOLK'
-    );
+    const callerDepartment = organizationalDepartment(context.user);
+    if (callerDepartment && input?.segment && input.segment !== callerDepartment) {
+      throw new AppError({ code: 'FORBIDDEN', message: 'You cannot view users from another department' });
+    }
+    const targetSegment = input?.segment || callerDepartment || 'FOLK';
     const isFolkSuper = role === 'SUPER_GUIDE' || role === 'SUPER_ADMIN' || context.user.isBvSuperAdmin || context.user.isBvAdmin;
     const guideScope = targetSegment === 'FOLK' && !isFolkSuper
       ? await getGuideScope(context.user.email || '')
       : null;
 
-    const isPwAdminUser = String(context.user.segment || '').toUpperCase() === 'PW' && !!(
+    const isPwAdminUser = organizationalDepartment(context.user) === 'PW' && !!(
       context.user.isBvSuperAdmin ||
       context.user.isBvAdmin ||
       context.user.isPwAdmin ||
@@ -237,8 +240,7 @@ export default createEndpoint({
     const hierarchy = await getScopedHierarchyUserIds(context.user);
     const filteredRecords = records.filter(r => {
       const u = userMap[r.userId] || userMap[r.userDbId] || userMap[r.id] || (r.email ? userMap[r.email.toLowerCase()] : null);
-      const isPwUser = !!(u?.isPrabhupadaWorldUser || r.isPrabhupadaWorldUser) ||
-        (u?.segment === 'PW' || r.segment === 'PW');
+      const isPwUser = organizationalDepartment(u) === 'PW' || organizationalDepartment(r) === 'PW';
       const requestUser = u || { id: r.userDbId, userId: r.userId, email: r.email, segment: r.segment,
         isPrabhupadaWorldUser: r.isPrabhupadaWorldUser, guide: r.guide, selectedGuideId: r.selectedGuideId };
       // PW BV applications are also reviewed by the shared PW admin queue;
@@ -272,8 +274,7 @@ export default createEndpoint({
 
     const mappedRecords = filteredRecords.map(r => {
       const u = userMap[r.userId] || userMap[r.userDbId] || userMap[r.id] || (r.email ? userMap[r.email.toLowerCase()] : null);
-      const isPwUser = !!(u?.isPrabhupadaWorldUser || r.isPrabhupadaWorldUser) || 
-        (u?.segment === 'PW' || r.segment === 'PW');
+      const isPwUser = organizationalDepartment(u) === 'PW' || organizationalDepartment(r) === 'PW';
       return {
         ...r,
         segment: isPwUser ? 'PW' : 'FOLK',

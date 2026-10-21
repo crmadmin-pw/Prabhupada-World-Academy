@@ -4,6 +4,7 @@ import { getGuideScope } from '../lib/guideScope';
 import { createEndpoint, FolkResidencies, Guides, Users, SadhanaEntries } from '@/lib/backend-sdk';
 import { getTodayIST, daysAgo } from '../lib/streakUtils';
 import { isPrabhupadaWorldResidency } from '../lib/residencyCategory';
+import { organizationalDepartment, visibleToCallerDepartment } from '../lib/directoryDepartment';
 import { readEntriesForOwners } from '../lib/scopedEntryReads';
 
 export default createEndpoint({
@@ -49,13 +50,13 @@ export default createEndpoint({
     ]);
 
     const residencies = allResidencies.filter(r => hierarchy === null || guideScope?.residencyIds.includes(r.id));
-    const guides = allGuides.filter(u => isUserInHierarchy(u, hierarchy));
+    const guides = visibleToCallerDepartment(context.user, allGuides.filter(u => isUserInHierarchy(u, hierarchy)));
     const residents = allResidents.filter(u => isUserInHierarchy(u, hierarchy));
     const normalizeRole = (value: unknown) => String(value || '').trim().replace(/[\s-]+/g, '_').toUpperCase();
     const userGuideRecords = (userGuideRows as any[]).filter((u: any) => {
       if (!isUserInHierarchy(u, hierarchy)) return false;
       const role = normalizeRole(u.role);
-      const isPw = String(u.segment || '').trim().toUpperCase() === 'PW' || u.isPrabhupadaWorldUser === true;
+      const isPw = organizationalDepartment(u) === 'PW';
       const isGuide = ['GUIDE', 'SUPER_GUIDE', 'ADMIN', 'SUPER_ADMIN'].includes(role) || u.isBvAdmin === true || u.isBvSuperAdmin === true;
       return !isPw && isGuide;
     }).map((u: any) => ({

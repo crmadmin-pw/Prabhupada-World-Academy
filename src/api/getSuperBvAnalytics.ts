@@ -6,6 +6,7 @@ import { requireGuideRole, getRefId } from '../lib/userUtils';
 import getGuides from './getGuides';
 import { getScopedHierarchyUserIds, isUserInHierarchy, hierarchyAliases, hierarchyRefs, isHierarchyAdmin, readScopedUsers } from '../lib/hierarchyUtils';
 import { readEntriesForOwners } from '../lib/scopedEntryReads';
+import { labelVisibleToCaller, organizationalDepartment } from '../lib/directoryDepartment';
 
 const NUM_KEYS = [
   'callingTime', 'oneOnOneTime', 'bookDistTime', 'rduaTime', 'planTime',
@@ -61,13 +62,15 @@ export default createEndpoint({
     ] = await Promise.all([
       getGuides.execute({ input: {}, context }),
       readScopedUsers(context.user, { fields: ['id', 'userId', 'fullName', 'email', 'role', 'segment', 'residency', 'guide', 'isBvAdmin', 'isBvSuperAdmin', 'bvReportingAdminId', 'bvSupervisorGuideId', 'bvReportingSupervisorId', 'bvReportingFacilitatorId'], limit: 2000 }),
-      Guides.findAll({ fields: ['id', 'guideId', 'fullName', 'name', 'abbreviation', 'folkResidencies', 'email'], limit: 500 }),
+      Guides.findAll({ fields: ['id', 'guideId', 'fullName', 'name', 'abbreviation', 'folkResidencies', 'email', 'segment'], limit: 500 }),
       FolkResidencies.findAll({ fields: ['id', 'residencyId', 'residencyName', 'guide', 'guideName'], limit: 200 }),
       readScopedUsers(context.user, { filters: { isBvsl: true, status: 'Active' }, fields: ['id', 'userId', 'fullName', 'email', 'guide', 'residency', 'segment', 'isPrabhupadaWorldUser'], limit: 500 }),
-      BvGroups.findAll({ filters: { isActive: true }, fields: ['id', 'groupName', 'bvslLeader', 'guide', 'guideName', 'bvReportingAdminName', 'center'], limit: 500 }),
+      BvGroups.findAll({ filters: { isActive: true }, fields: ['id', 'groupName', 'bvslLeader', 'guide', 'guideName', 'bvReportingAdminName', 'center', 'segment'], limit: 500 }),
     ]);
 
     const hierarchy = await getScopedHierarchyUserIds(context.user);
+    const visibleGuideRecs = guideRecs.filter(guide => labelVisibleToCaller(context.user, guide));
+    const visibleGroups = bvGroups.filter(group => organizationalDepartment(context.user) !== 'FOLK' || organizationalDepartment(group) !== 'PW');
     const bvslUsers = bvslCandidates.filter(user => isUserInHierarchy(user, hierarchy));
     if (bvslUsers.length === 0) {
       return { centers: [], overall: { bvslCount: 0, submittedCount: 0, totals: emptyAgg(), avgs: emptyAgg() } };
@@ -101,7 +104,7 @@ export default createEndpoint({
     }
 
     // From Guides table
-    for (const g of guideRecs) {
+    for (const g of visibleGuideRecs) {
       const name = g.fullName || (g as any).name || (g as any).abbreviation || '';
       if (name && !name.includes('Unknown')) {
         if (g.id) {
@@ -154,7 +157,7 @@ export default createEndpoint({
     // 3. BV group name & admin lookup per BVSL leader
     const groupByBvsl = new Map<string, string>();
     const groupAdminByBvsl = new Map<string, string>();
-    for (const g of bvGroups) {
+    for (const g of visibleGroups) {
       const lid = Array.isArray(g.bvslLeader) ? g.bvslLeader[0] : g.bvslLeader;
       if (lid) {
         groupByBvsl.set(lid as string, g.groupName || '');

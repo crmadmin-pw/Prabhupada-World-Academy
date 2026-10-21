@@ -110,3 +110,47 @@ test('an RGF who is also a group member appears on the members tab', async (t) =
     assert.deepEqual(result.members.map((member: any) => member.fullName).sort(), ['BITS VEDANG', 'Vedanarayana Dasa']);
   });
 });
+
+test('a member stored only by firebase auth id or display name appears on the members tab', async (t) => {
+  const rimpy = {
+    id: 'rimpy-doc',
+    userId: 'USER-RIMPY',
+    email: 'rimpy@example.test',
+    fullName: 'Rimpy',
+    firebaseUid: 'rimpy-firebase',
+    role: 'User',
+    segment: 'PW',
+    status: 'Active',
+  };
+  const named = {
+    id: 'named-doc',
+    userId: 'USER-NAMED',
+    email: 'named@example.test',
+    fullName: 'Guddha Krishna',
+    role: 'User',
+    segment: 'PW',
+    status: 'Active',
+  };
+  fixture.Users.push(rimpy, named);
+  fixture.BvGroupMembers.push(
+    { id: 'm-rimpy', group: group.id, groupId: group.groupId, user: rimpy.firebaseUid, role: 'Member' },
+    { id: 'm-named', group: group.id, groupId: group.groupId, user: named.fullName, memberId: named.fullName, role: 'Member' },
+  );
+  t.after(() => {
+    fixture.Users = fixture.Users.filter(user => user.id !== rimpy.id && user.id !== named.id);
+    fixture.BvGroupMembers = fixture.BvGroupMembers.filter(member => member.id !== 'm-rimpy' && member.id !== 'm-named');
+  });
+  mockDatabase(t);
+  await withHierarchyDatabase(null, async () => {
+    const result = await getBvslMembers.execute({
+      input: { bvslId: facilitator.userId },
+      context: { user: facilitator },
+    } as never);
+    assert.deepEqual(result.members.map((member: any) => member.fullName).sort(), [
+      'BITS VEDANG',
+      'Guddha Krishna',
+      'Rimpy',
+      'Vedanarayana Dasa',
+    ]);
+  });
+});

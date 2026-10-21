@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createEndpoint, Users } from '@/lib/backend-sdk';
 import { getScopedHierarchyUserIds, isHierarchySuperAdmin, isPwDepartmentAdmin, isUserInHierarchy, readScopedUsers } from '../lib/hierarchyUtils';
 import { isPwSadhanaUser } from '../lib/sadhanaDepartment';
+import { organizationalDepartment } from '../lib/directoryDepartment';
 
 const MENTOR_FIELDS = ['id', 'userId', 'fullName', 'email', 'isSadhanaMentor', 'role', 'segment', 'isPrabhupadaWorldUser'];
 
@@ -59,9 +60,16 @@ export default createEndpoint({
       .filter((mentor: any) => mentor.segment)
       .sort((a: any, b: any) => String(a.fullName).localeCompare(String(b.fullName)));
 
-    if (input.segment && input.segment !== 'ALL') {
-      return mentors.filter((mentor: any) => mentor.segment === input.segment);
+    const callerDepartment = organizationalDepartment(context.user);
+    const visibleMentors = callerDepartment === 'FOLK'
+      ? mentors.filter((mentor: any) => mentor.segment !== 'PW')
+      : mentors;
+    if (callerDepartment && input.segment && input.segment !== 'ALL' && input.segment !== callerDepartment) {
+      throw new Error('You cannot view users from another department');
     }
-    return mentors;
+    if (input.segment && input.segment !== 'ALL') {
+      return visibleMentors.filter((mentor: any) => mentor.segment === input.segment);
+    }
+    return callerDepartment ? visibleMentors.filter((mentor: any) => mentor.segment === callerDepartment) : visibleMentors;
   },
 });

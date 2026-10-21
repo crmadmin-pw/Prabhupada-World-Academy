@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroupMembers, BvGroupRequests, BvGroups, BvAttendance, Users, Guides } from '@/lib/backend-sdk';
 import { getTodayIST } from '../lib/streakUtils';
-import { joinFacilitatorNames, readGroupFacilitators, textList } from '@/lib/bvGroupFacilitators';
+import { joinFacilitatorNames, readGroupFacilitators, textList, uncountedAssignedStaff } from '@/lib/bvGroupFacilitators';
 
 function firstValue(value: unknown): string {
   if (Array.isArray(value)) return String(value[0] || '');
@@ -143,14 +143,24 @@ export default createEndpoint({
         const groupIds: string[] = groups.map((g: any) => g.id);
         const chunks = Array.from({ length: Math.ceil(groupIds.length / 30) }, (_, index) => groupIds.slice(index * 30, index * 30 + 30));
         const pages = await Promise.all(chunks.map(chunk => BvGroupMembers.findAll({
-          filters: { group: { in: chunk } }, fields: ['id', 'group'], limit: 1000 * chunk.length,
+          filters: { group: { in: chunk } }, fields: ['id', 'group', 'user', 'userId', 'memberId'], limit: 1000 * chunk.length,
         })));
+        const countedByGroup = new Map<string, Set<string>>();
         for (const id of groupIds) memberCountMap[id] = 0;
         for (const { records: mems } of pages) {
           for (const member of mems) {
             const groupId = String(member.group ?? '');
             if (groupId in memberCountMap && memberCountMap[groupId] < 1000) memberCountMap[groupId] += 1;
+            if (!countedByGroup.has(groupId)) countedByGroup.set(groupId, new Set());
+            for (const value of [member.user, member.userId, member.memberId]) {
+              const key = String(value || '').trim().toLowerCase();
+              if (key) countedByGroup.get(groupId)!.add(key);
+            }
           }
+        }
+        for (const group of groups) {
+          const counted = countedByGroup.get(group.id) || new Set<string>();
+          memberCountMap[group.id] = (memberCountMap[group.id] || 0) + uncountedAssignedStaff(group, counted);
         }
       }
 
@@ -231,7 +241,10 @@ export default createEndpoint({
     const groupMembersRes = {
       records: groupMemberRecords,
     };
-    const memberCount = groupMembersRes.records.length;
+    const countedGroupMembers = new Set(groupMembersRes.records.flatMap((member: any) =>
+      [member.user, member.userId, member.memberId].map((value: unknown) => String(value || '').trim().toLowerCase()).filter(Boolean),
+    ));
+    const memberCount = groupMembersRes.records.length + uncountedAssignedStaff(group, countedGroupMembers);
     let allGroupAtt = [...attendanceByGroup.records, ...attendanceByGroupId.records]
       .filter((attendance: any, index: number, records: any[]) => records.findIndex(item => item.id === attendance.id) === index);
     // Group ids such as BV-GROUP-* are case-sensitive in Firestore. Recover

@@ -12,6 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { toast } from 'sonner';
 import { Check, ChevronsUpDown, Loader2, Plus, Users, ShieldCheck, Clock, BookOpen, ChevronRight } from 'lucide-react';
 import { createBvGroup, getBvslGroups, getAllBvGroupsAdmin, getGuideUsers, updateBvGroup, getClientCachedQuery } from '@/lib/app-endpoints-sdk';
+import { organizationalDepartment } from '@/lib/directoryDepartment';
 import MeetingScheduleFields from '@/components/bv/MeetingScheduleFields';
 import { formatMeetingSchedule, meetingScheduleError, type MeetingDayKey } from '@/lib/meetingSchedule';
 
@@ -27,12 +28,10 @@ const isRgfUser = (user: any) => {
 // admin so they can still be assigned to a new group.
 const belongsToSegment = (user: any, targetSegment?: string) => {
   if (!targetSegment) return true;
-  const userSegment = String(user?.segment || '').trim().toUpperCase();
-  if (userSegment) return userSegment === targetSegment.toUpperCase();
-  if (user?.isPrabhupadaWorldUser === true) return targetSegment.toUpperCase() === 'PW';
-  if (user?.isPrabhupadaWorldUser === false) return targetSegment.toUpperCase() === 'FOLK';
-  // Legacy records without either field are retained for compatibility. They
-  // are already restricted to active RGFs by getGuideUsers.
+  const department = organizationalDepartment(user);
+  if (department) return department === targetSegment.toUpperCase();
+  // Legacy records without a department stay available to the department
+  // admin so an older RGF can still be assigned to a new group.
   return true;
 };
 
@@ -53,8 +52,9 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
 
   const segment = propSegment || profile?.segment || 'PW';
 
-  const cachedGroups = getClientCachedQuery('getBvslGroups', { bvslId: 'ALL' });
-  const cachedRgfUsers = getClientCachedQuery('getGuideUsers', { guideId: 'ALL', statusFilter: 'active', minimal: true });
+  const directorySegment = segment === 'FOLK' ? 'FOLK' : 'PW';
+  const cachedGroups = getClientCachedQuery('getBvslGroups', { bvslId: 'ALL', segment: directorySegment });
+  const cachedRgfUsers = getClientCachedQuery('getGuideUsers', { guideId: 'ALL', statusFilter: 'active', minimal: true, segment: directorySegment });
   const hasCache = cachedGroups !== null && cachedRgfUsers !== null;
 
   const [groups, setGroups] = useState<any[]>(isSuperAdmin ? (cachedGroups?.groups || []) : []);
@@ -112,8 +112,8 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
         })));
       } else {
         const [grpRes, rgfUsersRes] = await Promise.all([
-          read(() => getBvslGroups({ bvslId: 'ALL' })).catch(() => ({ groups: [] })),
-          read(() => getGuideUsers({ guideId: 'ALL', statusFilter: 'active', minimal: true } as any)).catch(() => ({ users: [] })),
+          read(() => getBvslGroups({ bvslId: 'ALL', segment: directorySegment })).catch(() => ({ groups: [] })),
+          read(() => getGuideUsers({ guideId: 'ALL', statusFilter: 'active', minimal: true, segment: directorySegment })).catch(() => ({ users: [] })),
         ]);
         const allGroups = grpRes.groups || [];
         setGroups(segment ? allGroups.filter((g: any) => g.segment === segment) : allGroups);

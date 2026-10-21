@@ -6,6 +6,7 @@ import { getGuideIdsForResidencies } from '../lib/guideScope';
 import { legacyQuizMatchesGroup, normalizeQuizDepartment } from '../lib/bvQuizAccess';
 import { bvGroupFacilitatorAliases, bvUserAliases, isBvDepartmentAdmin, isBvSuperAdminUser, isBvSupervisorUser, resolveBvDepartmentGroups, resolveBvScopedGroups, resolveBvUsersByAliases } from '../lib/bvGroupMemberScope';
 import { findAllByIn } from '../lib/scopedEntryReads';
+import { mergeReportAttendance } from '../lib/bvReportAttendance';
 
 export default createEndpoint({
   description: 'BV attendance matrix with FOLK-only quiz results',
@@ -124,11 +125,12 @@ export default createEndpoint({
       .filter((member: any, index: number, records: any[]) => records.findIndex(item => item.id === member.id) === index);
 
     const memberUserIds = [
-      ...new Set(
-        memberships
-      .map(m => (Array.isArray(m.user) ? m.user[0] : (m.user || (m as any).userId || (m as any).memberId)) as string)
-          .filter(Boolean)
-      ),
+      ...new Set([
+        ...memberships
+          .map(m => (Array.isArray(m.user) ? m.user[0] : (m.user || (m as any).userId || (m as any).memberId)) as string)
+          .filter(Boolean),
+        ...groups.flatMap(group => bvGroupFacilitatorAliases(group)),
+      ]),
     ];
 
     if (memberUserIds.length === 0) {
@@ -232,12 +234,14 @@ export default createEndpoint({
     const facilitatorAliases = new Set(groups.flatMap(group => bvGroupFacilitatorAliases(group)));
     const hierarchy = isPwDepartmentAdmin(context.user) ? null : await hierarchyPromise;
     const permittedUsers = users.filter(user => isUserInHierarchy(user, hierarchy));
-    // Prabhupada World reports list a facilitator who is also a group member.
-    // FOLK reports stay limited to the people that facilitator is monitoring.
+    // The group's own RGF and RGSF stay on the member grid. Other callers
+    // still stay off a report that is about the people they monitor.
     const scopedUsers = bvslMode && !isBvSupervisorUser(context.user as any) && input.segment !== 'PW'
-      ? permittedUsers.filter(user => !bvUserAliases(user as any).some(alias =>
-        callerAliases.has(alias) || facilitatorAliases.has(alias)
-      ))
+      ? permittedUsers.filter(user => {
+        const aliases = bvUserAliases(user as any);
+        return aliases.some(alias => facilitatorAliases.has(alias))
+          || !aliases.some(alias => callerAliases.has(alias));
+      })
       : permittedUsers;
     const userMap = new Map<string, any>();
     scopedUsers.forEach(user => bvUserAliases(user).forEach(alias => userMap.set(alias, user)));
@@ -252,6 +256,13 @@ export default createEndpoint({
       if (uid && canonicalGroupId) {
         const user = userMap.get(String(uid).trim().toLowerCase());
         if (user && !memberGroupMap.has(user.id)) memberGroupMap.set(user.id, canonicalGroupId);
+      }
+    }
+    for (const group of groups) {
+      const canonical = String(group.id);
+      for (const alias of bvGroupFacilitatorAliases(group)) {
+        const user = userMap.get(alias);
+        if (user) memberGroupMap.set(user.id, canonical);
       }
     }
 
@@ -294,28 +305,15 @@ export default createEndpoint({
       cur.setDate(cur.getDate() + 1);
     }
 
-    // Build attendance map: userId → date → boolean
-    const attendanceMap: Record<string, Record<string, boolean>> = {};
-    const sessionDatesSet = new Set<string>();
-    const groupSessionDates = new Map<string, Set<string>>();
-
-    for (const a of allAttendance) {
-      const attendanceReference = (Array.isArray(a.user) ? a.user[0] : a.user) as string;
-      const uid = userMap.get(String(attendanceReference || '').trim().toLowerCase())?.id || attendanceReference;
-      const date = String(a.attendanceDate || '').slice(0, 10);
-      const rawGroupId = (Array.isArray(a.group) ? a.group[0] : (a.group || a.groupId)) as string;
-      const gid = groupCanonicalId.get(String(rawGroupId)) || String(rawGroupId || '');
-      if (!uid || !date) continue;
-
-      if (!attendanceMap[uid]) attendanceMap[uid] = {};
-      attendanceMap[uid][date] = !!a.present;
-      sessionDatesSet.add(date);
-
-      if (gid) {
-        if (!groupSessionDates.has(gid)) groupSessionDates.set(gid, new Set());
-        groupSessionDates.get(gid)!.add(date);
-      }
-    }
+    const merged = mergeReportAttendance(
+      allAttendance,
+      memberGroupMap,
+      reference => userMap.get(String(reference || '').trim().toLowerCase())?.id || reference,
+      reference => groupCanonicalId.get(String(reference)) || String(reference || ''),
+    );
+    const attendanceMap = merged.attendance;
+    const groupSessionDates = merged.groupSessionDates;
+    const sessionDatesSet = new Set(merged.sessionDates);
 
     // For members whose group had a session but no attendance record → mark as absent
     for (const m of members) {

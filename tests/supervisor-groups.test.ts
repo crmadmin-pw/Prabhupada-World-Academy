@@ -218,7 +218,7 @@ test('supervisor groups include only groups led by reporting RGFs with RGF card 
 
     assert.deepEqual(result.groups.map((group: any) => group.groupId), [supervisedGroup.groupId]);
     assert.equal(result.rgfCount, 1);
-    assert.equal(result.groups[0].memberCount, 1);
+    assert.equal(result.groups[0].memberCount, 2);
     assert.equal(result.groups[0].totalSessions, 1);
     assert.equal(result.groups[0].presentToday, 1);
     assert.equal(result.groups[0].description, supervisedGroup.description);
@@ -228,9 +228,9 @@ test('supervisor groups include only groups led by reporting RGFs with RGF card 
       context: { user: supervisor },
     } as never);
     assert.equal(detail.group.groupName, supervisedGroup.groupName);
-    assert.equal(detail.members.length, 1);
-    assert.deepEqual(detail.members.map((row: any) => row.fullName), [member.fullName]);
-    assert.equal(detail.members.some((row: any) => row.userId === reportingRgf.userId), false);
+    assert.equal(detail.members.length, 2);
+    assert.deepEqual(detail.members.map((row: any) => row.fullName), [reportingRgf.fullName, member.fullName]);
+    assert.equal(detail.members.some((row: any) => row.userId === reportingRgf.userId), true);
     assert.equal(detail.quizzes.length, 1);
 
     const matrix = await getBvAttendanceMatrix.execute({
@@ -238,7 +238,7 @@ test('supervisor groups include only groups led by reporting RGFs with RGF card 
       context: { user: supervisor },
     } as never);
     assert.deepEqual(matrix.dates, [getTodayIST()]);
-    assert.equal(matrix.rows[0].weekTotal, 1);
+    assert.equal(matrix.rows.find((row: any) => row.name === member.fullName)?.weekTotal, 1);
 
     const reportMatrix = await getBvSessionMatrix.execute({
       input: {
@@ -250,7 +250,7 @@ test('supervisor groups include only groups led by reporting RGFs with RGF card 
       context: { user: supervisor },
     } as never);
     assert.deepEqual(reportMatrix.groups.map((group: any) => group.id), [supervisedGroup.id]);
-    assert.deepEqual(reportMatrix.members.map((row: any) => row.fullName), [member.fullName]);
+    assert.deepEqual(reportMatrix.members.map((row: any) => row.fullName).sort(), [member.fullName, reportingRgf.fullName].sort());
     assert.deepEqual(reportMatrix.sessionDates, [today]);
     assert.equal(reportMatrix.attendance[member.id]?.[today], true);
 
@@ -326,7 +326,7 @@ test('supervisor groups include only groups led by reporting RGFs with RGF card 
       context: { user: supervisor },
     } as never);
     assert.deepEqual(groupStats.groups.map((group: any) => group.groupName), [supervisedGroup.groupName]);
-    assert.equal(groupStats.groups[0].memberCount, 1);
+    assert.equal(groupStats.groups[0].memberCount, 2);
 
     const scopedGroups = await resolveBvScopedGroups(supervisor, { segment: 'FOLK' });
     assert.deepEqual(scopedGroups.map(group => group.groupId), [supervisedGroup.groupId]);
@@ -336,14 +336,14 @@ test('supervisor groups include only groups led by reporting RGFs with RGF card 
       ['id', 'userId', 'fullName', 'email'],
       { segment: 'FOLK' },
     );
-    assert.deepEqual(allScopedMembers.map(user => user.id), [member.id]);
+    assert.deepEqual(allScopedMembers.map(user => user.id).sort(), [member.id, reportingRgf.id].sort());
 
     const selectedGroupMembers = await resolveBvGroupMemberUsers(
       supervisor,
       ['id', 'userId', 'fullName', 'email'],
       { segment: 'FOLK', groupId: supervisedGroup.groupId },
     );
-    assert.deepEqual(selectedGroupMembers.map(user => user.id), [member.id]);
+    assert.deepEqual(selectedGroupMembers.map(user => user.id).sort(), [member.id, reportingRgf.id].sort());
     await assert.rejects(
       () => resolveBvGroupMemberUsers(supervisor, ['id'], { segment: 'FOLK', groupId: outsideGroup.id }),
       /not assigned to your hierarchy/,
@@ -360,7 +360,7 @@ test('supervisor groups include only groups led by reporting RGFs with RGF card 
       },
       context: { user: supervisor },
     } as never);
-    assert.deepEqual(report.users.map((user: any) => user.fullName), [member.fullName]);
+    assert.deepEqual(report.users.map((user: any) => user.fullName).sort(), [member.fullName, reportingRgf.fullName].sort());
 
     const stats = await getSadhanaStats.execute({
       input: {
@@ -373,8 +373,8 @@ test('supervisor groups include only groups led by reporting RGFs with RGF card 
       },
       context: { user: supervisor },
     } as never);
-    assert.equal(stats.totalUsers, 1);
-    assert.equal(stats.userSummaries[0].fullName, member.fullName);
+    assert.equal(stats.totalUsers, 2);
+    assert.equal(stats.userSummaries.find((row: any) => row.fullName === member.fullName)?.fullName, member.fullName);
 
     const leaderboard = await getSadhanaLeaderboard.execute({
       input: {
@@ -437,7 +437,7 @@ test('supervisor groups include only groups led by reporting RGFs with RGF card 
       },
       context: { user: reportingRgf },
     } as never);
-    assert.deepEqual(rgfMatrix.members.map((row: any) => row.fullName), [member.fullName]);
+    assert.deepEqual(rgfMatrix.members.map((row: any) => row.fullName).sort(), [member.fullName, reportingRgf.fullName].sort());
     assert.deepEqual(rgfMatrix.sessionDates, [today]);
     assert.equal(rgfMatrix.attendance[member.id]?.[today], true);
 
@@ -450,11 +450,12 @@ test('supervisor groups include only groups led by reporting RGFs with RGF card 
       },
       context: { user: reportingRgf },
     } as never);
-    assert.deepEqual(rgfPreachingReport.bvsls.map((row: any) => row.fullName), [member.fullName]);
+    assert.deepEqual(rgfPreachingReport.bvsls.map((row: any) => row.fullName).sort(), [member.fullName, reportingRgf.fullName].sort());
     assert.equal((rgfPreachingReport as any).subjectType, 'members');
-    assert.equal(rgfPreachingReport.bvsls[0].groupName, supervisedGroup.groupName);
-    assert.equal(rgfPreachingReport.bvsls[0].totalMinutes, 135);
-    assert.equal(rgfPreachingReport.bvsls[0].booksDistributed, 4);
+    const rgfMemberPreaching = rgfPreachingReport.bvsls.find((row: any) => row.fullName === member.fullName);
+    assert.equal(rgfMemberPreaching.groupName, supervisedGroup.groupName);
+    assert.equal(rgfMemberPreaching.totalMinutes, 135);
+    assert.equal(rgfMemberPreaching.booksDistributed, 4);
 
     const rgfPreachingStats = await getBvStats.execute({
       input: {
@@ -465,10 +466,10 @@ test('supervisor groups include only groups led by reporting RGFs with RGF card 
       },
       context: { user: reportingRgf },
     } as never);
-    assert.deepEqual(rgfPreachingStats.userSummaries.map((row: any) => row.fullName), [member.fullName]);
+    assert.deepEqual(rgfPreachingStats.userSummaries.map((row: any) => row.fullName).sort(), [member.fullName, reportingRgf.fullName].sort());
     assert.equal((rgfPreachingStats as any).subjectType, 'members');
     assert.equal(rgfPreachingStats.totalSubmitted, 1);
-    assert.equal(rgfPreachingStats.userSummaries[0].avgTotalPreachingMinutes, 135);
+    assert.equal(rgfPreachingStats.userSummaries.find((row: any) => row.fullName === member.fullName).avgTotalPreachingMinutes, 135);
     assert.equal(rgfPreachingStats.dailyTrend[0].totalPreachingMinutes, 135);
     assert.equal(rgfPreachingStats.dailyTrend[0].prBooksDistributed, 4);
 
@@ -477,7 +478,7 @@ test('supervisor groups include only groups led by reporting RGFs with RGF card 
     const rgsfGroups = await resolveBvScopedGroups(assignedRgsf as any, { segment: 'FOLK' });
     assert.deepEqual(rgsfGroups.map(group => group.id), [supervisedGroup.id]);
     const rgsfMembers = await resolveBvGroupMemberUsers(assignedRgsf as any, ['id', 'fullName'], { segment: 'FOLK', excludeCaller: true });
-    assert.deepEqual(rgsfMembers.map(user => user.fullName), [member.fullName]);
+    assert.deepEqual(rgsfMembers.map(user => user.fullName).sort(), [member.fullName, reportingRgf.fullName].sort());
 
     const rgsfMatrix = await getBvSessionMatrix.execute({
       input: {
@@ -488,7 +489,7 @@ test('supervisor groups include only groups led by reporting RGFs with RGF card 
       },
       context: { user: assignedRgsf },
     } as never);
-    assert.deepEqual(rgsfMatrix.members.map((row: any) => row.fullName), [member.fullName]);
+    assert.deepEqual(rgsfMatrix.members.map((row: any) => row.fullName).sort(), [member.fullName, reportingRgf.fullName].sort());
     assert.equal(rgsfMatrix.attendance[member.id]?.[today], true);
 
     const rgsfPreachingReport = await getBvPreachingReport.execute({
@@ -501,9 +502,10 @@ test('supervisor groups include only groups led by reporting RGFs with RGF card 
       context: { user: assignedRgsf },
     } as never);
     assert.equal((rgsfPreachingReport as any).subjectType, 'members');
-    assert.deepEqual(rgsfPreachingReport.bvsls.map((row: any) => row.fullName), [member.fullName]);
-    assert.equal(rgsfPreachingReport.bvsls[0].totalMinutes, 135);
-    assert.equal(rgsfPreachingReport.bvsls[0].booksDistributed, 4);
+    assert.deepEqual(rgsfPreachingReport.bvsls.map((row: any) => row.fullName).sort(), [member.fullName, reportingRgf.fullName].sort());
+    const rgsfMemberPreaching = rgsfPreachingReport.bvsls.find((row: any) => row.fullName === member.fullName);
+    assert.equal(rgsfMemberPreaching.totalMinutes, 135);
+    assert.equal(rgsfMemberPreaching.booksDistributed, 4);
 
     const rgsfPreachingStats = await getBvStats.execute({
       input: {
@@ -515,7 +517,7 @@ test('supervisor groups include only groups led by reporting RGFs with RGF card 
       context: { user: assignedRgsf },
     } as never);
     assert.equal((rgsfPreachingStats as any).subjectType, 'members');
-    assert.deepEqual(rgsfPreachingStats.userSummaries.map((row: any) => row.fullName), [member.fullName]);
+    assert.deepEqual(rgsfPreachingStats.userSummaries.map((row: any) => row.fullName).sort(), [member.fullName, reportingRgf.fullName].sort());
     assert.equal(rgsfPreachingStats.totalSubmitted, 1);
     assert.equal(rgsfPreachingStats.dailyTrend[0].totalPreachingMinutes, 135);
 
@@ -529,13 +531,13 @@ test('supervisor groups include only groups led by reporting RGFs with RGF card 
       },
       context: { user: reportingRgf },
     } as never);
-    assert.deepEqual(rgfSadhanaReport.users.map((row: any) => row.fullName), [member.fullName]);
+    assert.deepEqual(rgfSadhanaReport.users.map((row: any) => row.fullName).sort(), [member.fullName, reportingRgf.fullName].sort());
 
     const rgfGroupStats = await getGuideGroupStats.execute({
       input: { guideId: reportingRgf.userId, bvslMode: true },
       context: { user: reportingRgf },
     } as never);
-    assert.equal(rgfGroupStats.groups[0].memberCount, 1);
+    assert.equal(rgfGroupStats.groups[0].memberCount, 2);
   } finally {
     await BvslPreachingEntries.delete({ id: memberPreachingEntryId });
     await BvslPreachingEntries.delete({ id: preachingEntryId });
@@ -680,10 +682,10 @@ test('BV group detail resolves a legacy memberId membership for the group leader
       context: { user: leader },
     } as never);
 
-    assert.equal(detail.members.length, 1);
+    assert.equal(detail.members.length, 2);
     const listedMember = detail.members.find((row: any) => row.fullName === member.fullName);
     assert.equal(listedMember?.userId, member.userId);
-    assert.equal(detail.members.some((row: any) => row.fullName === leader.fullName), false);
+    assert.equal(detail.members.some((row: any) => row.fullName === leader.fullName), true);
     assert.equal(detail.group.joinToken, group.joinToken);
 
     await assert.rejects(

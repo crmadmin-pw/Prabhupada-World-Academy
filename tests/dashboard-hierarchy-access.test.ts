@@ -180,7 +180,7 @@ test('BV reports list every Prabhupada World reading group for a department admi
     const input = { guideId, segment: 'PW', date, reportType: 'daily', startDate: date, endDate: date };
     const matrix = await call(getBvSessionMatrix, input);
     assert.deepEqual(sorted(matrix.groups.map((g: any) => g.id)), ['group-a', 'group-b']);
-    assert.deepEqual(sorted(matrix.members.map((u: any) => u.fullName)), ['group-member-a', 'member-b']);
+    assert.deepEqual(sorted(matrix.members.map((u: any) => u.fullName)), ['group-member-a', 'member-b', 'rgf-a', 'rgf-b']);
     const preaching = await call(getBvPreachingReport, input);
     assert.deepEqual(sorted(preaching.bvsls.map((u: any) => u.fullName)), ['rgf-a', 'rgf-b']);
     const stats = await call(getBvStats, input);

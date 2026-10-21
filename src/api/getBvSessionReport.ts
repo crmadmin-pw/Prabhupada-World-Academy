@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { createEndpoint, Users, BvGroups, BvSessions, BvAttendance, BvGroupMembers } from '@/lib/backend-sdk';
 import { requireGuideRole } from '../lib/userUtils';
 import { getGuideIdsForResidencies } from '../lib/guideScope';
-import { joinFacilitatorNames, textList } from '@/lib/bvGroupFacilitators';
+import { joinFacilitatorNames, textList, uncountedAssignedStaff } from '@/lib/bvGroupFacilitators';
 
 export default createEndpoint({
   description: 'BV session/attendance report for guide — attendance by group+date with session topic/notes from BvSessions',
@@ -38,7 +38,7 @@ export default createEndpoint({
 
     const { records: groups } = await BvGroups.findAll({
       filters: groupFilter,
-      fields: ['id', 'groupName', 'bvslLeader'],
+      fields: ['id', 'groupName', 'bvslLeader', 'bvslId', 'bvslName', 'subFacilitatorId', 'rgsfId', 'subFacilitator'],
       limit: 200,
     });
 
@@ -83,7 +83,7 @@ export default createEndpoint({
         : Promise.resolve([] as any[]),
       BvGroupMembers.findAll({
         filters: { group: { in: groupIds } } as any,
-        fields: ['id', 'group'],
+        fields: ['id', 'group', 'user', 'userId', 'memberId'],
         limit: 2000,
       }),
       // Sessions in date range (for topic/notes enrichment)
@@ -100,9 +100,20 @@ export default createEndpoint({
     for (const u of bvslUsers) bvslNameMap.set(u.id, u.fullName || '');
 
     const memberCountByGroup = new Map<string, number>();
+    const countedByGroup = new Map<string, Set<string>>();
     for (const m of allMembers) {
       const gid = Array.isArray(m.group) ? m.group[0] : m.group;
-      if (gid) memberCountByGroup.set(gid as string, (memberCountByGroup.get(gid as string) || 0) + 1);
+      if (!gid) continue;
+      memberCountByGroup.set(gid as string, (memberCountByGroup.get(gid as string) || 0) + 1);
+      if (!countedByGroup.has(gid as string)) countedByGroup.set(gid as string, new Set());
+      for (const value of [m.user, m.userId, m.memberId]) {
+        const key = String(value || '').trim().toLowerCase();
+        if (key) countedByGroup.get(gid as string)!.add(key);
+      }
+    }
+    for (const group of groups) {
+      const counted = countedByGroup.get(group.id) || new Set<string>();
+      memberCountByGroup.set(group.id, (memberCountByGroup.get(group.id) || 0) + uncountedAssignedStaff(group, counted));
     }
 
     // Build session lookup: groupId + date → {topic, notes}

@@ -86,7 +86,7 @@ test('a supervisor sadhana report keeps a group member who has no user account',
       segment: 'PW',
       excludeCaller: true,
     });
-    assert.deepEqual(members.map(member => member.id).sort(), ['auth-orphan', 'linked-member']);
+    assert.deepEqual(members.map(member => member.id).sort(), ['auth-orphan', 'linked-member', 'sadhana-supervisor']);
     assert.equal(members.find(member => member.id === 'auth-orphan')?.fullName, 'Devotee');
 
     const report = await getGuideDetailedReport.execute({
@@ -254,5 +254,57 @@ test('an RGF leaderboard includes a supervisor who is a member of the group', as
       leaderboard.leaderboard.map((row: any) => row.displayName).sort(),
       ['BITS VEDANG', 'Vedanarayana Dasa'],
     );
+  });
+});
+
+test('sadhana report shows a member stored by firebase id or display name', async (t) => {
+  const rimpy = {
+    id: 'rimpy-doc',
+    userId: 'USER-RIMPY',
+    email: 'rimpy@example.test',
+    fullName: '',
+    displayName: 'Rimpy',
+    firebaseUid: 'rimpy-firebase',
+    role: 'User',
+    segment: 'PW',
+    status: 'Active',
+  };
+  const named = {
+    id: 'named-doc',
+    userId: 'USER-NAMED',
+    email: 'named@example.test',
+    fullName: 'Guddha Krishna',
+    role: 'User',
+    segment: 'PW',
+    status: 'Active',
+  };
+  fixture.Users.push(rimpy, named);
+  fixture.BvGroupMembers.push(
+    { id: 'm-rimpy', group: group.id, groupId: group.groupId, user: rimpy.firebaseUid, role: 'Member' },
+    { id: 'm-named', group: group.id, groupId: group.groupId, user: named.fullName, memberId: named.fullName, role: 'Member' },
+  );
+  t.after(() => {
+    fixture.Users = fixture.Users.filter(user => user.id !== rimpy.id && user.id !== named.id);
+    fixture.BvGroupMembers = fixture.BvGroupMembers.filter(member => member.id !== 'm-rimpy' && member.id !== 'm-named');
+  });
+  mockDatabase(t);
+  await withHierarchyDatabase(null, async () => {
+    const report = await getGuideDetailedReport.execute({
+      input: {
+        guideId: supervisor.userId,
+        date: '2026-10-18',
+        reportType: 'daily',
+        bvslMode: true,
+        segment: 'PW',
+      },
+      context: { user: supervisor },
+    } as never);
+    assert.deepEqual(report.users.map((user: any) => user.fullName).sort(), [
+      'BITS VEDANG',
+      'Devotee',
+      'Guddha Krishna',
+      'Linked Member',
+      'Rimpy',
+    ]);
   });
 });

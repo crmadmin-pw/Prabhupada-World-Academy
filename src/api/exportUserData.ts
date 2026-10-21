@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createEndpoint, Users } from '@/lib/backend-sdk';
 import { getScopedHierarchyUserIds, HIERARCHY_IDENTITY_FIELDS, isUserInHierarchy } from '@/lib/hierarchyUtils';
+import { visibleToCallerDepartment } from '@/lib/directoryDepartment';
 
 export default createEndpoint({
   description: 'Export user data as structured records',
@@ -22,12 +23,12 @@ export default createEndpoint({
     const scope = await getScopedHierarchyUserIds(context.user);
     const { records } = await Users.findAll({
       filters: filter,
-      fields: [...HIERARCHY_IDENTITY_FIELDS, 'fullName', 'phone', 'ashrayLevel', 'status', 'createdAt', 'lastLoginAt'],
+      fields: [...HIERARCHY_IDENTITY_FIELDS, 'fullName', 'phone', 'ashrayLevel', 'status', 'createdAt', 'lastLoginAt', 'segment', 'role', 'isPrabhupadaWorldUser', 'isFolkUser', 'isFolkLead', 'isPwAdmin', 'isBvAdmin', 'isBvSuperAdmin'],
       limit: 2000,
     });
 
     return {
-      users: records
+      users: visibleToCallerDepartment(context.user, records)
         .filter((u: any) => isUserInHierarchy(u, scope))
         .map((u: any) => ({
           userId: (u.userId as string) || u.id,

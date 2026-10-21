@@ -3,7 +3,7 @@ import { createEndpoint, BvGroups, BvGroupMembers, BvMemberRegistrations, BvAtte
 import { getScopedHierarchyUserIds, isHierarchyAdmin, isHierarchySuperAdmin } from '../lib/hierarchyUtils';
 import { resolveBvScopedGroups } from '../lib/bvGroupMemberScope';
 import { getTodayIST } from '../lib/streakUtils';
-import { joinFacilitatorNames, readGroupFacilitators, textList } from '@/lib/bvGroupFacilitators';
+import { joinFacilitatorNames, readGroupFacilitators, textList, uncountedAssignedStaff } from '@/lib/bvGroupFacilitators';
 
 function normalizedRefs(value: unknown): string[] {
   if (Array.isArray(value)) return value.flatMap(normalizedRefs);
@@ -131,6 +131,16 @@ export default createEndpoint({
       if (membershipKey) membershipsByGroup.get(groupKey)!.set(membershipKey, membership);
     });
     const members = [...membershipsByGroup.values()].flatMap(groupMembers => [...groupMembers.values()]);
+    const staffCountByGroup = new Map<string, number>();
+    for (const group of groups) {
+      const groupKey = String(group.id || group.groupId);
+      const counted = new Set<string>();
+      for (const membership of membershipsByGroup.get(groupKey)?.values() || []) {
+        normalizedRefs([membership.user, membership.userId, membership.memberId]).forEach(alias => counted.add(alias));
+      }
+      staffCountByGroup.set(groupKey, uncountedAssignedStaff(group, counted));
+    }
+    const assignedStaffCount = [...staffCountByGroup.values()].reduce((sum, count) => sum + count, 0);
 
     const pending = scopedUserIds === null
       ? rawPending
@@ -166,7 +176,7 @@ export default createEndpoint({
         bvslName: joinFacilitatorNames(textList(g.bvslName)) || 'Unassigned',
         guideName: g.guideName || null,
         meetingTime: g.meetingTime || g.preferredTimeSlot || null,
-        memberCount: membershipsByGroup.get(groupKey)?.size || 0,
+        memberCount: (membershipsByGroup.get(groupKey)?.size || 0) + (staffCountByGroup.get(groupKey) || 0),
         totalSessions: sessionDates.size,
         presentToday: attendance.filter((entry: any) =>
           String(entry.attendanceDate || '').slice(0, 10) === today && entry.present === true
@@ -180,7 +190,7 @@ export default createEndpoint({
     return {
       rgfCount: uniqueRgfs.size,
       groupCount: groups.length,
-      totalMembers: members.length,
+      totalMembers: members.length + assignedStaffCount,
       pendingRegistrations: pending.length,
       groups: mappedGroups,
     };

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createEndpoint, PushSubscriptions, Users, AppError } from '@/lib/backend-sdk';
 import { getNotificationDepartment, isSadhanaReminderEligibleUser } from '@/lib/notificationDepartment';
 import { getScopedHierarchyUserIds, isUserInHierarchy } from '../lib/hierarchyUtils';
+import { organizationalDepartment } from '../lib/directoryDepartment';
 
 export default createEndpoint({
   description: 'Get push subscription stats (Super Guide / Admin only)',
@@ -34,12 +35,9 @@ export default createEndpoint({
     ].filter(Boolean).map(String));
     const callerEmail = (context?.user?.email || '').toLowerCase();
 
-    // Determine target segment: explicit input > caller context.
-    let targetSegment = input?.segment || context.user?.segment;
-    if (!targetSegment) targetSegment = 'PW';
-    const callerSegment = String(context.user?.segment || '').trim().toUpperCase();
-    const canManageAnyDepartment = context.user?.capabilities?.includes('*');
-    if (!canManageAnyDepartment && callerSegment && callerSegment !== targetSegment) {
+    const callerDepartment = organizationalDepartment(context.user);
+    const targetSegment = input?.segment || callerDepartment || 'PW';
+    if (callerDepartment && targetSegment !== callerDepartment) {
       throw new AppError({ code: 'FORBIDDEN', message: 'You cannot view another department notification subscriptions' });
     }
 

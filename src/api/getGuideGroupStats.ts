@@ -145,9 +145,26 @@ export default createEndpoint({
       const facilitator = bvGroupFacilitatorAliases(g)
         .map(alias => facilitatorByAlias.get(alias))
         .find(Boolean);
-      const memberCount = new Set(memberRecords.map(member =>
+      const countedMembers = new Set<string>();
+      for (const member of memberRecords) {
+        [member.user, member.userId, member.memberId, member.id]
+          .map(value => String(value || '').trim().toLowerCase())
+          .filter(Boolean)
+          .forEach(alias => countedMembers.add(alias));
+      }
+      const people = new Set(memberRecords.map(member =>
         String(member.user || member.userId || member.memberId || member.id),
-      )).size;
+      ));
+      const addedStaff = new Set<string>();
+      for (const alias of bvGroupFacilitatorAliases(g)) {
+        const staffUser = facilitatorByAlias.get(alias);
+        if (!staffUser?.id) continue;
+        const aliases = bvUserAliases(staffUser);
+        if (aliases.some(key => countedMembers.has(key)) || addedStaff.has(String(staffUser.id))) continue;
+        addedStaff.add(String(staffUser.id));
+        aliases.forEach(key => countedMembers.add(key));
+      }
+      const memberCount = people.size + addedStaff.size;
 
       // Count distinct session dates
       const distinctDates = new Set(attRecords.map((a: any) => a.attendanceDate).filter(Boolean));

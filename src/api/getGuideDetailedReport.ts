@@ -4,7 +4,7 @@ import { scopeRealtimeDependencies } from '@/lib/requestQueries';
 import { getReportReferenceData } from '../lib/reportReferenceData';
 import { createEndpoint, Users, Guides, FolkResidencies, SadhanaEntries } from '@/lib/backend-sdk';
 import { requireGuideRole, normalizeAshrayLevel } from '../lib/userUtils';
-import { folkGuideIdentityRefs, isPrabhupadaWorldDirectoryMember } from '../lib/directoryDepartment';
+import { folkGuideIdentityRefs, isPrabhupadaWorldDirectoryMember, organizationalDepartment } from '../lib/directoryDepartment';
 import { getDashboardHierarchyScope, isHierarchyAdmin, isHierarchySuperAdmin, isPwDepartmentAdmin, readScopedUsers } from '../lib/hierarchyUtils';
 import getGuides from './getGuides';
 import getAllResidencies from './getAllResidencies';
@@ -18,7 +18,7 @@ import { resolveBvAdminFacilitators } from '@/lib/bvAdminFacilitatorScope';
 import { residencyMatchesDepartment } from '../lib/residencyCategory';
 import { readEntriesForOwners } from '../lib/scopedEntryReads';
 
-const USER_FIELDS = ['status', 'id', 'userId', 'fullName', 'email', 'phone', 'segment', 'isPrabhupadaWorldUser', 'isFolkUser', 'isFolkLead', 'sadhanaMentor', 'ashrayLevel', 'residency', 'residencyApproved', 'temporaryResidencyEnabled', 'temporaryResidency', 'residencyJoinDate', 'scholarSince', 'residentSince', 'currentStreak', 'lastStreakUpdatedAt', 'guide', 'role', 'isBvSuperAdmin', 'isBvAdmin', 'isPwAdmin', 'pwChantingTarget', 'pwReadingTarget', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
+const USER_FIELDS = ['status', 'id', 'userId', 'fullName', 'displayName', 'name', 'email', 'phone', 'segment', 'isPrabhupadaWorldUser', 'isFolkUser', 'isFolkLead', 'sadhanaMentor', 'ashrayLevel', 'residency', 'residencyApproved', 'temporaryResidencyEnabled', 'temporaryResidency', 'residencyJoinDate', 'scholarSince', 'residentSince', 'currentStreak', 'lastStreakUpdatedAt', 'guide', 'role', 'isBvSuperAdmin', 'isBvAdmin', 'isPwAdmin', 'pwChantingTarget', 'pwReadingTarget', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
 const ENTRY_FIELDS = [
   'id', 'user', 'entryDate', 'totalScore', 'maxScore', 'scorePercent',
   'flagSick', 'flagOs', 'submittedAt', 'templateMode',
@@ -762,6 +762,10 @@ export default createEndpoint({
   outputSchema: z.any(),
   execute: async ({ input, context }: any) => {
     if (!context.user) throw new Error('Unauthorized');
+    const callerDepartment = organizationalDepartment(context.user);
+    if (callerDepartment && input.segment && input.segment !== callerDepartment) {
+      throw new Error('You cannot view users from another department');
+    }
     // Authorization: only Guide, Super Guide, BVSL, or Sadhana Mentor may access reports
     requireGuideRole(context.user.role, {
       isSadhanaMentor: context.user.isSadhanaMentor,
@@ -998,6 +1002,9 @@ export default createEndpoint({
 
     // FOLK reports should show devotee/member rows only. PW keeps its existing
     // admin/mentor report behavior.
+    if (callerDepartment === 'FOLK' || input.segment === 'FOLK') {
+      users = users.filter(user => organizationalDepartment(user) !== 'PW');
+    }
     const isFolkReport = input.segment === 'FOLK';
     const callerId = String(context.user?.id || context.user?.userId || '').toLowerCase();
     const callerEmail = String(context.user?.email || '').toLowerCase();
@@ -1181,7 +1188,7 @@ export default createEndpoint({
       return {
         id: u.id,             // DB record id — guaranteed unique (used for ranking)
         userId: u.userId || u.id,
-        fullName: u.fullName || '',
+        fullName: String(u.fullName || u.displayName || u.name || '').trim(),
         phone: u.phone || null,
         ashrayLevel: u.ashrayLevel || null,
         isResident: entryIsResident,

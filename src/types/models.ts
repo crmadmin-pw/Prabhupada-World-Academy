@@ -110,6 +110,8 @@ export interface ProfileSummary {
   pendingAshrayNoticeLevel?: string | null;
   ashrayNoticeAcknowledged?: boolean;
   phone?: string | null;
+  /** Calling code chosen on Create Your Account, such as `+61`. */
+  phoneCountryCode?: string | null;
 }
 
 // ─── Guide Domain ────────────────────────────────────────────────────────────

@@ -8,7 +8,7 @@ import { loadEffectiveReadingRoles } from '@/lib/bvGroupFacilitators';
 
 export const profileCacheKey = (userId: string) => `user_profile:${userId}`;
 
-const USER_FIELDS = ['id', 'userId', 'fullName', 'phone', 'email', 'role', 'status', 'deletionRequestedAt', 'deletionPurgeAt',
+const USER_FIELDS = ['id', 'userId', 'fullName', 'phone', 'phoneCountryCode', 'email', 'role', 'status', 'deletionRequestedAt', 'deletionPurgeAt',
   'guide', 'residency', 'residencyClaimed', 'residencyApproved', 'createdAt',
   'lastLoginAt', 'ashrayLevel', 'residencyJoinDate', 'isBvsl', 'isSadhanaMentor', 'isServiceAllocator',
   'isBvMentor', 'bvMentorGuideId', 'isCleanlinessManager', 'isFolkLead', 'isTripCoordinator',
@@ -299,6 +299,7 @@ function buildProfileResult({
       userId: userRecord.userId,
       fullName: userRecord.fullName || '',
       phone: userRecord.phone || '',
+      phoneCountryCode: userRecord.phoneCountryCode || '',
       email: userRecord.email || userEmail,
       selectedGuideId: guideId || null,
       selectedFolkResidency: residencyId || null,

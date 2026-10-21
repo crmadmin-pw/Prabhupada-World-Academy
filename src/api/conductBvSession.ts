@@ -99,7 +99,10 @@ export default createEndpoint({
     }
     for (const entry of staff) {
       const aliases = bvUserAliases(entry.user);
-      if (!aliases.some(alias => covered.has(alias))) continue;
+      if (!aliases.some(alias => covered.has(alias))) {
+        addPerson(entry.user.id, [entry.user.id, entry.user.userId, ...aliases]);
+        continue;
+      }
       const person = roster.find(item => item.keys.some(key => aliases.includes(key.toLowerCase())));
       if (!person) continue;
       for (const alias of [entry.user.id, entry.user.userId, ...aliases]) {

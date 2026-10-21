@@ -167,6 +167,22 @@ export default createEndpoint({
       .filter(member => member !== null);
 
     const covered = new Set(members.flatMap(member => bvUserAliases({ id: member.userDbId, userId: member.userId })));
+    for (const entry of staff) {
+      const aliases = bvUserAliases(entry.user);
+      if (aliases.some(alias => covered.has(alias))) continue;
+      const saved = savedFor(entry.user, []);
+      const isPresent = sessionExists ? saved.present : null;
+      members.push({
+        userDbId: entry.user.id,
+        userId: entry.user.userId || entry.user.id,
+        fullName: entry.user.fullName || '',
+        present: isPresent,
+        attendedMinutes: sessionExists ? (saved.minutes ?? (isPresent ? totalMeetingMinutes : 0)) : 0,
+        roleLabel: facilitatorRoleLabel(entry.badges),
+        supervisor: isSupervisor(entry.user),
+      });
+      aliases.forEach(alias => covered.add(alias));
+    }
     for (const supervisor of supervisors) {
       const aliases = bvUserAliases(supervisor);
       const alreadyListed = members.find((member: any) =>

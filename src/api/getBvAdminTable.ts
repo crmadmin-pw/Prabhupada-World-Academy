@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, BvAttendance, Users, Guides } from '@/lib/backend-sdk';
-import { joinFacilitatorNames, textList } from '@/lib/bvGroupFacilitators';
+import { assignedStaffSlots, joinFacilitatorNames, textList } from '@/lib/bvGroupFacilitators';
 
 export default createEndpoint({
   description: 'Get BV attendance matrix table — members and attendance dates, scoped to a guide',
@@ -96,6 +96,26 @@ export default createEndpoint({
     const memberUserIds = [...new Set(
       memberships.map((m: any) => (Array.isArray(m.user) ? m.user[0] : m.user)).filter(Boolean) as string[]
     )];
+    const userGroupMap: Record<string, string> = {};
+    for (const m of memberships) {
+      const uid = (Array.isArray(m.user) ? m.user[0] : m.user) as string;
+      const gid = (Array.isArray(m.group) ? m.group[0] : m.group) as string;
+      if (uid && gid) userGroupMap[uid] = gid;
+    }
+    const countedMemberIds = new Set(memberUserIds.map(id => id.toLowerCase()));
+    for (const group of groups) {
+      for (const slot of assignedStaffSlots(group)) {
+        if (slot.keys.some(key => countedMemberIds.has(key.toLowerCase()))) {
+          slot.keys.forEach(key => countedMemberIds.add(key.toLowerCase()));
+          continue;
+        }
+        const staffId = slot.keys.find(key => bvslMap[key]) || slot.keys.find(key => !key.includes(' '));
+        if (!staffId || countedMemberIds.has(staffId.toLowerCase())) continue;
+        memberUserIds.push(staffId);
+        userGroupMap[staffId] = group.id;
+        slot.keys.forEach(key => countedMemberIds.add(key.toLowerCase()));
+      }
+    }
 
     // Lookup user details
     const userMap: Record<string, any> = {};
@@ -106,14 +126,6 @@ export default createEndpoint({
         limit: 2000,
       });
       for (const u of userRecords) userMap[u.id] = u;
-    }
-
-    // Map each user to their group
-    const userGroupMap: Record<string, string> = {};
-    for (const m of memberships) {
-      const uid = (Array.isArray(m.user) ? m.user[0] : m.user) as string;
-      const gid = (Array.isArray(m.group) ? m.group[0] : m.group) as string;
-      if (uid && gid) userGroupMap[uid] = gid;
     }
 
     // Build date list

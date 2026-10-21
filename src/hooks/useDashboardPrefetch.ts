@@ -25,8 +25,8 @@ function plan({ segment, isSuperAdmin, guideId }: Options): Query[] {
     // them on navigation intent, never as an unconditional login download.
     // Must match SuperUsersPanel's directory read exactly, including the PW
     // segment, or the intent prefetch is a wasted copy of the heaviest query.
-    { tab: 'users', name: 'getGuideUsers', input: { guideId: 'ALL', statusFilter: 'all', ...(segment === 'PW' ? { segment } : {}) }, intentOnly: true },
-    { tab: 'bhakti-vriksha', name: isSuperAdmin ? 'getBvslGroups' : 'getAllBvGroupsAdmin', input: isSuperAdmin ? { bvslId: 'ALL' } : { guideId }, intentOnly: true },
+    { tab: 'users', name: 'getGuideUsers', input: { guideId: 'ALL', statusFilter: 'all', segment }, intentOnly: true },
+    { tab: 'bhakti-vriksha', name: isSuperAdmin ? 'getBvslGroups' : 'getAllBvGroupsAdmin', input: isSuperAdmin ? { bvslId: 'ALL', segment } : { guideId }, intentOnly: true },
   ];
 }
 

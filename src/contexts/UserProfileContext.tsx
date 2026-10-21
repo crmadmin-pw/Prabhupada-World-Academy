@@ -121,6 +121,7 @@ function buildProfile(userObj: any): ProfileData {
     pendingAshrayNoticeLevel: userObj.pendingAshrayNoticeLevel ?? null,
     ashrayNoticeAcknowledged: !!(userObj.ashrayNoticeAcknowledged),
     phone: userObj.phone ?? null,
+    phoneCountryCode: userObj.phoneCountryCode ?? null,
   };
 }
 

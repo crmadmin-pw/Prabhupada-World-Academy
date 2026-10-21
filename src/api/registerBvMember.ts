@@ -4,6 +4,7 @@ import { serverCacheInvalidate } from '../lib/serverCache';
 import { profileCacheKey } from './getUserProfile';
 import { publishCollectionRevision, publishUsersRevision } from '../lib/publishUsersRevision';
 import { getUserSegment } from '../lib/guideResolution';
+import { canonicalCountryCode } from '@/lib/phoneNormalize';
 
 function isAtLeastFourteen(value: string): boolean {
   const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value);
@@ -60,8 +61,10 @@ export default createEndpoint({
 
     const userId = context.user.id;
     const userEmail = (context.user.email || '').toLowerCase();
-    const phoneE164 = `${input.phoneCountryCode}${input.phone.replace(/\D/g, '')}`;
-    const whatsappE164 = `${input.whatsappCountryCode}${input.whatsappNumber.replace(/\D/g, '')}`;
+    const phoneCountryCode = canonicalCountryCode(input.phoneCountryCode);
+    const whatsappCountryCode = canonicalCountryCode(input.whatsappCountryCode);
+    const phoneE164 = `${phoneCountryCode}${input.phone.replace(/\D/g, '')}`;
+    const whatsappE164 = `${whatsappCountryCode}${input.whatsappNumber.replace(/\D/g, '')}`;
 
     let userRecord = await Users.findOne({
       id: userId,
@@ -106,10 +109,10 @@ export default createEndpoint({
       userDbId: userRecord?.id || userId,
       email: userEmail,
       fullName: input.fullName,
-      phoneCountryCode: input.phoneCountryCode,
+      phoneCountryCode,
       phone: input.phone,
       phoneE164,
-      whatsappCountryCode: input.whatsappCountryCode,
+      whatsappCountryCode,
       whatsappNumber: input.whatsappNumber,
       whatsappE164,
       address: input.address || '',
@@ -138,7 +141,8 @@ export default createEndpoint({
     const targetId = userRecord?.id || userId;
     const profileUpdate: Record<string, unknown> = {
       fullName: input.fullName,
-      phone: input.phone,
+      phone: phoneE164.replace(/\D/g, ''),
+      phoneCountryCode,
       ashrayLevel: input.ashrayLevel === 'none' ? null : input.ashrayLevel,
       bvRegistrationStatus: 'Pending Approval',
     };

@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, Users, AppError } from '@/lib/backend-sdk';
+import { loadGroupFacilitators } from '@/lib/bvGroupFacilitators';
+import { bvUserAliases } from '@/lib/bvGroupMemberScope';
 
 const formatPhone = (phone?: string) => {
   if (!phone) return '';
@@ -24,8 +26,9 @@ export default createEndpoint({
   outputSchema: z.any(),
   execute: async ({ input }: any) => {
     // Try by DB UUID first, then by custom groupId field
-    let group = await BvGroups.findOne({ id: input.groupDbId, fields: ['id', 'groupId', 'groupName'] });
-    if (!group) group = await BvGroups.findOne({ filters: { groupId: input.groupDbId }, fields: ['id', 'groupId', 'groupName'] });
+    const groupFields = ['id', 'groupId', 'groupName', 'bvslLeader', 'bvslId', 'bvslName', 'subFacilitatorId', 'rgsfId', 'subFacilitator'];
+    let group = await BvGroups.findOne({ id: input.groupDbId, fields: groupFields });
+    if (!group) group = await BvGroups.findOne({ filters: { groupId: input.groupDbId }, fields: groupFields });
     if (!group) throw new AppError({ code: 'NOT_FOUND', message: 'Group not found' });
 
     const { records: memberships } = await BvGroupMembers.findAll({
@@ -94,11 +97,7 @@ export default createEndpoint({
       return !!u && !!u.isBvMember && isCurrentGroup && isActiveUser;
     });
 
-    return {
-      groupId: group.groupId || group.id,
-      groupDbId: group.id,
-      groupName: group.groupName || '',
-      members: activeMemberships.map(m => {
+    const members = activeMemberships.map(m => {
         const uid = firstValue(m.user);
         const altUid = firstValue((m as any).userId);
         const u = userMap[uid] || userMap[String(uid).toLowerCase()] || userMap[altUid] || userMap[String(altUid).toLowerCase()] || {};
@@ -112,7 +111,30 @@ export default createEndpoint({
           role: m.role || 'Member',
           joinedAt: m.joinedAt || null,
         };
-      }),
+      });
+    const listed = new Set(members.flatMap(member => [member.userId, member.fullName].map(value => String(value || '').trim().toLowerCase()).filter(Boolean)));
+    const staff = await loadGroupFacilitators(group);
+    for (const entry of staff) {
+      const aliases = bvUserAliases(entry.user);
+      if (aliases.some(alias => listed.has(alias))) continue;
+      members.push({
+        membershipId: '',
+        userId: entry.user.userId || entry.user.id,
+        fullName: entry.user.fullName || '',
+        phone: formatPhone(entry.user.phone),
+        ashrayLevel: entry.user.ashrayLevel || null,
+        currentStreak: entry.user.currentStreak ?? 0,
+        role: entry.badges.includes('RGF') ? 'RGF' : 'RGSF',
+        joinedAt: null,
+      });
+      aliases.forEach(alias => listed.add(alias));
+    }
+
+    return {
+      groupId: group.groupId || group.id,
+      groupDbId: group.id,
+      groupName: group.groupName || '',
+      members,
     };
   },
 });

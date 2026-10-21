@@ -141,7 +141,7 @@ test('an RGF with a stale RGSF flag does not inherit the parent facilitator grou
       input: { bvslId: facilitator.userId },
       context: { user: facilitator },
     } as never);
-    assert.deepEqual(result.members.map((member: any) => member.fullName), ['Own Group Member']);
+    assert.deepEqual(result.members.map((member: any) => member.fullName), ['Own Group Member', 'Stale Rgsf Flag']);
   });
 });
 

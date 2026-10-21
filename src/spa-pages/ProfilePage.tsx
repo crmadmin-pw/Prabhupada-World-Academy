@@ -23,6 +23,7 @@ import TripsDuesCard from '@/components/crm/TripsDuesCard';
 import RentHistoryCard from '@/components/crm/RentHistoryCard';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { getManagementDashboardPath, getUserDashboardPath, isManagementProfile } from '@/lib/userDashboardRoutes';
+import { organizationalDepartment } from '@/lib/directoryDepartment';
 import PersonalInfoCard from '@/components/profile/PersonalInfoCard';
 import GuideResidencyCard from '@/components/profile/GuideResidencyCard';
 import AccountCard from '@/components/profile/AccountCard';
@@ -62,7 +63,7 @@ export default function ProfilePage() {
 
       const localDate = format(new Date(), 'yyyy-MM-dd');
       const [guidesRes, ashrayRes, metricsRes, allResRes, bvRes, checklistRes, crmRes] = await Promise.all([
-        read(() => getGuides({})), read(() => getAshrayUpgradePath({})),
+        read(() => getGuides({ segment: organizationalDepartment(p) === 'FOLK' ? 'FOLK' : 'PW' })), read(() => getAshrayUpgradePath({})),
         read(() => getUserMetrics({ userId: p.userId })), read(() => getAllResidencies({})),
         read(() => getBvAttendance({ userId: p.userId, localDate, sinceDate: format(new Date(Date.now() - 30 * 86400_000), 'yyyy-MM-dd') })).catch(() => null),
         read(() => getAshrayChecklist({ userId: p.userId })).catch(() => null),

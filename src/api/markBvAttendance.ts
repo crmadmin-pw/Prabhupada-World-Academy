@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, BvSessions, BvAttendance, BvGroupMembers, Users, AppError } from '@/lib/backend-sdk';
-import { callerFacilitatesReadingGroup } from '@/lib/bvAttendanceAccess';
+import { callerCanRecordGroupAttendance } from '@/lib/bvAttendanceAccess';
 
 const referenceValues = (value: unknown): string[] =>
   (Array.isArray(value) ? value : [value]).filter(Boolean).map(String);
@@ -11,11 +11,11 @@ const normalizedValues = (value: unknown): string[] =>
 async function requireAssignedFacilitator(groupId: string, context: any) {
   const group = await BvGroups.findOne({
     id: groupId,
-    fields: ['id', 'bvslLeader', 'bvslId', 'bvslName', 'rgsfId', 'subFacilitatorId', 'subFacilitator'],
+    fields: ['id', 'groupId', 'groupName', 'bvslLeader', 'bvslId', 'bvslName', 'rgsfId', 'subFacilitatorId', 'subFacilitator'],
   });
   if (!group) throw new AppError({ code: 'NOT_FOUND', message: 'Reading Group not found' });
 
-  if (!(await callerFacilitatesReadingGroup(group, context.user))) {
+  if (!(await callerCanRecordGroupAttendance(group, context.user))) {
     throw new AppError({ code: 'FORBIDDEN', message: 'Only this Reading Group\'s facilitator can mark attendance' });
   }
   return group;

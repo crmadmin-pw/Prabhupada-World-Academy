@@ -1,6 +1,12 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { Users, Guides, FolkResidencies, BvGroups, BvGroupMembers, Config, getFirestoreDb, REPORTING_CHAINS_KEY, REPORTING_CHAINS_READY, reportingChainsLocallyStaleNow, clearReportingChainsLocalStale, setReportingChainMarkerInvalidator } from '@/lib/backend-sdk';
+import { organizationalDepartment, visibleToCallerDepartment } from '@/lib/directoryDepartment';
 import { invalidateRequestTable, requestHierarchyMemos } from '@/lib/requestQueries';
+
+const DEPARTMENT_READ_FIELDS = [
+  'segment', 'role', 'isPrabhupadaWorldUser', 'isFolkUser', 'isFolkLead', 'isPwAdmin',
+  'isBvAdmin', 'isBvSuperAdmin', 'isPrabhupadaWorldMentor',
+];
 
 const REPORTING_CHAIN_MARKER_TTL_MS = 5_000;
 const hierarchyDatabase = new AsyncLocalStorage<any>();
@@ -104,16 +110,12 @@ export type DirectoryDepartment = 'PW' | 'FOLK';
 
 /** Explicit department of a member. An explicit FOLK segment stays FOLK. */
 export function memberDirectoryDepartment(user: any): DirectoryDepartment | null {
-  const segment = String(user?.segment || '').trim().toUpperCase().replace(/[\s_-]+/g, '');
-  if (segment === 'FOLK') return 'FOLK';
-  if (segment === 'PW' || segment === 'PRABHUPADAWORLD') return 'PW';
-  if (user?.isPrabhupadaWorldUser === true) return 'PW';
-  return null;
+  return organizationalDepartment(user);
 }
 
 /** Department used when an administrator reads the member directory. */
 export function callerDirectoryDepartment(user: any): DirectoryDepartment | null {
-  return memberDirectoryDepartment(user) || (isPwDepartmentAdmin(user) ? 'PW' : null);
+  return organizationalDepartment(user) || (isPwDepartmentAdmin(user) ? 'PW' : null);
 }
 
 /** A Prabhupada World admin reads every Prabhupada World member, the same as a super admin. */
@@ -138,8 +140,7 @@ export function isUserInHierarchy(user: any, scope: Set<string> | null): boolean
 }
 
 function department(user: any): string {
-  const segment = String(user?.segment || '').replace(/[\s_-]/g, '').toUpperCase();
-  return user?.isPrabhupadaWorldUser || ['PW', 'PRABHUPADAWORLD'].includes(segment) ? 'PW' : segment;
+  return organizationalDepartment(user) || '';
 }
 
 /** Pure resolver. Only explicit reporting links and active memberships grant access.
@@ -550,6 +551,15 @@ function presentUser(row: any, fields?: string[]) {
   return presented;
 }
 
+function widenDepartmentFields(fields?: string[]) {
+  if (!fields) return undefined;
+  return [...new Set([...fields, ...DEPARTMENT_READ_FIELDS])];
+}
+
+function restrictCallerRecords(caller: any, records: any[], fields?: string[]) {
+  return visibleToCallerDepartment(caller, records).map(row => presentUser(row, fields));
+}
+
 /** Report rows for one caller. Without a ready chain this is the existing table read.
  * A ready chain reads only people who report to the caller, then applies the caller's filters.
  */
@@ -567,11 +577,17 @@ function rowsForQuery(visible: any[], query: any): any[] {
  * A ready chain reads only people who report to the caller, then applies the caller's filters.
  */
 export async function readScopedUsers(caller: any, query: any = {}): Promise<{ records: any[]; hasMore: boolean }> {
-  if (!caller || isHierarchySuperAdmin(caller) || !firestore()) return Users.findAll(query);
+  if (!caller || isHierarchySuperAdmin(caller) || !firestore()) {
+    const page = await Users.findAll({ ...query, fields: widenDepartmentFields(query.fields) });
+    return { records: restrictCallerRecords(caller, page.records || [], query.fields), hasMore: !!page.hasMore };
+  }
   if (!(await reportingChainsReady())) await refreshReportingChains();
-  if (!(await reportingChainsReady())) return Users.findAll(query);
+  if (!(await reportingChainsReady())) {
+    const page = await Users.findAll({ ...query, fields: widenDepartmentFields(query.fields) });
+    return { records: restrictCallerRecords(caller, page.records || [], query.fields), hasMore: !!page.hasMore };
+  }
   const { visible } = await loadCallerVisibility(caller);
-  const filtered = rowsForQuery(visible, query).filter(row => recordMatches(row, query.filters));
+  const filtered = rowsForQuery(visibleToCallerDepartment(caller, visible), query).filter(row => recordMatches(row, query.filters));
   const offset = Number(query.offset || 0);
   const limit = query.limit != null ? Number(query.limit) : filtered.length;
   const records = filtered.slice(offset, offset + limit).map(row => presentUser(row, query.fields));

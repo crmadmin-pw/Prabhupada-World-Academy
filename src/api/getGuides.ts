@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createEndpoint, Guides, Users } from '@/lib/backend-sdk';
 import { serverCacheGetOrFetch } from '../lib/serverCache';
+import { organizationalDepartment } from '../lib/directoryDepartment';
 import { getScopedHierarchyUserIds, hierarchyRefs, isHierarchyAdmin } from '../lib/hierarchyUtils';
 
 function formatGuideName(fullName: string | null | undefined, email: string | null | undefined): string {
@@ -49,7 +50,7 @@ function formatGuideName(fullName: string | null | undefined, email: string | nu
   return 'Unknown Guide';
 }
 
-const CACHE_KEY = 'ref:guides_v4';
+const CACHE_KEY = 'ref:guides_v5';
 const TTL = 10 * 1000; // 10 seconds — updates quickly when role changes
 
 export default createEndpoint({
@@ -71,20 +72,21 @@ export default createEndpoint({
     const allGuides = await serverCacheGetOrFetch(CACHE_KEY, async () => {
       const [{ records: guideRecords }, { records: userRecords }] = await Promise.all([
         Guides.findAll({ filters: { isActive: true }, fields: ['id', 'guideId', 'fullName', 'name', 'email', 'abbreviation', 'abbr', 'segment'], limit: 500 }),
-        Users.findAll({ fields: ['id', 'userId', 'fullName', 'email', 'role', 'status', 'segment', 'isPrabhupadaWorldUser', 'isBvAdmin', 'isBvSuperAdmin'], limit: 1000 }),
+        Users.findAll({ fields: ['id', 'userId', 'fullName', 'email', 'role', 'status', 'segment', 'isPrabhupadaWorldUser', 'isFolkUser', 'isFolkLead', 'isPwAdmin', 'isBvAdmin', 'isBvSuperAdmin'], limit: 1000 }),
       ]);
 
       const folkGuidesFromDb = guideRecords
         .filter(g => {
-          // A FOLK guide list must never include records explicitly marked as
-          // Prabhupada World. Older Guide rows without a segment remain
-          // eligible and are validated against their linked user below.
-          if (String(g.segment || '').trim().toUpperCase() === 'PW') return false;
+          // A FOLK guide list must never include Prabhupada World personnel.
+          // Older Guide rows without a segment remain eligible and are
+          // validated against their linked user below.
+          if (organizationalDepartment(g) === 'PW') return false;
           // Cross-reference with Users table to check if they were deleted/modified
           if (g.email) {
             const emailLower = g.email.toLowerCase().trim();
             const correspondingUser = userRecords.find(u => (u.email || '').toLowerCase().trim() === emailLower);
             if (correspondingUser) {
+              if (organizationalDepartment(correspondingUser) === 'PW') return false;
               // If user exists, status must be Active and role must be a guide/admin role
               const roleUpper = (correspondingUser.role || '').toUpperCase().replace(/\s+/g, '_').trim();
               const isGuideOrAdmin =
@@ -113,18 +115,17 @@ export default createEndpoint({
       // Dynamically fetch FOLK Guides / Supervisors / Admins from Users table
       const dbFolkGuides = userRecords
         .filter(u => {
+          if (organizationalDepartment(u) === 'PW') return false;
           const roleUpper = (u.role || '').toUpperCase().replace(/\s+/g, '_').trim();
-          const isPwUser = u.segment === 'PW' || u.isPrabhupadaWorldUser === true;
-
-          if (isPwUser) return false;
-
           const isFolkRole =
             roleUpper === 'GUIDE' ||
             roleUpper === 'SUPER_GUIDE' ||
-            roleUpper === 'ADMIN' ||
-            roleUpper === 'SUPER_ADMIN' ||
-            u.isBvAdmin === true ||
-            u.isBvSuperAdmin === true;
+            (organizationalDepartment(u) === 'FOLK' && (
+              roleUpper === 'ADMIN' ||
+              roleUpper === 'SUPER_ADMIN' ||
+              u.isBvAdmin === true ||
+              u.isBvSuperAdmin === true
+            ));
 
           return isFolkRole && u.status === 'Active';
         })
@@ -141,11 +142,9 @@ export default createEndpoint({
       // Dynamically fetch PW Admins from Users table
       const dbPwAdmins = userRecords
         .filter(u => {
+          if (organizationalDepartment(u) !== 'PW' || u.status !== 'Active') return false;
           const roleUpper = (u.role || '').toUpperCase().replace(/\s+/g, '_').trim();
-          const segmentUpper = (u.segment || '').toUpperCase();
-          return (roleUpper === 'ADMIN' || roleUpper === 'PW_ADMIN' || u.isBvAdmin === true || roleUpper === 'SUPER_ADMIN' || u.isBvSuperAdmin === true) &&
-                 (segmentUpper === 'PW' || u.isPrabhupadaWorldUser === true) &&
-                 u.status === 'Active';
+          return roleUpper === 'ADMIN' || roleUpper === 'PW_ADMIN' || u.isBvAdmin === true || u.isPwAdmin === true || roleUpper === 'SUPER_ADMIN' || u.isBvSuperAdmin === true;
         })
         .map(u => ({
           // Use userId (canonical app user id) not u.id (Firebase UID)
@@ -168,7 +167,13 @@ export default createEndpoint({
       };
     }, TTL);
 
-    const effectiveSegment = input.segment;
+    const callerDepartment = organizationalDepartment(context?.user);
+    if (callerDepartment && input.segment && input.segment !== 'ALL' && input.segment !== callerDepartment) {
+      throw new Error('You cannot view users from another department');
+    }
+    // An authenticated caller only receives their own department. A public
+    // registration request still chooses PW or FOLK explicitly.
+    const effectiveSegment = callerDepartment || input.segment;
 
     const sortGuides = (list: any[]) => {
       return [...list].sort((a, b) => {

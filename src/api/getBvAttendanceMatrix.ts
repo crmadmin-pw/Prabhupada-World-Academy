@@ -145,14 +145,45 @@ export default createEndpoint({
       };
     });
 
+    const covered = new Set(rows.flatMap(row => [row.userId, row.name].map(value => String(value || '').trim().toLowerCase()).filter(Boolean)));
+    const matrixMembers = activeMembers.map((m: any) => {
+      const uid = firstValue(m.user);
+      const altUid = firstValue(m.userId);
+      const u = (userMap[uid] || userMap[uid.toLowerCase()] || userMap[altUid] || userMap[altUid.toLowerCase()]) as any;
+      return { membershipId: m.id, userId: u?.userId || u?.id || uid, fullName: u?.fullName || '' };
+    });
+    for (const entry of staff) {
+      const aliases = bvUserAliases(entry.user);
+      if (aliases.some(alias => covered.has(alias))) continue;
+      const attendance: Record<string, number> = {};
+      dates.forEach(date => {
+        const stored = [entry.user.id, entry.user.userId, ...aliases]
+          .map(alias => userDateMap[String(alias || '')]?.[date])
+          .find(value => value !== undefined);
+        attendance[date] = stored ?? 0;
+      });
+      const weekTotal = Object.values(attendance).reduce((sum, value) => sum + value, 0);
+      rows.push({
+        userId: entry.user.userId || entry.user.id || '',
+        name: entry.user.fullName || '',
+        ashrayLevel: entry.user.ashrayLevel || null,
+        roleLabel: facilitatorRoleLabel(entry.badges),
+        attendance,
+        weekTotal,
+      });
+      matrixMembers.push({
+        membershipId: '',
+        userId: entry.user.userId || entry.user.id || '',
+        fullName: entry.user.fullName || '',
+      });
+      aliases.forEach(alias => covered.add(alias));
+    }
+    const roleRank = (row: { roleLabel?: string | null }) => (row.roleLabel === 'RGF' ? 0 : row.roleLabel === 'RGSF' ? 1 : 2);
+    rows.sort((left, right) => roleRank(left) - roleRank(right) || left.name.localeCompare(right.name));
+
     return {
       sessions: dates.map(d => ({ sessionId: d, sessionDate: d, topic: '' })),
-      members: activeMembers.map((m: any) => {
-        const uid = firstValue(m.user);
-        const altUid = firstValue(m.userId);
-        const u = (userMap[uid] || userMap[uid.toLowerCase()] || userMap[altUid] || userMap[altUid.toLowerCase()]) as any;
-        return { membershipId: m.id, userId: u?.userId || u?.id || uid, fullName: u?.fullName || '' };
-      }),
+      members: matrixMembers,
       matrix: userDateMap,
       rows,
       dates,

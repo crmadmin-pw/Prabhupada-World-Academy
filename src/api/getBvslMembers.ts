@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { createEndpoint, Users, BvGroupMembers, FolkResidencies, AppError } from '@/lib/backend-sdk';
 import { serverCacheGetOrFetch } from '../lib/serverCache';
 import { bvUserAliases, resolveBvScopedGroups } from '../lib/bvGroupMemberScope';
-import { countsAsGroupMember } from '@/lib/bvGroupFacilitators';
+import { countsAsGroupMember, loadGroupFacilitators } from '@/lib/bvGroupFacilitators';
 import { getScopedHierarchyUserIds, hierarchyAliases, isUserInHierarchy } from '../lib/hierarchyUtils';
 
 const formatPhone = (phone?: string) => {
@@ -234,6 +234,34 @@ async function fetchBvslMembers({ input, context }: { input: any; context: any }
       pwTargets: u.pwTargets ?? null,
     };
   }).filter(member => member !== null);
+
+  const listed = new Set(members.flatMap(member =>
+    [member.userId, member.fullName, member.email].map(value => String(value || '').trim().toLowerCase()).filter(Boolean),
+  ));
+  for (const group of targetGroups) {
+    const staff = await loadGroupFacilitators(group.record);
+    const showContacts = refs([group.id, group.groupId]).some(alias => ownGroupIds.has(alias));
+    for (const entry of staff) {
+      const aliases = bvUserAliases(entry.user);
+      if (aliases.some(alias => listed.has(alias))) continue;
+      members.push({
+        userId: entry.user.userId || entry.user.id || '',
+        fullName: (entry.user.fullName as string) || '',
+        phone: showContacts ? formatPhone(entry.user.phone) : '',
+        ashrayLevel: (entry.user.ashrayLevel as string) || null,
+        email: showContacts ? ((entry.user.email as string) || '') : '',
+        groupName: group.groupName || '',
+        groupId: group.groupId || '',
+        isResident: false,
+        residencyName: null,
+        isRgsf: entry.badges.includes('RGSF'),
+        pwChantingTarget: entry.user.pwTargets?.chanting ?? entry.user.pwChantingTarget ?? null,
+        pwReadingTarget: entry.user.pwTargets?.readingMin ?? entry.user.pwReadingTarget ?? null,
+        pwTargets: entry.user.pwTargets ?? null,
+      });
+      aliases.forEach(alias => listed.add(alias));
+    }
+  }
 
   return { members };
 }
