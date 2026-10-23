@@ -1,3 +1,4 @@
+import { getFolkHostelSadhanaScope, readFolkHostelSadhanaUsers } from '../lib/folkHostelSadhanaScope';
 import { getSadhanaMentorResidencyScope } from '@/lib/sadhanaMentorResidencyScope';
 import { z } from 'zod';
 import { scopeRealtimeDependencies } from '@/lib/requestQueries';
@@ -749,6 +750,7 @@ export default createEndpoint({
   requiredCapabilities: 'sadhana.reports',
   inputSchema: z.object({
     guideId: z.string(),
+    filterGuideId: z.string().optional(),
     date: z.string(),
     reportType: z.enum(['daily', 'weekly', 'monthly']),
     startDate: z.string().optional(),
@@ -816,7 +818,8 @@ export default createEndpoint({
       && isPwDepartmentAdmin(context.user)
       && !isHierarchySuperAdmin(context.user);
     const residencyMentorScope = await getSadhanaMentorResidencyScope(context.user);
-    const hierarchyPromise = residencyMentorScope || pwDepartmentSadhana ? Promise.resolve(null) : getDashboardHierarchyScope(context.user, inputGuideId);
+    const hostelScope = !bvslMode && !mentorMode && !facilitatorMode ? await getFolkHostelSadhanaScope(context.user) : null;
+    const hierarchyPromise = hostelScope || residencyMentorScope || pwDepartmentSadhana ? Promise.resolve(null) : getDashboardHierarchyScope(context.user, inputGuideId);
     void hierarchyPromise.catch(() => {});
     const mentorRecord = isPwMentor
       ? (await Users.findOne({ id: context.user.id, fields: ['id', 'userId', 'email'] })
@@ -882,6 +885,7 @@ export default createEndpoint({
         : (guide?.folkResidencies ? [guide.folkResidencies as string] : []);
     }
     const availableResidenciesPromise = referencePromise.then(async reference => {
+      if (hostelScope) return hostelScope.residencies.map(r => ({ residencyId: r.id, residencyName: r.residencyName }));
       if (residencyMentorScope) return residencyMentorScope.residencies.map((r: any) => ({ residencyId: r.id, residencyName: r.residencyName || '' }));
       if (isHierarchyAdmin(context.user) && !isHierarchySuperAdmin(context.user)) {
         if (input.segment === 'PW' || facilitatorMode) return [];
@@ -898,7 +902,9 @@ export default createEndpoint({
 
     // Phase 1 FIX: include both guide-assigned users AND users in any of the guide's residencies
     let users: any[] = [];
-    if (residencyMentorScope) {
+    if (hostelScope) {
+      users = await readFolkHostelSadhanaUsers(hostelScope, USER_FIELDS, input.filterGuideId);
+    } else if (residencyMentorScope) {
       const { records } = await Users.findAll({ filters: { status: 'Active' }, fields: USER_FIELDS, limit: 2000 });
       users = records.filter(residencyMentorScope.includes);
     } else if (facilitatorMode) {
@@ -1046,7 +1052,7 @@ export default createEndpoint({
     // NR-VIS FIX: Non-residents must only appear for their own assigned guide.
     // Users are fetched broadly by residency above, so without this filter an NR whose guide is
     // "Sreesha Prabhu" would show up in Manmohan Prabhu's report too — causing confusion.
-    if (guideDbId && !facilitatorMode) {
+    if (!hostelScope && guideDbId && !facilitatorMode) {
       users = users.filter(u => {
         const officialResId = Array.isArray(u.residency) ? u.residency[0] : u.residency;
         const isOfficialResident = !!(u.residencyApproved && officialResId);
@@ -1068,7 +1074,7 @@ export default createEndpoint({
       });
     }
 
-    const availableGuidesPromise = getGuides.execute({ input: { segment: input.segment || 'ALL' }, context })
+    const availableGuidesPromise = hostelScope ? Promise.resolve(hostelScope.availableGuides) : getGuides.execute({ input: { segment: input.segment || 'ALL' }, context })
       .then(result => result.guides.map(guide => ({ guideId: guide.guideId, guideName: guide.name })));
     void availableGuidesPromise.catch(() => {});
     if (users.length === 0) return { users: [], fieldDefs: reportFieldDefs, availableResidencies: await availableResidenciesPromise, availableGuides: await availableGuidesPromise, currentGuideId: guideDbId, summary: {} };
@@ -1142,7 +1148,7 @@ export default createEndpoint({
     for (const residency of residencyNameRecords as any[]) {
       const name = String(residency.residencyName || '').trim();
       if (!name) continue;
-      for (const ref of [residency.id, residency.residencyId, residency.residencyName]) {
+      for (const ref of [residency.id, residency.residencyId, residency.residencyName, ...(Array.isArray(residency.legacyNames) ? residency.legacyNames : [])]) {
         const key = String(ref || '').trim();
         if (key) residencyNameByRef.set(key.toLowerCase(), name);
       }

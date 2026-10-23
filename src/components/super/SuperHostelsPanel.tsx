@@ -9,7 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Search } from 'lucide-react';
 import { toast } from 'sonner';
-import { assignFolkResidencyGuides, getAllResidenciesWithStats, getGuides as fetchGuides } from '@/lib/endpoints-sdk';
+import { createResidency, assignFolkResidencyGuides, getAllResidenciesWithStats, getGuides as fetchGuides } from '@/lib/endpoints-sdk';
 import type { GetAllResidenciesWithStatsOutputType, GetGuidesOutputType } from '@/lib/endpoints-sdk';
 
 type Residency = GetAllResidenciesWithStatsOutputType[0];
@@ -54,6 +54,8 @@ function GuideAssignmentControl({ residency, guides, onSaved }: {
     try {
       await onSaved(selected);
       setOpen(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to assign guides');
     } finally {
       setSaving(false);
     }
@@ -96,6 +98,20 @@ export default function SuperHostelsPanel() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [guideFilter, setGuideFilter] = useState('All');
+  const [newHostel, setNewHostel] = useState('');
+  const [creating, setCreating] = useState(false);
+  const addHostel = async () => {
+    if (!newHostel.trim()) return;
+    setCreating(true);
+    try {
+      await createResidency({ residencyName: newHostel.trim() });
+      setNewHostel('');
+      await reload();
+      toast.success('FOLK hostel created');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to create hostel');
+    } finally { setCreating(false); }
+  };
 
   const reload = useReactiveLoader(async (read) => {
     const [res, gs] = await Promise.all([
@@ -178,6 +194,10 @@ export default function SuperHostelsPanel() {
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-base">FOLK Hostels ({filtered.length})</CardTitle>
+        <form className="flex gap-2 mt-2" onSubmit={event => { event.preventDefault(); void addHostel(); }}>
+          <Input aria-label="New FOLK hostel name" placeholder="New FOLK hostel name" maxLength={100} value={newHostel} onChange={event => setNewHostel(event.target.value)} />
+          <button type="submit" disabled={creating || !newHostel.trim()} className="shrink-0 rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-50">{creating ? 'Creating…' : 'Create hostel'}</button>
+        </form>
         <div className="flex flex-col sm:flex-row gap-3 mt-2">
           <div className="relative flex-1">
             <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-muted-foreground" />

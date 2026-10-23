@@ -71,8 +71,8 @@ export default createEndpoint({
   execute: async ({ input, context }: { input: any; context: any }) => {
     const allGuides = await serverCacheGetOrFetch(CACHE_KEY, async () => {
       const [{ records: guideRecords }, { records: userRecords }] = await Promise.all([
-        Guides.findAll({ filters: { isActive: true }, fields: ['id', 'guideId', 'fullName', 'name', 'email', 'abbreviation', 'abbr', 'segment'], limit: 500 }),
-        Users.findAll({ fields: ['id', 'userId', 'fullName', 'email', 'role', 'status', 'segment', 'isPrabhupadaWorldUser', 'isFolkUser', 'isFolkLead', 'isPwAdmin', 'isBvAdmin', 'isBvSuperAdmin'], limit: 1000 }),
+        Guides.findAll({ filters: { isActive: true }, fields: ['id', 'guideId', 'fullName', 'name', 'email', 'abbreviation', 'abbr', 'segment', 'guideDirectoryHidden'], limit: 500 }),
+        Users.findAll({ fields: ['id', 'userId', 'fullName', 'email', 'role', 'status', 'segment', 'isPrabhupadaWorldUser', 'isFolkUser', 'isFolkLead', 'isPwAdmin', 'isBvAdmin', 'isBvSuperAdmin', 'guideDirectoryHidden'], limit: 1000 }),
       ]);
 
       const folkGuidesFromDb = guideRecords
@@ -80,13 +80,13 @@ export default createEndpoint({
           // A FOLK guide list must never include Prabhupada World personnel.
           // Older Guide rows without a segment remain eligible and are
           // validated against their linked user below.
-          if (organizationalDepartment(g) === 'PW') return false;
+          if (g.guideDirectoryHidden === true || organizationalDepartment(g) === 'PW') return false;
           // Cross-reference with Users table to check if they were deleted/modified
           if (g.email) {
             const emailLower = g.email.toLowerCase().trim();
             const correspondingUser = userRecords.find(u => (u.email || '').toLowerCase().trim() === emailLower);
             if (correspondingUser) {
-              if (organizationalDepartment(correspondingUser) === 'PW') return false;
+              if (correspondingUser.guideDirectoryHidden === true || organizationalDepartment(correspondingUser) === 'PW') return false;
               // If user exists, status must be Active and role must be a guide/admin role
               const roleUpper = (correspondingUser.role || '').toUpperCase().replace(/\s+/g, '_').trim();
               const isGuideOrAdmin =
@@ -115,7 +115,7 @@ export default createEndpoint({
       // Dynamically fetch FOLK Guides / Supervisors / Admins from Users table
       const dbFolkGuides = userRecords
         .filter(u => {
-          if (organizationalDepartment(u) === 'PW') return false;
+          if (u.guideDirectoryHidden === true || organizationalDepartment(u) === 'PW') return false;
           const roleUpper = (u.role || '').toUpperCase().replace(/\s+/g, '_').trim();
           const isFolkRole =
             roleUpper === 'GUIDE' ||

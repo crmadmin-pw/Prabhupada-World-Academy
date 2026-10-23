@@ -1,3 +1,4 @@
+import { getFolkHostelSadhanaScope } from '../lib/folkHostelSadhanaScope';
 import { z } from 'zod';
 import { callerDirectoryDepartment, getScopedHierarchyUserIds, isPwDepartmentAdmin, isUserInHierarchy, memberDirectoryDepartment } from '../lib/hierarchyUtils';
 import { createEndpoint, Users, Guides, SadhanaEntries, BvGroupMembers, BvGroups, FolkResidencies, AppError } from '@/lib/backend-sdk';
@@ -11,7 +12,7 @@ import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
 import { pwScoreFromFieldValues } from '@/lib/pwSadhana';
 
 const LINK_FIELDS = ['id', 'userId', 'email', 'phone', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
-const USER_FIELDS = ['id', 'userId', 'fullName', 'displayName', 'name', 'phone', 'email', 'ashrayLevel', 'status', 'bvGroupId', 'bvGroupName',
+const USER_FIELDS = ['status', 'role', 'isFolkUser', 'isBvAdmin', 'isBvSuperAdmin', 'id', 'userId', 'fullName', 'displayName', 'name', 'phone', 'email', 'ashrayLevel', 'status', 'bvGroupId', 'bvGroupName',
   'residency', 'residencyApproved', 'residencyGuideVerified', 'selectedFolkResidency',
   'temporaryResidency', 'temporaryResidencyEnabled', 'createdAt', 'lastLoginAt', 'isBvsl', 'isSadhanaMentor',
   'currentStreak', 'lastStreakUpdatedAt', 'guide', 'sadhanaMentor', 'segment', 'isPrabhupadaWorldUser',
@@ -274,7 +275,9 @@ export default createEndpoint({
     if (callerDepartment && targetDepartment && callerDepartment !== targetDepartment) {
       throw new AppError({ code: 'FORBIDDEN', message: 'This user belongs to another department' });
     }
-    const inHierarchy = onRoster || isPwDepartmentAdmin(context.user) || isUserInHierarchy(userRecord, await getScopedHierarchyUserIds(context.user));
+    const hostelScope = await getFolkHostelSadhanaScope(context.user);
+    const hostelReportAccess = hostelScope?.includes(userRecord) === true;
+    const inHierarchy = hostelReportAccess || onRoster || isPwDepartmentAdmin(context.user) || isUserInHierarchy(userRecord, await getScopedHierarchyUserIds(context.user));
     if (!onRoster && !groupMember && !inHierarchy) {
       throw new AppError({
         code: 'FORBIDDEN',
@@ -287,7 +290,7 @@ export default createEndpoint({
     }
 
     const facilitatorProfile = (isRgf || isRgsf) && !isGuideRole;
-    if (!onRoster && !hasUnrestrictedProfileAccess && !isBvMentor && !groupMember && !facilitatorProfile) {
+    if (!hostelReportAccess && !onRoster && !hasUnrestrictedProfileAccess && !isBvMentor && !groupMember && !facilitatorProfile) {
       // Try center-based scope (works for guides)
       const scope = await getGuideScope(context.user.email);
 

@@ -1,3 +1,4 @@
+import { organizationalDepartment, normalizeDepartmentToken } from '../lib/directoryDepartment';
 import { z } from 'zod';
 import { createEndpoint, FolkResidencies, Guides, Users, AppError } from '@/lib/backend-sdk';
 import { resolveGuideReference } from '../lib/guideResolution';
@@ -32,7 +33,7 @@ export default createEndpoint({
     const callerRole = normalizeRole(context.user.role);
     const canAssign = callerRole === 'SUPER_GUIDE' || callerRole === 'SUPER_ADMIN' ||
       context.user.isBvSuperAdmin === true;
-    if (!canAssign) throw new AppError({ code: 'FORBIDDEN', message: 'Only a FOLK Super Guide can assign hostel guides' });
+    if (!canAssign || organizationalDepartment(context.user) !== 'FOLK') throw new AppError({ code: 'FORBIDDEN', message: 'Only a FOLK Super Guide can assign hostel guides' });
 
     const residency = await FolkResidencies.findOne({ id: input.residencyId });
     if (!residency || !isActiveFolkResidency(residency)) {
@@ -49,7 +50,7 @@ export default createEndpoint({
     const validGuides = resolved.filter(g => {
       const guideRecord = guideRecords.find(r => key(r.id) === key(g.id) || key(r.guideId) === key(g.id) || key(r.email) === key(g.email));
       const userRecord = userRecords.find(r => key(r.id) === key(g.id) || key(r.userId) === key(g.id) || key(r.email) === key(g.email));
-      return isFolkGuide(guideRecord || userRecord || g);
+      return !!userRecord && isFolkGuide(userRecord) && organizationalDepartment(userRecord) === 'FOLK' && ['GUIDE', 'SUPERGUIDE'].includes(normalizeDepartmentToken(userRecord.role)) && (!guideRecord || isFolkGuide(guideRecord));
     });
     if (validGuides.length !== requested.length) {
       throw new AppError({ code: 'BAD_REQUEST', message: 'One or more selected guides are not active FOLK guides' });
@@ -67,7 +68,8 @@ export default createEndpoint({
     }))];
 
     const residencyName = String((residency as any).residencyName || '').trim();
-    const allFolkGuideRecords = [...guideRecords, ...userRecords].filter(isFolkGuide);
+    const validEmails = new Set(userRecords.filter(u => isFolkGuide(u) && organizationalDepartment(u) === 'FOLK' && ['GUIDE', 'SUPERGUIDE'].includes(normalizeDepartmentToken(u.role))).map(u => key(u.email)).filter(Boolean));
+    const allFolkGuideRecords = [...guideRecords, ...userRecords].filter(r => isFolkGuide(r) && validEmails.has(key(r.email)));
     const selectedKeys = new Set(canonicalGuideIds.map(key));
     for (const selectedGuide of validGuides) {
       for (const value of [selectedGuide.id, selectedGuide.userId, selectedGuide.guideId, selectedGuide.email, selectedGuide.fullName]) {

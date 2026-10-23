@@ -1,3 +1,4 @@
+import { getFolkHostelSadhanaScope } from '../lib/folkHostelSadhanaScope';
 import { z } from 'zod';
 import { AppError, createEndpoint, SadhanaEntries, Users } from '@/lib/backend-sdk';
 import { getScopedHierarchyUserIds, HIERARCHY_IDENTITY_FIELDS, isUserInHierarchy } from '@/lib/hierarchyUtils';
@@ -93,13 +94,15 @@ export default createEndpoint({
   execute: async ({ input, context }: { input: any; context: any }) => {
     if (!context.user) throw new Error('Unauthorized');
     let entry: any;
-    const ownerFields = [...HIERARCHY_IDENTITY_FIELDS, 'segment', 'isPrabhupadaWorldUser'];
+    const ownerFields = [...HIERARCHY_IDENTITY_FIELDS, 'segment', 'isPrabhupadaWorldUser', 'status', 'role', 'isBvAdmin', 'isBvSuperAdmin', 'guide', 'residency', 'temporaryResidency', 'temporaryResidencyEnabled'];
     // Same rule as the profile's CRM data: a member sees their own entry, and
     // guides, mentors and BV leaders see the members in their hierarchy.
     const callerKeys = new Set([context.user.id, context.user.userId, context.user.uid].filter(Boolean).map(String));
     const assertCanView = async (owner: any, ownerId: string) => {
       const isOwn = [owner?.id, owner?.userId, ownerId].some(value => value && callerKeys.has(String(value)));
       if (isOwn) return;
+      const hostelScope = await getFolkHostelSadhanaScope(context.user);
+      if (hostelScope?.includes(owner)) return;
       if (!isUserInHierarchy(owner || { id: ownerId }, await getScopedHierarchyUserIds(context.user))) {
         throw new AppError({ code: 'FORBIDDEN', message: 'This user is not assigned to your hierarchy' });
       }

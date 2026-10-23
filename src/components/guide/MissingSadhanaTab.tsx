@@ -569,6 +569,7 @@ export default function MissingSadhanaTab({ guideId, segment }: Props) {
   const reportQuery = useEndpointQuery<ReportData>('getMissingSadhanaReport', {
     startDate: start, endDate: end,
     guideId: guideFilter !== 'all' ? guideFilter : guideId === 'ALL' ? undefined : guideId,
+    filterGuideId: !isPw && guideFilter !== 'all' ? guideFilter : undefined,
     residencyId: residencyId !== 'all' ? residencyId : undefined,
     segment: isPw ? 'PW' : 'FOLK',
   }, Boolean(start && end && start <= end));
@@ -659,7 +660,7 @@ export default function MissingSadhanaTab({ guideId, segment }: Props) {
   };
 
   const showResidencyFilter = guideId === 'ALL' || residencies.length > 1;
-  const showGuideFilter = guideId === 'ALL';
+  const showGuideFilter = guideId === 'ALL' || (!isPw && !!data?.guides?.length);
 
   return (
     <div className="space-y-5">
