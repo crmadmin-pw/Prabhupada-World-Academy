@@ -120,7 +120,7 @@ const USER_FIELDS  = ['id', 'userId', 'residency', 'residencyApproved', 'residen
   'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator', 'isBvSupervisor', 'isBvMember', 'isRgsf', 'bvGroupId',
   'sadhanaMentor', 'pwTargets', 'pwChantingTarget', 'pwReadingTarget', 'pwPendingBvAttendance'];
 const ENTRY_FIELDS = ['id', 'entryId', 'entryDate', 'totalScore', 'maxScore', 'scorePercent',
-  'templateMode', 'ashrayLevelUsed', 'flagSick', 'flagOs', 'submittedAt', 'fieldValuesJson'];
+  'templateMode', 'ashrayLevelUsed', 'flagSick', 'flagOs', 'submittedAt', 'fieldValuesJson', 'fieldValues'];
 
 export default createEndpoint({
   description: 'Get sadhana form data — fields config + existing entry for date (with temp residency support)',
@@ -182,13 +182,20 @@ export default createEndpoint({
       ? pwFormFields(resolvedTargets.targets, resolvedTargets.source)
       : loadedFields;
 
+    // Current submissions store answers in fieldValuesJson. Older/imported
+    // entries can still have the same payload in fieldValues, so fall back to
+    // that shape when opening an entry for editing.
     let parsedFieldValues: Record<string, unknown> = {};
-    if (existingEntry?.fieldValuesJson) {
-      if (typeof existingEntry.fieldValuesJson === 'object') {
-        parsedFieldValues = existingEntry.fieldValuesJson as any;
-      } else {
-        try { parsedFieldValues = JSON.parse(existingEntry.fieldValuesJson); } catch { /* ignore */ }
-      }
+    const storedFieldValues = existingEntry?.fieldValuesJson ?? existingEntry?.fieldValues;
+    if (storedFieldValues && typeof storedFieldValues === 'object') {
+      parsedFieldValues = storedFieldValues as Record<string, unknown>;
+    } else if (typeof storedFieldValues === 'string') {
+      try {
+        const parsed = JSON.parse(storedFieldValues);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          parsedFieldValues = parsed as Record<string, unknown>;
+        }
+      } catch { /* leave empty for malformed historical data */ }
     }
 
     const pendingAttendance = isPw ? userInfo?.pwPendingBvAttendance?.[entryDate] : null;
