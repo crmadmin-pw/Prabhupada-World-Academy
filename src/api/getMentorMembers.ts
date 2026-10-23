@@ -1,4 +1,5 @@
 import { getSadhanaMentorResidencyScope } from '@/lib/sadhanaMentorResidencyScope';
+import { readFolkHostelSadhanaUsers } from '../lib/folkHostelSadhanaScope';
 import { z } from 'zod';
 import { getScopedHierarchyUserIds, isUserInHierarchy, readScopedUsers } from '../lib/hierarchyUtils';
 import { createEndpoint, Users, SadhanaEntries, Guides, FolkResidencies } from '@/lib/backend-sdk';
@@ -52,7 +53,7 @@ function getPerformanceStatus(
 }
 
 export default createEndpoint({
-  description: 'Get all members under the same guide as this Sadhana Mentor',
+  description: 'Get assigned PW members or members within a FOLK Sadhana Mentor’s hostel report scope',
   authenticated: true,
   requiredCapabilities: 'users.assigned.read',
   inputSchema: z.object({}),
@@ -86,7 +87,9 @@ export default createEndpoint({
     // independent of one another (the scope computation is memoized per request).
     const [guideRecord, { records: allUsers }, hierarchy] = await Promise.all([
       guideId ? Guides.findOne({ id: guideId, fields: ['id', 'fullName'] }) : Promise.resolve(null),
-      residencyMentorScope ? Users.findAll(memberQuery) : readScopedUsers(context.user, memberQuery),
+      residencyMentorScope
+        ? readFolkHostelSadhanaUsers(residencyMentorScope, memberQuery.fields).then(records => ({ records }))
+        : readScopedUsers(context.user, memberQuery),
       residencyMentorScope ? Promise.resolve(null) : getScopedHierarchyUserIds(context.user),
     ]);
     const callerDepartment = organizationalDepartment(context.user);

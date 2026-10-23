@@ -6,6 +6,8 @@ import { requireGuideRole } from '../lib/userUtils';
 import { getGuideScope } from '../lib/guideScope';
 import { bvUserAliases, resolveBvGroupMemberUsers } from '../lib/bvGroupMemberScope';
 import { resolveBvAdminFacilitators } from '../lib/bvAdminFacilitatorScope';
+import { getSadhanaMentorResidencyScope } from '../lib/sadhanaMentorResidencyScope';
+import { readFolkHostelSadhanaUsers } from '../lib/folkHostelSadhanaScope';
 
 const MEMBER_USER_FIELDS = ['id', 'userId', 'email', 'residency', 'residencyApproved', 'temporaryResidencyEnabled', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
 
@@ -71,9 +73,10 @@ export default createEndpoint({
     const effectiveEnd   = (input.endDate   || input.date).split('T')[0];
 
     // 1. Fetch ALL active official residents (not scholars/temp)
-    const allUsers: any[] = [];
+    const residencyMentorScope = !input.bvslMode && !input.facilitatorMode ? await getSadhanaMentorResidencyScope(context.user) : null;
+    const allUsers: any[] = residencyMentorScope ? await readFolkHostelSadhanaUsers(residencyMentorScope, MEMBER_USER_FIELDS) : [];
     let uOffset = 0;
-    while (true) {
+    while (!residencyMentorScope) {
       const { records, hasMore } = await readScopedUsers(context.user, {
         filters: { status: 'Active', residencyApproved: true },
         fields: ['id', 'residency', 'residencyApproved', 'temporaryResidencyEnabled'],
@@ -94,7 +97,7 @@ export default createEndpoint({
 
     let guideRecord: any = null;
     let guideRids: string[] = [];
-    if (!isSuperGuide) {
+    if (!isSuperGuide && !residencyMentorScope) {
       const scope = await getGuideScope(context.user.email || '');
       guideRecord = scope ? { id: scope.guideId } : null;
       guideRids = scope?.residencyIds || [];
@@ -109,13 +112,13 @@ export default createEndpoint({
       : input.facilitatorMode
         ? await resolveBvAdminFacilitators(context.user, input.guideId, MEMBER_USER_FIELDS, input.segment)
         : allUsers;
-    const hierarchy = await getScopedHierarchyUserIds(context.user);
+    const hierarchy = residencyMentorScope ? null : await getScopedHierarchyUserIds(context.user);
     const residents = scopedUsers.filter(u => {
       if (!isUserInHierarchy(u, hierarchy)) return false;
       const resId = Array.isArray(u.residency) ? u.residency[0] : u.residency;
       const isApprovedRes = u.residencyApproved && resId && !u.temporaryResidencyEnabled;
       if (!isApprovedRes) return false;
-      if (!input.bvslMode && !input.facilitatorMode && !isSuperGuide) {
+      if (!residencyMentorScope && !input.bvslMode && !input.facilitatorMode && !isSuperGuide) {
         return guideRids.includes(resId);
       }
       return true;

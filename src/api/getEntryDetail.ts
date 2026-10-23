@@ -1,4 +1,5 @@
 import { getFolkHostelSadhanaScope } from '../lib/folkHostelSadhanaScope';
+import { getSadhanaMentorResidencyScope } from '../lib/sadhanaMentorResidencyScope';
 import { z } from 'zod';
 import { AppError, createEndpoint, SadhanaEntries, Users } from '@/lib/backend-sdk';
 import { getScopedHierarchyUserIds, HIERARCHY_IDENTITY_FIELDS, isUserInHierarchy } from '@/lib/hierarchyUtils';
@@ -94,7 +95,7 @@ export default createEndpoint({
   execute: async ({ input, context }: { input: any; context: any }) => {
     if (!context.user) throw new Error('Unauthorized');
     let entry: any;
-    const ownerFields = [...HIERARCHY_IDENTITY_FIELDS, 'segment', 'isPrabhupadaWorldUser', 'status', 'role', 'isBvAdmin', 'isBvSuperAdmin', 'guide', 'residency', 'temporaryResidency', 'temporaryResidencyEnabled'];
+    const ownerFields = [...HIERARCHY_IDENTITY_FIELDS, 'fullName', 'segment', 'isPrabhupadaWorldUser', 'status', 'role', 'isBvAdmin', 'isBvSuperAdmin', 'guide', 'residency', 'temporaryResidency', 'temporaryResidencyEnabled'];
     // Same rule as the profile's CRM data: a member sees their own entry, and
     // guides, mentors and BV leaders see the members in their hierarchy.
     const callerKeys = new Set([context.user.id, context.user.userId, context.user.uid].filter(Boolean).map(String));
@@ -103,6 +104,11 @@ export default createEndpoint({
       if (isOwn) return;
       const hostelScope = await getFolkHostelSadhanaScope(context.user);
       if (hostelScope?.includes(owner)) return;
+      const mentorScope = await getSadhanaMentorResidencyScope(context.user);
+      if (mentorScope) {
+        if (mentorScope.includes(owner)) return;
+        throw new AppError({ code: 'FORBIDDEN', message: 'This user is outside your FOLK hostel report scope' });
+      }
       if (!isUserInHierarchy(owner || { id: ownerId }, await getScopedHierarchyUserIds(context.user))) {
         throw new AppError({ code: 'FORBIDDEN', message: 'This user is not assigned to your hierarchy' });
       }

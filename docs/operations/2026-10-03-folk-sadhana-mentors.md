@@ -9,15 +9,19 @@ Requested assignment:
 
 The separate Ashtesh Guide profile (GUIDE-013, Outlook login) is excluded from this change.
 
-## Access rule
+## Current access rule — 23 October 2026
 
-`Users.sadhanaMentorResidencyIds` is a server-managed, explicit FOLK assignment. A currently active Sadhana Mentor with this setting can read Sadhana Report, Missing Report, and the mentor Members List for active, registered members whose `residency` matches an assigned active FOLK residency. Residency document IDs, public IDs, and names are normalized. Other guide assignments and resident/non-resident approval status do not remove members from this scope.
+A currently active FOLK Sadhana Mentor inherits the read-only Sadhana audience of their linked FOLK guide. The same hostel resolver used for guide reports determines the guide's current active centers and all peer guides assigned there. The mentor can read the Sadhana of boys under any of those guides, including non-residents without a residency on their own profile, as well as residents and enabled temporary visitors in the center.
 
-The mentor's own row, guides/admins, PW members, incomplete profiles, and inactive/pending/rejected users are excluded. An invalid or revoked explicit assignment returns no rows. Unconfigured mentors and PW mentors retain their existing access paths. The new helper is used only by these Sadhana report endpoints, without changing general management authorization or anyone's guide, Auth identity, or history.
+For example, a mentor linked to Sreesha Govind Das at FOLK Powai can also read boys under Aditya Ram Das, Manmohan Krishna Das, and Mathuranath Das when those guides are assigned to Powai. This is derived from stored relationships and applies to every FOLK mentor; no per-mentor residency grant is needed.
+
+`Users.sadhanaMentorResidencyIds` remains a supplementary, server-managed residency assignment for existing explicit grants. Document IDs, public IDs, emails, and unambiguous guide names are resolved through the existing guide identities. Explicit hostel-side guide assignments override stale links on a guide's profile.
+
+Report, Missing Report, Stats, Leaderboard, the mentor Members List, and Sadhana entry/profile detail access use this audience. Report and Missing Report can be narrowed to a peer guide. Guides/admins, PW members, incomplete profiles, and inactive/pending/rejected users are excluded. The mentor's own Sadhana remains visible in reports and excluded from the Members List. Revoking the mentor flag or deactivating the mentor removes inherited access. This read permission does not extend general management authorization or change member assignments, Auth identities, or history. PW mentors retain their existing explicitly assigned member access.
 
 FOLK mentor dashboards now include a Missing Report tab.
 
-## Validation
+## Historical validation — 3 October 2026
 
 - 17 initial focused tests passed, covering report scope, existing hierarchy rules, and PW mentor isolation; 2 further fallback/isolation checks passed.
 - TypeScript check and isolated production build passed.
@@ -25,3 +29,11 @@ FOLK mentor dashboards now include a Missing Report tab.
 - Madhushrava has an existing verified Firebase Auth account. Ashtesh's Gmail member profile has no matching Firebase Auth account at preflight; he must first sign in with that email.
 
 Deployment and data-write verification are recorded below after completion.
+
+## Validation of the hostel inheritance change
+
+The focused mocked regression suite covers peer-guide non-residents, residents and temporary visitors; consistent Report/Missing/Members/Stats audiences; peer-guide filters and foreign selectors; entry and profile detail authorization; leaderboard consistency; current hostel assignment revocation; mentor revocation; pagination past 2,000 records; and PW isolation. These checks do not establish deployed or authenticated live behavior.
+
+- All 26 focused mentor/hostel/PW mentor checks passed.
+- The expanded seven-file regression run passed 59 of 60 checks. The existing test expecting a PW admin to open a profile explicitly marked FOLK fails at the department guard; the same failure was reproduced using the original `HEAD` profile handler.
+- `npx tsc --noEmit` and `git diff --check` passed. Deployment and Madhushrava's authenticated live acceptance remain unverified for this change.

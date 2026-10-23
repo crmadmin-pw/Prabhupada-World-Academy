@@ -1,4 +1,5 @@
 import { getFolkHostelSadhanaScope } from '../lib/folkHostelSadhanaScope';
+import { getSadhanaMentorResidencyScope } from '../lib/sadhanaMentorResidencyScope';
 import { z } from 'zod';
 import { callerDirectoryDepartment, getScopedHierarchyUserIds, isPwDepartmentAdmin, isUserInHierarchy, memberDirectoryDepartment } from '../lib/hierarchyUtils';
 import { createEndpoint, Users, Guides, SadhanaEntries, BvGroupMembers, BvGroups, FolkResidencies, AppError } from '@/lib/backend-sdk';
@@ -276,7 +277,8 @@ export default createEndpoint({
       throw new AppError({ code: 'FORBIDDEN', message: 'This user belongs to another department' });
     }
     const hostelScope = await getFolkHostelSadhanaScope(context.user);
-    const hostelReportAccess = hostelScope?.includes(userRecord) === true;
+    const mentorScope = await getSadhanaMentorResidencyScope(context.user);
+    const hostelReportAccess = hostelScope?.includes(userRecord) === true || mentorScope?.includes(userRecord) === true;
     const inHierarchy = hostelReportAccess || onRoster || isPwDepartmentAdmin(context.user) || isUserInHierarchy(userRecord, await getScopedHierarchyUserIds(context.user));
     if (!onRoster && !groupMember && !inHierarchy) {
       throw new AppError({

@@ -10,8 +10,7 @@ const identities = (r: any) => hostelRefs([r?.id, r?.userId, r?.guideId, r?.emai
 const intersects = (refs: string[], values: Set<string>) => refs.some(ref => values.has(ref));
 export const isFolkHostelGuide = (caller: any) => organizationalDepartment(caller) === 'FOLK' && normalizeDepartmentToken(caller?.role) === 'GUIDE';
 
-/** Read-only report permission. Never reuse this scope for member management. */
-export function buildFolkHostelSadhanaScope(caller: any, guides: any[], users: any[], centers: any[]) {
+function folkHostelGuideEntries(guides: any[], users: any[]) {
   const activeGuides = guides.filter(g => g.isActive !== false && organizationalDepartment(g) !== 'PW');
   const people = users.filter(u => String(u.status).toLowerCase() === 'active' && organizationalDepartment(u) === 'FOLK' && ['GUIDE', 'SUPERGUIDE'].includes(normalizeDepartmentToken(u.role)));
   const entries = people.map(u => {
@@ -27,6 +26,21 @@ export function buildFolkHostelSadhanaScope(caller: any, guides: any[], users: a
   entries.forEach(entry => entry.refs.forEach(ref => {
     if (owners.get(ref)!.size > 1) entry.refs.delete(ref);
   }));
+  return entries;
+}
+
+/** Resolve a mentor's stored parent references using the same guide identities
+ * and ambiguity checks as the hostel report itself. */
+export function resolveFolkHostelGuides(references: unknown, guides: any[], users: any[]) {
+  const requested = new Set(hostelRefs(references));
+  return folkHostelGuideEntries(guides, users)
+    .filter(entry => intersects([...entry.refs], requested))
+    .map(entry => entry.user);
+}
+
+/** Read-only report permission. Never reuse this scope for member management. */
+export function buildFolkHostelSadhanaScope(caller: any, guides: any[], users: any[], centers: any[]) {
+  const entries = folkHostelGuideEntries(guides, users);
   const own = entries.find(e => intersects(hostelRefs([caller.id, caller.email]), e.refs))
     || entries.find(e => intersects(hostelRefs(caller.userId), e.refs));
   const hostels = centers.filter(isActiveFolkResidency);
@@ -44,6 +58,7 @@ export function buildFolkHostelSadhanaScope(caller: any, guides: any[], users: a
   return {
     residencies,
     availableGuides: peers.map(e => ({ guideId: e.id, guideName: e.name })).sort((a, b) => a.guideName.localeCompare(b.guideName)),
+    guideNameFor: (user: any) => [own, ...peers].find(entry => entry && intersects(hostelRefs(user.guide), entry.refs))?.name || '',
     includes: (user: any) => !!own && organizationalDepartment(user) !== 'PW' && String(user.status).toLowerCase() === 'active' &&
       !['GUIDE', 'SUPERGUIDE', 'ADMIN', 'SUPERADMIN', 'PWADMIN'].includes(normalizeDepartmentToken(user.role)) &&
       !user.isBvAdmin && !user.isBvSuperAdmin &&
@@ -64,18 +79,23 @@ async function allRows(table: any, fields: string[]) {
     if (!page.hasMore) return rows;
   }
 }
-export async function getFolkHostelSadhanaScope(caller: any) {
-  if (!isFolkHostelGuide(caller)) return null;
+export async function loadFolkHostelSadhanaGraph() {
   const fields = ['id', 'userId', 'guideId', 'email', 'fullName', 'role', 'status', 'isActive', 'segment', 'isPrabhupadaWorldUser', 'isFolkUser', 'folkResidencies'];
   const [guides, users, centers] = await Promise.all([
     allRows(Guides, fields), allRows(Users, fields),
     allRows(FolkResidencies, ['id', 'residencyId', 'residencyName', 'isActive', 'category', 'segment', 'guides', 'guideIds', 'legacyNames']),
   ]);
+  return { guides, users, centers };
+}
+
+export async function getFolkHostelSadhanaScope(caller: any) {
+  if (!isFolkHostelGuide(caller)) return null;
+  const { guides, users, centers } = await loadFolkHostelSadhanaGraph();
   return buildFolkHostelSadhanaScope(caller, guides, users, centers);
 }
 
-export async function readFolkHostelSadhanaUsers(scope: NonNullable<Awaited<ReturnType<typeof getFolkHostelSadhanaScope>>>, fields: string[], selectedGuide?: string) {
-  const rows = await allRows(Users, [...new Set([...fields, 'status', 'segment', 'role', 'isBvAdmin', 'isBvSuperAdmin', 'isPrabhupadaWorldUser', 'guide', 'residency', 'temporaryResidency', 'temporaryResidencyEnabled'])]);
+export async function readFolkHostelSadhanaUsers(scope: Pick<ReturnType<typeof buildFolkHostelSadhanaScope>, 'includes' | 'matchesGuide'>, fields: string[], selectedGuide?: string) {
+  const rows = await allRows(Users, [...new Set([...fields, 'userId', 'fullName', 'status', 'segment', 'role', 'isBvAdmin', 'isBvSuperAdmin', 'isPrabhupadaWorldUser', 'guide', 'residency', 'temporaryResidency', 'temporaryResidencyEnabled'])]);
   const seen = new Set<string>();
   return rows.filter(user => {
     if (!scope.includes(user) || (selectedGuide && !scope.matchesGuide(user, selectedGuide))) return false;

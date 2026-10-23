@@ -905,8 +905,7 @@ export default createEndpoint({
     if (hostelScope) {
       users = await readFolkHostelSadhanaUsers(hostelScope, USER_FIELDS, input.filterGuideId);
     } else if (residencyMentorScope) {
-      const { records } = await Users.findAll({ filters: { status: 'Active' }, fields: USER_FIELDS, limit: 2000 });
-      users = records.filter(residencyMentorScope.includes);
+      users = await readFolkHostelSadhanaUsers(residencyMentorScope, USER_FIELDS, input.filterGuideId);
     } else if (facilitatorMode) {
       users = await resolveBvAdminFacilitators(context.user, inputGuideId, USER_FIELDS, input.segment);
     } else if (isPwMentor) {
@@ -1074,7 +1073,8 @@ export default createEndpoint({
       });
     }
 
-    const availableGuidesPromise = hostelScope ? Promise.resolve(hostelScope.availableGuides) : getGuides.execute({ input: { segment: input.segment || 'ALL' }, context })
+    const reportGuideScope = hostelScope || residencyMentorScope;
+    const availableGuidesPromise = reportGuideScope ? Promise.resolve(reportGuideScope.availableGuides) : getGuides.execute({ input: { segment: input.segment || 'ALL' }, context })
       .then(result => result.guides.map(guide => ({ guideId: guide.guideId, guideName: guide.name })));
     void availableGuidesPromise.catch(() => {});
     if (users.length === 0) return { users: [], fieldDefs: reportFieldDefs, availableResidencies: await availableResidenciesPromise, availableGuides: await availableGuidesPromise, currentGuideId: guideDbId, summary: {} };

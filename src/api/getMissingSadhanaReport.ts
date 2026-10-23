@@ -65,10 +65,11 @@ export default createEndpoint({
 
     const residencyMentorScope = await getSadhanaMentorResidencyScope(context.user);
     const hostelScope = await getFolkHostelSadhanaScope(context.user);
+    const reportScope = hostelScope || residencyMentorScope;
     const scopePromise = (isSuperGuide || residencyMentorScope) ? Promise.resolve(null) : getGuideScope(context.user.email || '');
     const hierarchyPromise = hostelScope || residencyMentorScope ? Promise.resolve(null) : getDashboardHierarchyScope(context.user, input.guideId);
     const displayPromise = Promise.all([
-      hostelScope ? Promise.resolve({ guides: hostelScope.availableGuides.map(g => ({ guideId: g.guideId, name: g.guideName })) }) : getGuides.execute({ input: { segment: input.segment || 'ALL' }, context }),
+      reportScope ? Promise.resolve({ guides: reportScope.availableGuides.map(g => ({ guideId: g.guideId, name: g.guideName })) }) : getGuides.execute({ input: { segment: input.segment || 'ALL' }, context }),
       getReportReferenceData(),
     ]).then(([guideOptionsResult, reference]) => ({
       reference,
@@ -105,15 +106,14 @@ export default createEndpoint({
 
     // Direct assignments and residency membership are independent queries.
     const [{ records: baseUsers }, ...resFetches] = await Promise.all([
-      hostelScope ? Promise.resolve({ records: [] as any[] }) : readScopedUsers(context.user, { filters, fields: USER_FIELDS, limit: 2000 }),
-      ...(!hostelScope && !isSuperGuide && guideRecord && !effectiveResidencyId ? guideRids : []).map(rid =>
+      reportScope ? Promise.resolve({ records: [] as any[] }) : readScopedUsers(context.user, { filters, fields: USER_FIELDS, limit: 2000 }),
+      ...(!reportScope && !isSuperGuide && guideRecord && !effectiveResidencyId ? guideRids : []).map(rid =>
         readScopedUsers(context.user, { filters: { residency: rid, status: 'Active' }, fields: USER_FIELDS, limit: 500 })
       ),
     ]);
     const userMap = new Map(baseUsers.map(user => [user.id, user]));
     for (const result of resFetches) for (const user of result.records) userMap.set(user.id, user);
-    let allUsers = hostelScope ? await readFolkHostelSadhanaUsers(hostelScope, USER_FIELDS, input.filterGuideId) : Array.from(userMap.values());
-    if (residencyMentorScope) allUsers = allUsers.filter(residencyMentorScope.includes);
+    let allUsers = reportScope ? await readFolkHostelSadhanaUsers(reportScope, USER_FIELDS, input.filterGuideId) : Array.from(userMap.values());
     if (callerDepartment === 'FOLK' || input.segment === 'FOLK') {
       allUsers = allUsers.filter(user => organizationalDepartment(user) !== 'PW');
     }
@@ -262,7 +262,7 @@ export default createEndpoint({
           fullName: String(u.fullName || u.displayName || u.name || '').trim(),
           userId: u.userId || '',
           residencyName: resId ? (residencyMap.get(String(resId)) || residencyMap.get(String(resId).toLowerCase()) || resId) : '',
-          guideName: guideId ? (guideLookup.get(String(guideId).toLowerCase()) || guideId) : '',
+          guideName: reportScope?.guideNameFor(u) || (guideId ? (guideLookup.get(String(guideId).toLowerCase()) || guideId) : ''),
           guideId: guideId || '',
           residencyType,
         };

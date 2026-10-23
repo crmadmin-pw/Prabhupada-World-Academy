@@ -8,6 +8,8 @@ import { requireGuideRole } from '../lib/userUtils';
 import { resolveBvAdminFacilitators } from '../lib/bvAdminFacilitatorScope';
 import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
 import { aggregateForAliases, loadLeaderboardFacts, scoreFromAggregate } from '../lib/sadhanaPeriodSummary';
+import { getSadhanaMentorResidencyScope } from '../lib/sadhanaMentorResidencyScope';
+import { readFolkHostelSadhanaUsers } from '../lib/folkHostelSadhanaScope';
 
 const USER_FIELDS = ['id', 'fullName', 'displayName', 'name', 'email', 'segment', 'isPrabhupadaWorldUser', 'ashrayLevel', 'residency', 'residencyApproved', 'guide', 'status', 'userId', 'role', 'currentStreak', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
 
@@ -98,9 +100,10 @@ export default createEndpoint({
       !!context.user.isBvAdmin;
 
     // 1. Find guide record for scoping (regular guide only)
+    const residencyMentorScope = !input.bvslMode && !input.facilitatorMode ? await getSadhanaMentorResidencyScope(context.user) : null;
     let guideRecord: any = null;
     let guideRids: string[] = [];
-    if (!isSuperGuide) {
+    if (!isSuperGuide && !residencyMentorScope) {
       const scope = await getGuideScope(context.user.email || '');
       guideRecord = scope ? { id: scope.guideId } : null;
       guideRids = scope?.residencyIds || [];
@@ -116,9 +119,12 @@ export default createEndpoint({
     }
 
     // 3. Fetch active users
-    let allUsers: any[] = [];
+    let allUsers: any[] = residencyMentorScope ? await readFolkHostelSadhanaUsers(residencyMentorScope, USER_FIELDS) : [];
+    if (residencyMentorScope && input.residencyId) {
+      allUsers = allUsers.filter(user => firstValue(user.residency) === input.residencyId);
+    }
     let userOffset = 0;
-    while (true) {
+    while (!residencyMentorScope) {
       const { records, hasMore } = await readScopedUsers(context.user, {
         filters: usersFilter,
         fields: USER_FIELDS,
@@ -158,6 +164,7 @@ export default createEndpoint({
     }
     if (!input.bvslMode && input.segment) {
       allUsers = allUsers.filter(user => {
+        if (residencyMentorScope) return input.segment === 'FOLK';
         const explicit = String(user.segment || '').trim().toUpperCase().replace(/[\s_-]+/g, '');
         const userSegment = explicit === 'PW' || explicit === 'PRABHUPADAWORLD' || user.isPrabhupadaWorldUser === true ? 'PW'
           : explicit === 'FOLK' ? 'FOLK' : '';
@@ -165,7 +172,7 @@ export default createEndpoint({
       });
     }
 
-    const hierarchy = await getDashboardHierarchyScope(context.user, input.guideId);
+    const hierarchy = residencyMentorScope ? null : await getDashboardHierarchyScope(context.user, input.guideId);
     allUsers = allUsers.filter(user => isUserInHierarchy(user, hierarchy));
 
     // ── Residency names ───────────────────────────────────────────────────

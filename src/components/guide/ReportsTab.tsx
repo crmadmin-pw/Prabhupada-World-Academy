@@ -963,7 +963,7 @@ export default function ReportsTab({ guideId = '', senderName, bvslMode, mentorM
               )}
 
               {/* Guide filter — shown whenever guide data is available and user is Super Admin */}
-              {(isSuperAdmin || !isPw) && !bvslMode && !mentorMode && !facilitatorMode && availableGuides.length > 0 && (
+              {(isSuperAdmin || !isPw) && !bvslMode && (!mentorMode || !isPw) && !facilitatorMode && availableGuides.length > 0 && (
                 <div className="flex items-center gap-1.5">
                   <Label className="text-sm font-medium whitespace-nowrap">Guide:</Label>
                   <Select value={guideFilter || 'all'} onValueChange={(v: string | null) => setGuideFilter(v === 'all' || !v ? 'all' : v)}>
