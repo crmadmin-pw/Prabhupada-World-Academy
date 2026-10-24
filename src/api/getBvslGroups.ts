@@ -636,7 +636,7 @@ export default createEndpoint({
             .map((value: string) => value.trim())
             .filter(Boolean),
         )],
-        supervisorName: String(g.supervisorName || ''),
+        supervisorName: textList([g.supervisorId, g.supervisorUserId]).length ? String(g.supervisorName || '') : '',
       };
     });
 

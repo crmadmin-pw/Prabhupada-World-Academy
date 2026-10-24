@@ -523,6 +523,7 @@ export default function BvGroupDetailPage() {
           {detail.group.description && (
             <p className="text-muted-foreground text-sm mt-1">{detail.group.description}</p>
           )}
+          <p className="text-muted-foreground text-sm mt-1">Supervisor: {detail.group.supervisorName || 'Unassigned'}</p>
           </div>
           {canDeleteGroup && (
             <div className="flex items-center gap-2 shrink-0">

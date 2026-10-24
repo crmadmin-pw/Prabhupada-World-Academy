@@ -69,7 +69,7 @@ test('PW admin can assign RGF while preserving an existing BV Admin flag', async
     assert.equal(update.record.isBvAdmin, true);
     assert.equal(update.record.isBvFacilitator, true);
     assert.equal(update.record.isBvsl, true);
-    assert.equal(update.record.bvReportingSupervisorId, parent.userId);
+    assert.equal(update.record.bvReportingSupervisorId, '');
   }
 });
 

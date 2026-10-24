@@ -94,11 +94,8 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
         setSupervisors([]);
         return;
       }
-      const directory = await read(() => getGuideUsers({ guideId: isSuperAdmin ? 'ALL' : guideId, statusFilter: 'active', minimal: true, segment: directorySegment }));
-      setSupervisors((directory.users || []).filter((user: any) => {
-        const role = String(user.role || '').toUpperCase().replace(/[\s-]+/g, '_');
-        return belongsToSegment(user, directorySegment) && (user.isBvSupervisor || user.isBvMentor || ['SUPERVISOR', 'BV_SUPERVISOR', 'BV_MENTOR'].includes(role));
-      }));
+      const scoped = await read(() => getAllBvGroupsAdmin({ guideId: isSuperAdmin ? 'ALL' : guideId }));
+      setSupervisors('supervisors' in scoped ? scoped.supervisors || [] : []);
       if (!isSuperAdmin) {
         if (!guideId) {
           // Never fall back to the super-guide list while the current guide
@@ -107,9 +104,7 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
           setGuides([]);
           return;
         }
-        // The server returns every Prabhupada World group for a PW admin, and
-        // only this guide's chain for a FOLK admin. Do not filter again here.
-        const scoped = await read(() => getAllBvGroupsAdmin({ guideId }));
+        // The server returns every reading group in the admin's department.
         setGroups((scoped.groups || []).map((g: any) => ({
           ...g,
           id: g.groupDbId || g.groupId,

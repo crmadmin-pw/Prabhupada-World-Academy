@@ -162,21 +162,19 @@ export default createEndpoint({
       }
     }
 
-    // The Supervisor report includes the reporting hierarchy (RGFs/RGSFs) as
-    // well as every authoritative group member. Resolve both from the scoped
-    // groups rather than relying only on reporting fields: older records may
-    // store a Firestore id in the group and a public userId in the hierarchy.
-    // This remains strictly limited to groups owned by an RGF under the caller.
-    if (isSupervisor) {
-      const scopeOptions: { segment: 'FOLK' | 'PW' } = {
+    // Supervisor reports include staff and members of explicitly assigned
+    // groups only. Global reporting parents cannot add other groups' members.
+    if (isSupervisor && !isHierarchyAdmin(context.user)) {
+      const scopeOptions = {
         segment: callerSegment === 'FOLK' ? 'FOLK' : 'PW',
-      };
+        supervisionOnly: true,
+      } as const;
       const groupMembers = await resolveBvGroupMemberUsers(context.user, userFields, scopeOptions);
       const callerAliases = new Set([dbUserId, customUserId, context.user.email]
         .filter(Boolean)
         .map(value => String(value).toLowerCase()));
       const seenAliases = new Set<string>();
-      filteredUsers = [...filteredUsers, ...groupMembers].filter((user: any) => {
+      filteredUsers = groupMembers.filter((user: any) => {
         const aliases = [user.id, user.userId, user.email]
           .filter(Boolean)
           .map(value => String(value).toLowerCase());
@@ -229,7 +227,7 @@ export default createEndpoint({
     // Build hierarchy lookup maps for user cards
     const { records: allBvGroups } = await BvGroups.findAll({
       limit: 1000,
-      fields: ['id', 'groupId', 'groupName', 'bvslLeader', 'bvslId', 'bvslName', 'bvReportingSupervisorId', 'bvReportingSupervisorName', 'bvReportingAdminId', 'bvReportingAdminName'],
+      fields: ['id', 'groupId', 'groupName', 'bvslLeader', 'bvslId', 'bvslName', 'supervisorId', 'supervisorUserId', 'supervisorName', 'segment', 'bvReportingAdminId', 'bvReportingAdminName'],
     });
 
     const { records: allBvMemberships } = await BvGroupMembers.findAll({
@@ -238,11 +236,18 @@ export default createEndpoint({
     });
 
     const groupMap = new Map<string, any>();
+    const supervisedIds = isSupervisor && !isHierarchyAdmin(context.user)
+      ? new Set((await resolveBvScopedGroups(context.user, { supervisionOnly: true })).map(group => group.id))
+      : null;
     allBvGroups.forEach((g: any) => {
+      if (supervisedIds && !supervisedIds.has(String(g.id))) return;
       normalizedRefs([g.id, g.groupId, g.groupName]).forEach(ref => groupMap.set(ref, g));
     });
 
     const userToGroupMap = new Map<string, any>();
+    for (const group of new Set(groupMap.values())) {
+      normalizedRefs([group.bvslLeader, group.bvslId]).forEach(ref => userToGroupMap.set(ref, group));
+    }
     allBvMemberships.forEach((m: any) => {
       const group = normalizedRefs([m.group, m.groupId])
         .map(ref => groupMap.get(ref))
@@ -310,9 +315,9 @@ export default createEndpoint({
         const rgfName = (rgfId ? userNameMap.get(rgfId) : null)
           || (groupIsOtherDepartment ? null : (u.bvReportingFacilitatorName || uGrp?.bvslName || null));
 
-        const supId = String(u.bvReportingSupervisorId || uGrp?.bvReportingSupervisorId || '').toLowerCase();
+        const supId = String(uGrp?.supervisorId || uGrp?.supervisorUserId || '').toLowerCase();
         const supervisorName = (supId ? userNameMap.get(supId) : null)
-          || (groupIsOtherDepartment ? null : (u.bvReportingSupervisorName || uGrp?.bvReportingSupervisorName || null));
+          || (groupIsOtherDepartment || !supId ? null : (uGrp?.supervisorName || null));
 
         const adminId = String(u.bvReportingAdminId || uGrp?.bvReportingAdminId || '').toLowerCase();
         const adminName = (adminId ? userNameMap.get(adminId) : null)

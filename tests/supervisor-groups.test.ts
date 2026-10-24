@@ -90,6 +90,7 @@ const supervisedGroup = {
   groupId: 'SUPERVISOR-GROUPS-GROUP',
   groupName: 'Supervised Reading Group',
   description: 'Visible to the reporting supervisor',
+  supervisorId: supervisor.id,
   bvslId: reportingRgf.userId,
   bvslName: reportingRgf.fullName,
   segment: 'FOLK',
@@ -106,7 +107,7 @@ const outsideGroup = {
   isActive: true,
 };
 
-test('supervisor groups include only groups led by reporting RGFs with RGF card metrics', async () => {
+test('supervisor groups include only explicitly assigned groups with RGF card metrics', async () => {
   const users = [supervisor, reportingRgf, assignedRgsf, outsideRgf, member, outsideMember];
   const groups = [supervisedGroup, outsideGroup];
   const membershipId = 'SUPERVISOR-GROUPS-MEMBERSHIP';
@@ -905,6 +906,7 @@ test('a supervisor does not see groups led by members of the groups they supervi
   };
   const supervisedGroup = {
     id: 'MEMBER-LEAK-SUPERVISED-DB',
+    supervisorId: supervisor.id,
     groupId: 'MEMBER-LEAK-SUPERVISED',
     groupName: 'Supervised Group',
     bvslId: reportingRgf.userId,

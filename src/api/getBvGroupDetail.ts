@@ -82,6 +82,7 @@ async function findUsersForKeys(keys: string[]): Promise<any[]> {
 const GROUP_FIELDS = [
   'id', 'groupId', 'groupName', 'description', 'isActive', 'joinToken', 'whatsAppLink',
   'bvslLeader', 'bvslId', 'bvslName', 'segment', 'subFacilitatorId', 'rgsfId', 'subFacilitator',
+  'supervisorId', 'supervisorUserId', 'supervisorName',
 ];
 
 function leaderAliases(group: any): string[] {
@@ -297,6 +298,7 @@ export default createEndpoint({
         groupId: (group.groupId as string) || group.id,
         groupName: (group.groupName as string) || '',
         description: (group.description as string) || '',
+        supervisorName: group.supervisorId || group.supervisorUserId ? String(group.supervisorName || '') : '',
         isActive: (group.isActive as boolean) ?? true,
         joinToken: callerMaySeeJoinToken(context.user, group) ? ((group.joinToken as string) || null) : null,
         whatsAppLink: (group.whatsAppLink as string) || null,

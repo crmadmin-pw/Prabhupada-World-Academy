@@ -1,6 +1,6 @@
 import { AppError, BvGroups, BvGroupMembers, Users } from '@/lib/backend-sdk';
 import { listedReadingRoles } from '@/lib/bvGroupFacilitators';
-import { getScopedHierarchyUserIds, isHierarchyAdmin, isPwDepartmentAdmin, isUserInHierarchy, hierarchyRefs, readScopedUsers } from './hierarchyUtils';
+import { getScopedHierarchyUserIds, isHierarchyAdmin, isPwDepartmentAdmin, hierarchyRefs, readScopedUsers } from './hierarchyUtils';
 
 const IDENTITY_FIELDS = [
   'id', 'userId', 'email', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId',
@@ -20,7 +20,7 @@ export interface BvGroupScopeOptions {
   excludeCaller?: boolean;
   /**
    * Supervisor dashboard. Groups this person only facilitates stay out.
-   * An admin's saved selection replaces the older "every group of a reporting RGF" list.
+   * Only explicit supervisor assignments confer supervision.
    */
   supervisionOnly?: boolean;
   /** Admin lists keep deactivated groups visible. Reports stay on active groups. */
@@ -89,7 +89,7 @@ export function isBvSupervisorUser(user: UserRecord | null | undefined): boolean
 export function isBvDepartmentAdmin(user: UserRecord | null | undefined): boolean {
   const role = roleValue(user);
   return !!(user?.isBvAdmin || user?.isBvSuperAdmin || user?.isPwAdmin ||
-    role === 'ADMIN' || role === 'PW_ADMIN' || role === 'SUPER_ADMIN' || role === 'SUPER_GUIDE');
+    role === 'ADMIN' || role === 'PW_ADMIN' || role === 'SUPER_ADMIN' || role === 'SUPER_GUIDE' || role === 'GUIDE');
 }
 
 /** Only these users may request every BV group in a department. */
@@ -228,10 +228,13 @@ export async function resolveBvScopedGroups(
   contextUser: UserRecord,
   options: BvGroupScopeOptions = {},
 ): Promise<BvScopedGroup[]> {
-  // A Prabhupada World admin monitors every reading group in the department.
-  // The supervisor dashboard still uses the groups assigned to that person.
-  if (isPwDepartmentAdmin(contextUser) && options.supervisionOnly !== true && options.segment !== 'FOLK') {
-    const groups = await resolveBvDepartmentGroups('PW', undefined, { includeInactive: options.includeInactive });
+  // Admin group access is department-wide in FOLK and PW.
+  const adminDepartment = departmentValue(contextUser.segment) || (isPwDepartmentAdmin(contextUser) ? 'PW' : null);
+  if (isHierarchyAdmin(contextUser) && adminDepartment) {
+    if (options.segment && options.segment !== adminDepartment) {
+      throw new AppError({ code: 'FORBIDDEN', message: 'Choose a reading group in your department.' });
+    }
+    const groups = await resolveBvDepartmentGroups(adminDepartment, undefined, { includeInactive: options.includeInactive });
     if (!options.groupId) return groups;
     const requested = new Set(refs(options.groupId));
     const selected = groups.filter(group => groupAliases(group.record).some(ref => requested.has(ref)));
@@ -472,14 +475,10 @@ export async function resolveBvGroupMemberUsers(
   // Membership is authoritative. Do not require one exact status spelling;
   // this keeps Sadhana reports consistent with the Group Members tab.
   const users = await resolveCanonicalUsersByAliases(memberAliases, userFields);
-  const hierarchy = isHierarchyAdmin(contextUser) && !isPwDepartmentAdmin(contextUser)
-    ? await getScopedHierarchyUserIds(contextUser)
-    : null;
   const callerAliases = new Set(bvUserAliases(contextUser));
   // A report can hide the caller, but the group's own RGF and RGSF stay in
   // the member list and in the headcount.
   const visibleUsers = users
-    .filter(user => isUserInHierarchy(user, hierarchy))
     .filter(user => !options.excludeCaller || !bvUserAliases(user).some(alias => callerAliases.has(alias))
       || bvUserAliases(user).some(alias => facilitatorAliases.has(alias)));
   const claimedAliases = new Set<string>([
@@ -541,8 +540,5 @@ export async function resolveBvGroupFacilitatorUsers(
     ]).forEach(alias => facilitatorAliases.add(alias));
   }
   const users = await resolveCanonicalUsersByAliases(facilitatorAliases, userFields);
-  const hierarchy = isHierarchyAdmin(contextUser) && !isPwDepartmentAdmin(contextUser)
-    ? await getScopedHierarchyUserIds(contextUser)
-    : null;
-  return users.filter(user => isUserInHierarchy(user, hierarchy));
+  return users;
 }

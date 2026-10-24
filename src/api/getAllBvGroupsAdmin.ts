@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, BvAttendance, Users, Guides } from '@/lib/backend-sdk';
 import { serverCacheGetOrFetch, serverCacheInvalidate } from '../lib/serverCache';
-import { isBvDepartmentAdmin, isBvSuperAdminUser, resolveBvDepartmentGroups } from '../lib/bvGroupMemberScope';
-import { callerDirectoryDepartment, getScopedHierarchyUserIds, isPwDepartmentAdmin, isUserInHierarchy, hierarchyRefs, readScopedUsers } from '../lib/hierarchyUtils';
+import { isBvDepartmentAdmin, isBvSuperAdminUser, isBvSupervisorUser, resolveBvDepartmentGroups } from '../lib/bvGroupMemberScope';
+import { callerDirectoryDepartment, getScopedHierarchyUserIds, isHierarchyAdmin, isUserInHierarchy, hierarchyRefs, readScopedUsers } from '../lib/hierarchyUtils';
 import { organizationalDepartment } from '../lib/directoryDepartment';
 import { joinFacilitatorNames, readGroupFacilitators, textList, uncountedAssignedStaff } from '@/lib/bvGroupFacilitators';
 
@@ -73,6 +73,7 @@ export default createEndpoint({
     segment: z.enum(['PW', 'FOLK']).optional(),
   }),
   outputSchema: z.object({
+    supervisors: z.array(z.object({ userId: z.string(), fullName: z.string(), email: z.string() })).optional(),
     bvsls: z.array(z.object({
       userId: z.string(),
       fullName: z.string(),
@@ -131,7 +132,7 @@ export default createEndpoint({
               rgfIds: facilitatorIds,
               rgsfIds: rgsfIdentityRefs(group.record),
               supervisorIds: supervisorIdentityRefs(group.record),
-              supervisorName: String(group.record.supervisorName || ''),
+              supervisorName: supervisorIdentityRefs(group.record).length ? String(group.record.supervisorName || '') : '',
               bvslLeaderName: null,
               bvslName: null,
               meetingTime: null,
@@ -141,13 +142,11 @@ export default createEndpoint({
         };
       }
     }
-    // A Prabhupada World admin sees every reading group in the department.
-    // A different guide ID from the client cannot narrow or widen that list.
-    // Super admins may still select one guide. FOLK admins stay on their own chain.
-    if (isPwDepartmentAdmin(context?.user) && !isBvSuperAdminUser(context?.user)) {
+    const ownDepartment = callerDirectoryDepartment(context?.user);
+    if (isHierarchyAdmin(context?.user) && ownDepartment) {
       return serverCacheGetOrFetch(
-        'allBvGroupsAdmin:department:PW',
-        () => _fetchAllBvGroupsAdmin(String(context.user.id || ''), null, context.user, 'PW'),
+        `allBvGroupsAdmin:department:${ownDepartment}`,
+        () => _fetchAllBvGroupsAdmin(String(context.user.id || ''), null, context.user, ownDepartment),
         30_000,
       );
     }
@@ -168,6 +167,17 @@ export default createEndpoint({
 });
 
 export { serverCacheInvalidate as _invalidateAllBvGroupsAdmin };
+
+async function readDepartmentStaff(query: any) {
+  const records: any[] = [];
+  for (let offset = 0; ; ) {
+    const page = await Users.findAll({ ...query, offset });
+    records.push(...page.records);
+    if (!page.hasMore || !page.records.length) break;
+    offset += page.records.length;
+  }
+  return { records, hasMore: false };
+}
 
 async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<string> | null, caller: any, department?: 'PW' | 'FOLK') {
 
@@ -228,16 +238,18 @@ async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<strin
         // in memory. An isActive filter here removed them from both departments.
         limit: 1000,
       }),
-      readScopedUsers(caller, {
+      (department ? readDepartmentStaff : (query: any) => readScopedUsers(caller, query))({
         // Keep this a single-field query; filtering both status and isBvsl can
         // require a composite index that may not exist immediately after deploy.
         filters: { status: 'Active' },
         limit: 1000,
-        fields: ['id', 'userId', 'fullName', 'email', 'guide', 'selectedGuideId', 'guideName', 'residency', 'role', 'segment', 'isPrabhupadaWorldUser', 'isPwAdmin', 'isBvAdmin', 'isBvSuperAdmin', 'isBvsl', 'isBvFacilitator', 'bvReportingAdminId', 'bvReportingSupervisorId', 'bvReportingAdminName', 'bvReportingSupervisorName'],
+        fields: ['id', 'userId', 'fullName', 'email', 'guide', 'selectedGuideId', 'guideName', 'residency', 'role', 'segment', 'isPrabhupadaWorldUser', 'isPwAdmin', 'isBvAdmin', 'isBvSuperAdmin', 'isBvsl', 'isBvFacilitator', 'isBvSupervisor', 'isBvMentor', 'bvReportingAdminId', 'bvReportingSupervisorId', 'bvReportingAdminName', 'bvReportingSupervisorName'],
       }),
     ]);
     const bvslUserRecords = allBvslUsers.filter((u: any) => {
+      if (department && organizationalDepartment(u) !== department) return false;
       if (u.isBvsl !== true && String(u.role || '').toUpperCase() !== 'BVSL' && u.isBvFacilitator !== true) return false;
+      if (department) return true;
       if (hierarchy !== null) return isUserInHierarchy(u, hierarchy);
       const guideValues = [
         u.guide, u.selectedGuideId, u.guideName,
@@ -397,7 +409,7 @@ async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<strin
         rgfIds: facilitatorIds,
         rgsfIds: rgsfIdentityRefs(g),
         supervisorIds: supervisorIdentityRefs(g),
-        supervisorName: String(g.supervisorName || ''),
+        supervisorName: supervisorIdentityRefs(g).length ? String(g.supervisorName || '') : '',
         bvslLeaderName: bvslName,
         bvslName,
         meetingTime: g.meetingTime || g.preferredTimeSlot || null,
@@ -419,5 +431,8 @@ async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<strin
       };
     });
 
-    return { bvsls, groups, error: null };
+    const supervisors = allBvslUsers
+      .filter(user => isBvSupervisorUser(user) && organizationalDepartment(user) === (department || organizationalDepartment(caller)))
+      .map(user => ({ userId: String(user.id), fullName: String(user.fullName || ''), email: String(user.email || '') }));
+    return { bvsls, groups, supervisors, error: null };
 }
