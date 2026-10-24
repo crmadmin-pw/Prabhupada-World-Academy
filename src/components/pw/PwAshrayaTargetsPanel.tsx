@@ -83,7 +83,7 @@ export default function PwAshrayaTargetsPanel() {
         <h3 className="font-semibold">Ashraya-level targets</h3>
         <p className="text-sm text-muted-foreground">Used for non-BV members who do not have a sadhana mentor. Members with a mentor use the mentor&apos;s targets instead.</p>
       </div>
-      <p className="text-sm text-muted-foreground">PW submission timing (IST): 6:00 PM on the Sadhana date through 10:00 AM the next day earns 2 points; after 10:00 AM through 2:00 PM earns 1 point; later earns 0 timely-submission points.</p>
+      <p className="text-sm text-muted-foreground">PW submission timing (member’s local time zone): 6:00 PM on the Sadhana date through 10:00 AM the next day earns 2 points; after 10:00 AM through 2:00 PM earns 1 point; later earns 0 timely-submission points.</p>
       <form className="overflow-x-auto" autoComplete="off" onSubmit={event => event.preventDefault()}>
         <table className="w-full text-sm">
           <thead>

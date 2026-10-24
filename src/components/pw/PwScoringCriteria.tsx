@@ -44,7 +44,7 @@ const RULES: Record<string, { bands: { label: string; points: string }[]; note?:
       { label: 'After 10:00 AM through 2:00 PM the next day', points: '1' },
       { label: 'After 2:00 PM the next day', points: '0' },
     ],
-    note: 'All times are IST. Submission before 6:00 PM on the Sadhana date is blocked. Entries for the previous 7 days are allowed; late entries retain all other applicable points.',
+    note: 'All times use the member’s local time zone, saved with the report. Submission before 6:00 PM on the Sadhana date is blocked. Entries for the previous 7 days are allowed; late entries retain all other applicable points.',
   },
   seva: {
     bands: [{ label: 'Same bands as reading, from the minutes you report', points: '' }],

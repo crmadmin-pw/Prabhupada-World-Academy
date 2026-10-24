@@ -1,7 +1,7 @@
 /** Personalized Prabhupada World sadhana. FOLK scoring is unchanged.
  * Days saved before this rubric keep the chanting-and-reading percentage. */
 
-import { pwTimelySubmissionPoints } from './pwSubmissionTiming';
+import { DEFAULT_PW_TIME_ZONE, normalizeSadhanaTimeZone, pwTimelySubmissionPoints } from './pwSubmissionTiming';
 
 export const PW_TOTAL_POINTS = 60;
 export const PW_SUBMISSION_CUTOFF = '14:00';
@@ -157,8 +157,8 @@ function timePoints(actual: unknown, target: string | null, wrapsPastMidnight: b
   return 0;
 }
 
-export function submissionPoints(entryDate: string, submittedAt: string | null | undefined, _deadline = '10:00'): number {
-  return pwTimelySubmissionPoints(entryDate, submittedAt);
+export function submissionPoints(entryDate: string, submittedAt: string | null | undefined, _deadline = '10:00', timeZone = DEFAULT_PW_TIME_ZONE): number {
+  return pwTimelySubmissionPoints(entryDate, submittedAt, timeZone);
 }
 
 function waiveReason(value: unknown): string {
@@ -190,6 +190,7 @@ export function scorePwSadhanaV2(input: {
   submittedAt?: string | null;
   entryDate: string;
   submissionDeadline?: string | null;
+  timeZone?: string;
   waiveWakeUp?: unknown;
   waiveWakeUpReason?: unknown;
   waiveSleep?: unknown;
@@ -210,7 +211,7 @@ export function scorePwSadhanaV2(input: {
     fieldResult('chanting', chantWaived ? 16 : (chantingTarget == null ? null : Math.round(16 * Math.min(1, chantingDone / chantingTarget))), chantWaived),
     fieldResult('reading', bandPoints(numberOrZero(input.reading), pwTarget(targets.readingMin))),
     fieldResult('hearing', bandPoints(numberOrZero(input.hearing), pwTarget(targets.hearingMin))),
-    fieldResult('submitted', submissionPoints(input.entryDate, input.submittedAt, pwTime(input.submissionDeadline) || '10:00')),
+    fieldResult('submitted', submissionPoints(input.entryDate, input.submittedAt, pwTime(input.submissionDeadline) || '10:00', input.timeZone)),
     fieldResult('seva', bandPoints(numberOrZero(input.seva), pwTarget(targets.sevaMin))),
     fieldResult('bvAttendance', attendancePoints(
       input.bvAttendedMinutes == null || input.bvAttendedMinutes === '' ? null : numberOrZero(input.bvAttendedMinutes),
@@ -349,6 +350,7 @@ export function pwSnapshotMeta(input: {
   targets: PwTargets;
   source: string;
   deadline: string;
+  timeZone?: string;
   existing?: Record<string, unknown> | null;
 }): Record<string, unknown> {
   return {
@@ -357,6 +359,7 @@ export function pwSnapshotMeta(input: {
     pwTargets: input.targets,
     pwTargetSource: input.source,
     pwSubmissionDeadline: input.deadline,
+    pwTimeZone: normalizeSadhanaTimeZone(input.timeZone) || normalizeSadhanaTimeZone(input.existing?.pwTimeZone) || DEFAULT_PW_TIME_ZONE,
     pwFields: Object.fromEntries(input.result.fields.map(field => [field.key, field.points])),
     pwEarned: input.result.earned,
     pwApplicableMax: input.result.applicableMax,
@@ -372,7 +375,9 @@ export function scoreStoredPwDay(stored: Record<string, any>, options: {
   deadline: string;
   submittedAt: string | null;
   entryDate: string;
+  timeZone?: string;
 }): { result: PwScoreResult; meta: Record<string, unknown> } {
+  const timeZone = normalizeSadhanaTimeZone(options.timeZone) || normalizeSadhanaTimeZone(stored._meta?.pwTimeZone) || DEFAULT_PW_TIME_ZONE;
   const result = scorePwSadhanaV2({
     wakeUp: stored.wakeUp,
     sleep: stored.sleep,
@@ -385,6 +390,7 @@ export function scoreStoredPwDay(stored: Record<string, any>, options: {
     submittedAt: options.submittedAt,
     entryDate: options.entryDate,
     submissionDeadline: options.deadline,
+    timeZone,
     waiveWakeUp: stored.waiveWakeUp,
     waiveWakeUpReason: stored.waiveWakeUpReason,
     waiveSleep: stored.waiveSleep,
@@ -400,6 +406,7 @@ export function scoreStoredPwDay(stored: Record<string, any>, options: {
       targets: options.targets,
       source: options.source,
       deadline: options.deadline,
+      timeZone,
       existing: stored._meta,
     }),
   };

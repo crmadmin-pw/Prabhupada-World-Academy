@@ -6,7 +6,7 @@ import { TEMPLATE_MODES, TIME_BUCKETS } from '../types/enums';
 import { refreshUserPeriodSummaries } from '../lib/sadhanaPeriodSummary';
 import { getUserDepartment } from '../lib/userDashboardRoutes';
 import { scoreStoredPwDay } from '../lib/pwSadhana';
-import { pwSubmissionError } from '../lib/pwSubmissionTiming';
+import { DEFAULT_PW_TIME_ZONE, normalizeSadhanaTimeZone, pwSubmissionError } from '../lib/pwSubmissionTiming';
 import { resolvePwTargetsForUser } from '../lib/pwTargetResolver';
 import { calculateTotalScore, computeSingleFieldScore } from '../lib/scoring';
 import { NON_RESIDENT_FIELDS, RESIDENT_FIELDS, toFormField } from '../config/sadhanaFields';
@@ -21,7 +21,7 @@ function normalizeTemplateMode(raw: string | undefined): string {
   return TEMPLATE_MODES.NON_RESIDENT;
 }
 
-const ENTRY_FIND_FIELDS = ['id', 'entryId'];
+const ENTRY_FIND_FIELDS = ['id', 'entryId', 'fieldValuesJson', 'fieldValues'];
 
 function isResidentTemplate(templateMode: string | undefined): boolean {
   const upper = (templateMode || '').toUpperCase();
@@ -307,6 +307,7 @@ export default createEndpoint({
     maxScore: z.number().int().min(0).max(10000).optional(),
     scorePercent: z.number().min(0).max(100).optional(),
     templateMode: z.string().optional(),
+    timeZone: z.string().max(100).optional(),
     ashrayLevelUsed: z.string().optional(),
     fieldValues: z.record(z.string(), z.any()),
     flagSick: z.boolean().optional(),
@@ -356,16 +357,12 @@ export default createEndpoint({
     }
 
     // Server-side date validation
-    const serverNow = new Date();
+    const serverNow = new Date(now);
     const entryDateObj = new Date(entryDate + 'T00:00:00');
     const isFolk = getUserDepartment(userRec) === 'FOLK';
     const submissionTodayIST = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(serverNow);
     if (isFolk && (!/^\d{4}-\d{2}-\d{2}$/.test(entryDate) || Number.isNaN(entryDateObj.getTime()))) throw new Error('Invalid entry date');
     if (isFolk && entryDate > submissionTodayIST) throw new Error('Cannot submit for a future date');
-    if (!isFolk) {
-      const timingError = pwSubmissionError(entryDate, serverNow);
-      if (timingError) throw new Error(timingError);
-    }
     // The member's database level decides targets, same-day eligibility and the
     // maximum. `ashrayLevelUsed` from the browser is only a fallback for profiles
     // that have no level recorded yet.
@@ -402,6 +399,22 @@ export default createEndpoint({
       ),
     ]);
     const existing = currentEntry || legacyEntries.find(Boolean);
+    let submissionTimeZone = DEFAULT_PW_TIME_ZONE;
+    if (!isFolk) {
+      const requestedZone = normalizeSadhanaTimeZone(input.timeZone);
+      if (input.timeZone !== undefined && !requestedZone) {
+        throw new AppError({ code: 'BAD_REQUEST', message: 'Invalid submission time zone. Please reload the form.' });
+      }
+      let previousValues: any = existing?.fieldValuesJson ?? existing?.fieldValues ?? {};
+      if (typeof previousValues === 'string') {
+        try { previousValues = JSON.parse(previousValues); } catch { previousValues = {}; }
+      }
+      // Keep the report's original zone when it is edited from another location.
+      submissionTimeZone = normalizeSadhanaTimeZone(previousValues?._meta?.pwTimeZone) || requestedZone || DEFAULT_PW_TIME_ZONE;
+      const timingError = pwSubmissionError(entryDate, serverNow, submissionTimeZone);
+      if (timingError) throw new Error(timingError);
+    }
+
     const existingId: string | undefined = existing?.id;
     const existingEntryId: string | undefined = existing?.entryId;
 
@@ -434,6 +447,7 @@ export default createEndpoint({
         deadline: resolved.deadline,
         submittedAt: now,
         entryDate,
+        timeZone: submissionTimeZone,
       });
       stored._meta = scored.meta;
       record.fieldValuesJson = JSON.stringify(stored);

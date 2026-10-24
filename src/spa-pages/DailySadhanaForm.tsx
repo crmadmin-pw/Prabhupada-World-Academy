@@ -30,7 +30,7 @@ import SadhanaFieldRenderer from '@/components/form/SadhanaFieldRenderer';
 import NRScoringCriteria from '@/components/form/NRScoringCriteria';
 import { emptyPwTargets, scorePwSadhanaV2, type PwTargets } from '@/lib/pwSadhana';
 import PwScoringCriteria from '@/components/pw/PwScoringCriteria';
-import { pwEntryDateBounds, pwSubmissionError, shiftSadhanaDate } from '@/lib/pwSubmissionTiming';
+import { browserSadhanaTimeZone, normalizeSadhanaTimeZone, pwEntryDateBounds, pwSubmissionError, shiftSadhanaDate } from '@/lib/pwSubmissionTiming';
 import {
   normalizeFieldType, parseCriteria, isNRCriteria,
   calculateNRPoints, calculateResidentPoints, parseNumericValue,
@@ -59,8 +59,9 @@ export default function DailySadhanaForm() {
   const [userJoinDate, setUserJoinDate] = useState<string | undefined>();
   const [isResident, setIsResident] = useState(false);
   const [searchParams] = useSearchParams();
+  const [submissionTimeZone, setSubmissionTimeZone] = useState(browserSadhanaTimeZone);
   const [templateMode, setTemplateMode] = useState('RESIDENT_TEMPLATE');
-  const [entryDate, setEntryDate] = useState(searchParams.get('date') || (getUserDepartment(profile) === 'PW' ? pwEntryDateBounds().max : format(new Date(), 'yyyy-MM-dd')));
+  const [entryDate, setEntryDate] = useState(searchParams.get('date') || (getUserDepartment(profile) === 'PW' ? pwEntryDateBounds(new Date(), submissionTimeZone).max : format(new Date(), 'yyyy-MM-dd')));
   const [formValues, setFormValues] = useState<Record<string, any>>({});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   useUnsavedWork(hasUnsavedChanges || submitting);
@@ -92,7 +93,7 @@ export default function DailySadhanaForm() {
     const timer = window.setInterval(() => setPwClock(Date.now()), 1_000);
     return () => window.clearInterval(timer);
   }, [isPwUser]);
-  const pwTimingError = isPwUser ? pwSubmissionError(entryDate, new Date(pwClock)) : null;
+  const pwTimingError = isPwUser ? pwSubmissionError(entryDate, new Date(pwClock), submissionTimeZone) : null;
   const [pwContext, setPwContext] = useState<{
     targets: PwTargets;
     source: string | null;
@@ -149,6 +150,7 @@ export default function DailySadhanaForm() {
       submittedAt: new Date(pwClock).toISOString(),
       entryDate,
       submissionDeadline: pwContext.deadline,
+      timeZone: submissionTimeZone,
       waiveWakeUp: formValues.waiveWakeUp,
       waiveWakeUpReason: formValues.waiveWakeUpReason,
       waiveSleep: formValues.waiveSleep,
@@ -157,7 +159,7 @@ export default function DailySadhanaForm() {
       waiveChantingReason: formValues.waiveChantingReason,
       targets: pwContext.targets,
     });
-  }, [isPwUser, formValues, pwContext, entryDate, pwClock]);
+  }, [isPwUser, formValues, pwContext, entryDate, pwClock, submissionTimeZone]);
 
   const scoreResult = useMemo(() => {
     if (pwScore) {
@@ -224,6 +226,8 @@ export default function DailySadhanaForm() {
     if (!userId) return;
     try {
       const result = await read(() => getSadhanaFormData({ userId, entryDate }));
+      const savedMeta = result.entry?.fieldValues?._meta as Record<string, unknown> | undefined;
+      setSubmissionTimeZone(normalizeSadhanaTimeZone(savedMeta?.pwTimeZone) || browserSadhanaTimeZone());
       setFields(result.fields);
       setLoadError(false);
       setUserJoinDate(result.userJoinDate || result.residencyJoinDate);
@@ -349,7 +353,7 @@ export default function DailySadhanaForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isPwUser) {
-      const timingError = pwSubmissionError(entryDate);
+      const timingError = pwSubmissionError(entryDate, new Date(), submissionTimeZone);
       if (timingError) { toast.error(timingError); return; }
     }
     if (fields.length === 0) {
@@ -433,6 +437,7 @@ export default function DailySadhanaForm() {
         userId, entryDate, totalScore,
         maxScore: maxScore,
         scorePercent: maxScore > 0 ? (scorePercent ?? undefined) : undefined,
+        ...(isPwUser ? { timeZone: submissionTimeZone } : {}),
         templateMode, ashrayLevelUsed: ashrayLevel || undefined,
         fieldValues: enriched,
         flagSick: isSick,
@@ -513,8 +518,8 @@ export default function DailySadhanaForm() {
           <div className="bg-card border rounded-xl p-4 shadow-sm space-y-2">
             <Label className="text-base font-medium"><Calendar className="w-4 h-4 inline mr-2" />Entry Date</Label>
             <DateTimePicker type="date" value={entryDate} onChange={setEntryDate}
-              max={isPwUser ? pwEntryDateBounds().max : format(new Date(), 'yyyy-MM-dd')} min={isFolkUser ? undefined : pwEntryDateBounds().min} />
-            <p className="text-sm text-muted-foreground">{isFolkUser ? 'Today or any earlier date.' : 'Today or the previous 7 days (IST). Submission opens at 6:00 PM on the Sadhana date.'}</p>
+              max={isPwUser ? pwEntryDateBounds(new Date(), submissionTimeZone).max : format(new Date(), 'yyyy-MM-dd')} min={isFolkUser ? undefined : pwEntryDateBounds(new Date(), submissionTimeZone).min} />
+            <p className="text-sm text-muted-foreground">{isFolkUser ? 'Today or any earlier date.' : 'Today or the previous 7 days in your local time zone. Submission opens at 6:00 PM on the Sadhana date.'}</p>
           </div>
 
           {/* Temporary FOLK Residency toggle — only shown for FOLK department non-official-residents */}
@@ -620,7 +625,7 @@ export default function DailySadhanaForm() {
                 {pwContext.source === 'mentor' && 'Your sadhana mentor sets these targets.'}
                 {pwContext.source === 'ashraya' && 'These targets follow your Ashraya level.'}
                 {pwContext.source !== 'admin' && pwContext.source !== 'mentor' && pwContext.source !== 'ashraya' && 'Your RGF sets these targets.'}
-                {' '}Submission opens at 6:00 PM on the Sadhana date. Submit by 10:00 AM the next day for 2 points, or after 10:00 AM through 2:00 PM the next day for 1 point. Later submissions receive 0 timely-submission points. All times are IST. Other Sadhana points follow the existing criteria.
+                {' '}Submission opens at 6:00 PM on the Sadhana date. Submit by 10:00 AM the next day for 2 points, or after 10:00 AM through 2:00 PM the next day for 1 point. Later submissions receive 0 timely-submission points. Times use the report’s time zone: {submissionTimeZone}. Other Sadhana points follow the existing criteria.
                 {pwContext.attendance ? ` BV attendance recorded: ${pwContext.attendance.attended} of ${pwContext.attendance.session} minutes.` : ' BV attendance is added by your RGF or RGSF.'}
               </p>
               <p className="text-sm text-muted-foreground">
