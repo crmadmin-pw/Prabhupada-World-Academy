@@ -10,6 +10,7 @@ import { assignBvRole } from '@/lib/endpoints-sdk';
 import { sendOrQueue } from '@/lib/offlineQueue';
 import { bvRolePatch, type PendingDirectoryPatch } from '@/lib/pendingDirectoryPatch';
 import type { PwGroupRole, PwGroupRoleOption } from '@/lib/pwGroupRoles';
+import { rgsfAssignmentOptions } from '@/lib/rgsfAssignmentOptions';
 
 interface OptionItem {
   id: string;
@@ -72,7 +73,6 @@ export default function MultiRoleAssignModal({
   });
 
   const filteredAdminsList = filterSelf(adminsList);
-  const filteredSupervisorsList = filterSelf(supervisorsList);
   const filteredFacilitatorsList = filterSelf(facilitatorsList);
 
   const [isAdmin, setIsAdmin] = useState(!!user?.isBvAdmin);
@@ -87,8 +87,32 @@ export default function MultiRoleAssignModal({
   const subFacilitatorInAGroup = groupScoped && Object.values(groupRoles).includes('SUB_FACILITATOR');
 
   const [adminParentId, setAdminParentId] = useState(() => resolveInitialParentId(user?.bvReportingAdminId, filteredAdminsList));
-  const [supervisorParentId, setSupervisorParentId] = useState(() => resolveInitialParentId(user?.bvReportingSupervisorId, filteredSupervisorsList));
-  const [facilitatorParentId, setFacilitatorParentId] = useState(() => resolveInitialParentId(user?.bvReportingFacilitatorId, filteredFacilitatorsList));
+  const rgsfOptions = rgsfAssignmentOptions(filteredFacilitatorsList, departmentGroups);
+  const [rgsfKey, setRgsfKey] = useState(() => {
+    const current = readingGroups.filter(group => group.role === 'SUB_FACILITATOR');
+    const parent = resolveInitialParentId(user?.bvReportingFacilitatorId, filteredFacilitatorsList);
+    const matches = rgsfOptions.filter(option => current.some(group => group.id === option.groupId) && option.rgfId === parent);
+    return matches.length === 1 ? matches[0].key : '';
+  });
+  const selectedRgsf = rgsfOptions.find(option => option.key === rgsfKey);
+  const facilitatorParentId = selectedRgsf?.rgfId || '';
+  const chooseRgsf = (key: string) => {
+    setRgsfKey(key);
+    const option = rgsfOptions.find(item => item.key === key);
+    if (groupScoped && option) setGroupRoles(current => ({
+      ...Object.fromEntries(Object.entries(current).map(([id, role]) => [id, role === 'SUB_FACILITATOR' ? 'MEMBER' : role])),
+      [option.groupId]: 'SUB_FACILITATOR',
+    }));
+  };
+  const rgsfSelector = (
+    <div className="space-y-1">
+    <Select value={rgsfKey} onValueChange={value => chooseRgsf(value || '')}>
+      <SelectTrigger className="h-auto min-h-8 text-xs"><SelectValue placeholder="Select RGF and reading group">{selectedRgsf?.label || 'Select RGF and reading group'}</SelectValue></SelectTrigger>
+      <SelectContent>{rgsfOptions.map(option => <SelectItem key={option.key} value={option.key}>{option.label}</SelectItem>)}</SelectContent>
+    </Select>
+    <p className="text-[11px] text-muted-foreground">{rgsfOptions.length ? 'RGSF access is limited to the selected reading group.' : 'No active reading groups with an RGF are available.'}</p>
+    </div>
+  );
   const personRefs = new Set(
     [user?.id, user?.userId, user?.userDbId, user?.email]
       .map(value => String(value || '').trim().toLowerCase())
@@ -111,6 +135,7 @@ export default function MultiRoleAssignModal({
       // Determine primary role to assign via assignBvRole API while keeping multi-role flags
       const effectiveFacilitator = groupScoped ? facilitatorInAGroup : isFacilitator;
       const effectiveSubFacilitator = groupScoped ? subFacilitatorInAGroup : isSubFacilitator;
+      if (effectiveSubFacilitator && !selectedRgsf) throw new Error('Select the RGF and reading group for this RGSF');
       let primaryRole = 'MEMBER';
       let parentId = '';
       let parentName = '';
@@ -123,8 +148,6 @@ export default function MultiRoleAssignModal({
         parentName = filteredAdminsList.find(a => a.id === adminParentId)?.name || '';
       } else if (effectiveFacilitator) {
         primaryRole = 'FACILITATOR';
-        parentId = supervisorParentId;
-        parentName = filteredSupervisorsList.find(s => s.id === supervisorParentId)?.name || '';
       } else if (effectiveSubFacilitator) {
         primaryRole = 'SUB_FACILITATOR';
         parentId = facilitatorParentId;
@@ -138,14 +161,11 @@ export default function MultiRoleAssignModal({
       const submission = {
         userId: user.userId || user.id,
         role: primaryRole as any,
+        rgsfGroupId: effectiveSubFacilitator ? selectedRgsf!.groupId : null,
         parentId: parentId || undefined,
         parentName: parentName || undefined,
         ...(changedGroupRoles.length > 0 ? { groupRoles: changedGroupRoles } : {}),
-        ...(groupScoped && effectiveFacilitator && supervisorParentId ? {
-          rgfReportsToId: supervisorParentId,
-          rgfReportsToName: filteredSupervisorsList.find(s => s.id === supervisorParentId)?.name || '',
-        } : {}),
-        ...(groupScoped && effectiveSubFacilitator && facilitatorParentId ? {
+        ...(effectiveSubFacilitator && facilitatorParentId ? {
           rgsfReportsToId: facilitatorParentId,
           rgsfReportsToName: filteredFacilitatorsList.find(f => f.id === facilitatorParentId)?.name || '',
         } : {}),
@@ -309,7 +329,11 @@ export default function MultiRoleAssignModal({
                     value={groupRoles[group.id] || group.role}
                     onValueChange={(value) => {
                       if (value !== 'FACILITATOR' && value !== 'SUB_FACILITATOR' && value !== 'MEMBER') return;
-                      setGroupRoles(current => ({ ...current, [group.id]: value }));
+                      setGroupRoles(current => ({ ...Object.fromEntries(Object.entries(current).map(([id, role]) => [id, value === 'SUB_FACILITATOR' && role === 'SUB_FACILITATOR' ? 'MEMBER' : role])), [group.id]: value }));
+                      if (value === 'SUB_FACILITATOR') {
+                        const options = rgsfOptions.filter(option => option.groupId === group.id);
+                        setRgsfKey(options.length === 1 ? options[0].key : '');
+                      }
                     }}
                   >
                     <SelectTrigger className="h-8 text-xs">
@@ -326,41 +350,12 @@ export default function MultiRoleAssignModal({
                 </div>
               ))}
               {facilitatorInAGroup && (
-                <div className="space-y-1">
-                  <Label className="text-xs font-medium">RGF reports to Supervisor:</Label>
-                  <Select value={supervisorParentId} onValueChange={(v) => setSupervisorParentId(v || 'all')}>
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue>
-                        {filteredSupervisorsList.find(s => s.id === supervisorParentId)?.name || 'Default Supervisor'}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {filteredSupervisorsList.length > 0 ? (
-                        filteredSupervisorsList.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)
-                      ) : (
-                        <SelectItem value="default_supervisor">Default Supervisor</SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <p className="text-xs text-muted-foreground">The RGF reports to the supervisor assigned to each reading group. Assign supervisors from Bhakti Vriksha group administration.</p>
               )}
               {subFacilitatorInAGroup && (
                 <div className="space-y-1">
-                  <Label className="text-xs font-medium">RGSF reports to RGF:</Label>
-                  <Select value={facilitatorParentId} onValueChange={(v) => setFacilitatorParentId(v || 'all')}>
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue>
-                        {filteredFacilitatorsList.find(f => f.id === facilitatorParentId)?.name || 'Default RGF'}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {filteredFacilitatorsList.length > 0 ? (
-                        filteredFacilitatorsList.map(f => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)
-                      ) : (
-                        <SelectItem value="default_rgf">Default RGF</SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
+                  <Label className="text-xs font-medium">RGSF reports to RGF / reading group:</Label>
+                  {rgsfSelector}
                 </div>
               )}
             </div>
@@ -382,23 +377,7 @@ export default function MultiRoleAssignModal({
               Hosts reading groups, marks session attendance, and logs 1:1 call reports.
             </p>
             {isFacilitator && (
-              <div className="pl-6 pt-1 space-y-1">
-                <Label className="text-xs font-medium">Reports to Supervisor:</Label>
-                <Select value={supervisorParentId} onValueChange={(v) => setSupervisorParentId(v || 'all')}>
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue>
-                      {filteredSupervisorsList.find(s => s.id === supervisorParentId)?.name || 'Default Supervisor'}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {filteredSupervisorsList.length > 0 ? (
-                      filteredSupervisorsList.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)
-                    ) : (
-                      <SelectItem value="default_supervisor">Default Supervisor</SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
+              <p className="pl-6 text-xs text-muted-foreground">The RGF reports to the supervisor assigned to each reading group. Assign supervisors from Bhakti Vriksha group administration.</p>
             )}
           </div>
 
@@ -419,21 +398,8 @@ export default function MultiRoleAssignModal({
             </p>
             {isSubFacilitator && (
               <div className="pl-6 pt-1 space-y-1">
-                <Label className="text-xs font-medium">Reports to RGF:</Label>
-                <Select value={facilitatorParentId} onValueChange={(v) => setFacilitatorParentId(v || 'all')}>
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue>
-                      {filteredFacilitatorsList.find(f => f.id === facilitatorParentId)?.name || 'Default RGF'}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {filteredFacilitatorsList.length > 0 ? (
-                      filteredFacilitatorsList.map(f => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)
-                    ) : (
-                      <SelectItem value="default_rgf">Default RGF</SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
+                <Label className="text-xs font-medium">Reports to RGF / reading group:</Label>
+                {rgsfSelector}
               </div>
             )}
           </div>
@@ -443,7 +409,7 @@ export default function MultiRoleAssignModal({
 
         <DialogFooter className="gap-2 sm:gap-0">
           <Button variant="outline" size="sm" onClick={onClose} disabled={saving}>Cancel</Button>
-          <Button size="sm" onClick={handleSave} disabled={saving}>
+          <Button size="sm" onClick={handleSave} disabled={saving || ((groupScoped ? subFacilitatorInAGroup : isSubFacilitator) && !selectedRgsf)}>
             {saving ? 'Saving...' : 'Save Roles'}
           </Button>
         </DialogFooter>

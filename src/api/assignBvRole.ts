@@ -3,6 +3,7 @@ import { createEndpoint, Users, BvGroups, BvGroupMembers, AppError } from '@/lib
 import { serverCacheInvalidate } from '../lib/serverCache';
 import { publishUsersRevision } from '../lib/publishUsersRevision';
 import { noticeForRoleUpdate } from '../lib/roleNoticeText';
+import { assertCanAssignGroupSupervisor } from '@/lib/bvGroupSupervisorAssignment';
 import {
   facilitatorIdentityKeys,
   facilitatorWrite,
@@ -203,7 +204,7 @@ const SUPERVISOR_FIELDS = [
 ];
 
 /** The admin's checklist is the set of groups this person supervises. */
-async function applySupervisorAssignments(user: any, groupIds: string[]): Promise<string[]> {
+async function applySupervisorAssignments(user: any, groupIds: string[], caller: any): Promise<string[]> {
   const wanted = new Set(groupIds.map(id => String(id || '').trim().toLowerCase()).filter(Boolean));
   const { records } = await BvGroups.findAll({ fields: SUPERVISOR_FIELDS, limit: 500 });
   const aliases = personAliases(user);
@@ -224,6 +225,12 @@ async function applySupervisorAssignments(user: any, groupIds: string[]): Promis
   const personId = String(user.id || '');
   const personUserId = String(user.userId || user.id || '');
   const personName = String(user.fullName || user.email || '');
+  // Check the complete change set before writing any assignment.
+  for (const group of departmentGroups) {
+    const selected = referenceValues([group.id, group.groupId]).some(key => wanted.has(key));
+    const current = referenceValues([group.supervisorId, group.supervisorUserId]).some(key => aliases.has(key));
+    if (selected || current) await assertCanAssignGroupSupervisor(caller, group);
+  }
   for (const group of departmentGroups) {
     const selected = referenceValues([group.id, group.groupId]).some(key => wanted.has(key));
     const current = referenceValues([group.supervisorId, group.supervisorUserId]).some(key => aliases.has(key));
@@ -280,6 +287,8 @@ export default createEndpoint({
     // For a PW user who already belongs to more than one reading group, this
     // chooses the only group the RGF/RGSF change applies to.
     groupId: z.string().optional(),
+    // Explicit RGF/group pair chosen in the role dialog; null removes RGSF assignments.
+    rgsfGroupId: z.string().min(1).nullable().optional(),
     groupRoles: z.array(z.object({
       groupId: z.string().min(1),
       role: z.enum(['FACILITATOR', 'SUB_FACILITATOR', 'MEMBER']),
@@ -332,6 +341,37 @@ export default createEndpoint({
       throw new AppError({ code: 'FORBIDDEN', message: 'Only Super Admins can change BV Admin roles' });
     }
 
+    if (input.rgsfGroupId !== undefined) {
+      const { records } = await BvGroups.findAll({ fields: GROUP_ROLE_FIELDS, limit: 500 });
+      const groups = records.filter((group: any) => sameDepartment(group, userDepartment(targetUser)));
+      const selected = input.rgsfGroupId === null ? null : groups.find((group: any) =>
+        group.isActive !== false && referenceValues([group.id, group.groupId]).includes(String(input.rgsfGroupId).toLowerCase()));
+      if (input.rgsfGroupId !== null && !selected) throw new AppError({ code: 'BAD_REQUEST', message: 'Select an active Reading Group in this department' });
+      if (selected) {
+        const rgfId = input.rgsfReportsToId || (input.role === 'SUB_FACILITATOR' ? input.parentId : '');
+        const rgf = rgfId ? await resolveMemberRecord(rgfId) : null;
+        if (!rgf || String(rgf.id) === String(targetUser.id) || !groupHasFacilitator(selected, personAliases(rgf))) {
+          throw new AppError({ code: 'BAD_REQUEST', message: 'The selected RGF must facilitate the selected Reading Group' });
+        }
+        input = { ...input, rgsfReportsToId: rgf.userId || rgf.id, rgsfReportsToName: rgf.fullName || rgf.email || '' };
+      }
+      const changes = new Map<string, any>();
+      for (const change of input.groupRoles || []) {
+        const group = groups.find((group: any) => referenceValues([group.id, group.groupId]).includes(String(change.groupId).toLowerCase()));
+        if (!group) throw new AppError({ code: 'BAD_REQUEST', message: 'Reading Group not found in this department' });
+        if (change.role === 'SUB_FACILITATOR' && group.id !== selected?.id) throw new AppError({ code: 'BAD_REQUEST', message: 'Choose one Reading Group for the RGSF assignment' });
+        changes.set(group.id, { ...change, groupId: group.id });
+      }
+      const aliases = personAliases(targetUser);
+      for (const group of groups) {
+        if (group.id !== selected?.id && groupHasSubFacilitator(group, aliases) && !changes.has(group.id)) {
+          changes.set(group.id, { groupId: group.id, role: groupHasFacilitator(group, aliases) ? 'FACILITATOR' : 'MEMBER' });
+        }
+      }
+      if (selected) changes.set(selected.id, { groupId: selected.id, role: 'SUB_FACILITATOR' });
+      input = { ...input, groupRoles: [...changes.values()] };
+    }
+
     const dbId = String(targetUser.id);
 
     const ROLE_LABELS: Record<string, string> = {
@@ -376,11 +416,11 @@ export default createEndpoint({
         : input.role === 'SUPERVISOR';
     const requestedSupervision = Array.isArray(input.supervisedGroupIds)
       ? input.supervisedGroupIds
-      : input.isBvMember === false
+      : input.isBvMember === false || input.multiRoles?.isSupervisor === false
         ? []
         : null;
     const savedSupervision = requestedSupervision
-      ? await applySupervisorAssignments(targetUser, supervisorStays ? requestedSupervision : [])
+      ? await applySupervisorAssignments(targetUser, supervisorStays ? requestedSupervision : [], context.user)
       : null;
 
     // Multi-role support: preserve existing role flags and enable new assigned role
@@ -502,8 +542,9 @@ export default createEndpoint({
         updates.bvSupervisorGuideId = targetParentId;
         updates.guide = parentUser?.id || targetParentId;
       } else if (input.role === 'FACILITATOR' && targetParentId) {
-        updates.bvReportingSupervisorId = parentUser?.userId || parentUser?.id || targetParentId;
-        updates.bvReportingSupervisorName = pName;
+        // Supervision belongs to individual groups, never to this global profile.
+        updates.bvReportingSupervisorId = '';
+        updates.bvReportingSupervisorName = '';
         updates.bvReportingAdminId = parentUser?.bvReportingAdminId || parentUser?.userId || parentUser?.id || targetParentId;
         updates.bvReportingAdminName = parentUser?.bvReportingAdminName || pName;
         updates.guide = updates.bvReportingAdminId;
@@ -631,10 +672,6 @@ export default createEndpoint({
       }
     }
 
-    if (input.rgfReportsToId) {
-      updates.bvReportingSupervisorId = input.rgfReportsToId;
-      if (input.rgfReportsToName) updates.bvReportingSupervisorName = input.rgfReportsToName;
-    }
     if (input.rgsfReportsToId) {
       updates.bvReportingFacilitatorId = input.rgsfReportsToId;
       if (input.rgsfReportsToName) updates.bvReportingFacilitatorName = input.rgsfReportsToName;

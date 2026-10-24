@@ -221,7 +221,7 @@ export async function resolveBvDepartmentFacilitatorUsers(
 
 /**
  * Resolve the active BV groups the caller is permitted to monitor.
- * Supervisors inherit groups from RGFs that report to them. RGSFs require
+ * Supervisors require an explicit assignment on the group. RGSFs require
  * explicit group assignments; their reporting RGF does not grant group access.
  */
 export async function resolveBvScopedGroups(
@@ -291,8 +291,8 @@ export async function resolveBvScopedGroups(
   const isSupervisor = !!(
     contextUser.isBvSupervisor || contextUser.isBvMentor ||
     caller?.isBvSupervisor || caller?.isBvMentor ||
-    role === 'SUPERVISOR' || role === 'BV_SUPERVISOR' ||
-    callerRole === 'SUPERVISOR' || callerRole === 'BV_SUPERVISOR'
+    role === 'SUPERVISOR' || role === 'BV_SUPERVISOR' || role === 'BV_MENTOR' ||
+    callerRole === 'SUPERVISOR' || callerRole === 'BV_SUPERVISOR' || callerRole === 'BV_MENTOR'
   );
   let isRgsf = !!(contextUser.isBvSubFacilitator || caller?.isBvSubFacilitator || role.includes('RGSF') || callerRole.includes('RGSF'));
   let isFacilitator = isRgsf || !!(
@@ -376,32 +376,25 @@ export async function resolveBvScopedGroups(
     const assignedToCaller = !listed.listed && isFacilitator && groupIdentityRefs.some(ref =>
       assignedGroupRefs.has(ref) || (assignedGroupRefs.size === 0 && memberGroupRefs.has(ref))
     );
-    if (options.segment) {
+    const requestedSegment = options.segment || departmentValue(caller?.segment || contextUser.segment);
+    if (requestedSegment) {
       const explicitSegment = departmentValue(group.segment);
       const inferredSegments = leaderRefs.map(ref => segmentByUserAlias.get(ref)).filter(Boolean);
       const groupSegment = explicitSegment || inferredSegments[0] || '';
-      if (groupSegment && groupSegment !== options.segment) return false;
+      if (groupSegment && groupSegment !== requestedSegment) return false;
     }
     if (isAdmin || isSupervisor) {
       const legacyGuideRefs = refs(group.guide);
       const supervisorRefs = refs([group.supervisorId, group.supervisorUserId]);
       const explicitMine = supervisorRefs.some(ref => callerAliases.has(ref));
-      const explicitOther = supervisorRefs.length > 0 && !explicitMine;
       const ledByReportingRgf = leaderRefs.some(ref => reportingRgfAliases.has(ref));
       const ledByCaller = leaderRefs.some(ref => callerAliases.has(ref));
       const legacyGuide = legacyGuideRefs.some(ref => callerAliases.has(ref));
       const facilitates = ledByCaller || legacyNameMatch || assignedToCaller;
-      const savedSupervision = Array.isArray(caller?.bvSupervisedGroupIds) || Array.isArray(contextUser.bvSupervisedGroupIds)
-        ? new Set(refs(caller?.bvSupervisedGroupIds ?? contextUser.bvSupervisedGroupIds))
-        : null;
-      const listed = !!savedSupervision && refs([group.id, group.groupId]).some(ref => savedSupervision.has(ref));
-      // The supervisor dashboard lists only the groups an admin assigned.
-      // Facilitating a different group does not add it to that list.
-      if (options.supervisionOnly && isSupervisor && !isAdmin) {
-        if (explicitOther) return false;
-        if (savedSupervision) return explicitMine || listed;
-        if (explicitMine) return true;
-        return ledByReportingRgf || legacyGuide;
+      if (isSupervisor && !isAdmin) {
+        if (options.supervisionOnly) return explicitMine;
+        // Personal RGF/RGSF access is separate from supervision.
+        return explicitMine || facilitates || rgsfRefs.some(ref => callerAliases.has(ref));
       }
       return explicitMine || ledByReportingRgf || facilitates || legacyGuide;
     }

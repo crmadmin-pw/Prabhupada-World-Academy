@@ -15,6 +15,7 @@ import { createBvGroup, getBvslGroups, getAllBvGroupsAdmin, getGuideUsers, updat
 import { organizationalDepartment } from '@/lib/directoryDepartment';
 import MeetingScheduleFields from '@/components/bv/MeetingScheduleFields';
 import { formatMeetingSchedule, meetingScheduleError, type MeetingDayKey } from '@/lib/meetingSchedule';
+import { dashboardReturnPath } from '@/lib/bvGroupMemberProfileNavigation';
 
 import { useUserProfile } from '@/contexts/UserProfileContext';
 
@@ -58,6 +59,11 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
   const hasCache = cachedGroups !== null && cachedRgfUsers !== null;
 
   const [groups, setGroups] = useState<any[]>(isSuperAdmin ? (cachedGroups?.groups || []) : []);
+  const [supervisors, setSupervisors] = useState<any[]>([]);
+  const [supervisorGroup, setSupervisorGroup] = useState<any>(null);
+  const [supervisorId, setSupervisorId] = useState('');
+  const [savingSupervisor, setSavingSupervisor] = useState(false);
+  const [newGroupSupervisorId, setNewGroupSupervisorId] = useState('');
   const [guides, setGuides] = useState<any[]>(isSuperAdmin ? ((cachedRgfUsers?.users || [])
     .filter((u: any) => isRgfUser(u))
     .filter((u: any) => belongsToSegment(u, segment))
@@ -82,6 +88,17 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
   const loadData = useReactiveLoader(async (read, silent = false) => {
     if (!silent) !read.background && setLoading(true);
     try {
+      if (!isSuperAdmin && !guideId) {
+        setGroups([]);
+        setGuides([]);
+        setSupervisors([]);
+        return;
+      }
+      const directory = await read(() => getGuideUsers({ guideId: isSuperAdmin ? 'ALL' : guideId, statusFilter: 'active', minimal: true, segment: directorySegment }));
+      setSupervisors((directory.users || []).filter((user: any) => {
+        const role = String(user.role || '').toUpperCase().replace(/[\s-]+/g, '_');
+        return belongsToSegment(user, directorySegment) && (user.isBvSupervisor || user.isBvMentor || ['SUPERVISOR', 'BV_SUPERVISOR', 'BV_MENTOR'].includes(role));
+      }));
       if (!isSuperAdmin) {
         if (!guideId) {
           // Never fall back to the super-guide list while the current guide
@@ -187,11 +204,13 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
         bvslId: newGroupBvslIds[0],
         bvslIds: newGroupBvslIds,
         meetingTime: formatMeetingSchedule(startTime, endTime, meetingDays),
+        supervisorId: newGroupSupervisorId,
       });
       toast.success(`Created Reading Group "${newGroupName}"`);
       window.dispatchEvent(new Event('pwa:member-directory-changed'));
       setCreateGroupOpen(false);
       setNewGroupName('');
+      setNewGroupSupervisorId('');
       setNewGroupBvslIds([]);
       setRgfPickerOpen(false);
       setStartTime('');
@@ -202,6 +221,25 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
       toast.error(err?.message || 'Failed to create group');
     } finally {
       setCreatingGroup(false);
+    }
+  };
+
+  const supervisorOptions = supervisors.map(user => (
+    <option key={user.id || user.userId} value={user.userId || user.id}>{user.fullName || user.email}</option>
+  ));
+  const saveSupervisor = async () => {
+    if (!supervisorGroup) return;
+    setSavingSupervisor(true);
+    try {
+      await updateBvGroup({ groupId: supervisorGroup.groupId || supervisorGroup.id, supervisorId });
+      setSupervisorGroup(null);
+      toast.success(supervisorId ? 'Group supervisor assigned' : 'Group supervisor removed');
+      window.dispatchEvent(new Event('pwa:member-directory-changed'));
+      await loadData();
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to assign supervisor');
+    } finally {
+      setSavingSupervisor(false);
     }
   };
 
@@ -255,7 +293,9 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
                   <Card
                     key={group.id}
                     className="group relative cursor-pointer overflow-hidden border border-border/80 bg-card hover:shadow-lg hover:border-primary/50 transition-all duration-200"
-                    onClick={() => navigate(`/bvsl/groups/${groupId}`)}
+                    onClick={() => navigate(`/bvsl/groups/${groupId}`, {
+                      state: { from: dashboardReturnPath() },
+                    })}
                   >
                     <CardHeader className="pb-2 bg-card border-b px-4 py-3">
                       <div className="flex items-start justify-between gap-2">
@@ -276,6 +316,16 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
                       </div>
                     </CardHeader>
                     <CardContent className="p-4 space-y-2 text-xs">
+                      <div className="flex items-center justify-between gap-2">
+                        <span>Supervisor: {group.supervisorName || 'Unassigned'}</span>
+                        <Button size="sm" variant="outline" onClick={event => {
+                          event.stopPropagation();
+                          const refs = new Set((group.supervisorIds || []).map((id: string) => id.toLowerCase()));
+                          const current = supervisors.find(user => [user.id, user.userId, user.email].some(id => id && refs.has(String(id).toLowerCase())));
+                          setSupervisorId(current?.userId || current?.id || group.supervisorIds?.[0] || '');
+                          setSupervisorGroup(group);
+                        }}>Assign Supervisor</Button>
+                      </div>
                       <div className="flex items-start gap-1.5 text-muted-foreground">
                         <Clock className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
                         <span className="leading-snug">{meetingTime || 'Time not set'}</span>
@@ -339,6 +389,20 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
       </Card>
 
       {/* Create Reading Group Modal */}
+      <Dialog open={!!supervisorGroup} onOpenChange={open => { if (!open && !savingSupervisor) setSupervisorGroup(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Assign Supervisor</DialogTitle>
+            <DialogDescription>{supervisorGroup?.groupName}: the selected supervisor will oversee this group and its RGFs.</DialogDescription>
+          </DialogHeader>
+          <Label htmlFor="group-supervisor">Supervisor</Label>
+          <select id="group-supervisor" className="w-full rounded-md border bg-background p-2" value={supervisorId} onChange={event => setSupervisorId(event.target.value)} disabled={savingSupervisor}>
+            <option value="">No supervisor</option>{supervisorOptions}
+            {supervisorId && !supervisors.some(user => (user.userId || user.id) === supervisorId) && <option value={supervisorId}>{supervisorGroup?.supervisorName || 'Current supervisor'}</option>}
+          </select>
+          <DialogFooter><Button onClick={saveSupervisor} disabled={savingSupervisor}>{savingSupervisor ? 'Saving…' : 'Save'}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={createGroupOpen} onOpenChange={(open) => {
         setCreateGroupOpen(open);
         if (!open) {
@@ -346,6 +410,7 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
           setEndTime('');
           setMeetingDays([]);
           setNewGroupBvslIds([]);
+          setNewGroupSupervisorId('');
           setRgfPickerOpen(false);
         }
       }}>
@@ -360,6 +425,12 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
           </DialogHeader>
 
           <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="new-group-supervisor">Supervisor</Label>
+              <select id="new-group-supervisor" className="w-full rounded-md border bg-background p-2" value={newGroupSupervisorId} onChange={event => setNewGroupSupervisorId(event.target.value)}>
+                <option value="">No supervisor</option>{supervisorOptions}
+              </select>
+            </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold">Group Name *</Label>
               <Input

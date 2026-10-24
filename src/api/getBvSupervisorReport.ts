@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { createEndpoint, BvAttendance, BvSessions, AppError } from '@/lib/backend-sdk';
 import { bvUserAliases, isBvDepartmentAdmin, resolveBvDepartmentGroups, resolveBvUsersByAliases } from '@/lib/bvGroupMemberScope';
-import { readGroupFacilitators, textList } from '@/lib/bvGroupFacilitators';
+import { textList } from '@/lib/bvGroupFacilitators';
 import { getTodayIST } from '@/lib/streakUtils';
 
 const EXPECTED_VISITS = 2;
@@ -73,11 +73,9 @@ function indexUsers(users: any[]): Map<string, any> {
 async function supervisorsByGroup(groups: Array<{ id: string; record: any }>): Promise<Map<string, SupervisorPerson[]>> {
   const result = new Map<string, SupervisorPerson[]>();
   const directAliases = new Set<string>();
-  const needsFacilitator: Array<{ id: string; record: any }> = [];
   for (const group of groups) {
     const aliases = textList([group.record.supervisorId, group.record.supervisorUserId]).map(value => value.toLowerCase());
-    if (aliases.length === 0) needsFacilitator.push(group);
-    else aliases.forEach(alias => directAliases.add(alias));
+    aliases.forEach(alias => directAliases.add(alias));
   }
   const directUsers = directAliases.size > 0 ? await resolveBvUsersByAliases([...directAliases], USER_FIELDS) : [];
   const byAlias = indexUsers(directUsers);
@@ -85,36 +83,10 @@ async function supervisorsByGroup(groups: Array<{ id: string; record: any }>): P
   const assignDirect = (group: { id: string; record: any }) => {
     const aliases = textList([group.record.supervisorId, group.record.supervisorUserId]).map(value => value.toLowerCase());
     const matched = aliases.map(alias => byAlias.get(alias)).filter(Boolean);
-    result.set(group.id, peopleFrom(matched, String(group.record.supervisorName || '').trim()));
+    result.set(group.id, aliases.length ? peopleFrom(matched, String(group.record.supervisorName || '').trim()) : []);
   };
   for (const group of groups) {
-    if (!needsFacilitator.includes(group)) assignDirect(group);
-  }
-
-  if (needsFacilitator.length > 0) {
-    const facilitatorAliases = [...new Set(needsFacilitator.flatMap(group =>
-      readGroupFacilitators(group.record).flatMap(person => [person.id, person.userId].map(value => String(value || '').trim().toLowerCase()).filter(Boolean)),
-    ))];
-    const facilitators = facilitatorAliases.length > 0 ? await resolveBvUsersByAliases(facilitatorAliases, USER_FIELDS) : [];
-    const facilitatorByAlias = indexUsers(facilitators);
-    const supervisorAliases = new Set<string>();
-    for (const user of facilitators) textList(user.bvReportingSupervisorId).forEach(value => supervisorAliases.add(value.toLowerCase()));
-    const extra = supervisorAliases.size > 0 ? await resolveBvUsersByAliases([...supervisorAliases], USER_FIELDS) : [];
-    for (const [alias, user] of indexUsers(extra)) byAlias.set(alias, user);
-
-    for (const group of needsFacilitator) {
-      const reporting = readGroupFacilitators(group.record).flatMap(person => {
-        const match = [person.id, person.userId]
-          .map(value => facilitatorByAlias.get(String(value || '').trim().toLowerCase()))
-          .find(Boolean);
-        return match ? [match] : [];
-      });
-      const aliases = [...new Set(reporting.flatMap(user => textList(user.bvReportingSupervisorId).map(value => value.toLowerCase())))];
-      const storedName = String(
-        group.record.supervisorName || reporting.map(user => user.bvReportingSupervisorName).find(Boolean) || '',
-      ).trim();
-      result.set(group.id, peopleFrom(aliases.map(alias => byAlias.get(alias)).filter(Boolean), storedName));
-    }
+    assignDirect(group);
   }
   return result;
 }

@@ -279,6 +279,7 @@ const groupSchema = z.object({
   rgfIds: z.array(z.string()),
   rgsfIds: z.array(z.string()),
   supervisorIds: z.array(z.string()),
+  supervisorName: z.string(),
 });
 
 export default createEndpoint({
@@ -635,6 +636,7 @@ export default createEndpoint({
             .map((value: string) => value.trim())
             .filter(Boolean),
         )],
+        supervisorName: String(g.supervisorName || ''),
       };
     });
 

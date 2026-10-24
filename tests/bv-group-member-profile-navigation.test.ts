@@ -29,7 +29,10 @@ test('back from a group never returns to the member profile that opened it', () 
     detailBackTarget({ from: '/bvsl/groups/BV-GROUP-1?tab=members' }, '/mentor/dashboard'),
     '/mentor/dashboard',
   );
-  assert.equal(detailBackTarget({ from: '/folk-guide/dashboard' }, '/pw-admin/dashboard'), '/folk-guide/dashboard');
+  assert.equal(
+    detailBackTarget({ from: '/pw-admin/dashboard#bhakti-vriksha' }, '/pw-admin/dashboard'),
+    '/pw-admin/dashboard#bhakti-vriksha',
+  );
   assert.equal(viewerDetailHome({ role: 'SADHANA_MENTOR', isSadhanaMentor: true }), '/mentor/dashboard');
   assert.equal(viewerDetailHome({ role: 'PW_ADMIN', segment: 'PW' }), '/pw-admin/dashboard');
   assert.equal(viewerDetailHome({ role: 'User', isBvFacilitator: true }), '/bvsl/dashboard');

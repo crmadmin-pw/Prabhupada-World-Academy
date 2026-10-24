@@ -11,6 +11,7 @@ import { isHierarchyAdmin } from '@/lib/hierarchyUtils';
 import { generateBvJoinToken } from '@/lib/bvJoinToken';
 import { assertUniqueBvGroupName, bvGroupDepartment } from '@/lib/bvGroupName';
 import { serverCacheInvalidate } from '../lib/serverCache';
+import { assertCanAssignGroupSupervisor, resolveGroupSupervisor } from '@/lib/bvGroupSupervisorAssignment';
 
 function firstValue(value: unknown): string {
   return Array.isArray(value) ? String(value[0] || '') : String(value || '');
@@ -192,6 +193,7 @@ export default createEndpoint({
     // clears every RGF and leaves the group's members in place.
     bvslId: z.string().max(200).optional(),
     facilitatorAction: z.enum(['add', 'remove']).optional(),
+    supervisorId: z.string().max(200).optional(),
   }),
   outputSchema: z.any(),
   execute: async ({ input, context }: any) => {
@@ -205,6 +207,10 @@ export default createEndpoint({
     if (!group) throw new AppError({ code: 'NOT_FOUND', message: 'Group not found' });
 
     const updates: any = {};
+    if (input.supervisorId !== undefined) {
+      await assertCanAssignGroupSupervisor(context.user, group);
+      Object.assign(updates, await resolveGroupSupervisor(input.supervisorId, group));
+    }
     const previousName = String(group.groupName || '');
     const nextName = input.groupName === undefined ? undefined : String(input.groupName).trim();
     if (input.groupName !== undefined && !nextName) {
@@ -287,9 +293,10 @@ export default createEndpoint({
     if (Object.keys(updates).length > 0) {
       await BvGroups.update({ id: group.id, record: updates });
     }
-    if (input.bvslId !== undefined) {
+    if (input.bvslId !== undefined || input.supervisorId !== undefined) {
       serverCacheInvalidate('allBvGroupsAdmin:');
       serverCacheInvalidate('bvslMembers:');
+      serverCacheInvalidate('getBvGroupDetail:');
     }
     if (nameChanged) {
       const groupKeys = new Set([group.id, group.groupId].filter(Boolean).map(value => String(value)));

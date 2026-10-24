@@ -167,7 +167,7 @@ export function resolveHierarchyScope(caller: any, users: any[], groups: any[] =
   expandGuideAliases();
   const admin = isHierarchyAdmin(caller);
   const role = String(caller.role || '').toUpperCase().replace(/[\s-]/g, '_');
-  const supervisor = caller.isBvSupervisor || caller.isBvMentor || ['SUPERVISOR', 'BV_SUPERVISOR'].includes(role);
+  const supervisor = caller.isBvSupervisor || caller.isBvMentor || ['SUPERVISOR', 'BV_SUPERVISOR', 'BV_MENTOR'].includes(role);
   const rgf = caller.isBvFacilitator || caller.isBvsl || ['RGF', 'BVSL', 'FACILITATOR'].includes(role);
   const rgsf = caller.isBvSubFacilitator || role === 'RGSF';
   const mentor = caller.isSadhanaMentor || role === 'SADHANA_MENTOR';
@@ -177,7 +177,7 @@ export function resolveHierarchyScope(caller: any, users: any[], groups: any[] =
     const refs = hierarchyRefs(user.bvReportingAdminId || user.bvSupervisorGuideId);
     return admin && refs.length > 0 && !refs.some(ref => scope.has(ref));
   };
-  if (admin || supervisor || rgf) {
+  if (admin || (!supervisor && rgf)) {
     let previousSize = -1;
     while (previousSize !== scope.size) {
       previousSize = scope.size;
@@ -227,8 +227,17 @@ export function resolveHierarchyScope(caller: any, users: any[], groups: any[] =
     const supervisors = hierarchyRefs([group.supervisorId, group.supervisorUserId]);
     if (admin && guides.length && !guides.some(ref => scope.has(ref))) continue;
     const assignedToCaller = hierarchyRefs([group.id, group.groupId, group.groupName]).some(ref => assignedGroupRefs.has(ref));
-    if (assignedToCaller || owners.some(ref => groupOwners.has(ref)) || supervisors.some(ref => scope.has(ref)) || (!(rgsf && !admin && !supervisor && !rgf) && guides.some(ref => scope.has(ref)))) {
+    const permitted = supervisor && !admin
+      ? supervisors.some(ref => callerKeys.has(ref)) || owners.some(ref => callerKeys.has(ref))
+      : assignedToCaller || owners.some(ref => groupOwners.has(ref)) || supervisors.some(ref => scope.has(ref)) || (!(rgsf && !admin && !supervisor && !rgf) && guides.some(ref => scope.has(ref)));
+    if (permitted) {
       hierarchyRefs([group.id, group.groupId]).forEach(key => groupIds.add(key));
+      // The assigned supervisor is the parent of this group's staff, without
+      // expanding into other groups those staff members also facilitate.
+      if (supervisor && !admin) {
+        const staff = new Set(owners);
+        for (const user of users) if (eligible(user) && isUserInHierarchy(user, staff)) add(user);
+      }
     }
   }
   const memberKeys = new Set<string>();

@@ -5,6 +5,8 @@ import { generateBvJoinToken } from '@/lib/bvJoinToken';
 import { assertUniqueBvGroupName, bvGroupDepartment } from '@/lib/bvGroupName';
 import { serverCacheInvalidate } from '../lib/serverCache';
 import { publishCollectionRevision } from '../lib/publishUsersRevision';
+import { resolveGroupSupervisor } from '@/lib/bvGroupSupervisorAssignment';
+import { organizationalDepartment } from '@/lib/directoryDepartment';
 
 const FACILITATOR_FIELDS = ['id', 'userId', 'fullName', 'email', 'segment', 'isPrabhupadaWorldUser', 'guide', 'bvReportingAdminId', 'bvReportingSupervisorId'];
 
@@ -57,6 +59,7 @@ export default createEndpoint({
     bvslIds: z.array(z.string().min(1).max(200)).max(20).optional(),
     meetingTime: z.string().max(100).optional(),
     description: z.string().max(500).optional(),
+    supervisorId: z.string().max(200).optional(),
   }),
   outputSchema: z.object({
     success: z.boolean(),
@@ -99,13 +102,17 @@ export default createEndpoint({
     const facilitatorUser = primary.user;
     const facilitatorGuide = primary.guide;
     const segment = explicitSegment(facilitatorUser, facilitatorGuide) || context.user.segment || 'PW';
-    const guideOwnerId = facilitatorUser?.bvReportingSupervisorId ||
-      facilitatorUser?.bvReportingAdminId ||
+    const guideOwnerId = facilitatorUser?.bvReportingAdminId ||
       facilitatorUser?.guide ||
       context.user.userId ||
       context.user.id;
     const storedFacilitators = facilitatorWrite(resolved.map(match => match.stored));
     const department = bvGroupDepartment(segment);
+    const callerDepartment = organizationalDepartment(context.user);
+    if (callerDepartment && callerDepartment !== department) {
+      throw new AppError({ code: 'FORBIDDEN', message: 'Choose RGFs from your department.' });
+    }
+    const supervision = await resolveGroupSupervisor(input.supervisorId || '', { segment });
     await assertUniqueBvGroupName(input.groupName, department);
 
     const groupId = `BV-GROUP-${Date.now()}`;
@@ -114,6 +121,7 @@ export default createEndpoint({
       groupId,
       groupName: input.groupName,
       ...storedFacilitators,
+      ...supervision,
       guide: guideOwnerId || undefined,
       meetingTime: input.meetingTime || '',
       description: input.description || '',

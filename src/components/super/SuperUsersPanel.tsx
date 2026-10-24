@@ -1418,14 +1418,14 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                           return fallback;
                         };
                         return (
-                          <td data-label="Parent" className="px-3 py-2 text-center align-middle text-xs" onClick={e => { e.stopPropagation(); if (canEditRole && !isUserAdmin && currentBvRole !== 'NA') openParentDialog(u); }}>
+                          <td data-label="Parent" className="px-3 py-2 text-center align-middle text-xs" onClick={e => { e.stopPropagation(); if (canEditRole && !isUserAdmin && currentBvRole !== 'NA' && currentBvRole !== 'FACILITATOR') openParentDialog(u); }}>
                             {isUserAdmin ? (
                               <span className="text-muted-foreground font-medium cursor-default">—</span>
                             ) : currentBvRole === 'NA' ? <NaLabel /> : (
                               <button
                                 type="button"
                                 className="text-center hover:underline focus:outline-none cursor-pointer inline-flex items-center justify-center gap-1 group mx-auto"
-                                title="Click to change reporting parent hierarchy"
+                                title={currentBvRole === 'FACILITATOR' ? 'Assign supervisors from Bhakti Vriksha group administration' : 'Click to change reporting parent hierarchy'}
                               >
                                 <span className="text-muted-foreground font-medium group-hover:text-primary">
                                   {(() => {
@@ -1435,9 +1435,10 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                                         : 'Unassigned (Admin)';
                                     }
                                     if (currentBvRole === 'FACILITATOR') {
-                                      return (u as any).bvReportingSupervisorName
-                                        ? `${formatName((u as any).bvReportingSupervisorName)} (Supervisor)`
-                                        : 'Unassigned (Supervisor)';
+                                      const parents = (u as any).groupReportingParents || [];
+                                      return parents.length ? parents.map((parent: any) => (
+                                        <span key={parent.groupId} className="block">{parent.groupName}: {parent.supervisorName ? `${formatName(parent.supervisorName)} (Supervisor)` : 'Unassigned (Supervisor)'}</span>
+                                      )) : 'Unassigned (Supervisor)';
                                     }
                                     if (currentBvRole === 'SUB_FACILITATOR') {
                                       return (u as any).bvReportingFacilitatorName
@@ -1460,7 +1461,7 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                                     return `${guideDisplayName} (Admin)`;
                                   })()}
                                 </span>
-                                {canEditRole && <span className="text-[10px] text-primary/70 group-hover:text-primary">✏️</span>}
+                                {canEditRole && currentBvRole !== 'FACILITATOR' && <span className="text-[10px] text-primary/70 group-hover:text-primary">✏️</span>}
                               </button>
                             )}
                           </td>

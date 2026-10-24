@@ -89,9 +89,8 @@ export default createEndpoint({
     const callerIsRgf = !!(caller.isBvFacilitator || caller.isBvsl);
     const assignedGroupRefs = new Set(normalizedRefs(caller.bvGroupId));
 
-    // A supervisor sees the groups an admin assigned. Until that selection is
-    // saved, they still see groups led by RGFs who report to them. A group
-    // they only facilitate is not one of those groups.
+    // Only explicit group assignments confer supervision. Personal facilitation
+    // and an RGF's old reporting parent do not add supervised groups.
     const plainSupervisor = !isHierarchyAdmin(caller) && !isHierarchySuperAdmin(caller);
     const supervisedIds = plainSupervisor
       ? new Set((await resolveBvScopedGroups(caller, { segment: userSegment, supervisionOnly: true }))

@@ -111,7 +111,7 @@ export default createEndpoint({
       }),
       input.minimal
         ? Promise.resolve({ records: [] })
-        : BvGroups.findAll({ limit: 1000, fields: ['id', 'groupId', 'groupName', 'bvslLeader', 'bvslId', 'bvslName', 'guide'] }),
+        : BvGroups.findAll({ limit: 1000, fields: ['id', 'groupId', 'groupName', 'bvslLeader', 'bvslId', 'bvslName', 'guide', 'supervisorId', 'supervisorUserId', 'supervisorName', 'segment', 'isActive'] }),
       input.minimal
         ? Promise.resolve({ records: [] })
         : BvGroupMembers.findAll({ limit: 2000, fields: ['id', 'user', 'userId', 'group', 'groupId'] }),
@@ -491,6 +491,12 @@ export default createEndpoint({
           .flatMap(alias => facilitatedByAlias.get(alias) || [])
           .filter((group, index, list) => list.findIndex(item => item.id === group.id) === index);
         const assignedGid = userGroupMap.get(uId) || userGroupMap.get(uUserId) || userGroupMap.get(uEmail) || null;
+        const groupReportingParents = facilitatedGroups.map(led => {
+          const group = allBvGroups.find(group => String(group.id || group.groupId) === led.id);
+          const supervisorId = group?.supervisorId || group?.supervisorUserId || null;
+          return { groupId: led.id, groupName: led.name, supervisorId,
+            supervisorName: supervisorId ? resolveParentName(supervisorId, group?.supervisorName) : null };
+        });
 
         const groupRgf = assignedGid ? groupRgfMap.get(String(assignedGid)) : null;
 
@@ -557,6 +563,7 @@ export default createEndpoint({
           bvGroupName: assignedGid ? (groupNameMap.get(String(assignedGid)) || null) : null,
           facilitatedGroupIds: facilitatedGroups.map(group => group.id),
           facilitatedGroupNames: facilitatedGroups.map(group => group.name).filter(Boolean),
+          groupReportingParents,
           // Fields used in UsersTab table
           selectedGuideId: guideIdVal,
           selectedGuideName: guideNameVal,
