@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { toast } from 'sonner';
@@ -41,6 +42,8 @@ interface BvAdminManagementTabProps {
   guideId?: string;
   isSuperGuide?: boolean;
 }
+
+const NO_SUPERVISOR = '__no_supervisor__';
 
 export default function BvAdminManagementTab({ segment: propSegment, guideId = '', isSuperGuide: isSuperGuideProp }: BvAdminManagementTabProps = {}) {
   const { profile } = useUserProfile();
@@ -219,9 +222,10 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
     }
   };
 
-  const supervisorOptions = supervisors.map(user => (
-    <option key={user.id || user.userId} value={user.userId || user.id}>{user.fullName || user.email}</option>
-  ));
+  const supervisorOptions = supervisors.map(user => ({
+    value: String(user.userId || user.id),
+    label: String(user.fullName || user.email || 'Unnamed supervisor'),
+  }));
   const saveSupervisor = async () => {
     if (!supervisorGroup) return;
     setSavingSupervisor(true);
@@ -383,19 +387,42 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
         </CardContent>
       </Card>
 
-      {/* Create Reading Group Modal */}
+      {/* Supervisor assignment modal */}
       <Dialog open={!!supervisorGroup} onOpenChange={open => { if (!open && !savingSupervisor) setSupervisorGroup(null); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Assign Supervisor</DialogTitle>
-            <DialogDescription>{supervisorGroup?.groupName}: the selected supervisor will oversee this group and its RGFs.</DialogDescription>
+        <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-md">
+          <DialogHeader className="border-b bg-gradient-to-br from-primary/10 via-primary/5 to-transparent px-6 py-5 text-left">
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              <span className="flex size-9 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm">
+                <ShieldCheck className="size-4" />
+              </span>
+              Assign Supervisor
+            </DialogTitle>
+            <DialogDescription className="pt-2 leading-relaxed">
+              Select the person who will oversee this reading group and its RGFs.
+            </DialogDescription>
           </DialogHeader>
-          <Label htmlFor="group-supervisor">Supervisor</Label>
-          <select id="group-supervisor" className="w-full rounded-md border bg-background p-2" value={supervisorId} onChange={event => setSupervisorId(event.target.value)} disabled={savingSupervisor}>
-            <option value="">No supervisor</option>{supervisorOptions}
-            {supervisorId && !supervisors.some(user => (user.userId || user.id) === supervisorId) && <option value={supervisorId}>{supervisorGroup?.supervisorName || 'Current supervisor'}</option>}
-          </select>
-          <DialogFooter><Button onClick={saveSupervisor} disabled={savingSupervisor}>{savingSupervisor ? 'Saving…' : 'Save'}</Button></DialogFooter>
+          <div className="space-y-4 px-6 py-5">
+            <div className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2.5">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Reading Group</p>
+              <p className="mt-0.5 truncate text-sm font-semibold">{supervisorGroup?.groupName}</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="group-supervisor" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Supervisor</Label>
+              <Select value={supervisorId || NO_SUPERVISOR} onValueChange={value => setSupervisorId(value === NO_SUPERVISOR ? '' : value)} disabled={savingSupervisor}>
+                <SelectTrigger id="group-supervisor" className="h-11 w-full bg-background px-3 shadow-sm">
+                  <SelectValue>{supervisorId ? supervisorOptions.find(option => option.value === supervisorId)?.label || supervisorGroup?.supervisorName || 'Current supervisor' : 'No supervisor assigned'}</SelectValue>
+                </SelectTrigger>
+                <SelectContent className="max-h-64">
+                  <SelectItem value={NO_SUPERVISOR}>No supervisor assigned</SelectItem>
+                  {supervisorOptions.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+                  {supervisorId && !supervisorOptions.some(option => option.value === supervisorId) && <SelectItem value={supervisorId}>{supervisorGroup?.supervisorName || 'Current supervisor'}</SelectItem>}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter className="border-t bg-muted/20 px-6 py-4 sm:justify-end">
+            <Button onClick={saveSupervisor} disabled={savingSupervisor} className="min-w-28">{savingSupervisor ? 'Saving…' : 'Save Assignment'}</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
       <Dialog open={createGroupOpen} onOpenChange={(open) => {
@@ -422,9 +449,15 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label htmlFor="new-group-supervisor">Supervisor</Label>
-              <select id="new-group-supervisor" className="w-full rounded-md border bg-background p-2" value={newGroupSupervisorId} onChange={event => setNewGroupSupervisorId(event.target.value)}>
-                <option value="">No supervisor</option>{supervisorOptions}
-              </select>
+              <Select value={newGroupSupervisorId || NO_SUPERVISOR} onValueChange={value => setNewGroupSupervisorId(value === NO_SUPERVISOR ? '' : value)}>
+                <SelectTrigger id="new-group-supervisor" className="h-10 w-full">
+                  <SelectValue>{newGroupSupervisorId ? supervisorOptions.find(option => option.value === newGroupSupervisorId)?.label || 'Current supervisor' : 'No supervisor assigned'}</SelectValue>
+                </SelectTrigger>
+                <SelectContent className="max-h-64">
+                  <SelectItem value={NO_SUPERVISOR}>No supervisor assigned</SelectItem>
+                  {supervisorOptions.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold">Group Name *</Label>

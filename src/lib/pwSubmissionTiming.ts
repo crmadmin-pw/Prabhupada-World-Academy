@@ -43,13 +43,19 @@ export function pwEntryDateBounds(now = new Date(), timeZone = DEFAULT_PW_TIME_Z
   return { min: shiftSadhanaDate(today, -7), max: today };
 }
 
+/** Today's PW Sadhana form remains unavailable until the evening reporting window opens. */
+export function isPwSadhanaFormLocked(entryDate: string, now = new Date(), timeZone = DEFAULT_PW_TIME_ZONE): boolean {
+  if (!validDate(entryDate)) return false;
+  const local = localClock(now, timeZone);
+  return local.date === entryDate && local.milliseconds < 18 * 3_600_000;
+}
+
 export function pwSubmissionError(entryDate: string, now = new Date(), timeZone = DEFAULT_PW_TIME_ZONE): string | null {
   if (!validDate(entryDate)) return 'Invalid entry date';
   const bounds = pwEntryDateBounds(now, timeZone);
   if (entryDate > bounds.max) return 'Cannot submit for a future date';
   if (entryDate < bounds.min) return 'Cannot submit for dates older than 7 days';
-  const local = localClock(now, timeZone);
-  if (local.date === entryDate && local.milliseconds < 18 * 3_600_000) {
+  if (isPwSadhanaFormLocked(entryDate, now, timeZone)) {
     return `PW Sadhana submission opens at 6:00 PM on the Sadhana date (${timeZone})`;
   }
   return null;

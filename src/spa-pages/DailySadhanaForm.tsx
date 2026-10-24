@@ -30,7 +30,7 @@ import SadhanaFieldRenderer from '@/components/form/SadhanaFieldRenderer';
 import NRScoringCriteria from '@/components/form/NRScoringCriteria';
 import { emptyPwTargets, scorePwSadhanaV2, type PwTargets } from '@/lib/pwSadhana';
 import PwScoringCriteria from '@/components/pw/PwScoringCriteria';
-import { browserSadhanaTimeZone, normalizeSadhanaTimeZone, pwEntryDateBounds, pwSubmissionError, shiftSadhanaDate } from '@/lib/pwSubmissionTiming';
+import { browserSadhanaTimeZone, isPwSadhanaFormLocked, normalizeSadhanaTimeZone, pwEntryDateBounds, pwSubmissionError } from '@/lib/pwSubmissionTiming';
 import {
   normalizeFieldType, parseCriteria, isNRCriteria,
   calculateNRPoints, calculateResidentPoints, parseNumericValue,
@@ -94,6 +94,7 @@ export default function DailySadhanaForm() {
     return () => window.clearInterval(timer);
   }, [isPwUser]);
   const pwTimingError = isPwUser ? pwSubmissionError(entryDate, new Date(pwClock), submissionTimeZone) : null;
+  const pwFormLocked = isPwUser && isPwSadhanaFormLocked(entryDate, new Date(pwClock), submissionTimeZone);
   const [pwContext, setPwContext] = useState<{
     targets: PwTargets;
     source: string | null;
@@ -495,6 +496,22 @@ export default function DailySadhanaForm() {
     </div>
   );
 
+  if (pwFormLocked) return (
+    <div className="min-h-dvh bg-muted/30 p-4 pb-10">
+      <div className="container mx-auto max-w-2xl">
+        <Button variant="ghost" onClick={() => navigate(getDashboardUrl())} className="mb-4 -ml-2">
+          <ArrowLeft className="w-4 h-4 mr-2" />Back to Dashboard
+        </Button>
+        <div className="bg-card border rounded-xl p-6 shadow-sm space-y-3">
+          <h1 className="text-2xl font-bold">Daily Sadhana Form</h1>
+          <p className="text-sm text-muted-foreground">
+            Today’s Sadhana form will be available at 6:00 PM in the report time zone ({submissionTimeZone}). Please return after that time.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+
   const { totalScore, maxScore, scorePercent: percentage } = scoreResult;
   const bvHours = Math.floor(bvTotalMinutes / 60);
   const bvMins = bvTotalMinutes % 60;
@@ -623,14 +640,13 @@ export default function DailySadhanaForm() {
               <p className="text-sm text-muted-foreground">
                 {pwContext.source === 'admin' && 'Your admin sets these targets.'}
                 {pwContext.source === 'mentor' && 'Your sadhana mentor sets these targets.'}
-                {pwContext.source === 'ashraya' && 'These targets follow your Ashraya level.'}
+                {pwContext.source === 'ashraya' && 'Your targets are determined by your Ashraya level.'}
                 {pwContext.source !== 'admin' && pwContext.source !== 'mentor' && pwContext.source !== 'ashraya' && 'Your RGF sets these targets.'}
-                {' '}Submission opens at 6:00 PM on the Sadhana date. Submit by 10:00 AM the next day for 2 points, or after 10:00 AM through 2:00 PM the next day for 1 point. Later submissions receive 0 timely-submission points. Times use the report’s time zone: {submissionTimeZone}. Other Sadhana points follow the existing criteria.
+                {' '}Submission opens at 6:00 PM on the Sadhana date. Submissions received by 10:00 AM on the following day receive 2 points; submissions received between 10:00 AM and 2:00 PM receive 1 point. Submissions received after 2:00 PM do not receive timely-submission points. All times are based on the report time zone: {submissionTimeZone}. Other Sadhana points are awarded according to the established criteria.
                 {pwContext.attendance ? ` BV attendance recorded: ${pwContext.attendance.attended} of ${pwContext.attendance.session} minutes.` : ' BV attendance is added by your RGF or RGSF.'}
               </p>
               <p className="text-sm text-muted-foreground">
-                Sleep time is for the night before the Sadhana date
-                {/^\d{4}-\d{2}-\d{2}$/.test(entryDate) && Number.isFinite(Date.parse(entryDate)) ? ` (${format(new Date(`${shiftSadhanaDate(entryDate, -1)}T00:00:00`), 'd MMMM yyyy')})` : ''}, whether you submit that evening or the following morning.
+                Please record the sleep time for the night preceding the Sadhana date, irrespective of whether the entry is submitted that evening or the following morning.
               </p>
               {pwTimingError && <p role="status" className="text-sm text-amber-700 dark:text-amber-400">{pwTimingError}</p>}
               <PwScoringCriteria />

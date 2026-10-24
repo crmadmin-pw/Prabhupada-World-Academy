@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { pwEntryDateBounds, pwSubmissionError, pwTimelySubmissionPoints, shiftSadhanaDate } from '../src/lib/pwSubmissionTiming';
+import { isPwSadhanaFormLocked, pwEntryDateBounds, pwSubmissionError, pwTimelySubmissionPoints, shiftSadhanaDate } from '../src/lib/pwSubmissionTiming';
 import { scorePwSadhanaV2 } from '../src/lib/pwSadhana';
 
 test('23 October submission windows include the exact opening and cutoff times in IST', () => {
@@ -13,6 +13,9 @@ test('23 October submission windows include the exact opening and cutoff times i
   ] as const) assert.equal(pwTimelySubmissionPoints('2026-10-23', stamp), points, stamp);
   assert.match(pwSubmissionError('2026-10-23', new Date('2026-10-23T17:59:59+05:30'))!, /6:00 PM/);
   assert.equal(pwSubmissionError('2026-10-23', new Date('2026-10-23T18:00:00+05:30')), null);
+  assert.equal(isPwSadhanaFormLocked('2026-10-23', new Date('2026-10-23T17:59:59+05:30')), true);
+  assert.equal(isPwSadhanaFormLocked('2026-10-23', new Date('2026-10-23T18:00:00+05:30')), false);
+  assert.equal(isPwSadhanaFormLocked('2026-10-22', new Date('2026-10-23T09:00:00+05:30')), false);
 });
 
 test('the previous seven days are allowed by IST calendar date even when UTC is still yesterday', () => {
