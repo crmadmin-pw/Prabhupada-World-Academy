@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createEndpoint, BvAttendance, BvSessions, AppError } from '@/lib/backend-sdk';
-import { bvUserAliases, isBvDepartmentAdmin, resolveBvDepartmentGroups, resolveBvUsersByAliases } from '@/lib/bvGroupMemberScope';
+import { bvUserAliases, isBvDepartmentAdmin, resolveBvDepartmentGroups, resolveBvScopedGroups, resolveBvUsersByAliases } from '@/lib/bvGroupMemberScope';
+import { isPwDepartmentAdmin } from '@/lib/hierarchyUtils';
 import { textList } from '@/lib/bvGroupFacilitators';
 import { getTodayIST } from '@/lib/streakUtils';
 
@@ -118,7 +119,9 @@ export default createEndpoint({
       throw new AppError({ code: 'FORBIDDEN', message: 'Only an admin can view the supervisor report' });
     }
 
-    const groups = await resolveBvDepartmentGroups(input.segment, undefined, { includeInactive: false });
+    const groups = isPwDepartmentAdmin(context.user)
+      ? await resolveBvDepartmentGroups('PW', undefined, { includeInactive: false })
+      : await resolveBvScopedGroups(context.user, { segment: input.segment });
     const supervisorMap = await supervisorsByGroup(groups);
     const listed = groups.map(group => {
       const supervisors = supervisorMap.get(group.id) || [];

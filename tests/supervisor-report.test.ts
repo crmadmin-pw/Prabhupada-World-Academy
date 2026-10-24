@@ -4,7 +4,7 @@ import * as sdk from '../src/lib/app-backend-sdk';
 import getBvSupervisorReport from '../src/api/getBvSupervisorReport';
 import { getTodayIST } from '../src/lib/streakUtils';
 
-const admin = { id: 'report-admin', userId: 'ADMIN-1', role: 'ADMIN', isBvAdmin: true, status: 'Active' };
+const admin = { id: 'report-admin', userId: 'ADMIN-1', role: 'ADMIN', segment: 'PW', isBvAdmin: true, status: 'Active' };
 const member = { id: 'report-member', userId: 'MEMBER-1', role: 'USER', status: 'Active' };
 const supervisor = {
   id: 'report-supervisor',

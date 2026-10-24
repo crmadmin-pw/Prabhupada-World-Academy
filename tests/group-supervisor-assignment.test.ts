@@ -35,8 +35,9 @@ for (const segment of ['FOLK', 'PW']) {
     const member = { id: 'member', userId: 'MEMBER', fullName: 'Member One', segment, status: 'Active', bvReportingFacilitatorId: rgf.id };
     const outside = { ...member, id: 'outside', userId: 'OUTSIDE', fullName: 'Member Two' };
     const groups: any[] = [
-      { id: 'one', groupId: 'ONE', groupName: 'Group One', bvslId: rgf.userId, guide: 'unrelated-admin', segment, isActive: true },
-      { id: 'two', groupId: 'TWO', groupName: 'Group Two', bvslId: rgf.userId, guide: 'unrelated-admin', segment, isActive: true },
+      { id: 'one', groupId: 'ONE', groupName: 'Group One', bvslId: rgf.userId, guide: admin.id, segment, isActive: true },
+      { id: 'two', groupId: 'TWO', groupName: 'Group Two', bvslId: rgf.userId, guide: admin.id, segment, isActive: true },
+      { id: 'peer', groupId: 'PEER', groupName: 'Peer Admin Group', guide: 'another-admin', segment, isActive: true },
       { id: 'foreign', groupId: 'FOREIGN', groupName: 'Other Department', bvslId: rgf.userId, segment: segment === 'PW' ? 'FOLK' : 'PW', isActive: true },
     ];
     const foreignSupervisor = { ...supervisor, id: 'foreign-supervisor', userId: 'FOREIGN-SUP', segment: segment === 'PW' ? 'FOLK' : 'PW' };
@@ -44,9 +45,13 @@ for (const segment of ['FOLK', 'PW']) {
     const memberships = [{ id: 'm1', user: member.id, group: 'one' }, { id: 'm2', user: outside.id, group: 'two' }];
     memory(t, { Users: users, BvGroups: groups, BvGroupMembers: memberships });
     assert.deepEqual(await resolveBvScopedGroups(supervisor), []);
-    assert.deepEqual((await resolveBvScopedGroups(admin)).map(g => g.id), ['one', 'two']);
-    const listed = await getAllBvGroupsAdmin.execute({ input: { guideId: 'unrelated-admin' }, context: { user: admin } } as never);
-    assert.deepEqual(listed.groups.map(g => g.groupId).sort(), ['ONE', 'TWO']);
+    const expectedAdminGroups = segment === 'PW' ? ['one', 'two', 'peer'] : ['one', 'two'];
+    assert.deepEqual((await resolveBvScopedGroups(admin)).map(g => g.id), expectedAdminGroups);
+    const listed = await getAllBvGroupsAdmin.execute({
+      input: { guideId: 'unrelated-admin', departmentWide: true, segment },
+      context: { user: admin },
+    } as never);
+    assert.deepEqual(listed.groups.map(g => g.groupId).sort(), expectedAdminGroups.map(id => id.toUpperCase()).sort());
     await assert.rejects(updateBvGroup.execute({ input: { groupId: 'one', supervisorId: 'SUP' }, context: { user: supervisor } } as never), /Only an Admin/);
     await assert.rejects(updateBvGroup.execute({ input: { groupId: 'foreign', supervisorId: 'SUP' }, context: { user: admin } } as never), /department/);
     await assert.rejects(updateBvGroup.execute({ input: { groupId: 'one', supervisorId: 'FOREIGN-SUP' }, context: { user: admin } } as never), /department/);

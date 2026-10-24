@@ -487,9 +487,9 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
           ? read(() => getBvslGroups({ bvslId: 'ALL', segment: isPwMode ? 'PW' : 'FOLK' }))
           : read(() => getAllBvGroupsAdmin({
               guideId: profile?.userId || userEmail || 'ALL',
-              // Department admins assign members to any group in the department,
-              // not only the groups in their own reporting chain.
-              ...(isDepartmentAdmin ? { departmentWide: true, segment: effectiveSegment === 'PW' ? 'PW' as const : 'FOLK' as const } : {}),
+              // PW admins assign members across PW. FOLK guides stay within
+              // their own reporting hierarchy.
+              ...(isDepartmentAdmin && isPwMode ? { departmentWide: true, segment: 'PW' as const } : {}),
             }))
         ).catch(() => ({ groups: [] })),
         isPwAdmin ? read(() => getActiveSadhanaMentors({ segment: 'PW' })).catch(() => []) : Promise.resolve([]),

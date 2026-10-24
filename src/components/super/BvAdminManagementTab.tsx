@@ -107,7 +107,7 @@ export default function BvAdminManagementTab({ segment: propSegment, guideId = '
           setGuides([]);
           return;
         }
-        // The server returns every reading group in the admin's department.
+        // PW admins receive all PW groups; FOLK guides receive their own groups.
         setGroups((scoped.groups || []).map((g: any) => ({
           ...g,
           id: g.groupDbId || g.groupId,

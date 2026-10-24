@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, BvMemberRegistrations, BvAttendance, Users, AppError } from '@/lib/backend-sdk';
-import { getScopedHierarchyUserIds, isHierarchyAdmin, isHierarchySuperAdmin } from '../lib/hierarchyUtils';
+import { getScopedHierarchyUserIds, isHierarchyAdmin, isHierarchySuperAdmin, isPwDepartmentAdmin } from '../lib/hierarchyUtils';
 import { resolveBvScopedGroups } from '../lib/bvGroupMemberScope';
 import { getTodayIST } from '../lib/streakUtils';
 import { joinFacilitatorNames, readGroupFacilitators, textList, uncountedAssignedStaff } from '@/lib/bvGroupFacilitators';
@@ -104,7 +104,7 @@ export default createEndpoint({
         normalizedRefs([g.id, g.groupId]).some(ref => assignedGroupRefs.has(ref))
       );
       const groupSegment = departmentOf(g.segment) || (ledByCaller || assignedToCaller ? userSegment : 'PW');
-      if (isHierarchyAdmin(caller)) return groupSegment === userSegment;
+      if (isPwDepartmentAdmin(caller)) return groupSegment === userSegment;
       // A group this supervisor personally facilitates belongs on their
       // dashboard even when its stored segment is missing or was saved earlier
       // under the other department.

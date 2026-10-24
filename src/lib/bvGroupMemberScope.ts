@@ -89,7 +89,7 @@ export function isBvSupervisorUser(user: UserRecord | null | undefined): boolean
 export function isBvDepartmentAdmin(user: UserRecord | null | undefined): boolean {
   const role = roleValue(user);
   return !!(user?.isBvAdmin || user?.isBvSuperAdmin || user?.isPwAdmin ||
-    role === 'ADMIN' || role === 'PW_ADMIN' || role === 'SUPER_ADMIN' || role === 'SUPER_GUIDE' || role === 'GUIDE');
+    role === 'ADMIN' || role === 'PW_ADMIN' || role === 'SUPER_ADMIN' || role === 'SUPER_GUIDE');
 }
 
 /** Only these users may request every BV group in a department. */
@@ -228,13 +228,12 @@ export async function resolveBvScopedGroups(
   contextUser: UserRecord,
   options: BvGroupScopeOptions = {},
 ): Promise<BvScopedGroup[]> {
-  // Admin group access is department-wide in FOLK and PW.
-  const adminDepartment = departmentValue(contextUser.segment) || (isPwDepartmentAdmin(contextUser) ? 'PW' : null);
-  if (isHierarchyAdmin(contextUser) && adminDepartment) {
-    if (options.segment && options.segment !== adminDepartment) {
+  // Only Prabhupada World admins receive department-wide group access.
+  if (isPwDepartmentAdmin(contextUser) && options.segment !== 'FOLK') {
+    if (options.segment && options.segment !== 'PW') {
       throw new AppError({ code: 'FORBIDDEN', message: 'Choose a reading group in your department.' });
     }
-    const groups = await resolveBvDepartmentGroups(adminDepartment, undefined, { includeInactive: options.includeInactive });
+    const groups = await resolveBvDepartmentGroups('PW', undefined, { includeInactive: options.includeInactive });
     if (!options.groupId) return groups;
     const requested = new Set(refs(options.groupId));
     const selected = groups.filter(group => groupAliases(group.record).some(ref => requested.has(ref)));

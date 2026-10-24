@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroups, BvGroupMembers, BvAttendance, Users, Guides } from '@/lib/backend-sdk';
 import { serverCacheGetOrFetch, serverCacheInvalidate } from '../lib/serverCache';
-import { isBvDepartmentAdmin, isBvSuperAdminUser, isBvSupervisorUser, resolveBvDepartmentGroups } from '../lib/bvGroupMemberScope';
-import { callerDirectoryDepartment, getScopedHierarchyUserIds, isHierarchyAdmin, isUserInHierarchy, hierarchyRefs, readScopedUsers } from '../lib/hierarchyUtils';
+import { isBvSuperAdminUser, isBvSupervisorUser, resolveBvDepartmentGroups } from '../lib/bvGroupMemberScope';
+import { callerDirectoryDepartment, getScopedHierarchyUserIds, isPwDepartmentAdmin, isUserInHierarchy, hierarchyRefs, readScopedUsers } from '../lib/hierarchyUtils';
 import { organizationalDepartment } from '../lib/directoryDepartment';
 import { joinFacilitatorNames, readGroupFacilitators, textList, uncountedAssignedStaff } from '@/lib/bvGroupFacilitators';
 
@@ -105,7 +105,7 @@ export default createEndpoint({
     error: z.string().nullable(),
   }),
   execute: async ({ input, context }: { input: { guideId: string; departmentWide?: boolean; segment?: 'PW' | 'FOLK' }; context: any }) => {
-    if (input.departmentWide && isBvDepartmentAdmin(context?.user)) {
+    if (input.departmentWide && input.segment === 'PW' && isPwDepartmentAdmin(context?.user)) {
       const ownDepartment = callerDirectoryDepartment(context.user);
       const segment = isBvSuperAdminUser(context.user)
         ? (input.segment || ownDepartment || 'PW')
@@ -142,11 +142,10 @@ export default createEndpoint({
         };
       }
     }
-    const ownDepartment = callerDirectoryDepartment(context?.user);
-    if (isHierarchyAdmin(context?.user) && ownDepartment) {
+    if (isPwDepartmentAdmin(context?.user)) {
       return serverCacheGetOrFetch(
-        `allBvGroupsAdmin:department:${ownDepartment}`,
-        () => _fetchAllBvGroupsAdmin(String(context.user.id || ''), null, context.user, ownDepartment),
+        'allBvGroupsAdmin:department:PW',
+        () => _fetchAllBvGroupsAdmin(String(context.user.id || ''), null, context.user, 'PW'),
         30_000,
       );
     }
