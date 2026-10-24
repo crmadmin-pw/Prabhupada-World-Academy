@@ -832,13 +832,13 @@ const REPORTING_CHAIN_TABLES = new Set(['Users', 'Guides', 'BvGroups', 'BvGroupM
 const REPORTING_CHAIN_USER_FIELDS = new Set([
   'role', 'guide', 'selectedGuideId', 'segment', 'isPrabhupadaWorldUser', 'status',
   'bvReportingAdminId', 'bvReportingSupervisorId', 'bvReportingFacilitatorId', 'bvSupervisorGuideId',
-  'sadhanaMentor', 'folkResidencies', 'residency',
+  'sadhanaMentor', 'folkResidencies', 'residency', 'bvGroupId', 'bvGroupName',
   'isBvAdmin', 'isBvSuperAdmin', 'isPwAdmin', 'isBvSupervisor', 'isBvMentor',
   'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator', 'isSadhanaMentor',
   'userId', 'email',
 ]);
 export const REPORTING_CHAINS_KEY = 'reportingChainsVersion';
-export const REPORTING_CHAINS_READY = 'ready:2';
+export const REPORTING_CHAINS_READY = 'ready:3';
 
 let reportingChainsLocallyStale = false;
 let reportingChainMarkerInvalidator: (() => void) | undefined;

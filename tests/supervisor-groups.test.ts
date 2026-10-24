@@ -50,6 +50,7 @@ const assignedRgsf = {
   segment: 'FOLK',
   isBvSubFacilitator: true,
   bvReportingFacilitatorId: reportingRgf.id,
+  bvGroupId: 'SUPERVISOR-GROUPS-GROUP',
 };
 
 const outsideRgf = {

@@ -157,24 +157,10 @@ async function isBvslMember(caller: any, target: any, rgsfOnly = false): Promise
     limit: 500,
   });
 
-  const parentRgfKeys = new Set<string>();
-  if (rgsfOnly) {
-    const callerRecord = await Users.findOne({ id: caller?.id, fields: ['id', 'userId', 'email', 'bvReportingFacilitatorId'] }) ||
-      await Users.findOne({ filters: { userId: caller?.userId || caller?.id }, fields: ['id', 'userId', 'email', 'bvReportingFacilitatorId'] }) ||
-      await Users.findOne({ filters: { email: caller?.email }, fields: ['id', 'userId', 'email', 'bvReportingFacilitatorId'] });
-    const parentRefValue = caller?.bvReportingFacilitatorId || (callerRecord as any)?.bvReportingFacilitatorId;
-    const parentRef = parentRefValue ? String(parentRefValue).toLowerCase() : '';
-    if (parentRef) {
-      parentRgfKeys.add(parentRef);
-      const parent = await Users.findOne({ filters: { userId: parentRefValue }, fields: ['id', 'userId', 'email'] }) ||
-        await Users.findOne({ id: parentRefValue, fields: ['id', 'userId', 'email'] }) ||
-        await Users.findOne({ filters: { email: parentRefValue }, fields: ['id', 'userId', 'email'] });
-      [parent?.id, parent?.userId, parent?.email].filter(Boolean).forEach(value => parentRgfKeys.add(String(value).toLowerCase()));
-    }
-  }
-
   const callerIsAlsoSubFacilitator = !!caller?.isBvSubFacilitator;
-  const groups = bvslGroups.filter((group: any) => {
+  const groups = rgsfOnly
+    ? (await resolveBvScopedGroups(caller)).map(group => group.record)
+    : bvslGroups.filter((group: any) => {
     if (group.isActive === false) return false;
     const facilitatorKeys = [
       group.bvslLeader,
@@ -190,12 +176,10 @@ async function isBvslMember(caller: any, target: any, rgsfOnly = false): Promise
       .filter(Boolean)
       .map((value) => String(value).toLowerCase());
 
-    const parentGroup = facilitatorKeys.some((key) => parentRgfKeys.has(key));
     const callerOwnedLegacyGroup = facilitatorKeys.some((key) => callerAliasSet.has(key)) || groupHasFacilitator(group, callerAliasSet);
     const callerIsSubFacilitatorHere = subFacilitatorKeys.some((key) => callerAliasSet.has(key));
     // A PW user can be RGF of one group and RGSF of another. The members list
     // shows both, so the profile check has to accept both.
-    if (rgsfOnly) return parentGroup || callerOwnedLegacyGroup || callerIsSubFacilitatorHere;
     return callerOwnedLegacyGroup || (callerIsAlsoSubFacilitator && callerIsSubFacilitatorHere);
   });
 
@@ -284,7 +268,7 @@ export default createEndpoint({
       throw new AppError({
         code: 'FORBIDDEN',
         message: isRgsf && !isRgf
-          ? 'You can only view members of your reporting RGF groups'
+          ? 'You can only view members of your assigned reading groups'
           : isRgf
             ? 'You can only view members of your BV groups'
             : 'This user is not assigned to your hierarchy',
@@ -299,7 +283,7 @@ export default createEndpoint({
       if (isRgsf) {
         const allowed = await isBvslMember(context.user, userRecord, true);
         if (!allowed) {
-          throw new AppError({ code: 'FORBIDDEN', message: 'You can only view members of your reporting RGF groups' });
+          throw new AppError({ code: 'FORBIDDEN', message: 'You can only view members of your assigned reading groups' });
         }
       } else if (scope) {
         // Caller has a guide record — enforce center-based access

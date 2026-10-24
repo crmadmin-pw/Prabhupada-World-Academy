@@ -1,5 +1,5 @@
-import { BvGroupMembers, BvGroups, Guides, Users } from '@/lib/backend-sdk';
-import { bvUserAliases } from '@/lib/bvGroupMemberScope';
+import { BvGroups, Guides, Users } from '@/lib/backend-sdk';
+import { bvUserAliases, resolveBvScopedGroups } from '@/lib/bvGroupMemberScope';
 import { isReadingGroupStaff } from '@/lib/bvGroupFacilitators';
 import { getRefId } from '@/lib/userUtils';
 
@@ -126,50 +126,11 @@ export async function callerFacilitatesReadingGroup(group: any, caller: any): Pr
   return tokensMatchCaller(facilitatorTokens(group), access.aliases);
 }
 
-async function membershipMatches(group: any, aliases: Set<string>): Promise<boolean> {
-  const groupKeys = [...new Set([group?.id, group?.groupId].filter(Boolean).map(value => String(value)))];
-  if (groupKeys.length === 0) return false;
-  const [byGroup, byGroupId] = await Promise.all([
-    group?.id
-      ? BvGroupMembers.findAll({
-        filters: { group: group.id },
-        fields: ['id', 'user', 'userId', 'memberId'],
-        limit: 500,
-      })
-      : Promise.resolve({ records: [] as any[] }),
-    BvGroupMembers.findAll({
-      filters: { groupId: groupKeys.length > 1 ? { in: groupKeys } : groupKeys[0] },
-      fields: ['id', 'user', 'userId', 'memberId'],
-      limit: 500,
-    }),
-  ]);
-  return [...byGroup.records, ...byGroupId.records].some(row =>
-    identityTokens([row.user, row.userId, row.memberId]).some(token => aliases.has(token.toLowerCase())),
-  );
-}
-
-/**
- * The attendance screen lists every reading group assigned to this RGF or RGSF,
- * including a group saved on the profile or membership when the facilitator id
- * on the group is a different alias. Saving must follow that same assignment.
- */
+/** Attendance writes use the same assignments as the group list. */
 async function assignedStaffCanRecord(group: any, caller: any, access: CallerAccess): Promise<boolean> {
   if (!isReadingGroupStaff(access.profile) && !isReadingGroupStaff(caller)) return false;
-  const groupRefs = new Set(identityTokens([group?.id, group?.groupId, group?.groupName]).map(token => token.toLowerCase()));
-  const assigned = identityTokens([
-    access.profile?.bvGroupId, access.profile?.bvGroupName,
-    caller?.bvGroupId, caller?.bvGroupName,
-  ]);
-  if (assigned.some(token => groupRefs.has(token.toLowerCase()))) return true;
-  if (await membershipMatches(group, access.aliases)) return true;
-
-  const parentTokens = identityTokens(access.profile?.bvReportingFacilitatorId);
-  if (parentTokens.length === 0) return false;
-  const parents = uniqueUsers((await Promise.all(parentTokens.map(findUsersByToken))).flat());
-  const parentAliases = new Set(parentTokens.map(token => token.toLowerCase()));
-  for (const parent of parents) bvUserAliases(parent).forEach(alias => parentAliases.add(alias));
-  return identityTokens([group?.bvslLeader, group?.bvslId, group?.bvslName])
-    .some(token => parentAliases.has(token.toLowerCase()));
+  const groups = await resolveBvScopedGroups({ ...caller, ...access.profile });
+  return groups.some(allowed => allowed.id === String(group.id));
 }
 
 export async function callerCanRecordGroupAttendance(group: any, caller: any): Promise<boolean> {

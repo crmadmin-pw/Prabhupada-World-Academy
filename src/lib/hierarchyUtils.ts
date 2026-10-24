@@ -209,21 +209,25 @@ export function resolveHierarchyScope(caller: any, users: any[], groups: any[] =
     }
   }
   const groupOwners = new Set(scope);
-  if (rgsf) {
-    const parentRefs = new Set(hierarchyRefs(caller.bvReportingFacilitatorId || stored?.bvReportingFacilitatorId));
-    for (const user of users) if (eligible(user) && isUserInHierarchy(user, parentRefs)) {
-      hierarchyAliases(user).forEach(key => groupOwners.add(key));
-    }
-    parentRefs.forEach(key => groupOwners.add(key));
-  }
+  // Legacy RGSF assignments can live on the profile instead of the group.
+  // An explicit staff listing takes precedence over that compatibility link.
+  const staffRefs = (group: any) => hierarchyRefs([
+    group.bvslId, group.bvslLeader, group.subFacilitatorId, group.rgsfId, group.subFacilitator,
+  ]);
+  const listedStaff = groups.some(group => staffRefs(group).some(ref => callerKeys.has(ref)));
+  const assignedGroupRefs = new Set(rgsf && !listedStaff
+    ? hierarchyRefs([stored?.bvGroupId ?? caller.bvGroupId, stored?.bvGroupName ?? caller.bvGroupName])
+    : []);
+
   const groupIds = new Set<string>();
   for (const group of groups) {
     if (group.isActive === false || !eligible(group)) continue;
-    const owners = hierarchyRefs([group.bvslId, group.bvslLeader, group.subFacilitatorId, group.rgsfId, group.subFacilitator]);
+    const owners = staffRefs(group);
     const guides = hierarchyRefs(group.guide);
     const supervisors = hierarchyRefs([group.supervisorId, group.supervisorUserId]);
     if (admin && guides.length && !guides.some(ref => scope.has(ref))) continue;
-    if (owners.some(ref => groupOwners.has(ref)) || supervisors.some(ref => scope.has(ref)) || (!(rgsf && !admin && !supervisor && !rgf) && guides.some(ref => scope.has(ref)))) {
+    const assignedToCaller = hierarchyRefs([group.id, group.groupId, group.groupName]).some(ref => assignedGroupRefs.has(ref));
+    if (assignedToCaller || owners.some(ref => groupOwners.has(ref)) || supervisors.some(ref => scope.has(ref)) || (!(rgsf && !admin && !supervisor && !rgf) && guides.some(ref => scope.has(ref)))) {
       hierarchyRefs([group.id, group.groupId]).forEach(key => groupIds.add(key));
     }
   }
@@ -250,9 +254,9 @@ export function resolveHierarchyScope(caller: any, users: any[], groups: any[] =
 
 const USER_CHAIN_FIELDS = [...HIERARCHY_IDENTITY_FIELDS, 'role', 'guide', 'selectedGuideId', 'segment', 'isPrabhupadaWorldUser',
   'bvReportingAdminId', 'bvReportingSupervisorId', 'bvReportingFacilitatorId', 'bvSupervisorGuideId', 'sadhanaMentor',
-  'folkResidencies', 'residency', 'isBvAdmin', 'isBvSuperAdmin', 'isPwAdmin', 'isBvSupervisor', 'isBvMentor',
+  'folkResidencies', 'residency', 'bvGroupId', 'bvGroupName', 'isBvAdmin', 'isBvSuperAdmin', 'isPwAdmin', 'isBvSupervisor', 'isBvMentor',
   'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator', 'isSadhanaMentor'];
-const GROUP_CHAIN_FIELDS = ['id', 'groupId', 'guide', 'segment', 'isActive', 'isPrabhupadaWorldUser', 'bvslId', 'bvslLeader', 'subFacilitatorId', 'rgsfId', 'subFacilitator', 'supervisorId', 'supervisorUserId'];
+const GROUP_CHAIN_FIELDS = ['id', 'groupId', 'groupName', 'guide', 'segment', 'isActive', 'isPrabhupadaWorldUser', 'bvslId', 'bvslLeader', 'subFacilitatorId', 'rgsfId', 'subFacilitator', 'supervisorId', 'supervisorUserId'];
 const MEMBERSHIP_CHAIN_FIELDS = ['id', 'user', 'userId', 'memberId', 'group', 'groupId', 'isActive', 'status'];
 const GUIDE_CHAIN_FIELDS = ['id', 'guideId', 'email', 'userId', 'folkResidencies', ...HIERARCHY_IDENTITY_FIELDS];
 const RESIDENCY_CHAIN_FIELDS = ['id', 'residencyId', 'residencyName', 'guideIds', 'guides'];

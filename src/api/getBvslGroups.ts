@@ -300,7 +300,6 @@ export default createEndpoint({
     let defaultBvslName = 'RGF';
     const isRgsfRequest = input.viewRole === 'RGSF';
     let rgsfCallerKeys = new Set<string>();
-    let rgsfParentKeys = new Set<string>();
     let callerKeys = new Set<string>();
     let userRecord: any = null;
 
@@ -326,7 +325,6 @@ export default createEndpoint({
       rememberUser(identity, userRecord);
       
       const dbUserId = userRecord?.id || input.bvslId;
-      const parentRgfId = (userRecord as any)?.bvReportingFacilitatorId;
       defaultBvslName = userRecord?.fullName || '';
       const isRgsfView = input.viewRole === 'RGSF';
  
@@ -349,26 +347,7 @@ export default createEndpoint({
       );
       rgsfCallerKeys = callerKeys;
 
-      // RGSFs inherit the full group scope of their reporting RGF. Resolve
-      // every parent alias because groups created at different times may
-      // store a Firestore id, public userId, or email.
-      const parentRgfKeys = new Set<string>();
-      if (parentRgfId) parentRgfKeys.add(String(parentRgfId).toLowerCase());
-      if (parentRgfId) {
-        // userId, then document id, then email: the same precedence as the
-        // former one-after-another lookups, resolved in a single round trip.
-        const parent = (await Promise.all([
-          Users.findOne({ filters: { userId: String(parentRgfId) }, fields: PROFILE_FIELDS }),
-          Users.findOne({ id: String(parentRgfId), fields: PROFILE_FIELDS }),
-          Users.findOne({ filters: { email: String(parentRgfId) }, fields: PROFILE_FIELDS }),
-        ])).find(Boolean);
-        [parent?.id, parent?.userId, parent?.email].filter(Boolean).forEach(value => parentRgfKeys.add(String(value).toLowerCase()));
-        rememberUser(identity, parent);
-      }
-      rgsfParentKeys = parentRgfKeys;
-
-      // RGSF dashboard shows all groups facilitated by its reporting RGF,
-      // while retaining direct assignments for legacy group records.
+      // Reporting to an RGF does not assign their other groups.
       groupRecords = records.filter((g: any) => {
         const owners = ownerKeys(g);
         const groupRefs = [g.id, g.groupId, g.groupName].filter(Boolean).map((value: unknown) => String(value).toLowerCase());
@@ -382,16 +361,14 @@ export default createEndpoint({
           .map((value) => String(value).toLowerCase());
 
         if (isRgsfView) {
-          const isParentGroup = owners.some((value) => parentRgfKeys.has(value));
           const isCallerOwnedLegacyGroup = owners.some((value) => callerKeys.has(value));
-          return isParentGroup || isCallerOwnedLegacyGroup || subFacilitatorValues.some((value) => callerKeys.has(value)) || assignedToCaller;
+          return isCallerOwnedLegacyGroup || subFacilitatorValues.some((value) => callerKeys.has(value)) || assignedToCaller;
         }
 
         return (
           owners.some(value => callerKeys.has(value)) ||
           assignedToCaller ||
-          subFacilitatorValues.some((value) => callerKeys.has(value)) ||
-          (!!parentRgfId && owners.some(value => value === String(parentRgfId).toLowerCase()))
+          subFacilitatorValues.some((value) => callerKeys.has(value))
         );
       });
     }
@@ -426,7 +403,6 @@ export default createEndpoint({
         .map((value) => String(value).toLowerCase());
       if (ownerValues.some(value => rgsfCallerKeys.has(value))) return 3;
       if (subValues.some(value => rgsfCallerKeys.has(value))) return 2;
-      if (ownerValues.some(value => rgsfParentKeys.has(value))) return 1;
       return 0;
     };
     for (const group of groupRecords) {

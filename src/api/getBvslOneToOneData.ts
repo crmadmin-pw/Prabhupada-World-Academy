@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { createEndpoint, Users, OneToOneMeetings, BvGroups, BvGroupMembers } from '@/lib/backend-sdk';
 import { getScopedHierarchyUserIds, isHierarchyAdmin, readScopedUsers } from '../lib/hierarchyUtils';
 import { organizationalDepartment } from '../lib/directoryDepartment';
-import { resolveBvGroupFacilitatorUsers, resolveBvGroupMemberUsers } from '../lib/bvGroupMemberScope';
+import { resolveBvGroupFacilitatorUsers, resolveBvGroupMemberUsers, resolveBvScopedGroups } from '../lib/bvGroupMemberScope';
 
 function getWeeks(weeksBack: number): string[] {
   const today = new Date();
@@ -112,10 +112,7 @@ export default createEndpoint({
     const isRgsf = !!context.user.isBvSubFacilitator ||
       String(context.user.role || '').toUpperCase().replace(/\s+/g, '_') === 'RGSF';
     if ((isRgsf || filteredUsers.length === 0) && scopedUserIds !== null) {
-      const { records: allGroups } = await BvGroups.findAll({
-        limit: 500,
-        fields: ['id', 'groupId', 'bvslLeader', 'bvslId', 'subFacilitatorId', 'rgsfId', 'subFacilitator'],
-      });
+      const scopedGroups = await resolveBvScopedGroups(context.user);
       const { records: allMemberships } = await BvGroupMembers.findAll({
         limit: 2500,
         fields: ['id', 'user', 'userId', 'memberId', 'group', 'groupId'],
@@ -125,31 +122,9 @@ export default createEndpoint({
         if (Array.isArray(value)) return value.flatMap(refValues);
         return value ? [String(value).toLowerCase()] : [];
       };
-      const callerKeys = new Set([dbUserId, customUserId, context.user.email]
-        .filter(Boolean).map(value => String(value).toLowerCase()));
-      const callerRecord = await Users.findOne({ id: dbUserId, fields: ['id', 'userId', 'email', 'bvReportingFacilitatorId'] }) ||
-        await Users.findOne({ filters: { userId: customUserId }, fields: ['id', 'userId', 'email', 'bvReportingFacilitatorId'] });
-      const parentKeys = new Set([context.user.bvReportingFacilitatorId, (callerRecord as any)?.bvReportingFacilitatorId]
-        .filter(Boolean).map((value: any) => String(value).toLowerCase()));
-      if (parentKeys.size > 0) {
-        const parentQueries = await Promise.all([
-          Users.findAll({ filters: { id: { in: Array.from(parentKeys) } } as any, fields: ['id', 'userId', 'email'], limit: 20 }),
-          Users.findAll({ filters: { userId: { in: Array.from(parentKeys) } } as any, fields: ['id', 'userId', 'email'], limit: 20 }),
-          Users.findAll({ filters: { email: { in: Array.from(parentKeys) } } as any, fields: ['id', 'userId', 'email'], limit: 20 }),
-        ]);
-        parentQueries.flatMap(result => result.records || []).forEach((parent: any) => [parent.id, parent.userId, parent.email].filter(Boolean)
-          .forEach((value: any) => parentKeys.add(String(value).toLowerCase())));
-      }
-      const userGroupIds = allGroups.filter((g: any) => {
-        const assignedToCaller = refValues([
-          g.subFacilitatorId, g.rgsfId, g.subFacilitator,
-          g.bvslLeader, g.bvslId,
-        ]).some(value => callerKeys.has(value));
-        const assignedToReportingRgf = isRgsf && refValues([g.bvslLeader, g.bvslId]).some(value => parentKeys.has(value));
-        return assignedToCaller || assignedToReportingRgf;
-      }).flatMap((g: any) => [g.id, g.groupId]
-        .filter(Boolean)
-        .map(value => String(value).toLowerCase()));
+      const userGroupIds = scopedGroups.flatMap(group => [group.id, group.groupId].map(value => value.toLowerCase()));
+      // An RGSF with no assigned groups must not retain hierarchy-only results.
+      if (isRgsf) filteredUsers = [];
       const userGroupIdSet = new Set(userGroupIds);
 
       if (userGroupIds.length > 0) {

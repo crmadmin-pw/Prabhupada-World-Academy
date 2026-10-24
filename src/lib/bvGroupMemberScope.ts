@@ -221,8 +221,8 @@ export async function resolveBvDepartmentFacilitatorUsers(
 
 /**
  * Resolve the active BV groups the caller is permitted to monitor.
- * Supervisors inherit groups from RGFs that report to them. RGF/RGSF behavior
- * remains identical to the existing dashboards.
+ * Supervisors inherit groups from RGFs that report to them. RGSFs require
+ * explicit group assignments; their reporting RGF does not grant group access.
  */
 export async function resolveBvScopedGroups(
   contextUser: UserRecord,
@@ -279,35 +279,6 @@ export async function resolveBvScopedGroups(
   ];
   const allUsersResult = await readScopedUsers(contextUser, { fields: reportingFields, limit: 5000 });
   const allUsers = allUsersResult.records as UserRecord[];
-
-  const parentAliases = new Set([
-    contextUser.bvReportingFacilitatorId,
-    (caller as UserRecord | undefined)?.bvReportingFacilitatorId,
-  ].flatMap(refs));
-
-  if (parentAliases.size > 0) {
-    const known = new Set(allUsers.flatMap(user => bvUserAliases(user)));
-    const rawParents = [contextUser.bvReportingFacilitatorId, (caller as UserRecord | undefined)?.bvReportingFacilitatorId]
-      .flatMap(value => Array.isArray(value) ? value.flat(Infinity) : [value])
-      .filter(Boolean)
-      .map(value => String(value).trim())
-      .filter(Boolean);
-    const missing = [...new Set([...parentAliases, ...rawParents])].filter(alias => !known.has(alias) && !known.has(alias.toLowerCase()));
-    for (const field of ['id', 'userId', 'email']) {
-      for (let index = 0; index < missing.length; index += 30) {
-        const chunk = missing.slice(index, index + 30);
-        const { records } = await Users.findAll({
-          filters: { [field]: { in: chunk } }, fields: reportingFields, limit: 30,
-        });
-        allUsers.push(...(records as UserRecord[]));
-      }
-    }
-    for (const parent of allUsers) {
-      if (bvUserAliases(parent).some(alias => parentAliases.has(alias))) {
-        bvUserAliases(parent).forEach(alias => parentAliases.add(alias));
-      }
-    }
-  }
 
   const role = roleValue(contextUser);
   const callerRole = roleValue(caller);
@@ -402,8 +373,8 @@ export async function resolveBvScopedGroups(
     const rgsfRefs = refs([group.subFacilitatorId, group.rgsfId, group.subFacilitator]);
     const groupIdentityRefs = refs([group.id, group.groupId, group.groupName]);
     const legacyNameMatch = isFacilitator && facilitatorRefs.some(ref => callerNameAliases.has(ref));
-    const assignedToCaller = isFacilitator && groupIdentityRefs.some(ref =>
-      assignedGroupRefs.has(ref) || memberGroupRefs.has(ref)
+    const assignedToCaller = !listed.listed && isFacilitator && groupIdentityRefs.some(ref =>
+      assignedGroupRefs.has(ref) || (assignedGroupRefs.size === 0 && memberGroupRefs.has(ref))
     );
     if (options.segment) {
       const explicitSegment = departmentValue(group.segment);
@@ -437,7 +408,6 @@ export async function resolveBvScopedGroups(
     if (isRgsf) {
       return leaderRefs.some(ref => callerAliases.has(ref)) ||
         rgsfRefs.some(ref => callerAliases.has(ref)) ||
-        leaderRefs.some(ref => parentAliases.has(ref)) ||
         legacyNameMatch ||
         assignedToCaller;
     }

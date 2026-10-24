@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { createEndpoint, BvGroupMembers, BvSessions, BvAttendance, Users, AppError } from '@/lib/backend-sdk';
 import { findAttendanceGroup } from '@/lib/bvAttendanceAccess';
-import { bvUserAliases } from '../lib/bvGroupMemberScope';
+import { bvUserAliases, resolveBvScopedGroups } from '../lib/bvGroupMemberScope';
 import { countsAsGroupMember, facilitatorRoleLabel, loadGroupFacilitators, loadGroupSupervisors } from '@/lib/bvGroupFacilitators';
 
 const GROUP_FIELDS = [
@@ -24,9 +24,11 @@ export default createEndpoint({
     date: z.string(),
   }),
   outputSchema: z.any(),
-  execute: async ({ input }) => {
+  execute: async ({ input, context }) => {
     const group = await findAttendanceGroup(input.groupId, GROUP_FIELDS);
     if (!group) throw new AppError({ code: 'NOT_FOUND', message: 'Group not found' });
+
+    await resolveBvScopedGroups({ ...context.user }, { groupId: group.id });
 
     const groupKeys = [group.id, group.groupId].filter(Boolean);
     const [byGroup, byGroupId] = await Promise.all([

@@ -18,6 +18,7 @@ const group = {
   id: 'BV-GROUP-VDN',
   groupId: 'BV-GROUP-VDN',
   groupName: 'VDN Group',
+  bvslId: facilitator.userId,
 };
 const fixture: Record<string, any[]> = {
   Users: [facilitator, devotee],
@@ -62,7 +63,7 @@ test('a new attendance date lists every member and marks nobody present', async 
     name: member.fullName,
     present: member.present,
     minutes: member.attendedMinutes,
-  })), [
+  })).sort((left: any, right: any) => left.name.localeCompare(right.name)), [
     { name: 'BITS VEDANG', present: null, minutes: 0 },
     { name: 'Vedanarayana Dasa', present: null, minutes: 0 },
   ]);
