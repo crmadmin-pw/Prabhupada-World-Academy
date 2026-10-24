@@ -1,6 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { emptyPwTargets, formatPwProgress, pwFieldPercent, pwScoreFromFieldValues, pwSnapshotMeta, scorePwSadhana, scorePwSadhanaV2 } from '../src/lib/pwSadhana';
+import { emptyPwTargets, formatPwProgress, pwFieldPercent, pwFormFields, pwScoreFromFieldValues, pwSnapshotMeta, scorePwSadhana, scorePwSadhanaV2 } from '../src/lib/pwSadhana';
+
+test('PW form includes an optional Seva description field without scoring it', () => {
+  const field = pwFormFields({
+    wakeUp: '04:30', sleep: '22:30', chanting: 16, readingMin: 30, hearingMin: 30, sevaMin: 60,
+  }, 'rgf').find(item => item.fieldKey === 'sevaDescription');
+  assert.equal(field?.fieldLabel, 'Seva description');
+  assert.equal(field?.fieldType, 'text');
+  assert.equal(field?.isRequired, false);
+  assert.equal(field?.contributesToScore, false);
+});
 
 test('chanting and reading cap at 100 percent when the member exceeds the assignment', () => {
   const scored = scorePwSadhana({ chanting: 12, reading: 45, chantingTarget: 8, readingTarget: 30 });

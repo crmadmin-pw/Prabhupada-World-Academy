@@ -481,6 +481,7 @@ export function pwFormFields(targets: PwTargets, source: string) {
     { fieldKey: 'hearing', fieldLabel: 'Hearing (minutes)', fieldType: 'number', isRequired: true, helpText: targetText('Hearing', pwTarget(targets.hearingMin), ' min'), minValue: 0, maxValue: 1440 },
     { fieldKey: 'heardSbBefore1030', fieldLabel: 'Heard SB class before 10:30 AM', fieldType: 'toggle', isRequired: false, helpText: 'Recorded with the day. It does not change the points.' },
     { fieldKey: 'seva', fieldLabel: 'Seva (minutes)', fieldType: 'number', isRequired: true, helpText: targetText('Seva', pwTarget(targets.sevaMin), ' min'), minValue: 0, maxValue: 1440 },
+    { fieldKey: 'sevaDescription', fieldLabel: 'Seva description', fieldType: 'text', isRequired: false, helpText: 'Optionally describe the seva you performed.' },
   ];
   return fields.map((field, index) => ({
     fieldId: `pw_${field.fieldKey}`,
