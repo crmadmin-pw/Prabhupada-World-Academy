@@ -311,11 +311,6 @@ export default createEndpoint({
                          context.user.role === 'SUPER_ADMIN' ||
                          context.user.role === 'SUPER_GUIDE';
 
-    // Only Super Admins can assign BV Admin role
-    if ((input.role === 'ADMIN' || input.multiRoles?.isAdmin === true) && !isSuperAdmin) {
-      throw new AppError({ code: 'FORBIDDEN', message: 'Only Super Admins can assign BV Admin roles' });
-    }
-
     // Hierarchy parent: default to calling Admin if not explicitly specified
     let targetParentId = input.parentId || '';
     let targetParentName = input.parentName || '';
@@ -327,6 +322,14 @@ export default createEndpoint({
     const targetUser = await resolveMemberRecord(input.userId);
     if (!targetUser) {
       throw new AppError({ code: 'NOT_FOUND', message: `User not found for id: ${input.userId}` });
+    }
+
+    // Adding another role may retain an existing admin flag. Both granting
+    // and revoking that flag require a Super Admin, including full unassignment.
+    const requestedAdmin = input.isBvMember === false ? false
+      : input.multiRoles?.isAdmin ?? (input.role === 'ADMIN' ? true : !!targetUser.isBvAdmin);
+    if (!isSuperAdmin && requestedAdmin !== !!targetUser.isBvAdmin) {
+      throw new AppError({ code: 'FORBIDDEN', message: 'Only Super Admins can change BV Admin roles' });
     }
 
     const dbId = String(targetUser.id);
@@ -418,7 +421,7 @@ export default createEndpoint({
       updates.isBvMember = true;
       updates.sadhanaMentor = null;
       if (input.multiRoles) {
-        updates.isBvAdmin = !!input.multiRoles.isAdmin;
+        updates.isBvAdmin = input.multiRoles.isAdmin ?? !!targetUser.isBvAdmin;
         updates.isBvSupervisor = !!input.multiRoles.isSupervisor;
         updates.isBvMentor = !!input.multiRoles.isSupervisor;
         updates.isBvFacilitator = !!input.multiRoles.isFacilitator;
@@ -461,6 +464,8 @@ export default createEndpoint({
         updates.isBvSubFacilitator = false;
       }
     }
+
+    if (!isSuperAdmin) updates.isBvAdmin = !!targetUser.isBvAdmin;
 
     if (pwGroupRoles) {
       // Flags follow the groups that still name this person. RGF in one group

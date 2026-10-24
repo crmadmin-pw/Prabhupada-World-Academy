@@ -54,7 +54,7 @@ test('a complete day scores 60 points and 100 percent', () => {
     seva: 60,
     bvAttendedMinutes: 20,
     bvSessionMinutes: 30,
-    submittedAt: '2026-10-15T04:00:00.000Z',
+    submittedAt: '2026-10-16T04:00:00.000Z',
     entryDate: '2026-10-15',
     submissionDeadline: '10:00',
     targets: fullTargets,
@@ -74,7 +74,7 @@ test('time, band, chanting, and attendance boundaries match the rubric', () => {
     seva: 46,
     bvAttendedMinutes: 15,
     bvSessionMinutes: 30,
-    submittedAt: '2026-10-15T06:30:00.000Z',
+    submittedAt: '2026-10-16T06:30:00.000Z',
     entryDate: '2026-10-15',
     submissionDeadline: '10:00',
     targets: fullTargets,
@@ -97,7 +97,7 @@ test('a waive-off with a reason scores full points and a missing target is left 
     reading: 0,
     waiveChanting: true,
     waiveChantingReason: 'Travel',
-    submittedAt: '2026-10-15T03:00:00.000Z',
+    submittedAt: '2026-10-16T03:00:00.000Z',
     entryDate: '2026-10-15',
     targets: { ...fullTargets, wakeUp: '04:30', sleep: null, hearingMin: null, sevaMin: null },
   });
@@ -121,7 +121,7 @@ test('an all-zero day with no other targets scores 0 percent', () => {
     reading: 0,
     hearing: 0,
     seva: 0,
-    submittedAt: '2026-10-15T04:00:00.000Z',
+    submittedAt: '2026-10-16T09:00:00.000Z',
     entryDate: '2026-10-15',
     submissionDeadline: '10:00',
     targets: emptyPwTargets(),
@@ -139,7 +139,7 @@ test('a saved 60-point day is read back from its snapshot', () => {
   const scored = scorePwSadhanaV2({
     wakeUp: '04:30', sleep: '22:30', chanting: 8, reading: 40, hearing: 30, seva: 60,
     bvAttendedMinutes: 20, bvSessionMinutes: 30,
-    submittedAt: '2026-10-15T04:00:00.000Z', entryDate: '2026-10-15', targets: fullTargets,
+    submittedAt: '2026-10-16T04:00:00.000Z', entryDate: '2026-10-15', targets: fullTargets,
   });
   const stored = pwScoreFromFieldValues({
     chanting: 8,

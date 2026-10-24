@@ -1,3 +1,4 @@
+import SadhanaWhatsAppReminder from './SadhanaWhatsAppReminder';
 import { useReactiveEffect } from '@/hooks/useReactiveEffect';
 import TableScrollArea from '@/components/mobile/TableScrollArea';
 import FilterPanel from '@/components/mobile/FilterPanel';
@@ -29,6 +30,8 @@ type CellStatus = 'filled' | 'late' | 'missed';
 type UserRow = {
   id: string;
   email?: string;
+  phone?: string | null;
+  segment?: string | null;
   fullName: string;
   userId: string;
   residencyName: string;
@@ -213,6 +216,7 @@ function MatrixView({ data, isPw }: { data: ReportData; isPw: boolean }) {
                 {/* Name */}
                 <td style={{ left: STICKY.name.left, minWidth: STICKY.name.width }} className={`sticky z-10 ${rowBg} px-3 py-1.5 border-r border-border/40`}>
                   <span className="font-medium leading-tight">{u.fullName}</span>
+                  {!isPw && <SadhanaWhatsAppReminder {...u} missingDates={dates.filter(date => userDates[date] === 'missed')} />}
                 </td>
                 {/* Missed/Late count — always visible */}
                 <td style={{ left: STICKY.missed.left, minWidth: STICKY.missed.width }} className={`sticky z-10 ${rowBg} px-1 py-1.5 text-center border-r border-border/40`}>
@@ -363,6 +367,7 @@ function ListView({ data, isPw }: { data: ReportData; isPw: boolean }) {
                               <span className="text-destructive text-xs font-bold">✗</span>
                               <div className="min-w-0">
                                 <p className="text-xs font-medium truncate">{u.fullName}</p>
+                                {!isPw && <SadhanaWhatsAppReminder {...u} missingDates={[date]} />}
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   {u.guideName && <p className="text-[10px] text-muted-foreground truncate">{u.guideName}</p>}
                                   {!isPw && u.guideName && u.residencyType && <span className="text-[10px] text-muted-foreground">·</span>}
@@ -481,6 +486,7 @@ function MobileView({ data, isPw }: { data: ReportData; isPw: boolean }) {
                 </div>
               )}
             </button>
+            {!isPw && missedDates.length > 0 && <div className="px-4 pb-2"><SadhanaWhatsAppReminder {...u} missingDates={missedDates} /></div>}
             {isExpanded && hasProblem && (
               <div className="px-4 pb-3 pt-0 border-t border-border/40 space-y-2 mt-1">
                 {missedDates.length > 0 && (

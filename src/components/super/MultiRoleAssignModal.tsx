@@ -115,7 +115,7 @@ export default function MultiRoleAssignModal({
       let parentId = '';
       let parentName = '';
 
-      if (isAdmin) {
+      if (isAdmin && isSuperAdmin) {
         primaryRole = 'ADMIN';
       } else if (isSupervisor) {
         primaryRole = 'SUPERVISOR';
@@ -151,7 +151,7 @@ export default function MultiRoleAssignModal({
         } : {}),
         ...(departmentGroups.length > 0 ? { supervisedGroupIds: isSupervisor ? supervisedIds : [] } : {}),
         multiRoles: {
-          isAdmin,
+          ...(isSuperAdmin ? { isAdmin } : {}),
           isSupervisor,
           isFacilitator: effectiveFacilitator,
           isSubFacilitator: effectiveSubFacilitator,
@@ -201,6 +201,9 @@ export default function MultiRoleAssignModal({
         </DialogHeader>
 
         <div className="space-y-4 py-2">
+          {isAdmin && !isSuperAdmin && (
+            <p className="text-xs text-muted-foreground">The existing BV Admin role will be retained. Only a Super Admin can change it.</p>
+          )}
           {/* 1. BV Admin */}
           {isSuperAdmin && (
             <div className="p-3 border rounded-lg bg-card space-y-2">

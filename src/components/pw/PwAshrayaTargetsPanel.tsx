@@ -27,13 +27,11 @@ function numberOrNull(value: string): number | null {
 }
 
 export default function PwAshrayaTargetsPanel() {
-  const [deadline, setDeadline] = useState('10:00');
   const [levels, setLevels] = useState<Record<string, LevelTargets>>({});
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     getPwAshrayaTargets({}).then(config => {
-      setDeadline(config.submissionDeadline || '10:00');
       const next: Record<string, LevelTargets> = {};
       for (const level of ASHRAY_LEVELS) {
         const saved = config.levels?.[level] || {};
@@ -58,7 +56,7 @@ export default function PwAshrayaTargetsPanel() {
     setSaving(true);
     try {
       await setPwAshrayaTargets({
-        submissionDeadline: deadline,
+        submissionDeadline: '10:00',
         levels: Object.fromEntries(ASHRAY_LEVELS.map(level => {
           const row = levels[level] || EMPTY;
           return [level, {
@@ -85,10 +83,7 @@ export default function PwAshrayaTargetsPanel() {
         <h3 className="font-semibold">Ashraya-level targets</h3>
         <p className="text-sm text-muted-foreground">Used for non-BV members who do not have a sadhana mentor. Members with a mentor use the mentor&apos;s targets instead.</p>
       </div>
-      <label className="flex items-center gap-2 text-sm">
-        Submission deadline
-        <Input type="time" className="w-32" value={deadline} onChange={event => setDeadline(event.target.value)} />
-      </label>
+      <p className="text-sm text-muted-foreground">PW submission timing (IST): 6:00 PM on the Sadhana date through 10:00 AM the next day earns 2 points; after 10:00 AM through 2:00 PM earns 1 point; later earns 0 timely-submission points.</p>
       <form className="overflow-x-auto" autoComplete="off" onSubmit={event => event.preventDefault()}>
         <table className="w-full text-sm">
           <thead>

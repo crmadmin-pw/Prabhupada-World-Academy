@@ -17,7 +17,7 @@ const RULES: Record<string, { bands: { label: string; points: string }[]; note?:
       { label: 'Up to 60 minutes late', points: '2' },
       { label: 'Later', points: '0' },
     ],
-    note: 'A wake past midnight counts as late. A waive-off with a reason scores 4.',
+    note: 'Record the previous night’s sleep time for the selected Sadhana date. Going to sleep past midnight counts as late. A waive-off with a reason scores 4.',
   },
   chanting: {
     bands: [
@@ -40,10 +40,11 @@ const RULES: Record<string, { bands: { label: string; points: string }[]; note?:
   },
   submitted: {
     bands: [
-      { label: 'By the deadline', points: '2' },
-      { label: 'After the deadline and by 2:00 PM', points: '1' },
-      { label: 'Later', points: '0' },
+      { label: '6:00 PM on the Sadhana date through 10:00 AM the next day', points: '2' },
+      { label: 'After 10:00 AM through 2:00 PM the next day', points: '1' },
+      { label: 'After 2:00 PM the next day', points: '0' },
     ],
+    note: 'All times are IST. Submission before 6:00 PM on the Sadhana date is blocked. Entries for the previous 7 days are allowed; late entries retain all other applicable points.',
   },
   seva: {
     bands: [{ label: 'Same bands as reading, from the minutes you report', points: '' }],

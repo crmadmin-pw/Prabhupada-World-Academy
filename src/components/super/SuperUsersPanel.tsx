@@ -2,7 +2,7 @@ import { useReactiveLoader } from '@/hooks/useReactiveLoader';
 import FilterPanel from '@/components/mobile/FilterPanel';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -17,7 +17,7 @@ import {
   getGuideUsers, getGuides, tagUserAsBvsl, assignGuide, tagUserAsFolkLead,
   tagUserAsTripCoordinator, tagUserAsBvMentor, tagUserAsSadhanaMentor, assignBvRole,
   getActiveSadhanaMentors, assignSadhanaMentor, getBvslGroups, getAllBvGroupsAdmin, transferBvGroupMember,
-  updateBvGroup,
+  updateBvGroup, getResidenciesForGuide, updateUserResidency,
 } from '@/lib/endpoints-sdk';
 import { sendOrQueue } from '@/lib/offlineQueue';
 import type { GetGuideUsersOutputType, GetGuidesOutputType } from '@/lib/endpoints-sdk';
@@ -381,6 +381,7 @@ interface SuperUsersPanelProps {
 
 export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdminOverride }: SuperUsersPanelProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const mobile = useIsMobile();
   const [expandedRows, setExpandedRows] = useState<Set<string>>(() => new Set());
   const { profile } = useUserProfile();
@@ -388,6 +389,16 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
 
   const effectiveSegment = segment || (isPwAdmin ? 'PW' : 'FOLK');
   const isPwMode = effectiveSegment === 'PW';
+  const filterStorageKey = `guide_member_directory_filters_${effectiveSegment.toLowerCase()}`;
+  const readSavedFilters = () => {
+    if (typeof window === 'undefined') return {};
+    try {
+      return JSON.parse(window.sessionStorage.getItem(filterStorageKey) || '{}');
+    } catch {
+      return {};
+    }
+  };
+  const savedFilters = useRef<Record<string, unknown>>(readSavedFilters());
   const normalizedProfileRole = String(profile?.role || '').trim().replace(/[\s-]+/g, '_').toUpperCase();
   const canManageBulkUsers = !isPwMode && ['GUIDE', 'SUPER_GUIDE', 'SUPER_ADMIN'].includes(normalizedProfileRole);
 
@@ -410,6 +421,7 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
   const pendingMentors = useRef(new Map<string, PendingMentor>());
   const [guides, setGuides] = useState<GuideEntry[]>([]);
   const [bvGroups, setBvGroups] = useState<BvGroupOption[]>([]);
+  const [folkResidencies, setFolkResidencies] = useState<Array<{ id: string; residencyName: string }>>([]);
 
   const myGuideId = useMemo(() => {
     const myEmail = ((profile as any)?.email || profile?.userId || userEmail || '').toLowerCase();
@@ -418,12 +430,12 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
   }, [guides, profile, userEmail]);
 
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState(() => typeof savedFilters.current.search === 'string' ? savedFilters.current.search : '');
+  const [page, setPage] = useState(() => Number.isInteger(savedFilters.current.page) && Number(savedFilters.current.page) > 0 ? Number(savedFilters.current.page) : 1);
   // Department admins own the complete department member directory. Starting
   // them on a guide-specific filter silently hid approved users who had not
   // yet been assigned to a Reading Group/guide.
-  const [guideFilter, setGuideFilter] = useState('all');
+  const [guideFilter, setGuideFilter] = useState(() => typeof savedFilters.current.guideFilter === 'string' ? savedFilters.current.guideFilter : 'all');
 
   useEffect(() => {
     if (profile && !isDepartmentAdmin && myGuideId) {
@@ -431,15 +443,17 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
     }
   }, [profile, isDepartmentAdmin, myGuideId]);
 
-  const [ashrayFilter, setAshrayFilter] = useState('all');
-  const [residentFilter, setResidentFilter] = useState('all');
-  const [sortKey, setSortKey] = useState<SortKey>('fullName');
-  const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [ashrayFilter, setAshrayFilter] = useState(() => typeof savedFilters.current.ashrayFilter === 'string' ? savedFilters.current.ashrayFilter : 'all');
+  const [residentFilter, setResidentFilter] = useState(() => typeof savedFilters.current.residentFilter === 'string' ? savedFilters.current.residentFilter : 'all');
+  const [sortKey, setSortKey] = useState<SortKey>(() => ['fullName', 'guideName', 'ashrayLevel', 'latestScore', 'latestEntryDate', 'isResident'].includes(String(savedFilters.current.sortKey)) ? savedFilters.current.sortKey as SortKey : 'fullName');
+  const [sortDir, setSortDir] = useState<SortDir>(() => savedFilters.current.sortDir === 'desc' ? 'desc' : 'asc');
   const [bvslDialog, setBvslDialog] = useState<{ user: User; action: 'tag' | 'untag' } | null>(null);
   const [folkLeadDialog, setFolkLeadDialog] = useState<{ user: User; action: 'tag' | 'untag' } | null>(null);
   const [tripCoordDialog, setTripCoordDialog] = useState<{ user: User; action: 'tag' | 'untag' } | null>(null);
   const [bvMentorDialog, setBvMentorDialog] = useState<{ user: User; action: 'tag' | 'untag' } | null>(null);
   const [sadhanaMentorDialog, setSadhanaMentorDialog] = useState<{ user: User; action: 'tag' | 'untag' } | null>(null);
+  const [residencyDialog, setResidencyDialog] = useState<{ user: User; makeResident: boolean; residencyId?: string } | null>(null);
+  const [residencyActionLoading, setResidencyActionLoading] = useState(false);
   const [bvRoleDialog, setBvRoleDialog] = useState<{ user: User; newRole: string; roleLabel: string } | null>(null);
   const [multiRoleUser, setMultiRoleUser] = useState<User | null>(null);
   const [groupTransferDialog, setGroupTransferDialog] = useState<{ user: User; group: BvGroupOption } | null>(null);
@@ -485,7 +499,7 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
   const loadData = useReactiveLoader(async (read, silent = false) => {
     if (!silent) !read.background && setLoading(true);
     try {
-      const [{ guides: guideList }, groupsResult, mentorsList, allUsersRes] = await Promise.all([
+      const [{ guides: guideList }, groupsResult, mentorsList, residencyList, allUsersRes] = await Promise.all([
         read(() => getGuides({ segment: isPwMode ? 'PW' : 'FOLK' })),
         (isSuperAdmin
           ? read(() => getBvslGroups({ bvslId: 'ALL', segment: isPwMode ? 'PW' : 'FOLK' }))
@@ -497,6 +511,7 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
             }))
         ).catch(() => ({ groups: [] })),
         isPwAdmin ? read(() => getActiveSadhanaMentors({ segment: 'PW' })).catch(() => []) : Promise.resolve([]),
+        isPwMode ? Promise.resolve([]) : read(() => getResidenciesForGuide({})).catch(() => []),
         read(() => getGuideUsers({
           guideId: 'ALL',
           statusFilter: 'all',
@@ -521,6 +536,10 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
         }),
       ]);
       setGuides(guideList);
+      setFolkResidencies((Array.isArray(residencyList) ? residencyList : []).map((residency: any) => ({
+        id: String(residency.id || residency.residencyId || ''),
+        residencyName: String(residency.residencyName || ''),
+      })).filter(residency => residency.id));
       setBvGroups((groupsResult.groups || []).map((group: any) => ({
         id: group.id || group.groupDbId || group.groupId,
         groupId: group.groupId || group.id || group.groupDbId,
@@ -770,6 +789,44 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
       void loadData(true);
     } catch (err: any) {
       toast.error(err?.message || 'Failed to update Sadhana Mentor role');
+    }
+  };
+
+  const handleResidencyAction = async () => {
+    if (!residencyDialog) return;
+    const { user, makeResident, residencyId } = residencyDialog;
+    if (makeResident && !residencyId) {
+      toast.error('Select a FOLK residency first');
+      return;
+    }
+    setResidencyActionLoading(true);
+    try {
+      await updateUserResidency({ userId: user.userId, makeResident, residencyId: makeResident ? residencyId : null });
+      const residency = folkResidencies.find(item => item.id === residencyId);
+      rememberDirectoryPatch(user, makeResident ? {
+        isResident: true,
+        residencyApproved: true,
+        residencyClaimed: true,
+        residencyGuideVerified: true,
+        residency: residencyId || null,
+        residencyId: residencyId || null,
+        residencyName: residency?.residencyName || 'FOLK Resident',
+      } : {
+        isResident: false,
+        residencyApproved: false,
+        residencyClaimed: false,
+        residencyGuideVerified: false,
+        isFolkLead: false,
+      });
+      toast.success(makeResident
+        ? `${user.fullName} is now a FOLK Resident`
+        : `${user.fullName} changed to Non-Resident`);
+      setResidencyDialog(null);
+      void loadData(true);
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to update residency');
+    } finally {
+      setResidencyActionLoading(false);
     }
   };
 
@@ -1074,7 +1131,25 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
     });
   }, [users, guides, guideFilter, ashrayFilter, residentFilter, search, sortKey, sortDir, isPwAdmin, isDepartmentAdmin, isSuperAdmin, myGuideId, profile, userEmail]);
 
-  useEffect(() => { setPage(1); }, [search, guideFilter, ashrayFilter, residentFilter, sortKey, sortDir]);
+  const filterChangeInitialized = useRef(false);
+  useEffect(() => {
+    if (!filterChangeInitialized.current) {
+      filterChangeInitialized.current = true;
+      return;
+    }
+    setPage(1);
+  }, [search, guideFilter, ashrayFilter, residentFilter, sortKey, sortDir]);
+  useEffect(() => {
+    if (isPwMode) return;
+    try {
+      window.sessionStorage.setItem(filterStorageKey, JSON.stringify({ search, page, guideFilter, ashrayFilter, residentFilter, sortKey, sortDir }));
+    } catch { /* Keep the directory usable when storage is unavailable. */ }
+  }, [filterStorageKey, isPwMode, search, page, guideFilter, ashrayFilter, residentFilter, sortKey, sortDir]);
+
+  const openUser = (userId: string) => {
+    const from = `${location.pathname}${location.search}${location.hash}`;
+    navigate(`/guide/users/${userId}`, { state: { from } });
+  };
   const pageSize = mobile ? 10 : 50;
   useEffect(() => {
     const id = revealMemberId.current;
@@ -1269,12 +1344,12 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
 
                   return (
                     <tr key={u.userId} data-expanded={expandedRows.has(u.userId)} className="border-b hover:bg-accent/40 cursor-pointer"
-                      onClick={() => navigate(`/guide/users/${u.userId}`)}>
+                      onClick={() => openUser(u.userId)}>
                       {/* 1. Name */}
                       <td data-label="Name" data-summary="true" className="px-3 py-2 text-center align-middle font-medium sticky left-0 bg-background z-1 border-r border-border/40 shadow-sm">
                         <div className="flex items-center justify-between gap-2 md:justify-center">
                           <div className="min-w-0 text-center">
-                            <button type="button" className="min-h-11 min-w-0 text-center font-semibold md:min-h-0" onClick={e => { e.stopPropagation(); navigate(`/guide/users/${u.userId}`); }}>{u.fullName}</button>
+                            <button type="button" className="min-h-11 min-w-0 text-center font-semibold md:min-h-0" onClick={e => { e.stopPropagation(); openUser(u.userId); }}>{u.fullName}</button>
                             {isAccountDeleted(u.status) && <Badge variant="destructive" className="mt-1 text-[10px] py-0">Account Deleted</Badge>}
                           </div>
                           <Button variant="ghost" size="sm" className="md:hidden shrink-0 text-primary" aria-expanded={expandedRows.has(u.userId)} aria-label={`Details for ${u.fullName}`}
@@ -1510,18 +1585,34 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
                       {!isPwAdmin && (
                         <>
                           <td data-label="Residency" className="px-3 py-2 text-center align-middle">
-                            {isResident ? (
-                              <span className="inline-flex max-w-[160px] items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary">
-                                <Home className="h-3.5 w-3.5 shrink-0" />
-                                <span className="truncate">
-                                  {u.residencyName
-                                    ? String(u.residencyName).replace(/^FOLK\s+/i, '')
-                                    : 'Resident'}
+                            <div className="flex flex-col items-center gap-1">
+                              {isResident ? (
+                                <span className="inline-flex max-w-[160px] items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary">
+                                  <Home className="h-3.5 w-3.5 shrink-0" />
+                                  <span className="truncate">
+                                    {u.residencyName
+                                      ? String(u.residencyName).replace(/^FOLK\s+/i, '')
+                                      : 'Resident'}
+                                  </span>
                                 </span>
-                              </span>
-                            ) : (
-                              <span className="text-muted-foreground text-xs">Non-Resident</span>
-                            )}
+                              ) : (
+                                <span className="text-muted-foreground text-xs">Non-Resident</span>
+                              )}
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-[11px]"
+                                onClick={event => {
+                                  event.stopPropagation();
+                                  const currentResidency = Array.isArray((u as any).residency) ? (u as any).residency[0] : (u as any).residency;
+                                  const current = folkResidencies.find(item => item.id === (currentResidency || (u as any).residencyId));
+                                  setResidencyDialog({ user: u, makeResident: !isResident, residencyId: current?.id || (folkResidencies.length === 1 ? folkResidencies[0].id : undefined) });
+                                }}
+                              >
+                                Change
+                              </Button>
+                            </div>
                           </td>
                           {/* 1. Sadhana Mentor */}
                           <td data-label="Sadhana Mentor Role" className="px-3 py-2 text-center align-middle" onClick={e => e.stopPropagation()}>
@@ -1558,6 +1649,53 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
           <div className="md:hidden">{pagination}</div>
         </CardContent>
       </Card>
+
+      {residencyDialog && (
+        <AlertDialog open onOpenChange={open => !open && !residencyActionLoading && setResidencyDialog(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {residencyDialog.makeResident ? 'Change to Resident' : 'Change to Non-Resident'}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {residencyDialog.makeResident
+                  ? `Set ${residencyDialog.user.fullName} as a FOLK resident? Their Sadhana form and reports will use the resident format.`
+                  : `Change ${residencyDialog.user.fullName} to Non-Resident? Their Sadhana form and reports will use the non-resident format.`}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            {residencyDialog.makeResident && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium" htmlFor="folk-residency-select">FOLK residency</label>
+                <Select
+                  value={residencyDialog.residencyId || ''}
+                  onValueChange={value => setResidencyDialog(current => current ? { ...current, residencyId: value || undefined } : null)}
+                >
+                  <SelectTrigger id="folk-residency-select" className="w-full">
+                    <SelectValue placeholder="Select residency" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {folkResidencies.map(residency => (
+                      <SelectItem key={residency.id} value={residency.id}>{residency.residencyName || residency.id}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {folkResidencies.length === 0 && (
+                  <p className="text-xs text-destructive">No active FOLK residencies are available to your account.</p>
+                )}
+              </div>
+            )}
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={residencyActionLoading}>Cancel</AlertDialogCancel>
+              <Button
+                onClick={handleResidencyAction}
+                disabled={residencyActionLoading || (residencyDialog.makeResident && (!residencyDialog.residencyId || folkResidencies.length === 0))}
+              >
+                {residencyActionLoading ? 'Saving…' : 'Confirm'}
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
 
       {/* RGF confirmation — replaces AlertDialog block */}
       <ConfirmDialog

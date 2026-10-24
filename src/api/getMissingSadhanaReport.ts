@@ -11,7 +11,7 @@ import { getGuideScope } from '../lib/guideScope';
 import getGuides from './getGuides';
 import { getReportReferenceData } from '../lib/reportReferenceData';
 
-const USER_FIELDS = ['segment', 'isPrabhupadaWorldUser', 'id', 'userId', 'fullName', 'displayName', 'name', 'email', 'status', 'role', 'isBvAdmin', 'isBvSuperAdmin', 'residency', 'guide', 'isScholar', 'residencyClaimed', 'residencyApproved', 'residencyGuideVerified', 'residentSince'];
+const USER_FIELDS = ['phone', 'segment', 'isPrabhupadaWorldUser', 'id', 'userId', 'fullName', 'displayName', 'name', 'email', 'status', 'role', 'isBvAdmin', 'isBvSuperAdmin', 'residency', 'guide', 'isScholar', 'residencyClaimed', 'residencyApproved', 'residencyGuideVerified', 'residentSince'];
 
 // Guides and Super Guides oversee Sadhana; they are not expected to submit a
 // daily member report. Normalize legacy spacing/casing so the rule applies to
@@ -257,8 +257,12 @@ export default createEndpoint({
           residencyType = 'Non-Resident';
         }
 
+        const memberDepartment = organizationalDepartment(u) ||
+          (callerDepartment === 'FOLK' || input.segment === 'FOLK' ? 'FOLK' : null);
         return {
           id: u.id,
+          segment: memberDepartment,
+          phone: memberDepartment === 'FOLK' ? (u.phone || null) : null,
           fullName: String(u.fullName || u.displayName || u.name || '').trim(),
           userId: u.userId || '',
           residencyName: resId ? (residencyMap.get(String(resId)) || residencyMap.get(String(resId).toLowerCase()) || resId) : '',

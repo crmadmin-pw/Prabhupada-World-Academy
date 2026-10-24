@@ -25,6 +25,16 @@ test('PW retains its seven-day edit window regardless of client-supplied fields'
   await assert.rejects(() => submit.execute({ input: { userId: user.id, entryDate: '2020-01-01', totalScore: 0, fieldValues: {}, segment: 'FOLK' }, context: { user } } as any), /older than 7 days/);
 });
 
+test('PW early and future submissions are rejected on the server before entry reads or writes', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-23T17:59:59+05:30').getTime() });
+  const user = { id: 'pw-member', segment: 'PW', status: 'Active' };
+  t.mock.method(Users, 'findOne', async () => user);
+  t.mock.method(SadhanaEntries, 'findOne', async () => assert.fail('Blocked submission must not reach entry lookup'));
+  for (const [entryDate, reason] of [['2026-10-23', /6:00 PM/], ['2026-10-24', /future date/]] as const) {
+    await assert.rejects(() => submit.execute({ input: { userId: user.id, entryDate, totalScore: 0, fieldValues: {}, segment: 'FOLK' }, context: { user } } as any), reason);
+  }
+});
+
 test('FOLK cannot save tomorrow, including around midnight in India', async t => {
   t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-05T19:00:00Z').getTime() });
   const user = { id: 'folk-member', segment: 'FOLK', status: 'Active' };

@@ -1,3 +1,4 @@
+import SadhanaWhatsAppReminder from './SadhanaWhatsAppReminder';
 import TableScrollArea from '@/components/mobile/TableScrollArea';
 import { useState, useMemo, memo } from 'react';
 import { Badge } from '@/components/ui/badge';
@@ -148,6 +149,7 @@ const RAW_UNITS: Record<string, string> = {
 };
 
 interface Props {
+  reminderSegment?: string;
   users: UserRow[];
   fieldDefs: FieldDef[];
   reportDate: string;
@@ -189,7 +191,7 @@ const TH_CORNER = `${TH} sticky left-0 z-[30]`;
 const TH_TOP = `${TH} z-[20]`;
 
 export default function SadhanaDetailTable({
-  users, fieldDefs, reportDate, senderName, onUserClick,
+  users, fieldDefs, reportDate, senderName, onUserClick, reminderSegment,
   showFolkColumn = true, showRealValues = false, groupByAshray = false,
 }: Props) {
   const [sortKey, setSortKey] = useState('scorePercent');
@@ -262,6 +264,7 @@ export default function SadhanaDetailTable({
 
             </div>
             {!user.submitted && <Badge variant="destructive" className="text-xs mt-0.5">Missing</Badge>}
+            {!user.submitted && <SadhanaWhatsAppReminder segment={reminderSegment} fullName={user.fullName} phone={user.phone} missingDates={[reportDate]} />}
           </div>
         </td>
 

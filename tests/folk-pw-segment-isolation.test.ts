@@ -28,7 +28,7 @@ const folkSuper = {
 };
 const folkMember = {
   id: 'folk-member', userId: 'public-folk-member', email: 'folk-member@example.test',
-  fullName: 'Folk Member', role: 'User', segment: 'FOLK', status: 'Active', guide: folkGuide.id,
+  phone: '+91 9876543210', fullName: 'Folk Member', role: 'User', segment: 'FOLK', status: 'Active', guide: folkGuide.id,
 };
 const legacyMember = {
   id: 'legacy-member', userId: 'public-legacy-member', email: 'legacy-member@example.test',
@@ -36,7 +36,7 @@ const legacyMember = {
 };
 const pwMember = {
   id: 'pw-member', userId: 'public-pw-member', email: 'pw-member@example.test',
-  fullName: 'PW Member', role: 'User', segment: 'Prabhupada World', status: 'Active', guide: folkGuide.id,
+  phone: '+91 9876543211', fullName: 'PW Member', role: 'User', segment: 'Prabhupada World', status: 'Active', guide: folkGuide.id,
 };
 const pwAdmin = {
   id: 'pw-admin', userId: 'public-pw-admin', email: 'pw-admin@example.test',
@@ -213,6 +213,11 @@ test('FOLK dashboard counts exclude Prabhupada World people and keep the FOLK me
   }, folkGuide);
   assert.deepEqual(report.users.map((user: any) => user.id).sort(), ['folk-member', 'legacy-member']);
   assert.equal(report.stats.totalUsers, 2);
+  assert.equal(report.users.find((user: any) => user.id === 'folk-member').phone, folkMember.phone);
+  assert.equal(report.users.find((user: any) => user.id === 'legacy-member').segment, 'FOLK');
+  const pwReport = await call(getMissingSadhanaReport, { segment: 'PW', startDate: '2026-09-08', endDate: '2026-09-08' }, pwSuper);
+  assert.ok(pwReport.users.length > 0);
+  assert.ok(pwReport.users.every((user: any) => user.phone === null && user.segment !== 'FOLK'));
   assert.equal(names(report).includes('PW Member'), false);
   assert.equal(names(report.guides).includes('PW Admin'), false);
 

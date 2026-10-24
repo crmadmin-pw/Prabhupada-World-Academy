@@ -1,6 +1,8 @@
 /** Personalized Prabhupada World sadhana. FOLK scoring is unchanged.
  * Days saved before this rubric keep the chanting-and-reading percentage. */
 
+import { pwTimelySubmissionPoints } from './pwSubmissionTiming';
+
 export const PW_TOTAL_POINTS = 60;
 export const PW_SUBMISSION_CUTOFF = '14:00';
 
@@ -155,16 +157,8 @@ function timePoints(actual: unknown, target: string | null, wrapsPastMidnight: b
   return 0;
 }
 
-export function submissionPoints(entryDate: string, submittedAt: string | null | undefined, deadline = '10:00'): number {
-  if (!submittedAt) return 0;
-  const clock = istClock(submittedAt);
-  if (!clock || !/^\d{4}-\d{2}-\d{2}$/.test(entryDate)) return 0;
-  if (clock.date < entryDate) return 2;
-  if (clock.date > entryDate) return 0;
-  const deadlineMinutes = minutesOfDay(deadline) ?? 10 * 60;
-  if (clock.minutes <= deadlineMinutes) return 2;
-  if (clock.minutes <= (minutesOfDay(PW_SUBMISSION_CUTOFF) ?? 14 * 60)) return 1;
-  return 0;
+export function submissionPoints(entryDate: string, submittedAt: string | null | undefined, _deadline = '10:00'): number {
+  return pwTimelySubmissionPoints(entryDate, submittedAt);
 }
 
 function waiveReason(value: unknown): string {
@@ -470,7 +464,7 @@ export function pwFormFields(targets: PwTargets, source: string) {
     { fieldKey: 'wakeUp', fieldLabel: 'Wake-up time', fieldType: 'time', isRequired: true, helpText: targetText('Wake-up', pwTime(targets.wakeUp)), maxValue: 0 },
     { fieldKey: 'waiveWakeUp', fieldLabel: 'Request waive-off for wake-up', fieldType: 'toggle', isRequired: false },
     { fieldKey: 'waiveWakeUpReason', fieldLabel: 'Wake-up waive-off reason', fieldType: 'text', isRequired: false },
-    { fieldKey: 'sleep', fieldLabel: 'Sleep time', fieldType: 'time', isRequired: true, helpText: targetText('Sleep', pwTime(targets.sleep)), maxValue: 0 },
+    { fieldKey: 'sleep', fieldLabel: "Previous night's sleep time", fieldType: 'time', isRequired: true, helpText: `Enter when you went to sleep the night before the Sadhana date, even when submitting the next morning. ${targetText('Sleep', pwTime(targets.sleep))}`, maxValue: 0 },
     { fieldKey: 'waiveSleep', fieldLabel: 'Request waive-off for sleep', fieldType: 'toggle', isRequired: false },
     { fieldKey: 'waiveSleepReason', fieldLabel: 'Sleep waive-off reason', fieldType: 'text', isRequired: false },
     { fieldKey: 'chanting', fieldLabel: 'Chanting (rounds)', fieldType: 'number', isRequired: true, helpText: targetText('Chanting', pwTarget(targets.chanting), ' rounds'), minValue: 0, maxValue: 192 },

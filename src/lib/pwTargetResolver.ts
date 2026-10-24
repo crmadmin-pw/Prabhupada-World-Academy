@@ -154,7 +154,7 @@ export async function resolvePwTargetsForUser(user: any, inBvGroup = false): Pro
   return {
     source,
     targets: withLegacyTargets(targets, user),
-    deadline: config.submissionDeadline,
+    deadline: '10:00',
     setByRole,
   };
 }

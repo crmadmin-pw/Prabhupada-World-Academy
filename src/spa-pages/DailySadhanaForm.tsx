@@ -21,7 +21,7 @@ import { publishSadhanaEntrySaved } from '@/utils/sadhanaDashboardRefresh';
 import { sendOrQueue } from '@/lib/offlineQueue';
 import { getUserDashboardPath, getUserDepartment } from '@/lib/userDashboardRoutes';
 import { useDebouncedCallback } from 'use-debounce';
-import { format, subDays } from 'date-fns';
+import { format } from 'date-fns';
 import { fmt } from '@/lib/fmt';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import BvslPreachingSection, { BV_DURATION_KEYS } from '@/components/BvslPreachingSection';
@@ -30,6 +30,7 @@ import SadhanaFieldRenderer from '@/components/form/SadhanaFieldRenderer';
 import NRScoringCriteria from '@/components/form/NRScoringCriteria';
 import { emptyPwTargets, scorePwSadhanaV2, type PwTargets } from '@/lib/pwSadhana';
 import PwScoringCriteria from '@/components/pw/PwScoringCriteria';
+import { pwEntryDateBounds, pwSubmissionError, shiftSadhanaDate } from '@/lib/pwSubmissionTiming';
 import {
   normalizeFieldType, parseCriteria, isNRCriteria,
   calculateNRPoints, calculateResidentPoints, parseNumericValue,
@@ -59,7 +60,7 @@ export default function DailySadhanaForm() {
   const [isResident, setIsResident] = useState(false);
   const [searchParams] = useSearchParams();
   const [templateMode, setTemplateMode] = useState('RESIDENT_TEMPLATE');
-  const [entryDate, setEntryDate] = useState(searchParams.get('date') || format(new Date(), 'yyyy-MM-dd'));
+  const [entryDate, setEntryDate] = useState(searchParams.get('date') || (getUserDepartment(profile) === 'PW' ? pwEntryDateBounds().max : format(new Date(), 'yyyy-MM-dd')));
   const [formValues, setFormValues] = useState<Record<string, any>>({});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   useUnsavedWork(hasUnsavedChanges || submitting);
@@ -85,6 +86,13 @@ export default function DailySadhanaForm() {
   const ashrayLevel = profile?.ashrayLevel || '';
   const isFolkUser = getUserDepartment(profile) === 'FOLK';
   const isPwUser = getUserDepartment(profile) === 'PW';
+  const [pwClock, setPwClock] = useState(() => Date.now());
+  useEffect(() => {
+    if (!isPwUser) return;
+    const timer = window.setInterval(() => setPwClock(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [isPwUser]);
+  const pwTimingError = isPwUser ? pwSubmissionError(entryDate, new Date(pwClock)) : null;
   const [pwContext, setPwContext] = useState<{
     targets: PwTargets;
     source: string | null;
@@ -138,7 +146,7 @@ export default function DailySadhanaForm() {
       seva: formValues.seva,
       bvAttendedMinutes: pwContext.attendance?.attended,
       bvSessionMinutes: pwContext.attendance?.session,
-      submittedAt: pwContext.submittedAt || new Date().toISOString(),
+      submittedAt: new Date(pwClock).toISOString(),
       entryDate,
       submissionDeadline: pwContext.deadline,
       waiveWakeUp: formValues.waiveWakeUp,
@@ -149,7 +157,7 @@ export default function DailySadhanaForm() {
       waiveChantingReason: formValues.waiveChantingReason,
       targets: pwContext.targets,
     });
-  }, [isPwUser, formValues, pwContext, entryDate]);
+  }, [isPwUser, formValues, pwContext, entryDate, pwClock]);
 
   const scoreResult = useMemo(() => {
     if (pwScore) {
@@ -235,7 +243,7 @@ export default function DailySadhanaForm() {
       applyExisting(result, entryDate, result.fields);
       // Only fetch residencies if user might need the temp-residency dropdown
       if (isFolkUser && !result.isOfficialResident) {
-        read(() => getAllResidencies({})).then(result => { if (!read.cancelled) setResidencies(result); }).catch(() => {});
+        read(() => getAllResidencies({ segment: 'FOLK' })).then(result => { if (!read.cancelled) setResidencies(result); }).catch(() => {});
       }
       // Check cleanliness auto-fill for residents
       if (result.isResident && profile?.selectedFolkResidency) {
@@ -340,6 +348,10 @@ export default function DailySadhanaForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isPwUser) {
+      const timingError = pwSubmissionError(entryDate);
+      if (timingError) { toast.error(timingError); return; }
+    }
     if (fields.length === 0) {
       toast.error('Form fields not loaded. Please refresh the page.');
       return;
@@ -501,8 +513,8 @@ export default function DailySadhanaForm() {
           <div className="bg-card border rounded-xl p-4 shadow-sm space-y-2">
             <Label className="text-base font-medium"><Calendar className="w-4 h-4 inline mr-2" />Entry Date</Label>
             <DateTimePicker type="date" value={entryDate} onChange={setEntryDate}
-              max={format(new Date(), 'yyyy-MM-dd')} min={isFolkUser ? undefined : format(subDays(new Date(), 7), 'yyyy-MM-dd')} />
-            <p className="text-sm text-muted-foreground">{isFolkUser ? 'Today or any earlier date.' : 'Today or up to 7 days back.'}</p>
+              max={isPwUser ? pwEntryDateBounds().max : format(new Date(), 'yyyy-MM-dd')} min={isFolkUser ? undefined : pwEntryDateBounds().min} />
+            <p className="text-sm text-muted-foreground">{isFolkUser ? 'Today or any earlier date.' : 'Today or the previous 7 days (IST). Submission opens at 6:00 PM on the Sadhana date.'}</p>
           </div>
 
           {/* Temporary FOLK Residency toggle — only shown for FOLK department non-official-residents */}
@@ -524,6 +536,7 @@ export default function DailySadhanaForm() {
                   <Label className="text-sm text-muted-foreground">Select FOLK Residency you are visiting:</Label>
                   <Select
                     value={tempResidencyId || ''}
+                    items={residencies.map((r: any) => ({ value: r.residencyId, label: r.residencyName }))}
                     onValueChange={value => !tempSaving && value && handleTempResidencySelect(value)}
                   >
                     <SelectTrigger className="w-full">
@@ -607,9 +620,14 @@ export default function DailySadhanaForm() {
                 {pwContext.source === 'mentor' && 'Your sadhana mentor sets these targets.'}
                 {pwContext.source === 'ashraya' && 'These targets follow your Ashraya level.'}
                 {pwContext.source !== 'admin' && pwContext.source !== 'mentor' && pwContext.source !== 'ashraya' && 'Your RGF sets these targets.'}
-                {' '}Submission deadline is {pwContext.deadline}. The percentage is points earned divided by the points that apply today.
+                {' '}Submission opens at 6:00 PM on the Sadhana date. Submit by 10:00 AM the next day for 2 points, or after 10:00 AM through 2:00 PM the next day for 1 point. Later submissions receive 0 timely-submission points. All times are IST. Other Sadhana points follow the existing criteria.
                 {pwContext.attendance ? ` BV attendance recorded: ${pwContext.attendance.attended} of ${pwContext.attendance.session} minutes.` : ' BV attendance is added by your RGF or RGSF.'}
               </p>
+              <p className="text-sm text-muted-foreground">
+                Sleep time is for the night before the Sadhana date
+                {/^\d{4}-\d{2}-\d{2}$/.test(entryDate) && Number.isFinite(Date.parse(entryDate)) ? ` (${format(new Date(`${shiftSadhanaDate(entryDate, -1)}T00:00:00`), 'd MMMM yyyy')})` : ''}, whether you submit that evening or the following morning.
+              </p>
+              {pwTimingError && <p role="status" className="text-sm text-amber-700 dark:text-amber-400">{pwTimingError}</p>}
               <PwScoringCriteria />
             </div>
           )}
@@ -660,7 +678,7 @@ export default function DailySadhanaForm() {
                   </div>
                 </div>
                 <AcknowledgementCheckbox acknowledged={acknowledged} onToggle={setAcknowledged} />
-                <div className="sticky-form-actions"><Button type="submit" size="lg" disabled={submitting || !acknowledged} className="w-full h-auto min-h-12 whitespace-normal py-3">
+                <div className="sticky-form-actions"><Button type="submit" size="lg" disabled={submitting || !acknowledged || !!pwTimingError} className="w-full h-auto min-h-12 whitespace-normal py-3">
                   <Send className="w-4 h-4 mr-2" />
                   {submitting ? 'Submitting...' : isEditMode ? 'Update Sadhana & Bhakti Vriksha Report' : 'Submit Sadhana & Bhakti Vriksha Report'}
                 </Button></div>
@@ -703,7 +721,7 @@ export default function DailySadhanaForm() {
                   </div>
                 </div>
                 <AcknowledgementCheckbox acknowledged={acknowledged} onToggle={setAcknowledged} />
-                <div className="sticky-form-actions"><Button type="submit" size="lg" disabled={submitting || !acknowledged} className="w-full h-auto min-h-12 whitespace-normal py-3">
+                <div className="sticky-form-actions"><Button type="submit" size="lg" disabled={submitting || !acknowledged || !!pwTimingError} className="w-full h-auto min-h-12 whitespace-normal py-3">
                   {submitting ? 'Submitting...' : isEditMode ? 'Update Sadhana' : 'Submit Sadhana'}
                 </Button></div>
               </div>

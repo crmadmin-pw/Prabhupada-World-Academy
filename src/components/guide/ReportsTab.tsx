@@ -241,7 +241,7 @@ function computeSummary(users: ReportUser[], isScholarView = false) {
   };
 }
 
-export default function ReportsTab({ guideId = '', senderName, bvslMode, mentorMode, facilitatorMode, isSuperAdminOverride, groupOptions = [] }: ReportsTabProps) {
+export default function ReportsTab({ guideId = '', senderName, segment, bvslMode, mentorMode, facilitatorMode, isSuperAdminOverride, groupOptions = [] }: ReportsTabProps) {
   const navigate = useNavigate();
   const { profile } = useUserProfile();
   const isPw = isPwSadhanaUser(profile);
@@ -1204,6 +1204,7 @@ export default function ReportsTab({ guideId = '', senderName, bvslMode, mentorM
                 users={usersForTable}
                 fieldDefs={visibleFieldDefs}
                 reportDate={selectedDate}
+                reminderSegment={!isPw && (segment || profile?.segment) === 'FOLK' && reportType === 'daily' ? 'FOLK' : undefined}
                 senderName={senderName}
                 onUserClick={(userId) => navigate(`/guide/users/${userId}`)}
                 showFolkColumn={showFolkColumn}

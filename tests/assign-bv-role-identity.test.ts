@@ -52,6 +52,48 @@ const superAdmin = {
   },
 };
 
+const pwAdmin = { user: { id: 'pw-admin', email: 'admin@example.test', role: 'ADMIN', segment: 'PW', isBvAdmin: true, capabilities: ['bv.roles.assign'] } };
+
+test('PW admin can assign RGF while preserving an existing BV Admin flag', async t => {
+  const member = { ...realMember, segment: 'PW', isBvAdmin: true };
+  const updates = mockDirectory(t, [member, parent]);
+  t.mock.method(BvGroups, 'findAll', async () => ({ records: [], hasMore: false }));
+  for (const isAdmin of [undefined, true]) {
+    await assignBvRole.execute({
+      input: { userId: member.userId, role: 'FACILITATOR', parentId: parent.id, multiRoles: { isAdmin, isFacilitator: true } },
+      context: pwAdmin,
+    } as never);
+  }
+  assert.equal(updates.length, 2);
+  for (const update of updates) {
+    assert.equal(update.record.isBvAdmin, true);
+    assert.equal(update.record.isBvFacilitator, true);
+    assert.equal(update.record.isBvsl, true);
+    assert.equal(update.record.bvReportingSupervisorId, parent.userId);
+  }
+});
+
+test('PW admin cannot grant or revoke BV Admin, including full unassignment', async t => {
+  const admin = { ...realMember, isBvAdmin: true };
+  const ordinary = { ...realMember, id: 'ordinary', userId: 'ordinary', isBvAdmin: false };
+  const updates = mockDirectory(t, [admin, ordinary]);
+  for (const input of [
+    { userId: ordinary.id, role: 'ADMIN' },
+    { userId: ordinary.id, role: 'FACILITATOR', multiRoles: { isAdmin: true, isFacilitator: true } },
+    { userId: admin.id, role: 'FACILITATOR', multiRoles: { isAdmin: false, isFacilitator: true } },
+    { userId: admin.id, role: 'MEMBER', isBvMember: false },
+  ]) {
+    await assert.rejects(assignBvRole.execute({ input, context: pwAdmin } as never), /Only Super Admins/);
+  }
+  assert.equal(updates.length, 0);
+});
+
+test('Super Admin retains permission to grant the BV Admin role', async t => {
+  const updates = mockDirectory(t, [realMember]);
+  await assignBvRole.execute({ input: { userId: realMember.id, role: 'ADMIN', multiRoles: { isAdmin: true } }, context: superAdmin } as never);
+  assert.equal(updates[0].record.isBvAdmin, true);
+});
+
 test('assigning a group role updates the real profile and does not write alias keys', async (t) => {
   const shadowByNumber = { id: 'USER-045', role: 'User', isBvFacilitator: false };
   const shadowByEmail = { id: 'member@example.test', role: 'User' };

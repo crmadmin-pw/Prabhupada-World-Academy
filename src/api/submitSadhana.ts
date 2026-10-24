@@ -6,6 +6,7 @@ import { TEMPLATE_MODES, TIME_BUCKETS } from '../types/enums';
 import { refreshUserPeriodSummaries } from '../lib/sadhanaPeriodSummary';
 import { getUserDepartment } from '../lib/userDashboardRoutes';
 import { scoreStoredPwDay } from '../lib/pwSadhana';
+import { pwSubmissionError } from '../lib/pwSubmissionTiming';
 import { resolvePwTargetsForUser } from '../lib/pwTargetResolver';
 import { calculateTotalScore, computeSingleFieldScore } from '../lib/scoring';
 import { NON_RESIDENT_FIELDS, RESIDENT_FIELDS, toFormField } from '../config/sadhanaFields';
@@ -356,16 +357,15 @@ export default createEndpoint({
 
     // Server-side date validation
     const serverNow = new Date();
-    const oneDayAhead = new Date(serverNow.getTime() + 24 * 60 * 60 * 1000);
-    const sevenDaysAgo = new Date(serverNow);
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    sevenDaysAgo.setHours(0, 0, 0, 0);
     const entryDateObj = new Date(entryDate + 'T00:00:00');
     const isFolk = getUserDepartment(userRec) === 'FOLK';
     const submissionTodayIST = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(serverNow);
     if (isFolk && (!/^\d{4}-\d{2}-\d{2}$/.test(entryDate) || Number.isNaN(entryDateObj.getTime()))) throw new Error('Invalid entry date');
-    if (isFolk ? entryDate > submissionTodayIST : entryDateObj > oneDayAhead) throw new Error('Cannot submit for a future date');
-    if (!isFolk && entryDateObj < sevenDaysAgo) throw new Error('Cannot submit for dates older than 7 days');
+    if (isFolk && entryDate > submissionTodayIST) throw new Error('Cannot submit for a future date');
+    if (!isFolk) {
+      const timingError = pwSubmissionError(entryDate, serverNow);
+      if (timingError) throw new Error(timingError);
+    }
     // The member's database level decides targets, same-day eligibility and the
     // maximum. `ashrayLevelUsed` from the browser is only a fallback for profiles
     // that have no level recorded yet.
