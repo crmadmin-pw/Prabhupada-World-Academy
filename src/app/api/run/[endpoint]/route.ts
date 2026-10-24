@@ -189,10 +189,10 @@ const ACTIVE_ACCOUNT_ENDPOINTS = new Set([
   'getAttendanceEventsAdmin', 'getBvStats', 'getCleanlinessReviews', 'getCrossPreachingDrilldown',
   'getCrossPreachingReport', 'getEligibleMembersForBvGroup', 'getGuideResidencyAssignmentRequests',
   'getSadhanaLeaderboard', 'getSadhanaStats', 'getScoresDrilldown', 'getScoresReport',
-  'getServiceLeaderboard', 'getUnavailabilityRequests', 'importRentPayments', 'importTrips',
+  'getServiceLeaderboard', 'getUnavailabilityRequests', 'getAshrayExamDate', 'importRentPayments', 'importTrips',
   'invalidateSadhanaFieldsCache', 'logOneToOneMeeting', 'manageAttendanceVolunteers', 'markCourseComplete',
   'publishAllocation', 'recalculateScoresForDate', 'removeBvGroupMember', 'retryTagMangoEnrollment',
-  'revoketagmangoaccess', 'savePreachingGoals', 'setAshrayLevel', 'submitAvailability', 'tagUserAsB',
+  'revoketagmangoaccess', 'savePreachingGoals', 'setAshrayExamDate', 'setAshrayLevel', 'submitAvailability', 'tagUserAsB',
   'toggleCleanlinessEnabled', 'updateRentPayment', 'updateTrip', 'updateUserResidency',
   'seedData', 'seedUsers', 'seedWeeklyAllocations',
 ]);

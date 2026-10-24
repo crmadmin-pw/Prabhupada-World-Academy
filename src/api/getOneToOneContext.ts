@@ -3,12 +3,14 @@ import { getScopedHierarchyUserIds, isUserInHierarchy } from '../lib/hierarchyUt
 import { createEndpoint, Users, SadhanaEntries, BvAttendance } from '@/lib/backend-sdk';
 import { getTodayIST, daysAgo } from '../lib/streakUtils';
 import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
+import { getSadhanaMentorResidencyScope } from '@/lib/sadhanaMentorResidencyScope';
 import { pwScoreFromFieldValues } from '@/lib/pwSadhana';
 
 const USER_IDENTITY_FIELDS = [
   'id', 'userId', 'email', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId',
   'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id',
 ];
+const CONTEXT_USER_FIELDS = [...USER_IDENTITY_FIELDS, 'fullName', 'currentStreak', 'ashrayLevel', 'residencyApproved', 'residencyGuideVerified', 'segment', 'isPrabhupadaWorldUser', 'status', 'role', 'residency', 'selectedFolkResidency', 'isBvAdmin', 'isBvSuperAdmin'];
 
 function identityAliases(user: any): string[] {
   return [...new Set(USER_IDENTITY_FIELDS
@@ -56,13 +58,13 @@ export default createEndpoint({
     // and BV attendance so the context never silently shows empty values.
     const user = await Users.findOne({
       id: input.userId,
-      fields: [...USER_IDENTITY_FIELDS, 'fullName', 'currentStreak', 'ashrayLevel', 'residencyApproved', 'residencyGuideVerified', 'segment', 'isPrabhupadaWorldUser'],
+      fields: CONTEXT_USER_FIELDS,
     }) || await Users.findOne({
       filters: { userId: input.userId },
-      fields: [...USER_IDENTITY_FIELDS, 'fullName', 'currentStreak', 'ashrayLevel', 'residencyApproved', 'residencyGuideVerified', 'segment', 'isPrabhupadaWorldUser'],
+      fields: CONTEXT_USER_FIELDS,
     }) || await Users.findOne({
       filters: { email: input.userId },
-      fields: [...USER_IDENTITY_FIELDS, 'fullName', 'currentStreak', 'ashrayLevel', 'residencyApproved', 'residencyGuideVerified', 'segment', 'isPrabhupadaWorldUser'],
+      fields: CONTEXT_USER_FIELDS,
     });
 
     if (!user?.id) {
@@ -72,7 +74,10 @@ export default createEndpoint({
         totalBooks: 0, improvementAreas: [],
       };
     }
-    if (!isUserInHierarchy(user, await getScopedHierarchyUserIds(context.user))) throw new Error('This user is not assigned to your hierarchy');
+    const mentorScope = await getSadhanaMentorResidencyScope(context.user);
+    if (mentorScope ? !mentorScope.includes(user) : !isUserInHierarchy(user, await getScopedHierarchyUserIds(context.user))) {
+      throw new Error('This user is not assigned to your FOLK hostel or hierarchy');
+    }
     const userAliases = new Set(identityAliases(user));
     userAliases.add(String(input.userId).trim().toLowerCase());
     // Query the stored id and its lowercase form. Matching stays

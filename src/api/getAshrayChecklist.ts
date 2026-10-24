@@ -1,6 +1,8 @@
 import { z } from 'zod';
-import { createEndpoint, AshrayChecklist, Config, Users, AshrayUpgradeRequests, AppError } from '@/lib/backend-sdk';
+import { createEndpoint, AshrayChecklist, Users, AshrayUpgradeRequests, AppError } from '@/lib/backend-sdk';
 import { getScopedHierarchyUserIds, HIERARCHY_IDENTITY_FIELDS, isUserInHierarchy } from '@/lib/hierarchyUtils';
+import { organizationalDepartment } from '@/lib/directoryDepartment';
+import { readAshrayExamDate } from './ashrayExamDate';
 
 export default createEndpoint({
   description: 'Get the Ashraya checklist for the current user or a specified user (guide view)',
@@ -13,16 +15,16 @@ export default createEndpoint({
     let userRec = null;
     if (input.userId) {
       if (/^USER-\d+$/i.test(input.userId)) {
-        const { records } = await Users.findAll({ filters: { userId: input.userId }, fields: HIERARCHY_IDENTITY_FIELDS });
+        const { records } = await Users.findAll({ filters: { userId: input.userId }, fields: [...HIERARCHY_IDENTITY_FIELDS, 'segment', 'isPrabhupadaWorldUser'] });
         userRec = records.find(r => r.id !== r.userId) || records[0];
       }
       if (!userRec) {
-        userRec = await Users.findOne({ id: input.userId, fields: HIERARCHY_IDENTITY_FIELDS })
-          || await Users.findOne({ filters: { userId: input.userId }, fields: HIERARCHY_IDENTITY_FIELDS });
+        userRec = await Users.findOne({ id: input.userId, fields: [...HIERARCHY_IDENTITY_FIELDS, 'segment', 'isPrabhupadaWorldUser'] })
+          || await Users.findOne({ filters: { userId: input.userId }, fields: [...HIERARCHY_IDENTITY_FIELDS, 'segment', 'isPrabhupadaWorldUser'] });
       }
       if (!userRec) throw new AppError({ code: 'NOT_FOUND', message: 'User not found' });
     } else {
-      userRec = await Users.findOne({ id: context.user!.id, fields: ['id', 'userId'] });
+      userRec = await Users.findOne({ id: context.user!.id, fields: ['id', 'userId', 'segment', 'isPrabhupadaWorldUser'] });
     }
 
     let targetDbId = context.user!.id;
@@ -46,9 +48,9 @@ export default createEndpoint({
       } catch { checkedItems = []; }
     }
 
-    // Fetch next ashray exam date from Config table
-    const cfg = await Config.findOne({ filters: { configKey: 'Next Ashray Exam' } });
-    const nextExamDate = cfg?.configValue || '';
+    // Department schedules are independent. Fall back to the legacy single-date
+    // Config row until a department receives its own date.
+    const nextExamDate = await readAshrayExamDate(organizationalDepartment(userRec || context.user) === 'PW' ? 'PW' : 'FOLK');
 
     // Check if there is any pending or approved upgrade request awaiting resolution
     const [pendingByDbId, pendingByUserId] = await Promise.all([

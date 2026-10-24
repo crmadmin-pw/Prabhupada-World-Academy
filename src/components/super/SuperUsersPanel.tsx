@@ -426,7 +426,12 @@ export default function SuperUsersPanel({ isPwAdmin = false, segment, isSuperAdm
   }, [profile, isDepartmentAdmin, myGuideId]);
 
   const [ashrayFilter, setAshrayFilter] = useState(() => typeof savedFilters.current.ashrayFilter === 'string' ? savedFilters.current.ashrayFilter : 'all');
-  const [residentFilter, setResidentFilter] = useState(() => typeof savedFilters.current.residentFilter === 'string' ? savedFilters.current.residentFilter : 'all');
+  // FOLK dashboards are primarily responsible for hostel residents. Keep an
+  // explicit previously selected filter, but begin every new FOLK directory
+  // session with residents rather than the entire department.
+  const [residentFilter, setResidentFilter] = useState(() => typeof savedFilters.current.residentFilter === 'string'
+    ? savedFilters.current.residentFilter
+    : (isPwMode ? 'all' : 'residents'));
   const [sortKey, setSortKey] = useState<SortKey>(() => ['fullName', 'guideName', 'ashrayLevel', 'latestScore', 'latestEntryDate', 'isResident'].includes(String(savedFilters.current.sortKey)) ? savedFilters.current.sortKey as SortKey : 'fullName');
   const [sortDir, setSortDir] = useState<SortDir>(() => savedFilters.current.sortDir === 'desc' ? 'desc' : 'asc');
   const [bvslDialog, setBvslDialog] = useState<{ user: User; action: 'tag' | 'untag' } | null>(null);

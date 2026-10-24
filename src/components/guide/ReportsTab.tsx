@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { FileDown, Image, Users, Headphones, BookOpen, Music2, TrendingUp, Search, Package, Moon, Clock, RefreshCw, Zap, GraduationCap } from 'lucide-react';
+import { FileDown, Image, Users, Headphones, BookOpen, Music2, TrendingUp, Search, Package, Moon, Clock, RefreshCw, Zap, GraduationCap, MessageCircle } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { GetGuideDetailedReportOutputType, recalculateScoresForDate } from '@/lib/endpoints-sdk';
@@ -29,6 +29,7 @@ import { exportToCsv } from '@/utils/exportCsv';
 import { exportReportAsImage } from '@/utils/exportReportImage';
 import ScoringCriteriaPanel from '@/components/guide/ScoringCriteriaPanel';
 import { DateTimePicker } from '@/components/ui/date-time-picker';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 
 export interface SadhanaGroupOption {
   id: string;
@@ -289,6 +290,10 @@ export default function ReportsTab({ guideId = '', senderName, segment, bvslMode
   const [mentorLocation, setMentorLocation] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [syncing, setSyncing] = useState(false);
+  const [preparingShare, setPreparingShare] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const [shareImage, setShareImage] = useState<{ file: File; url: string } | null>(null);
+  useEffect(() => () => { if (shareImage) URL.revokeObjectURL(shareImage.url); }, [shareImage]);
   const [showScholars, setShowScholars] = useState(false);
   const [showMissing, setShowMissing] = useState(true);
   const [showRealValues, setShowRealValues] = useState(false);
@@ -664,7 +669,7 @@ export default function ReportsTab({ guideId = '', senderName, segment, bvslMode
     }
   };
 
-  const handleExportImage = () => {
+  const createReportImage = (download = true) => {
     if (!rawReportData) return;
     const selectedLocationLabel = mentorLocations.find(option => option.value === selectedMentorLocation)?.label;
     const folkResName = isPw
@@ -717,8 +722,7 @@ export default function ReportsTab({ guideId = '', senderName, segment, bvslMode
       exportUsers = [...usersForTable].sort(canonicalSort);
     }
 
-    setTimeout(() => {
-      exportReportAsImage(
+    return exportReportAsImage(
         summary ?? { totalUsers: usersForTable.length },
         exportUsers,
         reorderFieldDefs(visibleFieldDefs),
@@ -732,14 +736,74 @@ export default function ReportsTab({ guideId = '', senderName, segment, bvslMode
         residencyFilter,
         showFolkColumn,
         reportType,
+        { download, showRealValues: effectiveShowRealValues, maxScale: download ? 16 : 2 },
       );
-    }, 50);
   };
 
+  const handleExportImage = () => { createReportImage(); };
+
+  const handlePrepareShare = async () => {
+    if (isPw || !rawReportData || loading || preparingShare) return;
+    setPreparingShare(true);
+    try {
+      const canvas = createReportImage(false);
+      if (!canvas) throw new Error('Report unavailable');
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob(value => value ? resolve(value) : reject(new Error('Image unavailable')), 'image/png');
+      });
+      const file = new File([blob], buildExportFilename('png'), { type: 'image/png' });
+      setShareImage({ file, url: URL.createObjectURL(file) });
+    } catch {
+      toast.error('Could not prepare the report image. Try a smaller report.');
+    } finally {
+      setPreparingShare(false);
+    }
+  };
+
+  const canShareImage = !!shareImage && typeof navigator.share === 'function' &&
+    typeof navigator.canShare === 'function' && navigator.canShare({ files: [shareImage.file] });
+
+  const handleShareImage = async () => {
+    if (!shareImage || !canShareImage || sharing) return;
+    setSharing(true);
+    try {
+      // A fresh click after image preparation preserves browser user activation.
+      await navigator.share({ files: [shareImage.file] });
+    } catch (error) {
+      if ((error as DOMException).name !== 'AbortError') {
+        toast.error('Sharing could not start. Download the image and attach it in WhatsApp.');
+      }
+    } finally {
+      setSharing(false);
+    }
+  };
 
 
   return (
     <>
+      <Dialog open={!!shareImage} onOpenChange={open => { if (!open) setShareImage(null); }}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Share FOLK Sadhana report</DialogTitle>
+            <DialogDescription>
+              This image contains the report with your selected filters. {canShareImage
+                ? 'Choose WhatsApp in the share menu, then select your group.'
+                : 'Download the image, open WhatsApp, and attach it to your group.'}
+            </DialogDescription>
+          </DialogHeader>
+          {shareImage && <>
+            <div className="max-h-[55vh] overflow-auto rounded-md border bg-white">
+              <img src={shareImage.url} alt="Filtered FOLK Sadhana report ready to share" className="h-auto w-full" />
+            </div>
+            <div className="flex flex-wrap justify-end gap-2">
+              <a href={shareImage.url} download={shareImage.file.name} className="rounded-md border px-3 py-2 text-sm">Download Image</a>
+              {canShareImage ? <Button onClick={handleShareImage} disabled={sharing}>
+                <MessageCircle className="h-4 w-4" />{sharing ? 'Sharing…' : 'Share to WhatsApp'}
+              </Button> : <a href="https://web.whatsapp.com/" target="_blank" rel="noopener noreferrer" className="rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground">Open WhatsApp</a>}
+            </div>
+          </>}
+        </DialogContent>
+      </Dialog>
       <style>{`
         @media print {
           .no-print { display: none !important; }
@@ -814,6 +878,9 @@ export default function ReportsTab({ guideId = '', senderName, segment, bvslMode
                 <Button size="sm" variant="outline" className="h-8 border-amber-500 text-amber-700 hover:bg-amber-500 hover:text-white disabled:opacity-50" onClick={handleSyncScores} disabled={!rawReportData || loading || syncing} title="Re-sync scores from submittedAt timestamps (use after manually editing submittedAt in the database)">
                   <Zap className={`w-3 h-3 mr-1 ${syncing ? 'animate-pulse' : ''}`} />{syncing ? 'Syncing…' : 'Sync Scores'}
                 </Button>
+                {!isPw && profile?.segment === 'FOLK' && <Button size="sm" variant="outline" className="h-8 text-green-700 border-green-600" onClick={handlePrepareShare} disabled={!rawReportData || loading || syncing || preparingShare || usersForTable.length === 0}>
+                  <MessageCircle className="w-3 h-3 mr-1" />{preparingShare ? 'Preparing image…' : 'Share to WhatsApp'}
+                </Button>}
               </div>
             </div>
           </CardHeader>

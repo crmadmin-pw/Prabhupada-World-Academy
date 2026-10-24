@@ -121,7 +121,7 @@ export default function PwUserDashboard() {
 
   const { data: leaderboardData } = useQuery({
     key: lbRequested && profile?.userId ? `lb:${profile.userId}:${format(new Date(), 'yyyy-MM-dd')}` : null,
-    fetcher: () => getSadhanaLeaderboard({ userId: profile!.userId }),
+    fetcher: () => getSadhanaLeaderboard({ userId: profile!.userId, segment: 'PW' }),
     ttl: 60_000,
     realtimeChannels: ['sadhana'],
   });

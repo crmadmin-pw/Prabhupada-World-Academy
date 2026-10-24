@@ -3,7 +3,7 @@ import test from 'node:test';
 import { endOfISOWeek, format, getISOWeek, getISOWeekYear, startOfISOWeek } from 'date-fns';
 
 import getSadhanaLeaderboard from '../src/api/getSadhanaLeaderboard';
-import { SadhanaEntries, SadhanaMonthlySummaries, Users } from '../src/lib/app-backend-sdk';
+import { BvGroupMembers, BvGroups, SadhanaEntries, SadhanaMonthlySummaries, Users } from '../src/lib/app-backend-sdk';
 import {
   classifyLeaderboardPeriod,
   deleteStoredLeaderboardPeriod,
@@ -223,6 +223,70 @@ test('entries stored under different ids for one person are one leaderboard row'
     await SadhanaEntries.delete({ id: 'SUM-ALIAS-ENTRY-2' });
     await Users.delete({ id: user.id });
     await cleanupAround([earlier, week.end]);
+  }
+});
+
+test('PW leaderboard identifies active Bhakti Vriksha members separately from non-members', async () => {
+  const date = '2026-05-12';
+  const bvMember = {
+    id: 'SUM-PW-BV-MEMBER-DB',
+    userId: 'SUM-PW-BV-MEMBER',
+    email: 'sum-pw-bv@example.invalid',
+    fullName: 'PW BV Member',
+    status: 'Active',
+    role: 'User',
+    segment: 'PW',
+    isPrabhupadaWorldUser: true,
+    ashrayLevel: 'Sevak',
+  };
+  const nonBvMember = {
+    id: 'SUM-PW-NON-BV-MEMBER-DB',
+    userId: 'SUM-PW-NON-BV-MEMBER',
+    email: 'sum-pw-non-bv@example.invalid',
+    fullName: 'PW Non-BV Member',
+    status: 'Active',
+    role: 'User',
+    segment: 'PW',
+    isPrabhupadaWorldUser: true,
+    ashrayLevel: 'Sevak',
+  };
+  const group = {
+    id: 'SUM-PW-BV-GROUP-DB',
+    groupId: 'SUM-PW-BV-GROUP',
+    groupName: 'Summary PW Group',
+    segment: 'PW',
+    isActive: true,
+  };
+  const membership = {
+    id: 'SUM-PW-BV-MEMBERSHIP',
+    group: group.groupId,
+    memberId: bvMember.email,
+  };
+  const entries = [
+    { id: 'SUM-PW-BV-ENTRY', user: bvMember.id, entryDate: date, totalScore: 18, maxScore: 20, scorePercent: 90 },
+    { id: 'SUM-PW-NON-BV-ENTRY', user: nonBvMember.id, entryDate: date, totalScore: 16, maxScore: 20, scorePercent: 80 },
+  ];
+  await cleanupAround([date]);
+  await Users.create({ record: bvMember });
+  await Users.create({ record: nonBvMember });
+  await BvGroups.create({ record: group });
+  await BvGroupMembers.create({ record: membership });
+  for (const entry of entries) await SadhanaEntries.create({ record: entry });
+  try {
+    const result = await getSadhanaLeaderboard.execute({
+      input: { date, segment: 'PW' },
+      context: adminContext({ ...bvMember, segment: 'PW' } as any),
+    } as never);
+    assert.equal(result.currentUserIsBvMember, true);
+    assert.equal(result.leaderboard.find((row: any) => row.userId === bvMember.userId)?.isBvMember, true);
+    assert.equal(result.leaderboard.find((row: any) => row.userId === nonBvMember.userId)?.isBvMember, false);
+  } finally {
+    for (const entry of entries) await SadhanaEntries.delete({ id: entry.id }).catch(() => undefined);
+    await BvGroupMembers.delete({ id: membership.id }).catch(() => undefined);
+    await BvGroups.delete({ id: group.id }).catch(() => undefined);
+    await Users.delete({ id: bvMember.id }).catch(() => undefined);
+    await Users.delete({ id: nonBvMember.id }).catch(() => undefined);
+    await cleanupAround([date]);
   }
 });
 

@@ -23,6 +23,7 @@ import BvslWeeklyPlanTab from '@/components/bvsl/BvslWeeklyPlanTab';
 import SuperBvRegistrationsTab from '@/components/super/SuperBvRegistrationsTab';
 import MeetingsAndMomTab from '@/components/super/MeetingsAndMomTab';
 import PwBvAttendancePanel from '@/components/pw/PwBvAttendancePanel';
+import AshrayExamDateSettings from '@/components/profile/AshrayExamDateSettings';
 
 export default function RgfDashboard() {
   const { profile } = useUserProfile();
@@ -109,7 +110,12 @@ export default function RgfDashboard() {
               )}
               {activeTab === 'members' && <BvslMembersTable bvslId={bvslId} canAssignSadhana={!isFolk} />}
               {activeTab === 'bvreport' && <BvSection guideId={bvslId} bvslMode segment={isFolk ? 'FOLK' : 'PW'} groupOptions={reportGroups} />}
-              {activeTab === 'report' && <BvslSadhanaReportPanel bvslId={bvslId} hideImprovement={!isFolk} groupOptions={reportGroups} />}
+              {activeTab === 'report' && (
+                <div className="space-y-4">
+                  {!isFolk && <AshrayExamDateSettings department="PW" />}
+                  <BvslSadhanaReportPanel bvslId={bvslId} hideImprovement={!isFolk} groupOptions={reportGroups} />
+                </div>
+              )}
               {activeTab === 'quizzes' && (isFolk ? (
                 <BvslQuizPanel
                   groups={groups.map((g: any) => ({ id: g.id, groupName: g.groupName }))}

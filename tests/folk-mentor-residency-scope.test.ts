@@ -11,6 +11,7 @@ import entryDetail from '../src/api/getEntryDetail';
 import userDetail from '../src/api/getUserDetailForGuide';
 import leaderboard from '../src/api/getSadhanaLeaderboard';
 import folkReport from '../src/api/getFolkSadhanaReport';
+import oneToOneContext from '../src/api/getOneToOneContext';
 
 const mentor = { id: 'mentor', userId: 'USER-M', fullName: 'Mentor', email: 'mentor@example.test', status: 'Active', role: 'Sadhana Mentor', isSadhanaMentor: true, segment: 'FOLK', guide: 'guide-a', residency: 'powai', sadhanaMentorResidencyIds: ['powai'] };
 const centers = [{ id: 'powai', residencyId: 'RES-1', residencyName: 'FOLK Powai', isActive: true }, { id: 'vashi', residencyId: 'RES-2', residencyName: 'FOLK Vashi', isActive: true }];
@@ -42,11 +43,11 @@ function mockTables(t: any, users = rows, guides = [{ id: 'guide-a', fullName: '
   }
 }
 
-test('FOLK mentor scope includes self, residency members and linked guide members, excluding PW and leadership', async t => {
+test('FOLK mentor scope includes Powai boys across guides, but excludes the same guide’s Vashi boys', async t => {
   mockTables(t);
   const scope = await getSadhanaMentorResidencyScope(mentor);
   assert.ok(scope);
-  assert.deepEqual(rows.filter(scope.includes).map(r => r.id), ['mentor', 'other-guide', 'legacy-residency', 'vashi']);
+  assert.deepEqual(rows.filter(scope.includes).map(r => r.id), ['mentor', 'other-guide', 'legacy-residency']);
   assert.equal(scope.includes(member('foreign', { residency: 'vashi', guide: 'unrelated-guide' })), false);
 });
 
@@ -56,12 +57,12 @@ test('detailed, missing and member reports use identical residency scope despite
   const d = await detailed.execute({ input: { guideId: 'ALL', mentorMode: true, date: '2026-10-02', reportType: 'daily', segment: 'FOLK' }, context } as any);
   const m = await missing.execute({ input: { guideId: 'guide-b', residencyId: 'vashi', startDate: '2026-10-02', endDate: '2026-10-02', segment: 'FOLK' }, context } as any);
   const list = await members.execute({ input: {}, context } as any);
-  assert.deepEqual(d.users.map((r: any) => r.id).sort(), ['legacy-residency', 'mentor', 'other-guide', 'vashi']);
-  assert.equal(d.users.find((r: any) => r.id === 'vashi')?.residencyName, 'FOLK Vashi');
+  assert.deepEqual(d.users.map((r: any) => r.id).sort(), ['legacy-residency', 'mentor', 'other-guide']);
+  assert.equal(d.users.find((r: any) => r.id === 'vashi'), undefined);
   assert.equal(d.users.find((r: any) => r.id === 'other-guide')?.residencyName, 'FOLK Powai');
-  assert.deepEqual(m.users.map((r: any) => r.id).sort(), ['legacy-residency', 'mentor', 'other-guide', 'vashi']);
-  assert.deepEqual(list.members.map((r: any) => r.userId).sort(), ['USER-legacy-residency', 'USER-other-guide', 'USER-vashi']);
-  assert.equal(m.stats.totalUsers, 4);
+  assert.deepEqual(m.users.map((r: any) => r.id).sort(), ['legacy-residency', 'mentor', 'other-guide']);
+  assert.deepEqual(list.members.map((r: any) => r.userId).sort(), ['USER-legacy-residency', 'USER-other-guide']);
+  assert.equal(m.stats.totalUsers, 3);
   assert.deepEqual(d.availableResidencies.map((r: any) => r.residencyId), ['powai']);
 });
 
@@ -78,18 +79,27 @@ test('PW mentors retain existing access paths', async t => {
 });
 
 
-test('unknown residency grants add no foreign members; the linked guide and self still remain visible', async t => {
-  mockTables(t, [{ ...mentor, sadhanaMentorResidencyIds: ['missing-residency'] }, ...rows.slice(1)]);
+test('unknown hostel assignment grants no member access even through a linked guide', async t => {
+  mockTables(t, [{ ...mentor, residency: null, sadhanaMentorResidencyIds: ['missing-residency'] }, ...rows.slice(1)]);
   const scope = await getSadhanaMentorResidencyScope(mentor);
   assert.ok(scope);
-  assert.deepEqual(rows.filter(scope.includes).map(r => r.id), ['mentor', 'vashi']);
+  assert.deepEqual(rows.filter(scope.includes).map(r => r.id), ['mentor']);
 });
 
-test('FOLK mentors without residency grants can see their own row and their guide members', async t => {
+test('a mentor’s own hostel is authoritative even without legacy residency grants', async t => {
   mockTables(t, [{ ...mentor, sadhanaMentorResidencyIds: undefined }]);
   const scope = await getSadhanaMentorResidencyScope(mentor);
   assert.ok(scope);
-  assert.deepEqual(rows.filter(scope.includes).map(r => r.id), ['mentor', 'vashi']);
+  assert.deepEqual(rows.filter(scope.includes).map(r => r.id), ['mentor', 'other-guide', 'legacy-residency']);
+});
+
+test('moving a mentor to Vashi revokes Powai access despite stale Powai grants and the same parent guide', async t => {
+  const moved = { ...mentor, residency: 'vashi', sadhanaMentorResidencyIds: ['powai'] };
+  mockTables(t, [moved, ...rows.slice(1)]);
+  const scope = await getSadhanaMentorResidencyScope(mentor);
+  assert.ok(scope);
+  assert.deepEqual(rows.filter(scope.includes).map(user => user.id), ['mentor', 'vashi']);
+  assert.deepEqual(scope.residencies.map(residency => residency.id), ['vashi']);
 });
 
 test('guide public IDs, emails and Users aliases resolve to the same parent', async t => {
@@ -97,8 +107,9 @@ test('guide public IDs, emails and Users aliases resolve to the same parent', as
   t.mock.method(Guides, 'findAll', async () => ({ records: [{ id: 'guide-a', guideId: 'GUIDE-A', email: 'guide@example.test' }], hasMore: false }));
   const scope = await getSadhanaMentorResidencyScope(mentor);
   assert.ok(scope);
-  assert.equal(scope.includes(member('alias', { residency: 'vashi', guide: ['GUIDE-A'] })), true);
-  assert.equal(scope.includes(member('alias-email', { residency: null, guide: 'guide@example.test' })), true);
+  assert.equal(scope.includes(member('alias', { residency: 'vashi', guide: ['GUIDE-A'] })), false);
+  assert.equal(scope.includes(member('alias-email', { residency: null, guide: 'guide@example.test' })), false);
+  assert.equal(scope.includes(member('alias-powai', { residency: 'powai', guide: ['GUIDE-A'] })), true);
 });
 
 function powaiFixture() {
@@ -108,10 +119,11 @@ function powaiFixture() {
   const guides = guideUsers.map(user => ({ ...user, id: `guide-${user.id}`, guideId: `GUIDE-${user.id}`, isActive: true }));
   const mentorUser = { ...mentor, guide: ['GUIDE-sreesha'], sadhanaMentorResidencyIds: undefined };
   const boys = [
-    member('own-boy', { guide: 'guide-sreesha', residency: 'vashi' }),
-    member('aditya-boy', { guide: ['USER-aditya'], residency: null }),
-    member('manmohan-boy', { guide: 'manmohan@example.test', residency: null }),
-    member('mathuranath-boy', { guide: 'guide-mathuranath', residency: 'vashi' }),
+    member('own-boy', { guide: 'guide-sreesha', residency: 'powai' }),
+    member('same-guide-vashi-boy', { guide: 'guide-sreesha', residency: 'vashi' }),
+    member('aditya-boy', { guide: ['USER-aditya'], residency: 'powai' }),
+    member('manmohan-boy', { guide: 'manmohan@example.test', residency: 'powai' }),
+    member('mathuranath-boy', { guide: 'guide-mathuranath', residency: 'powai' }),
     member('hostel-resident', { guide: 'guide-foreign', residency: 'RES-1' }),
     member('visiting-boy', { guide: 'guide-foreign', residency: null, temporaryResidency: 'powai', temporaryResidencyEnabled: true }),
     member('foreign-boy', { guide: 'guide-foreign', residency: 'vashi' }),
@@ -125,9 +137,9 @@ function powaiFixture() {
   return { mentorUser, guideUsers, guides, boys, residencies, users: [mentorUser, ...guideUsers, ...boys] };
 }
 
-const powaiBoyIds = ['aditya-boy', 'hostel-resident', 'manmohan-boy', 'mathuranath-boy', 'own-boy', 'visiting-boy'];
+const powaiBoyIds = ['aditya-boy', 'hostel-resident', 'manmohan-boy', 'mathuranath-boy', 'own-boy'];
 
-test('a FOLK mentor inherits every guide at the parent guide’s hostel without an explicit residency grant', async t => {
+test('a FOLK mentor sees all boys whose center is Powai, not Vashi boys under the same guide', async t => {
   const fixture = powaiFixture();
   mockTables(t, fixture.users, fixture.guides, fixture.residencies);
   const scope = await getSadhanaMentorResidencyScope({ ...fixture.mentorUser, guide: 'guide-foreign' });
@@ -137,7 +149,7 @@ test('a FOLK mentor inherits every guide at the parent guide’s hostel without 
   assert.deepEqual(scope.availableGuides.map(g => g.guideId), ['guide-aditya', 'guide-manmohan', 'guide-mathuranath', 'guide-sreesha']);
 });
 
-test('report, missing report, member list and statistics share the inherited hostel audience', async t => {
+test('report, missing report, member list and statistics share the assigned hostel audience', async t => {
   const fixture = powaiFixture();
   mockTables(t, fixture.users, fixture.guides, fixture.residencies);
   const context = { user: fixture.mentorUser };
@@ -170,14 +182,14 @@ test('a mentor can narrow reports to a peer guide, while a foreign guide selecto
 
 test('report entry details permit peer-guide boys and reject boys outside the inherited hostel', async t => {
   const fixture = powaiFixture();
-  const entries = ['aditya-boy', 'foreign-boy', 'pw-boy'].map(id => ({ id: `entry-${id}`, entryId: `ENTRY-${id}`, user: id, entryDate: '2026-10-22', fieldValuesJson: JSON.stringify({ chanting: 16 }) }));
+  const entries = ['aditya-boy', 'same-guide-vashi-boy', 'foreign-boy', 'pw-boy'].map(id => ({ id: `entry-${id}`, entryId: `ENTRY-${id}`, user: id, entryDate: '2026-10-22', fieldValuesJson: JSON.stringify({ chanting: 16 }) }));
   mockTables(t, fixture.users, fixture.guides, fixture.residencies, entries);
   const context = { user: fixture.mentorUser };
   const byEntryId = await entryDetail.execute({ input: { entryId: 'ENTRY-aditya-boy' }, context } as any);
   const byUserId = await entryDetail.execute({ input: { userId: 'USER-aditya-boy', entryDate: '2026-10-22' }, context } as any);
   assert.equal(byEntryId.found, true);
   assert.equal(byUserId.found, true);
-  for (const id of ['foreign-boy', 'pw-boy']) {
+  for (const id of ['same-guide-vashi-boy', 'foreign-boy', 'pw-boy']) {
     await assert.rejects(entryDetail.execute({ input: { entryId: `ENTRY-${id}` }, context } as any), /outside your FOLK hostel/);
   }
 });
@@ -188,7 +200,7 @@ test('current hostel assignments override stale guide links and revoked mentors 
   mockTables(t, fixture.users, fixture.guides, fixture.residencies);
   const scope = await getSadhanaMentorResidencyScope(fixture.mentorUser);
   assert.ok(scope);
-  assert.deepEqual(fixture.boys.filter(scope.includes).map(user => user.id), ['own-boy']);
+  assert.deepEqual(fixture.boys.filter(scope.includes).map(user => user.id).sort(), powaiBoyIds);
   fixture.mentorUser.isSadhanaMentor = false;
   const revoked = await getSadhanaMentorResidencyScope({ ...fixture.mentorUser, isSadhanaMentor: true });
   assert.ok(revoked);
@@ -198,7 +210,7 @@ test('current hostel assignments override stale guide links and revoked mentors 
 test('a member beyond the first two thousand records remains visible through inherited hostel access', async t => {
   const fixture = powaiFixture();
   const foreign = Array.from({ length: 2100 }, (_, index) => member(`foreign-${index}`, { guide: 'guide-foreign', residency: 'vashi' }));
-  mockTables(t, [fixture.mentorUser, ...fixture.guideUsers, ...foreign, fixture.boys[1]], fixture.guides, fixture.residencies);
+  mockTables(t, [fixture.mentorUser, ...fixture.guideUsers, ...foreign, fixture.boys.find(user => user.id === 'aditya-boy')], fixture.guides, fixture.residencies);
   const result = await members.execute({ input: {}, context: { user: fixture.mentorUser } } as any);
   assert.deepEqual(result.members.map((user: any) => user.userId), ['USER-aditya-boy']);
 });
@@ -209,13 +221,24 @@ test('a mentor can open a peer-guide member’s Sadhana profile but cannot open 
   const context = { user: fixture.mentorUser };
   const profile = await userDetail.execute({ input: { userId: 'USER-aditya-boy' }, context } as any);
   assert.equal(profile.user.dbId, 'aditya-boy');
-  await assert.rejects(userDetail.execute({ input: { userId: 'USER-foreign-boy' }, context } as any), /hierarchy/);
+  for (const id of ['same-guide-vashi-boy', 'foreign-boy']) {
+    await assert.rejects(userDetail.execute({ input: { userId: `USER-${id}` }, context } as any), /outside your FOLK hostel/);
+  }
+});
+
+test('one-to-one Sadhana context cannot reveal a Vashi boy under the same guide', async t => {
+  const fixture = powaiFixture();
+  mockTables(t, fixture.users, fixture.guides, fixture.residencies);
+  const context = { user: fixture.mentorUser };
+  const powai = await oneToOneContext.execute({ input: { userId: 'USER-aditya-boy' }, context } as any);
+  assert.ok(powai);
+  await assert.rejects(oneToOneContext.execute({ input: { userId: 'USER-same-guide-vashi-boy' }, context } as any), /FOLK hostel/);
 });
 
 test('Sadhana and hostel leaderboards use the same mentor audience as the report', async t => {
   const fixture = powaiFixture();
-  Object.assign(fixture.boys[1], { residency: 'powai', residencyApproved: true });
-  Object.assign(fixture.boys[6], { residencyApproved: true });
+  Object.assign(fixture.boys.find(user => user.id === 'aditya-boy')!, { residencyApproved: true });
+  Object.assign(fixture.boys.find(user => user.id === 'foreign-boy')!, { residencyApproved: true });
   const date = '2026-10-21';
   const entries = fixture.boys.map(user => ({ id: `entry-${user.id}`, user: user.id, entryDate: date, scorePercent: 90, totalScore: 18, maxScore: 20, templateMode: 'RESIDENT_TEMPLATE', fieldValuesJson: '{}' }));
   mockTables(t, fixture.users, fixture.guides, fixture.residencies, entries);

@@ -30,6 +30,7 @@ const BvslOneToOneTab = lazy(() => import('@/components/bvsl/BvslOneToOneTab'));
 const PwQuizPanel = lazy(() => import('@/components/bv/PwQuizPanel'));
 const PwAshrayaTargetsPanel = lazy(() => import('@/components/pw/PwAshrayaTargetsPanel'));
 const PwStaffTargetsPanel = lazy(() => import('@/components/pw/PwStaffTargetsPanel'));
+const AshrayExamDateSettings = lazy(() => import('@/components/profile/AshrayExamDateSettings'));
 import {
   getCurrentGuide, getPushSubscriptionStats, GetPushSubscriptionStatsOutputType,
   getPendingApprovals, getGuideRequests, getCleanlinessReviews,
@@ -243,6 +244,7 @@ export default function PwAdminDashboard() {
                       <p className="text-sm text-muted-foreground">Ashraya-level targets, plus the targets for RGFs and supervisors</p>
                     </div>
                     <div className="space-y-8">
+                      <AshrayExamDateSettings department="PW" />
                       <PwAshrayaTargetsPanel />
                       <PwStaffTargetsPanel />
                     </div>

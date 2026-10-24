@@ -18,6 +18,16 @@ export function sadhanaWhatsAppLink(input: {
   const labels = dates.map(date => new Intl.DateTimeFormat('en-IN', {
     day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
   }).format(new Date(`${date}T00:00:00Z`)));
-  const message = `Hare Krishna ${input.fullName.trim()}! Your Sadhana entries are pending for ${labels.join(', ')}. Please fill in the pending entries in the FOLK app where the submission window is still open. If you need help, please let me know. Thank you!`;
+  const message = [
+    `Hare Krishna, ${input.fullName.trim()} Prabhu! 🙏`,
+    'Jay Srila Prabhupada',
+    '',
+    `Just a gentle reminder that your Sadhana entries for ${labels.join(', ')} are still pending.`,
+    '',
+    'Whenever you get a chance, kindly update them in the application while the submission window is open.',
+    '',
+    'Please feel free to let me know if you need any help. 😊',
+    'Thank you, Prabhu!',
+  ].join('\n');
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
 }

@@ -12,8 +12,23 @@ test('WhatsApp composer normalizes an Indian number and encodes the member and m
   const url = new URL(sadhanaWhatsAppLink(member, today)!);
   assert.equal(url.origin, 'https://wa.me');
   assert.equal(url.pathname, '/919876543210');
-  assert.match(url.searchParams.get('text')!, /Hare Krishna A & B!/);
+  assert.match(url.searchParams.get('text')!, /Hare Krishna, A & B Prabhu! 🙏/);
   assert.match(url.searchParams.get('text')!, /20 Oct 2026/);
+});
+
+test('FOLK individual reminder uses the approved devotional message', () => {
+  const url = new URL(sadhanaWhatsAppLink(member, today)!);
+  assert.equal(url.searchParams.get('text'), [
+    'Hare Krishna, A & B Prabhu! 🙏',
+    'Jay Srila Prabhupada',
+    '',
+    'Just a gentle reminder that your Sadhana entries for 20 Oct 2026 are still pending.',
+    '',
+    'Whenever you get a chance, kindly update them in the application while the submission window is open.',
+    '',
+    'Please feel free to let me know if you need any help. 😊',
+    'Thank you, Prabhu!',
+  ].join('\n'));
 });
 
 test('PW, unspecified departments, invalid phones and complete reports have no composer link', () => {

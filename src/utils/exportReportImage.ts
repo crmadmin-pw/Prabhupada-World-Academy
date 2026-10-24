@@ -90,6 +90,7 @@ export function exportReportAsImage(
   showFolkColumn?: boolean,
   /** 'daily' | 'weekly' | 'monthly' — used for dynamic title */
   reportType?: string,
+  options: { download?: boolean; showRealValues?: boolean; maxScale?: number } = {},
 ) {
   const C = buildPalette();
   const _showFolk = showFolkColumn !== false;
@@ -116,7 +117,7 @@ export function exportReportAsImage(
 
   const _scaleByTotal = Math.floor(Math.sqrt(500_000_000 / (canvasW * canvasH)));
   const _scaleByDim   = Math.floor(Math.min(16384 / canvasW, 16384 / canvasH));
-  const SCALE = Math.min(16, Math.max(3, Math.min(_scaleByTotal, _scaleByDim)));
+  const SCALE = Math.min(options.maxScale ?? 16, Math.max(1, Math.min(_scaleByTotal, _scaleByDim)));
   const canvas = document.createElement('canvas');
   canvas.width = canvasW * SCALE;
   canvas.height = canvasH * SCALE;
@@ -421,7 +422,7 @@ export function exportReportAsImage(
       ctx.lineWidth = 0.5;
       ctx.beginPath(); ctx.moveTo(fcx, ry); ctx.lineTo(fcx, ry + ROW_H); ctx.stroke();
 
-      const { displayText, colorType } = computeCell(user, d, false);
+      const { displayText, colorType } = computeCell(user, d, options.showRealValues ?? false);
 
       // Map colorType → canvas fill + text color
       let cellBg: string | null = null;
@@ -478,6 +479,7 @@ export function exportReportAsImage(
   ctx.fillText('Prabhupada World Academy', PAD, footerY);
 
   // ── Download ─────────────────────────────────────────────────────────────────
+  if (options.download === false) return canvas;
   try {
     const link = document.createElement('a');
     link.download = filename;
@@ -499,4 +501,5 @@ export function exportReportAsImage(
       console.error('exportReportImage: export failed entirely', e2);
     }
   }
+  return canvas;
 }

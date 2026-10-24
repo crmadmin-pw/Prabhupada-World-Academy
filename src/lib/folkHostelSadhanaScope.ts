@@ -95,7 +95,7 @@ export async function getFolkHostelSadhanaScope(caller: any) {
 }
 
 export async function readFolkHostelSadhanaUsers(scope: Pick<ReturnType<typeof buildFolkHostelSadhanaScope>, 'includes' | 'matchesGuide'>, fields: string[], selectedGuide?: string) {
-  const rows = await allRows(Users, [...new Set([...fields, 'userId', 'fullName', 'status', 'segment', 'role', 'isBvAdmin', 'isBvSuperAdmin', 'isPrabhupadaWorldUser', 'guide', 'residency', 'temporaryResidency', 'temporaryResidencyEnabled'])]);
+  const rows = await allRows(Users, [...new Set([...fields, 'userId', 'fullName', 'status', 'segment', 'role', 'isBvAdmin', 'isBvSuperAdmin', 'isPrabhupadaWorldUser', 'guide', 'residency', 'selectedFolkResidency', 'temporaryResidency', 'temporaryResidencyEnabled'])]);
   const seen = new Set<string>();
   return rows.filter(user => {
     if (!scope.includes(user) || (selectedGuide && !scope.matchesGuide(user, selectedGuide))) return false;

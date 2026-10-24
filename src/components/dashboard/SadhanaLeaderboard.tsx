@@ -13,6 +13,7 @@ const RANK_STYLES = [
 ];
 
 type FilterKey = 'all_residents' | 'my_folk' | 'all_ashray' | 'my_ashray' | 'all_nr' | 'nr_my_ashray';
+type PwCohort = 'bv' | 'non_bv';
 
 interface LeaderboardEntry {
   userId: string;
@@ -27,6 +28,7 @@ interface LeaderboardEntry {
   flagSick?: boolean;
   flagOs?: boolean;
   currentStreak?: number;
+  isBvMember?: boolean;
 }
 
 interface Props {
@@ -36,6 +38,7 @@ interface Props {
   currentUserResidency: string;
   currentUserAshrayLevel: string;
   currentUserIsResident: boolean;
+  currentUserIsBvMember?: boolean;
   /** Prabhupada World has no residency categories or residency-based scoring views. */
   isPw?: boolean;
 }
@@ -51,11 +54,14 @@ export default function SadhanaLeaderboard({
   currentUserAshrayLevel,
   currentUserResidency,
   currentUserIsResident,
+  currentUserIsBvMember = false,
   isPw = false,
 }: Props) {
   const defaultFilter = getDefaultFilter(currentUserIsResident);
   const [activeFilter, setActiveFilter] = useState<FilterKey>(defaultFilter);
   const [page, setPage] = useState(0);
+  const [pwCohort, setPwCohort] = useState<PwCohort>(currentUserIsBvMember ? 'bv' : 'non_bv');
+  const [pwMyAshrayaOnly, setPwMyAshrayaOnly] = useState(false);
 
   const now = new Date();
   const wkStart = startOfISOWeek(now);
@@ -65,9 +71,10 @@ export default function SadhanaLeaderboard({
 
   const filtered = useMemo(() => {
     if (isPw) {
-      return activeFilter === 'nr_my_ashray'
-        ? leaderboard.filter(e => e.ashrayLevel === currentUserAshrayLevel)
-        : leaderboard;
+      return leaderboard.filter(entry => {
+        if (!!entry.isBvMember !== (pwCohort === 'bv')) return false;
+        return !pwMyAshrayaOnly || entry.ashrayLevel === currentUserAshrayLevel;
+      });
     }
     switch (activeFilter) {
       case 'all_residents':
@@ -84,20 +91,33 @@ export default function SadhanaLeaderboard({
       default:
         return leaderboard;
     }
-  }, [leaderboard, activeFilter, currentUserResidency, currentUserAshrayLevel, isPw]);
+  }, [leaderboard, activeFilter, currentUserResidency, currentUserAshrayLevel, isPw, pwCohort, pwMyAshrayaOnly]);
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const pageEntries = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   const myFilteredIdx = filtered.findIndex(e => e.userId === currentUserId);
   const myGlobalIdx = leaderboard.findIndex(e => e.userId === currentUserId);
+  const myPwCohortIdx = isPw
+    ? leaderboard.filter(entry => !!entry.isBvMember === currentUserIsBvMember).findIndex(entry => entry.userId === currentUserId)
+    : -1;
+  const myVisibleRank = myFilteredIdx >= 0 ? myFilteredIdx : (isPw ? myPwCohortIdx : myGlobalIdx);
   const myPage = myFilteredIdx >= 0 ? Math.floor(myFilteredIdx / PAGE_SIZE) : -1;
 
   const setFilter = (f: FilterKey) => { setActiveFilter(f); setPage(0); };
+  const setCohort = (cohort: PwCohort) => { setPwCohort(cohort); setPage(0); };
 
   const jumpToMyPosition = () => {
     if (myPage >= 0) setPage(myPage);
-    else { setFilter(getDefaultFilter(currentUserIsResident)); setPage(0); }
+    else {
+      if (isPw) {
+        setPwCohort(currentUserIsBvMember ? 'bv' : 'non_bv');
+        setPwMyAshrayaOnly(false);
+      } else {
+        setFilter(getDefaultFilter(currentUserIsResident));
+      }
+      setPage(0);
+    }
   };
 
   // Chips shown depend on whether the current user is a resident or NR
@@ -133,7 +153,7 @@ export default function SadhanaLeaderboard({
     },
   ];
 
-  const chips = isPw ? nrChips : (currentUserIsResident ? residentChips : nrChips);
+  const chips = currentUserIsResident ? residentChips : nrChips;
 
   return (
     <Card>
@@ -146,7 +166,7 @@ export default function SadhanaLeaderboard({
               <p className="text-xs text-muted-foreground mt-0.5">{dateLabel} · {todayLabel}</p>
             </div>
           </div>
-          {myGlobalIdx >= 0 && (
+          {myVisibleRank >= 0 && (
             <Button
               size="sm"
               variant="default"
@@ -154,14 +174,43 @@ export default function SadhanaLeaderboard({
               onClick={jumpToMyPosition}
             >
               <MapPin className="w-3 h-3" />
-              #{myFilteredIdx >= 0 ? myFilteredIdx + 1 : myGlobalIdx + 1} My Position
+              #{myVisibleRank + 1} My Position
             </Button>
           )}
         </div>
 
         {/* Filter chips — single row, scrollable on mobile */}
         <div className="flex gap-1.5 mt-2 overflow-x-auto pb-0.5 -mx-1 px-1">
-          {chips.map(chip => (
+          {isPw ? (
+            <>
+              <Button
+                size="sm"
+                variant={pwCohort === 'bv' ? 'default' : 'outline'}
+                className="text-xs h-7 whitespace-nowrap shrink-0"
+                onClick={() => setCohort('bv')}
+              >
+                Bhakti Vriksha Members
+              </Button>
+              <Button
+                size="sm"
+                variant={pwCohort === 'non_bv' ? 'default' : 'outline'}
+                className="text-xs h-7 whitespace-nowrap shrink-0"
+                onClick={() => setCohort('non_bv')}
+              >
+                Non-Bhakti Vriksha Members
+              </Button>
+              <Button
+                size="sm"
+                variant={pwMyAshrayaOnly ? 'default' : 'outline'}
+                className="text-xs h-7 whitespace-nowrap shrink-0"
+                disabled={!currentUserAshrayLevel}
+                title={!currentUserAshrayLevel ? 'Ashraya level not set' : undefined}
+                onClick={() => { setPwMyAshrayaOnly(value => !value); setPage(0); }}
+              >
+                My Ashraya
+              </Button>
+            </>
+          ) : chips.map(chip => (
             <Button
               key={chip.key}
               size="sm"

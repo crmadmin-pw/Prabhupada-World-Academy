@@ -262,6 +262,9 @@ export default createEndpoint({
     }
     const hostelScope = await getFolkHostelSadhanaScope(context.user);
     const mentorScope = await getSadhanaMentorResidencyScope(context.user);
+    if (mentorScope && !hasUnrestrictedProfileAccess && !isRgf && !isRgsf && !isBvMentor && !mentorScope.includes(userRecord)) {
+      throw new AppError({ code: 'FORBIDDEN', message: 'This user is outside your FOLK hostel report scope' });
+    }
     const hostelReportAccess = hostelScope?.includes(userRecord) === true || mentorScope?.includes(userRecord) === true;
     const inHierarchy = hostelReportAccess || onRoster || isPwDepartmentAdmin(context.user) || isUserInHierarchy(userRecord, await getScopedHierarchyUserIds(context.user));
     if (!onRoster && !groupMember && !inHierarchy) {

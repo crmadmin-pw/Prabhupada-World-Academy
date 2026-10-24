@@ -1,8 +1,9 @@
 import SadhanaWhatsAppReminder from './SadhanaWhatsAppReminder';
+import MissingSadhanaShareActions from './MissingSadhanaShareActions';
 import { useReactiveEffect } from '@/hooks/useReactiveEffect';
 import TableScrollArea from '@/components/mobile/TableScrollArea';
 import FilterPanel from '@/components/mobile/FilterPanel';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
@@ -539,6 +540,7 @@ const PERIOD_LABELS: { value: Period; label: string }[] = [
 interface Props { guideId?: string; segment?: 'PW' | 'FOLK'; }
 
 export default function MissingSadhanaTab({ guideId, segment }: Props) {
+  const reportRef = useRef<HTMLDivElement>(null);
   const { profile } = useUserProfile();
   const isSuperAdmin = !!(
     profile?.isBvSuperAdmin ||
@@ -580,7 +582,7 @@ export default function MissingSadhanaTab({ guideId, segment }: Props) {
     segment: isPw ? 'PW' : 'FOLK',
   }, Boolean(start && end && start <= end));
   const data = reportQuery.data;
-  const loading = reportQuery.loading;
+  const loading = reportQuery.loading || reportQuery.fetching;
   useEffect(() => { if (reportQuery.error) toast.error(reportQuery.error.message || 'Failed to load report'); }, [reportQuery.error]);
 
   // Filtered data — client-side guide/status/hideZero filters and self-exclusion
@@ -630,7 +632,12 @@ export default function MissingSadhanaTab({ guideId, segment }: Props) {
       if (bLate !== aLate) return bLate - aLate;
       return a.fullName.localeCompare(b.fullName);
     });
-    return { ...data, users };
+    const statuses = users.flatMap(user => data.dates.map(date => data.matrix[user.id]?.[date]));
+    const totalMissing = statuses.filter(status => status === 'missed').length;
+    const totalLate = statuses.filter(status => status === 'late').length;
+    const totalFilled = statuses.filter(status => status === 'filled' || status === 'late').length;
+    return { ...data, users, stats: { ...data.stats, totalUsers: users.length, totalMissing, totalLate,
+      completionRate: statuses.length ? Math.round(totalFilled / statuses.length * 100) : 100 } };
   }, [data, guideFilter, statusFilter, hideZeroMissed, profile, isPw]);
 
   const handleExport = () => {
@@ -808,6 +815,12 @@ export default function MissingSadhanaTab({ guideId, segment }: Props) {
         <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={handleExport} disabled={!filteredData || loading}>
           <Download className="w-3.5 h-3.5" /> Export CSV
         </Button>
+        {!isPw && (segment === 'FOLK' || profile?.segment === 'FOLK') && <MissingSadhanaShareActions
+          reportRef={reportRef}
+          filename={`missing-sadhana-${start}-to-${end}.png`}
+          disabled={!filteredData?.users.length || loading || !!reportQuery.error}
+          recipients={(filteredData?.users || []).map(user => ({ ...user, missingDates: filteredData!.dates.filter(date => filteredData!.matrix[user.id]?.[date] === 'missed') }))}
+        />}
       </div>
 
       {/* Date range + count label */}
@@ -834,8 +847,16 @@ export default function MissingSadhanaTab({ guideId, segment }: Props) {
       )}
 
       {!loading && data && filteredData && (
-        <>
-          <StatsRow stats={data.stats} />
+        <div ref={reportRef} className="space-y-3 bg-background">
+          <div>
+            <h3 className="font-semibold">{isPw ? '' : 'FOLK '}Missing Sadhana Report</h3>
+            <p className="text-xs text-muted-foreground">{start} – {end} · {filteredData.users.length} members · {view}
+              {guideFilter !== 'all' ? ` · ${data.guides.find(guide => guide.id === guideFilter)?.name || guideFilter}` : ''}
+              {statusFilter !== 'all' ? ` · ${statusFilter}` : ''}
+              {residencyId !== 'all' ? ` · ${residencies.find(residency => residency.residencyId === residencyId)?.residencyName || residencyId}` : ''}
+            </p>
+          </div>
+          <StatsRow stats={filteredData.stats} />
           <Legend />
           {filteredData.users.length === 0 ? (
             <div className="text-center py-10 text-sm text-muted-foreground">
@@ -848,7 +869,7 @@ export default function MissingSadhanaTab({ guideId, segment }: Props) {
           ) : (
             <MobileView data={filteredData} isPw={isPw} />
           )}
-        </>
+        </div>
       )}
     </div>
   );

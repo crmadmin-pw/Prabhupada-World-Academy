@@ -19,6 +19,7 @@ interface LeaderboardEntry {
   flagSick?: boolean;
   flagOs?: boolean;
   currentStreak?: number;
+  isBvMember?: boolean;
 }
 
 interface LeaderboardData {
@@ -27,6 +28,7 @@ interface LeaderboardData {
   currentUserAshrayLevel: string;
   currentUserGuideId: string;
   currentUserIsResident: boolean;
+  currentUserIsBvMember?: boolean;
   folkTotals?: Record<string, number>;
 }
 
@@ -171,6 +173,7 @@ export default function LeaderboardTab({ leaderboardData, userId, userResidencyN
           currentUserResidency={leaderboardData.currentUserResidency}
           currentUserAshrayLevel={leaderboardData.currentUserAshrayLevel}
           currentUserIsResident={leaderboardData.currentUserIsResident}
+          currentUserIsBvMember={leaderboardData.currentUserIsBvMember}
           isPw={isPw}
         />
       </SectionErrorBoundary>

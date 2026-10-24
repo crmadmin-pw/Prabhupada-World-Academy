@@ -34,6 +34,7 @@ const ApprovalsTab = lazy(() => import('@/components/guide/ApprovalsTab'));
 const SuperBvRegistrationsTab = lazy(() => import('@/components/super/SuperBvRegistrationsTab'));
 const BvAdminManagementTab = lazy(() => import('@/components/super/BvAdminManagementTab'));
 const FolkResidencyManagement = lazy(() => import('@/components/super/FolkResidencyManagement'));
+const AshrayExamDateSettings = lazy(() => import('@/components/profile/AshrayExamDateSettings'));
 
 export default function FolkGuideDashboard() {
   const { user } = useAuth();
@@ -247,6 +248,9 @@ export default function FolkGuideDashboard() {
             )}
             {visitedTabs.has('approvals') && (
               <DashboardPanel active={activeTab === 'approvals'}>
+                <div className="mb-6">
+                  <AshrayExamDateSettings department="FOLK" />
+                </div>
                 <ApprovalsTab guideId={isSuperAdmin ? 'ALL' : guideId} isSuperGuide={isSuperAdmin} />
               </DashboardPanel>
             )}

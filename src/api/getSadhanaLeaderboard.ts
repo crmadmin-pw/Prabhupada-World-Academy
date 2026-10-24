@@ -1,9 +1,9 @@
 import { z } from 'zod';
 import { getDashboardHierarchyScope, isUserInHierarchy, readScopedUsers } from '../lib/hierarchyUtils';
-import { createEndpoint, Users, FolkResidencies } from '@/lib/backend-sdk';
+import { createEndpoint, Users, FolkResidencies, BvGroupMembers } from '@/lib/backend-sdk';
 import { computeStreak, getTodayIST } from '../lib/streakUtils';
 import { getGuideScope } from '../lib/guideScope';
-import { bvUserAliases, resolveBvGroupMemberUsers } from '../lib/bvGroupMemberScope';
+import { bvUserAliases, resolveBvDepartmentGroups, resolveBvGroupMemberUsers } from '../lib/bvGroupMemberScope';
 import { requireGuideRole } from '../lib/userUtils';
 import { resolveBvAdminFacilitators } from '../lib/bvAdminFacilitatorScope';
 import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
@@ -25,6 +25,52 @@ const ASHRAY_RANK: Record<string, number> = {
 function firstValue(value: unknown): string {
   if (Array.isArray(value)) return String(value[0] || '');
   return String(value || '');
+}
+
+function normalizedRefs(value: unknown): string[] {
+  if (Array.isArray(value)) return value.flatMap(normalizedRefs);
+  if (value == null) return [];
+  return String(value).split(',').map(item => item.trim().toLowerCase()).filter(Boolean);
+}
+
+/** Active PW group membership is the cohort boundary for the member-facing
+ * Sadhana leaderboard. The group's RGF/RGSF count as BV members even when an
+ * older group has no explicit membership row for its staff. */
+async function loadPwBvMemberAliases(): Promise<Set<string>> {
+  const groups = await resolveBvDepartmentGroups('PW');
+  const groupAliases = new Set(groups.flatMap(group => normalizedRefs([group.id, group.groupId])));
+  if (!groupAliases.size) return new Set();
+
+  const groupKeys = [...new Set(groups.flatMap(group => [group.id, group.groupId]).filter(Boolean))];
+  const fields = ['id', 'user', 'userId', 'memberId', 'group', 'groupId', 'isActive', 'status'];
+  const membershipPages = [];
+  for (let index = 0; index < groupKeys.length; index += 30) {
+    const keys = groupKeys.slice(index, index + 30);
+    membershipPages.push(...await Promise.all(['group', 'groupId'].flatMap(field => [
+      BvGroupMembers.findAll({ filters: { [field]: { in: keys } } as any, fields, limit: 5000 }),
+      BvGroupMembers.findAll({ filters: { [field]: { arrayContainsAny: keys } } as any, fields, limit: 5000 }),
+    ])));
+  }
+  const memberships = [...new Map(
+    membershipPages.flatMap(page => page.records || []).map(membership => [membership.id, membership]),
+  ).values()];
+  const aliases = new Set<string>();
+  for (const membership of memberships) {
+    const status = String(membership.status || '').trim().toLowerCase();
+    if (membership.isActive === false || ['inactive', 'removed', 'left'].includes(status)) continue;
+    if (!normalizedRefs([membership.group, membership.groupId]).some(ref => groupAliases.has(ref))) continue;
+    normalizedRefs([membership.user, membership.userId, membership.memberId]).forEach(ref => aliases.add(ref));
+  }
+  for (const group of groups) {
+    normalizedRefs([
+      group.record.bvslLeader,
+      group.record.bvslId,
+      group.record.subFacilitatorId,
+      group.record.rgsfId,
+      group.record.subFacilitator,
+    ]).forEach(ref => aliases.add(ref));
+  }
+  return aliases;
 }
 
 function getResidentState(user: any) {
@@ -77,7 +123,11 @@ export default createEndpoint({
 
     // Scores and historical streaks are read from stored period summaries.
     // A period is built from Sadhana entries once; later views do not rescan it.
-    const facts = await loadLeaderboardFacts(startStr, endStr, todayStr);
+    const isPwLeaderboard = input.segment === 'PW' || isPwSadhanaUser(context.user);
+    const [facts, pwBvMemberAliases] = await Promise.all([
+      loadLeaderboardFacts(startStr, endStr, todayStr),
+      isPwLeaderboard ? loadPwBvMemberAliases() : Promise.resolve(new Set<string>()),
+    ]);
     const streakRefDate = endStr <= todayStr ? endStr : todayStr;
     const needsHistoricalStreak = streakRefDate < todayStr;
 
@@ -88,6 +138,7 @@ export default createEndpoint({
         currentUserAshrayLevel: context.user.ashrayLevel || '',
         currentUserResidency: '', currentUserIsResident,
         currentUserGuideId: firstValue(context.user.guide),
+        currentUserIsBvMember: isPwLeaderboard && bvUserAliases(context.user).some(alias => pwBvMemberAliases.has(alias)),
       };
     }
 
@@ -254,6 +305,7 @@ export default createEndpoint({
           flagOs: aggregate.flagOs,
           submittedAt: aggregate.latestSubmittedAt,
           currentStreak,
+          isBvMember: isPwLeaderboard && bvUserAliases(u).some(alias => pwBvMemberAliases.has(alias)),
         };
       })
       .filter(Boolean)
@@ -303,6 +355,7 @@ export default createEndpoint({
       currentUserResidency,
       currentUserIsResident,
       currentUserGuideId,
+      currentUserIsBvMember: isPwLeaderboard && bvUserAliases(currentUserSource).some(alias => pwBvMemberAliases.has(alias)),
     };
   },
 });

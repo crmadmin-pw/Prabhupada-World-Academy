@@ -942,6 +942,13 @@ export const getAshrayChecklist = (input: getAshrayChecklist_Input): Promise<get
 export type GetAshrayChecklistOutputType = getAshrayChecklist_Output;
 export type GetAshrayChecklistInputType = getAshrayChecklist_Input;
 
+import type getAshrayExamDate_Type from '../api/getAshrayExamDate';
+type getAshrayExamDate_Input = z.input<typeof getAshrayExamDate_Type.inputSchema>;
+type getAshrayExamDate_Output = ReturnType<typeof getAshrayExamDate_Type.execute> extends Promise<infer R> ? R : ReturnType<typeof getAshrayExamDate_Type.execute>;
+export const getAshrayExamDate = (input: getAshrayExamDate_Input): Promise<getAshrayExamDate_Output> => invokeEndpoint('getAshrayExamDate', input);
+export type GetAshrayExamDateOutputType = getAshrayExamDate_Output;
+export type GetAshrayExamDateInputType = getAshrayExamDate_Input;
+
 import type getAshrayUpgradePath_Type from '../api/getAshrayUpgradePath';
 type getAshrayUpgradePath_Input = z.input<typeof getAshrayUpgradePath_Type.inputSchema>;
 type getAshrayUpgradePath_Output = ReturnType<typeof getAshrayUpgradePath_Type.execute> extends Promise<infer R> ? R : ReturnType<typeof getAshrayUpgradePath_Type.execute>;
@@ -2242,6 +2249,13 @@ type setAshrayLevel_Output = ReturnType<typeof setAshrayLevel_Type.execute> exte
 export const setAshrayLevel = (input: setAshrayLevel_Input): Promise<setAshrayLevel_Output> => invokeEndpoint('setAshrayLevel', input);
 export type SetAshrayLevelOutputType = setAshrayLevel_Output;
 export type SetAshrayLevelInputType = setAshrayLevel_Input;
+
+import type setAshrayExamDate_Type from '../api/setAshrayExamDate';
+type setAshrayExamDate_Input = z.input<typeof setAshrayExamDate_Type.inputSchema>;
+type setAshrayExamDate_Output = ReturnType<typeof setAshrayExamDate_Type.execute> extends Promise<infer R> ? R : ReturnType<typeof setAshrayExamDate_Type.execute>;
+export const setAshrayExamDate = (input: setAshrayExamDate_Input): Promise<setAshrayExamDate_Output> => invokeEndpoint('setAshrayExamDate', input);
+export type SetAshrayExamDateOutputType = setAshrayExamDate_Output;
+export type SetAshrayExamDateInputType = setAshrayExamDate_Input;
 
 import type setFolkCenter_Type from '../api/setFolkCenter';
 type setFolkCenter_Input = z.input<typeof setFolkCenter_Type.inputSchema>;
