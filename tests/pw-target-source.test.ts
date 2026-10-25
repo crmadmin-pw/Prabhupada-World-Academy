@@ -6,6 +6,7 @@ const rgf = { id: 'rgf', isBvFacilitator: true };
 const admin = { id: 'admin', isBvAdmin: true };
 const mentor = { id: 'mentor', userId: 'MENTOR-1', isSadhanaMentor: true };
 const supervisor = { id: 'sup', isBvSupervisor: true };
+const rgsf = { id: 'rgsf', role: 'RGSF', isBvSubFacilitator: true };
 
 test('targets come from the RGF, the admin, the mentor, then the Ashraya level', () => {
   assert.equal(pwTargetSource({ isBvMember: true }), 'rgf');
@@ -28,4 +29,8 @@ test('only the matching authority can save those targets', () => {
   assert.equal(canSetPwTargets(admin, mentee).allowed, false);
   assert.equal(canSetPwTargets(rgf, { id: 'ashraya' }).allowed, false);
   assert.equal(canSetPwTargets(rgf, { id: 'grouped' }, true).source, 'rgf');
+  assert.equal(canSetPwTargets(rgsf, bvMember).allowed, false);
+  assert.equal(canSetPwTargets({ ...rgsf, isBvFacilitator: true }, bvMember).allowed, false);
+  assert.equal(canSetPwTargets({ ...rgsf, isSadhanaMentor: true }, mentee).allowed, false);
+  assert.equal(canSetPwTargets({ ...rgsf, isBvAdmin: true }, supervisor).allowed, false);
 });

@@ -257,29 +257,11 @@ export default function ReportsTab({ guideId = '', senderName, segment, bvslMode
   const [selectedWeek, setSelectedWeek] = useState(getDefaultWeek());
   const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'));
   const [selectedGroupId, setSelectedGroupId] = useState('all');
-  const [residencyFilter, setResidencyFilter] = useState<ResidencyFilter>(() => {
-    // An RGF's report scope is their reading-group membership, not the
-    // facilitator's own residency. Defaulting to "Residents" can silently
-    // hide non-resident group members.
-    if (isPw || bvslMode || mentorMode) return 'all';
-    return (sessionStorage.getItem('guide_report_residencyFilter') as ResidencyFilter) || 'resident';
-  });
+  const [residencyFilter, setResidencyFilter] = useState<ResidencyFilter>(() => isPw ? 'all' : 'resident');
   const [ashrayLevelFilter, setAshrayLevelFilter] = useState<string>('all');
-  const [folkResidencyId, setFolkResidencyId] = useState<string>(() => {
-    // RGF groups can contain members from another FOLK residency. Never seed
-    // an invisible profile-residency filter in RGF mode.
-    if (isPw || bvslMode || mentorMode) return 'all';
-    return isSuperAdmin ? 'all' : (profile?.folkResidencyCustomId || 'all');
-  });
-
-  useEffect(() => {
-    if (!isPw || bvslMode) {
-      setFolkResidencyId('all');
-      setResidencyFilter('all');
-    } else if (profile && !isSuperAdmin && !isPw) {
-      setFolkResidencyId(profile.folkResidencyCustomId || 'all');
-    }
-  }, [profile, isSuperAdmin, isPw, bvslMode, mentorMode]);
+  // Hostel authorization comes from the server. Profile residency is not a
+  // member filter, and profile refreshes must not reset the chosen status.
+  const [folkResidencyId, setFolkResidencyId] = useState<string>('all');
 
   useEffect(() => {
     if (selectedGroupId !== 'all' && !groupOptions.some(group => group.id === selectedGroupId || group.groupId === selectedGroupId)) {

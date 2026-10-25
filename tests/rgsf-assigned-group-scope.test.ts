@@ -112,10 +112,37 @@ test('attendance reads and both write endpoints reject Krishna without writes', 
   assert.ok(allowed.members.some((member: any) => member.fullName === members[0].fullName));
 });
 
+test('an assigned RGSF can mark attendance in a PW reading-group session', async t => {
+  const { caller, rows, writes } = fixture(t);
+  rows.BvSessions.push({ id: 'gadadhara-session', group: gadadhara.id, sessionDate: '2026-10-24' });
+  const result = await markBvAttendance.execute({
+    input: { sessionId: 'gadadhara-session', userId: members[0].id, present: true },
+    context: context(caller),
+  } as never);
+  assert.equal(result.success, true);
+  assert.ok(writes.includes('BvAttendance.create'));
+});
+
 test('stale profile or ordinary membership cannot add Krishna to an explicitly assigned RGSF', async t => {
   const { caller } = fixture(t, { caller: { bvGroupId: krishna.groupId, bvGroupName: krishna.groupName }, memberships: [{ id: 'richa-member', group: krishna.id, user: rgsf.id }] });
   assert.deepEqual((await resolveBvScopedGroups(caller)).map(g => g.id), [gadadhara.id]);
   assert.equal(await callerCanRecordGroupAttendance(krishna, caller), false);
+});
+
+test('admin reporting scope cannot authorize attendance on an unassigned group', async t => {
+  const { caller } = fixture(t, { caller: { isBvAdmin: true } });
+  assert.equal(await callerCanRecordGroupAttendance(krishna, caller), false);
+  assert.equal(await callerCanRecordGroupAttendance(gadadhara, caller), true);
+});
+
+test('an inactive RGSF cannot mark an assigned group', async t => {
+  const { caller, writes } = fixture(t, { caller: { status: 'Inactive' } });
+  assert.equal(await callerCanRecordGroupAttendance(gadadhara, caller), false);
+  await assert.rejects(conductBvSession.execute({
+    input: { bvslId: caller.userId, groupId: gadadhara.id, sessionDate: '2026-10-24', memberAttendance: [] },
+    context: context(caller),
+  } as never), forbidden);
+  assert.deepEqual(writes, []);
 });
 
 test('explicit assignments to multiple groups remain accessible', async t => {

@@ -48,6 +48,22 @@ const group = {
   bvslLeader: rgf.id,
 };
 
+test('an RGSF cannot assign PW targets through the save endpoint, even with other role flags', async t => {
+  const updates: any[] = [];
+  t.mock.method(Users, 'update', async (value: any) => { updates.push(value); return value; });
+  for (const actor of [
+    { id: 'rgsf', role: 'RGSF', isBvSubFacilitator: true },
+    { id: 'dual-flagged-rgsf', role: 'RGSF', isBvSubFacilitator: true, isBvFacilitator: true },
+    { id: 'admin-flagged-rgsf', role: 'RGSF', isBvSubFacilitator: true, isBvAdmin: true },
+  ]) {
+    await assert.rejects(() => setPwSadhanaTargets.execute({
+      input: { userId: unmarkedMember.userId, chantingRounds: 8 },
+      context: { user: actor },
+    } as never), (error: any) => error?.code === 'FORBIDDEN');
+  }
+  assert.deepEqual(updates, []);
+});
+
 test('an RGF can assign sadhana targets when the member profile is missing its Prabhupada World flag', async () => {
   const membershipId = 'PW-TARGET-MEMBERSHIP';
   try {

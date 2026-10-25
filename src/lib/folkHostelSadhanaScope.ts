@@ -59,11 +59,19 @@ export function buildFolkHostelSadhanaScope(caller: any, guides: any[], users: a
     residencies,
     availableGuides: peers.map(e => ({ guideId: e.id, guideName: e.name })).sort((a, b) => a.guideName.localeCompare(b.guideName)),
     guideNameFor: (user: any) => [own, ...peers].find(entry => entry && intersects(hostelRefs(user.guide), entry.refs))?.name || '',
-    includes: (user: any) => !!own && organizationalDepartment(user) !== 'PW' && String(user.status).toLowerCase() === 'active' &&
-      !['GUIDE', 'SUPERGUIDE', 'ADMIN', 'SUPERADMIN', 'PWADMIN'].includes(normalizeDepartmentToken(user.role)) &&
-      !user.isBvAdmin && !user.isBvSuperAdmin &&
-      (intersects(hostelRefs(user.guide), guideRefs) || intersects(hostelRefs(user.residency), residencyRefs) ||
-        (user.temporaryResidencyEnabled === true && intersects(hostelRefs(user.temporaryResidency), residencyRefs))),
+    includes: (user: any) => {
+      if (!own || organizationalDepartment(user) === 'PW' || String(user.status).toLowerCase() !== 'active' ||
+        ['GUIDE', 'SUPERGUIDE', 'ADMIN', 'SUPERADMIN', 'PWADMIN'].includes(normalizeDepartmentToken(user.role)) ||
+        user.isBvAdmin || user.isBvSuperAdmin) return false;
+      const memberGuide = hostelRefs(user.guide);
+      const memberHostel = hostelRefs(user.residency || user.selectedFolkResidency);
+      const inHostel = intersects(memberHostel, residencyRefs);
+      const visiting = user.temporaryResidencyEnabled === true && intersects(hostelRefs(user.temporaryResidency), residencyRefs);
+      // A guide retains direct assignments. Sharing a hostel with another
+      // guide never grants that guide's residents at a different hostel.
+      return intersects(memberGuide, own.refs) || inHostel || visiting ||
+        (memberHostel.length === 0 && intersects(memberGuide, guideRefs));
+    },
     matchesGuide: (user: any, selected: string) => {
       const peer = peers.find(e => e.refs.has(selected.trim().toLowerCase()));
       return !!peer && intersects(hostelRefs(user.guide), peer.refs);

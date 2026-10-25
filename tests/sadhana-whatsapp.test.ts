@@ -12,23 +12,30 @@ test('WhatsApp composer normalizes an Indian number and encodes the member and m
   const url = new URL(sadhanaWhatsAppLink(member, today)!);
   assert.equal(url.origin, 'https://wa.me');
   assert.equal(url.pathname, '/919876543210');
-  assert.match(url.searchParams.get('text')!, /Hare Krishna, A & B Prabhu! 🙏/);
+  assert.match(url.searchParams.get('text')!, /Hare Krishna, A Prabhu!/);
   assert.match(url.searchParams.get('text')!, /20 Oct 2026/);
 });
 
 test('FOLK individual reminder uses the approved devotional message', () => {
   const url = new URL(sadhanaWhatsAppLink(member, today)!);
   assert.equal(url.searchParams.get('text'), [
-    'Hare Krishna, A & B Prabhu! 🙏',
-    'Jay Srila Prabhupada',
+    'Hare Krishna, A Prabhu!',
+    'Jai Srila Prabhupada',
     '',
     'Just a gentle reminder that your Sadhana entries for 20 Oct 2026 are still pending.',
     '',
     'Whenever you get a chance, kindly update them in the application while the submission window is open.',
     '',
-    'Please feel free to let me know if you need any help. 😊',
+    'Please feel free to let me know if you need any help.',
     'Thank you, Prabhu!',
   ].join('\n'));
+});
+
+test('individual reminder uses only the first name', () => {
+  const url = new URL(sadhanaWhatsAppLink({ ...member, fullName: 'Madhushrava Bohra' }, today)!);
+  const message = url.searchParams.get('text')!;
+  assert.match(message, /^Hare Krishna, Madhushrava Prabhu!/);
+  assert.doesNotMatch(message, /Bohra/);
 });
 
 test('PW, unspecified departments, invalid phones and complete reports have no composer link', () => {

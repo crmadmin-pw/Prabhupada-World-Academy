@@ -15,6 +15,7 @@ async function main() {
       await context.addInitScript(({ apiKey, nativeShare }) => {
         const token = `${btoa('{}')}.${btoa(JSON.stringify({ sub: 'guide-a', exp: Math.floor(Date.now() / 1000) + 3600 }))}.test`;
         localStorage.setItem('folk_login_ts', String(Date.now()));
+        sessionStorage.setItem('guide_report_residencyFilter', 'all');
         localStorage.setItem(`firebase:authUser:${apiKey}:[DEFAULT]`, JSON.stringify({ uid: 'guide-a', email: 'guide@example.invalid', emailVerified: true, isAnonymous: false, providerData: [], apiKey, appName: '[DEFAULT]', stsTokenManager: { refreshToken: 'test', accessToken: token, expirationTime: Date.now() + 3600000 } }));
         Object.defineProperty(navigator, 'canShare', { value: () => nativeShare });
         Object.defineProperty(navigator, 'share', { value: async data => {
@@ -54,13 +55,15 @@ async function main() {
           stats: { totalUsers: 2, totalDays: 2, totalMissing: 2, totalLate: 0, completionRate: 50 }, guides: [],
         };
         if (name === 'getGuideDetailedReport') response = {
-          users: ['Included boy', 'Excluded boy', 'Included other level'].map((fullName, i) => ({ id: `boy-${i}`, userId: `boy-${i}`, fullName, ashrayLevel: i === 2 ? 'Sadhak' : 'Sevak', isResident: false, submitted: true, fieldScores: {}, fieldRawValues: {}, scorePercent: 80 })),
+          users: ['Included boy', 'Excluded boy', 'Included other level', 'Nonresident boy'].map((fullName, i) => ({ id: `boy-${i}`, userId: `boy-${i}`, fullName, ashrayLevel: i === 2 ? 'Sadhak' : 'Sevak', isResident: i !== 3, submitted: true, fieldScores: {}, fieldRawValues: {}, scorePercent: 80 })),
           fieldDefs: [], availableResidencies: [], availableGuides: [], summary: {},
         };
         return route.fulfill({ json: response });
       });
       await page.goto(origin + '/folk-guide/dashboard', { timeout: 120000 });
       await expect(page.getByText('Included boy', { exact: true }).first()).toBeVisible({ timeout: 120000 });
+      await expect(page.getByRole('combobox').filter({ hasText: 'Residents' }).first()).toBeVisible();
+      await expect(page.getByText('Nonresident boy', { exact: true })).toHaveCount(0);
       if (period !== 'Daily') {
         await page.getByRole('combobox').filter({ hasText: 'Daily' }).click();
         await page.getByRole('option', { name: period, exact: true }).click();
@@ -93,15 +96,15 @@ async function main() {
       await dialog.getByRole('button', { name: 'Close', exact: true }).click();
       await page.getByRole('button', { name: 'Missing Sadhana', exact: true }).filter({ visible: true }).first().click();
       await expect(page.getByText('Pending Resident', { exact: true }).first()).toBeVisible();
-      await page.getByRole('combobox').filter({ hasText: 'All Statuses' }).click();
-      await page.getByRole('option', { name: 'Resident', exact: true }).click();
+      await expect(page.getByRole('combobox').filter({ hasText: 'Resident' }).first()).toBeVisible();
+      await expect(page.getByText('Filtered Nonresident', { exact: true })).toHaveCount(0);
       await page.getByRole('button', { name: 'Message Individuals', exact: true }).click();
       const individuals = page.getByRole('dialog');
       await expect(individuals.getByText('Pending Resident', { exact: true })).toBeVisible();
       await expect(individuals.getByText('Filtered Nonresident', { exact: true })).toHaveCount(0);
       const href = await individuals.getByRole('link', { name: /Remind Pending Resident/ }).getAttribute('href');
       const message = new URL(href).searchParams.get('text');
-      assert.match(message, /Hare Krishna, Pending Resident Prabhu! 🙏/);
+      assert.match(message, /Hare Krishna, Pending Prabhu!/);
       assert.match(message, /19 Oct 2026/);
       assert.doesNotMatch(message, /20 Oct 2026/);
       await individuals.getByRole('button', { name: 'Close', exact: true }).click();

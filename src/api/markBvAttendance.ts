@@ -16,7 +16,7 @@ async function requireAssignedFacilitator(groupId: string, context: any) {
   if (!group) throw new AppError({ code: 'NOT_FOUND', message: 'Reading Group not found' });
 
   if (!(await callerCanRecordGroupAttendance(group, context.user))) {
-    throw new AppError({ code: 'FORBIDDEN', message: 'Only this Reading Group\'s facilitator can mark attendance' });
+    throw new AppError({ code: 'FORBIDDEN', message: 'Only this Reading Group\'s RGF or RGSF can mark attendance' });
   }
   return group;
 }

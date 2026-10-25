@@ -328,7 +328,7 @@ export default function ImprovementTab({
   const isFolk = profile?.segment === 'FOLK';
   // Default to previous week — current week is always incomplete
   const [period, setPeriod] = useState<Period>(initialPeriod);
-  const [residencyFilter, setResidencyFilter] = useState<ResidencyFilter>('all');
+  const [residencyFilter, setResidencyFilter] = useState<ResidencyFilter>(() => isFolk ? 'resident' : 'all');
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<GetGuideDetailedReportOutputType | null>(null);
   // Dialog for "who lost points on this field"

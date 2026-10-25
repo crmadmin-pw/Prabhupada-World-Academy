@@ -4,10 +4,11 @@ import { isReadingGroupStaff } from '@/lib/bvGroupFacilitators';
 import { getRefId } from '@/lib/userUtils';
 
 const USER_FIELDS = [
-  'id', 'userId', 'email', 'fullName', 'displayName', 'name', 'status', 'role',
+  'id', 'userId', 'email', 'fullName', 'displayName', 'name', 'status', 'role', 'segment', 'isPrabhupadaWorldUser',
   'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid',
   'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id',
   'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator',
+  'isBvAdmin', 'isBvSuperAdmin', 'isPwAdmin', 'isBvSupervisor', 'isBvMentor',
   'bvGroupId', 'bvGroupName', 'bvReportingFacilitatorId',
 ];
 
@@ -65,7 +66,7 @@ type CallerAccess = { aliases: Set<string>; profile: any | null };
 async function loadCallerAccess(caller: any): Promise<CallerAccess> {
   const aliases = new Set<string>();
   addAliases(aliases, [
-    caller?.id, caller?.uid, caller?.userId, caller?.email, caller?.fullName, caller?.name,
+    caller?.id, caller?.uid, caller?.userId, caller?.email,
   ]);
   const seeds = identityTokens([caller?.id, caller?.uid, caller?.userId, caller?.email]);
   const found = uniqueUsers((await Promise.all(seeds.map(findUsersByToken))).flat());
@@ -127,17 +128,25 @@ export async function callerFacilitatesReadingGroup(group: any, caller: any): Pr
 }
 
 /** Attendance writes use the same assignments as the group list. */
-async function assignedStaffCanRecord(group: any, caller: any, access: CallerAccess): Promise<boolean> {
-  if (!isReadingGroupStaff(access.profile) && !isReadingGroupStaff(caller)) return false;
-  const groups = await resolveBvScopedGroups({ ...caller, ...access.profile });
+async function assignedStaffCanRecord(group: any, access: CallerAccess): Promise<boolean> {
+  // Scope resolution also grants admins and supervisors their reporting groups.
+  // Those read privileges must not become attendance-write privileges.
+  const role = String(access.profile?.role || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+  if (access.profile?.isBvAdmin || access.profile?.isBvSuperAdmin || access.profile?.isPwAdmin ||
+    access.profile?.isBvSupervisor || access.profile?.isBvMentor ||
+    ['ADMIN', 'PW_ADMIN', 'SUPER_ADMIN', 'SUPER_GUIDE', 'SUPERVISOR', 'BV_SUPERVISOR', 'BV_MENTOR'].includes(role)) return false;
+  const groups = await resolveBvScopedGroups(access.profile);
   return groups.some(allowed => allowed.id === String(group.id));
 }
 
 export async function callerCanRecordGroupAttendance(group: any, caller: any): Promise<boolean> {
   const access = await loadCallerAccess(caller);
-  if (access.aliases.size === 0) return false;
+  // Group assignments alone are not roles: a removed RGF/RGSF (or an ordinary
+  // member whose id is still stored on the group) must not be able to write.
+  if (!access.profile || String(access.profile.status || '').trim().toLowerCase() !== 'active' ||
+    !isReadingGroupStaff(access.profile)) return false;
   if (await tokensMatchCaller(facilitatorTokens(group), access.aliases)) return true;
-  return assignedStaffCanRecord(group, caller, access);
+  return assignedStaffCanRecord(group, access);
 }
 
 /** The attendance screen sends the group document id. A public groupId is only

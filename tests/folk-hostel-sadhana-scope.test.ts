@@ -11,7 +11,7 @@ const a = guide('a'), b = guide('b'), c = guide('c');
 const guides = [a, b, c].map(u => ({ ...u, id: `guide-${u.id}`, guideId: `GUIDE-${u.id}`, isActive: true }));
 const centers = [{ id: 'powai', residencyId: 'RES-1', residencyName: 'FOLK Powai', guideIds: ['GUIDE-a', 'b'] }, { id: 'airoli', residencyName: 'FOLK Airoli', guideIds: ['c'] }];
 const member = (id: string, extra = {}) => ({ id, userId: `USER-${id}`, fullName: id, status: 'Active', role: 'User', segment: 'FOLK', ...extra });
-const members = [member('own', { guide: 'GUIDE-a', residency: 'airoli' }), member('peer-nr', { guide: ['USER-b'] }), member('resident', { guide: 'GUIDE-c', residency: ['RES-1'] }), member('foreign', { guide: 'c', residency: 'airoli' }), member('pw', { guide: 'a', segment: 'PW' })];
+const members = [member('own', { guide: 'GUIDE-a', residency: 'airoli' }), member('peer-nr', { guide: ['USER-b'] }), member('resident', { guide: 'GUIDE-c', residency: ['RES-1'] }), member('foreign', { guide: 'c', residency: 'airoli' }), member('pw', { guide: 'a', segment: 'PW' }), member('peer-other-hostel', { guide: ['USER-b'], residency: 'airoli', residencyApproved: true })];
 
 test('direct, hostel peer and residential exception access, with no PW leakage', () => {
   const scope = buildFolkHostelSadhanaScope(a, guides, [a, b, c], centers);
@@ -21,6 +21,21 @@ test('direct, hostel peer and residential exception access, with no PW leakage',
   assert.equal(scope.matchesGuide(members[2], 'guide-c'), false);
   assert.equal(scope.includes(member('legacy', { residency: 'FOLK Powai' })), true);
   assert.equal(scope.includes(member('inactive', { guide: 'a', status: 'Inactive' })), false);
+});
+
+test('Powai guide cannot read a Vashi resident assigned to a shared Powai guide', () => {
+  const mathuranath = guide('mathuranath');
+  const sreesha = guide('sreesha');
+  const guideRows = [mathuranath, sreesha].map(user => ({ ...user, id: `guide-${user.id}` }));
+  const scope = buildFolkHostelSadhanaScope(mathuranath, guideRows, [mathuranath, sreesha], [
+    { id: 'powai', residencyName: 'FOLK Powai', guideIds: ['guide-mathuranath', 'guide-sreesha'] },
+    { id: 'vashi', residencyName: 'FOLK Vashi', guideIds: ['guide-sreesha'] },
+  ]);
+  const ashtesh = member('ashtesh', { role: 'Sadhana Mentor', guide: 'guide-sreesha', residency: 'vashi', residencyApproved: true });
+  assert.equal(scope.includes(ashtesh), false);
+  assert.equal(scope.includes({ ...ashtesh, residency: ['vashi'] }), false);
+  assert.equal(scope.includes({ ...ashtesh, residency: 'powai' }), true);
+  assert.equal(scope.includes({ ...ashtesh, residency: null, selectedFolkResidency: 'vashi' }), false);
 });
 
 test('hostel revocation overrides stale denormalized links; direct access remains', () => {

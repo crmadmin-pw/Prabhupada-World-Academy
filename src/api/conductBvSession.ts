@@ -29,7 +29,7 @@ export default createEndpoint({
     // that same assignment, including a second RGF and a sign-in id that
     // differs from the id written on the group.
     if (!(await callerCanRecordGroupAttendance(group, context.user))) {
-      throw new AppError({ code: 'FORBIDDEN', message: 'Only this Reading Group\'s facilitator can save attendance' });
+      throw new AppError({ code: 'FORBIDDEN', message: 'Only this Reading Group\'s RGF or RGSF can save attendance' });
     }
 
     // Find or create the session for this group+date (kept for backward compat)

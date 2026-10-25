@@ -59,6 +59,12 @@ export function pwTargetSource(member: any, inBvGroup = false): PwTargetSource {
 
 export function canSetPwTargets(actor: any, member: any, inBvGroup = false): { allowed: boolean; source: PwTargetSource; message: string } {
   const source = pwTargetSource(member, inBvGroup);
+  // RGSFs can record session attendance, but cannot assign PW sadhana targets.
+  // Check this before RGF/mentor flags because migrated multi-role profiles may
+  // still carry an old facilitator flag.
+  if (isPwRgsf(actor)) {
+    return { allowed: false, source, message: 'RGSFs cannot assign Prabhupada World sadhana targets' };
+  }
   if (source === 'rgf') {
     return {
       allowed: isPwRgf(actor) || isPwAdmin(actor),

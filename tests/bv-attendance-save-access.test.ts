@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as sdk from '../src/lib/app-backend-sdk';
 import conductBvSession from '../src/api/conductBvSession';
+import markBvAttendance from '../src/api/markBvAttendance';
 
 const ramya = {
   id: 'ramya-doc',
@@ -50,7 +51,7 @@ const colliding = {
   bvslName: 'Someone Else',
 };
 
-function mockDatabase(t: any, extras?: { users?: any[]; groups?: any[]; members?: any[]; guides?: any[] }) {
+function mockDatabase(t: any, extras?: { users?: any[]; groups?: any[]; members?: any[]; guides?: any[]; sessions?: any[] }) {
   const fixture: Record<string, any[]> = {
     Users: [ramya, otherRgf, member, ...(extras?.users || [])],
     BvGroups: [tempos, colliding, ...(extras?.groups || [])],
@@ -60,7 +61,7 @@ function mockDatabase(t: any, extras?: { users?: any[]; groups?: any[]; members?
       ...(extras?.members || []),
     ],
     BvAttendance: [],
-    BvSessions: [],
+    BvSessions: extras?.sessions || [],
     Guides: extras?.guides || [],
   };
   const matches = (record: any, filters: any) => Object.entries(filters || {}).every(([field, value]: any) => {
@@ -152,4 +153,33 @@ test('an RGF stored as a guide id can save attendance', async (t) => {
   } as never);
   assert.equal(saved.success, true);
   assert.equal(created.some(record => record.group === guideGroup.id), true);
+});
+
+test('an assigned RGSF can save a reading-group session', async t => {
+  const rgsf = { id: 'rgsf-doc', userId: 'RGSF-1', email: 'rgsf@example.invalid', fullName: 'RGSF', status: 'Active', role: 'RGSF', isBvSubFacilitator: true };
+  const assignedGroup = { ...tempos, id: 'rgsf-group', groupId: 'RGSF-GROUP', subFacilitatorId: rgsf.id };
+  const created = mockDatabase(t, {
+    users: [rgsf], groups: [assignedGroup],
+    members: [{ id: 'rgsf-group-member', group: assignedGroup.id, groupId: assignedGroup.groupId, user: member.id, userId: member.userId }],
+  });
+  const saved = await conductBvSession.execute({
+    input: { bvslId: rgsf.userId, groupId: assignedGroup.id, sessionDate: '2026-10-15', memberAttendance: [{ userDbId: member.id, present: true }] },
+    context: { user: { id: rgsf.id, email: rgsf.email } },
+  } as never);
+  assert.equal(saved.success, true);
+  assert.equal(created.some(record => record.group === assignedGroup.id), true);
+});
+
+test('a stale group assignment cannot let a former RGSF save or mark attendance', async t => {
+  const former = { id: 'former-rgsf', userId: 'FORMER-RGSF', email: 'former@example.invalid', fullName: 'Former RGSF', status: 'Active', role: 'User', isBvSubFacilitator: false };
+  const assignedGroup = { ...tempos, id: 'former-group', groupId: 'FORMER-GROUP', subFacilitatorId: former.id };
+  const created = mockDatabase(t, { users: [former], groups: [assignedGroup], sessions: [{ id: 'session-1', group: assignedGroup.id, sessionDate: '2026-10-15' }] });
+  const context = { user: { id: former.id, email: former.email, isBvSubFacilitator: true } };
+  await assert.rejects(() => conductBvSession.execute({
+    input: { bvslId: former.userId, groupId: assignedGroup.id, sessionDate: '2026-10-15', memberAttendance: [] }, context,
+  } as never), (error: any) => error?.code === 'FORBIDDEN');
+  await assert.rejects(() => markBvAttendance.execute({
+    input: { sessionId: 'session-1', userId: member.id, present: true }, context,
+  } as never), (error: any) => error?.code === 'FORBIDDEN');
+  assert.deepEqual(created, []);
 });

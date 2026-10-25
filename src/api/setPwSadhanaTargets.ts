@@ -5,7 +5,7 @@ import { bvUserAliases } from '@/lib/bvGroupMemberScope';
 import { getScopedHierarchyUserIds, isUserInHierarchy } from '@/lib/hierarchyUtils';
 import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
 import { pwTarget, pwTime, readPwTargets } from '@/lib/pwSadhana';
-import { canSetPwTargets, isPwAdmin, isPwRgf } from '@/lib/pwTargetResolver';
+import { canSetPwTargets, isPwAdmin, isPwRgf, isPwRgsf } from '@/lib/pwTargetResolver';
 import { serverCacheInvalidate } from '@/lib/serverCache';
 
 const MEMBER_FIELDS = ['id', 'userId', 'email', 'fullName', 'segment', 'isPrabhupadaWorldUser', 'role',
@@ -111,6 +111,9 @@ export default createEndpoint({
     const isRgf = isPwRgf(context.user);
     const isAdmin = isPwAdmin(context.user);
     const isMentor = !!(context.user.isSadhanaMentor);
+    if (isPwRgsf(context.user)) {
+      throw new AppError({ code: 'FORBIDDEN', message: 'RGSFs cannot assign Prabhupada World sadhana targets' });
+    }
     if (!isRgf && !isAdmin && !isMentor) {
       throw new AppError({ code: 'FORBIDDEN', message: 'Only a reading group facilitator, admin, or sadhana mentor can assign sadhana targets' });
     }

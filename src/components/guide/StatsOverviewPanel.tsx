@@ -92,9 +92,8 @@ export default function StatsOverviewPanel({ guideId, bvslMode, mentorMode, faci
   const isPw = normalizedSegment !== 'FOLK';
 
   const [period, setPeriod] = useState<Period>('30d');
-  // Reading-group dashboards must start with every member visible; a resident
-  // default silently hides non-resident members from RGF/Supervisor totals.
-  const [residencyFilter, setResidencyFilter] = useState<ResidencyFilter>(isPw || bvslMode ? 'all' : 'resident');
+  // FOLK reports start with residents; broader views remain selectable.
+  const [residencyFilter, setResidencyFilter] = useState<ResidencyFilter>(isPw ? 'all' : 'resident');
   const [folkResidencyId, setFolkResidencyId] = useState<string>('all');
   const [ashrayFilter, setAshrayFilter] = useState<string>('all');
   const [selectedGroupId, setSelectedGroupId] = useState<string>('all');

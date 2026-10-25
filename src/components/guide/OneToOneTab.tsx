@@ -86,7 +86,7 @@ export default function OneToOneTab({ guideId }: Props) {
 
   // Filters
   const [ashrayFilter, setAshrayFilter] = useState('All');
-  const [residencyFilter, setResidencyFilter] = useState('All');
+  const [residencyFilter, setResidencyFilter] = useState(() => isFolk ? 'Residents' : 'All');
 
   // Dialogs
   const [dialog, setDialog] = useState<DialogState>({ open: false, memberId: '', memberName: '', weekDate: '', existing: null });

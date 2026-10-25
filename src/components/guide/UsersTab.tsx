@@ -29,6 +29,7 @@ import DevoteePipelineTab from '@/components/crm/DevoteePipelineTab';
 import MentorTaskCenterTab from '@/components/crm/MentorTaskCenterTab';
 import GlobalCommandPalette from '@/components/crm/GlobalCommandPalette';
 import Devotee360Drawer from '@/components/crm/Devotee360Drawer';
+import { useUserProfile } from '@/contexts/UserProfileContext';
 
 function MemberAccountBadge({ status, className = '' }: { status?: string; className?: string }) {
   if (status === 'ACCOUNT_DELETED') {
@@ -48,6 +49,7 @@ type RoleFilter = 'all' | 'bvsl' | 'mentor' | 'regular' | 'bv_mentor' | 'folk_le
 
 export default function UsersTab({ guideId }: UsersTabProps) {
   const navigate = useNavigate();
+  const { profile } = useUserProfile();
 
   // ── CRM View Mode State ──────────────────────────────────────────────────
   const [crmViewMode, setCrmViewMode] = useState<'list' | 'pipeline' | 'mentor_tasks'>('list');
@@ -61,7 +63,7 @@ export default function UsersTab({ guideId }: UsersTabProps) {
 
   // ── Filters ───────────────────────────────────────────────────────────────
   const [ashrayFilter, setAshrayFilter] = useState<string>('all');
-  const [residencyFilter, setResidencyFilter] = useState<'all' | 'residents' | 'non_residents'>('all');
+  const [residencyFilter, setResidencyFilter] = useState<'all' | 'residents' | 'non_residents'>(() => profile?.segment === 'FOLK' ? 'residents' : 'all');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
   const [guideFilter, setGuideFilter] = useState<string>('all');
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
