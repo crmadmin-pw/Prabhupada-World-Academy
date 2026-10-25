@@ -225,6 +225,30 @@ test('FOLK dashboard counts exclude Prabhupada World people and keep the FOLK me
   assert.equal(current.metrics.totalActive, 2);
 });
 
+test('missing report starts each volunteer on their registration date in India', async t => {
+  const previousUsers = fixture.Users;
+  const previousEntries = fixture.SadhanaEntries;
+  fixture.Users = [folkGuide,
+    { ...folkMember, id: 'new-volunteer', userId: 'public-new-volunteer', createdAt: '2026-10-12T23:30:00Z' },
+    { ...folkMember, id: 'future-volunteer', userId: 'public-future-volunteer', createdAt: '2026-10-15T00:00:00Z' },
+  ];
+  fixture.SadhanaEntries = [{ id: 'new-volunteer-entry', user: 'new-volunteer', entryDate: '2026-10-13', submittedAt: '2026-10-13T08:00:00Z' }];
+  t.after(() => { fixture.Users = previousUsers; fixture.SadhanaEntries = previousEntries; });
+  mockDatabase(t);
+  const report = await call(getMissingSadhanaReport, {
+    segment: 'FOLK', startDate: '2026-10-12', endDate: '2026-10-14',
+  }, folkGuide);
+  assert.deepEqual(report.users.map((user: any) => user.id), ['new-volunteer']);
+  assert.deepEqual(report.matrix['new-volunteer'], {
+    '2026-10-12': 'not_registered',
+    '2026-10-13': 'filled',
+    '2026-10-14': 'missed',
+  });
+  assert.equal(report.stats.totalMissing, 1);
+  assert.equal(report.stats.totalUsers, 1);
+  assert.equal(report.stats.completionRate, 50);
+});
+
 test('directory cache keys stay separate and a cached guide catalogue does not cross departments', async t => {
   mockDatabase(t);
   const folkKey = queryCacheKey('getGuideUsers', { guideId: 'ALL', statusFilter: 'all', segment: 'FOLK' });

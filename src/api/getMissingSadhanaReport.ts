@@ -11,7 +11,14 @@ import { getGuideScope } from '../lib/guideScope';
 import getGuides from './getGuides';
 import { getReportReferenceData } from '../lib/reportReferenceData';
 
-const USER_FIELDS = ['phone', 'segment', 'isPrabhupadaWorldUser', 'id', 'userId', 'fullName', 'displayName', 'name', 'email', 'status', 'role', 'isBvAdmin', 'isBvSuperAdmin', 'residency', 'guide', 'isScholar', 'residencyClaimed', 'residencyApproved', 'residencyGuideVerified', 'residentSince'];
+const USER_FIELDS = ['phone', 'segment', 'isPrabhupadaWorldUser', 'id', 'userId', 'fullName', 'displayName', 'name', 'email', 'status', 'role', 'isBvAdmin', 'isBvSuperAdmin', 'residency', 'guide', 'isScholar', 'residencyClaimed', 'residencyApproved', 'residencyGuideVerified', 'residentSince', 'createdAt'];
+
+function registrationDate(createdAt: unknown): string | null {
+  if (typeof createdAt !== 'string' || !createdAt.trim()) return null;
+  const parsed = new Date(createdAt);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(parsed);
+}
 
 // Guides and Super Guides oversee Sadhana; they are not expected to submit a
 // daily member report. Normalize legacy spacing/casing so the rule applies to
@@ -140,17 +147,19 @@ export default createEndpoint({
 
     // Only registered members (have userId + fullName). Guides, admins, and
     // super admins are report administrators, not Sadhana-report participants.
-    const users = allUsers.filter(u =>
-      u.userId &&
-      String(u.fullName || u.displayName || u.name || '').trim().length > 0 &&
-      !isSadhanaExemptUser(u)
-    );
+    const users = allUsers.filter(u => {
+      const joinedOn = registrationDate(u.createdAt);
+      return u.userId &&
+        String(u.fullName || u.displayName || u.name || '').trim().length > 0 &&
+        !isSadhanaExemptUser(u) &&
+        (!joinedOn || joinedOn <= input.endDate);
+    });
 
     if (users.length === 0) {
       return {
         users: [],
         dates,
-        matrix: {} as Record<string, Record<string, 'filled' | 'late' | 'missed'>>,
+        matrix: {} as Record<string, Record<string, 'filled' | 'late' | 'missed' | 'not_registered'>>,
         stats: { totalUsers: 0, totalDays: dates.length, totalMissing: 0, totalLate: 0, completionRate: 100 },
         guides: (await displayPromise).availableGuides,
       };
@@ -211,13 +220,20 @@ export default createEndpoint({
     // 9. Sort users alphabetically and build matrix
     users.sort((a, b) => (a.fullName || '').localeCompare(b.fullName || ''));
 
-    const matrix: Record<string, Record<string, 'filled' | 'late' | 'missed'>> = {};
+    const matrix: Record<string, Record<string, 'filled' | 'late' | 'missed' | 'not_registered'>> = {};
     let totalMissing = 0;
     let totalLate = 0;
+    let totalEligible = 0;
 
     for (const u of users) {
       matrix[u.id] = {};
+      const joinedOn = registrationDate(u.createdAt);
       for (const date of dates) {
+        if (joinedOn && date < joinedOn) {
+          matrix[u.id][date] = 'not_registered';
+          continue;
+        }
+        totalEligible++;
         const key = `${u.id}|${date}`;
         const status = submissionMap.get(key);
         if (status === 'filled') {
@@ -232,10 +248,9 @@ export default createEndpoint({
       }
     }
 
-    const totalCells = users.length * dates.length;
-    const totalFilled = totalCells - totalMissing - totalLate;
-    const completionRate = totalCells > 0
-      ? Math.round(((totalFilled + totalLate) / totalCells) * 100)
+    const totalFilled = totalEligible - totalMissing - totalLate;
+    const completionRate = totalEligible > 0
+      ? Math.round(((totalFilled + totalLate) / totalEligible) * 100)
       : 100;
 
     // Only the authorized directory can add options. Legacy member references

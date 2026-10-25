@@ -26,7 +26,7 @@ import {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type CellStatus = 'filled' | 'late' | 'missed';
+type CellStatus = 'filled' | 'late' | 'missed' | 'not_registered';
 
 type UserRow = {
   id: string;
@@ -76,6 +76,7 @@ function StatusBadge({ type }: { type: string }) {
 // ─── Cell Indicator ───────────────────────────────────────────────────────────
 
 function CellIndicator({ status, size = 'sm' }: { status: CellStatus; size?: 'sm' | 'xs' }) {
+  if (status === 'not_registered') return <span className="text-muted-foreground/60" title="Before registration">—</span>;
   if (status === 'filled') {
     return <span className={`font-bold ${size === 'sm' ? 'text-sm' : 'text-xs'} text-green-600 dark:text-green-400`}>✓</span>;
   }
@@ -141,6 +142,7 @@ function Legend() {
       <span className="flex items-center gap-1.5">
         <span className="inline-flex items-center justify-center rounded-full bg-destructive text-white font-bold leading-none" style={{ width: '14px', height: '14px', fontSize: '8px' }}>✕</span> Missed
       </span>
+      <span className="flex items-center gap-1.5">— Before registration</span>
     </div>
   );
 }
@@ -210,7 +212,8 @@ function MatrixView({ data, isPw }: { data: ReportData; isPw: boolean }) {
             const userDates = matrix[u.id] || {};
             const missedCount = dates.filter(d => userDates[d] === 'missed').length;
             const lateCount = dates.filter(d => userDates[d] === 'late').length;
-            const highlight = dates.length > 0 && missedCount / dates.length > 0.5;
+            const eligibleDays = dates.filter(d => userDates[d] !== 'not_registered').length;
+            const highlight = eligibleDays > 0 && missedCount / eligibleDays > 0.5;
             const rowBg = highlight ? 'bg-destructive/5' : idx % 2 === 0 ? 'bg-background' : 'bg-muted/10';
             return (
               <tr key={u.id} className={`border-t border-border/40 transition-colors hover:bg-muted/30 ${rowBg}`}>
@@ -250,7 +253,7 @@ function MatrixView({ data, isPw }: { data: ReportData; isPw: boolean }) {
                 {dates.map(date => {
                   const status: CellStatus = userDates[date] || 'missed';
                   return (
-                    <td key={date} className="text-center px-1 py-1.5" title={status === 'filled' ? 'On time' : status === 'late' ? 'Late submission' : 'Missed'}>
+                    <td key={date} className="text-center px-1 py-1.5" title={status === 'filled' ? 'On time' : status === 'late' ? 'Late submission' : status === 'not_registered' ? 'Before registration' : 'Missed'}>
                       <CellIndicator status={status} />
                     </td>
                   );
@@ -300,7 +303,7 @@ function ListView({ data, isPw }: { data: ReportData; isPw: boolean }) {
   const [expanded, setExpanded] = useState<Set<string>>(() => {
     const s = new Set<string>();
     dates.forEach(d => {
-      if (users.some(u => matrix[u.id]?.[d] !== 'filled')) s.add(d);
+      if (users.some(u => matrix[u.id]?.[d] === 'missed' || matrix[u.id]?.[d] === 'late')) s.add(d);
     });
     return s;
   });
@@ -313,6 +316,7 @@ function ListView({ data, isPw }: { data: ReportData; isPw: boolean }) {
       {reversedDates.map(date => {
         const missing = users.filter(u => matrix[u.id]?.[date] === 'missed');
         const late = users.filter(u => matrix[u.id]?.[date] === 'late');
+        const eligibleCount = users.filter(u => matrix[u.id]?.[date] !== 'not_registered').length;
         const isOpen = expanded.has(date);
         const toggle = () => setExpanded(prev => {
           const next = new Set(prev);
@@ -331,7 +335,9 @@ function ListView({ data, isPw }: { data: ReportData; isPw: boolean }) {
                 <span className="font-medium text-sm">{dateLabel}</span>
               </div>
                 <div className="flex items-center gap-1.5">
-                  {allGood ? (
+                  {eligibleCount === 0 ? (
+                    <Badge variant="outline" className="text-xs text-muted-foreground">No registered volunteers</Badge>
+                  ) : allGood ? (
                     <Badge variant="outline" className="text-xs text-green-600 dark:text-green-400 border-green-500/40">All submitted 🎉</Badge>
                   ) : (
                     <>
@@ -351,9 +357,11 @@ function ListView({ data, isPw }: { data: ReportData; isPw: boolean }) {
             </CollapsibleTrigger>
             <CollapsibleContent>
               <div className="mt-1 px-4 pb-3 rounded-b-lg space-y-3 pt-2">
-                {allGood ? (
+                {eligibleCount === 0 ? (
+                  <p className="text-sm text-muted-foreground py-2">No volunteers were registered on this date.</p>
+                ) : allGood ? (
                   <p className="text-sm text-green-600 dark:text-green-400 py-2 flex items-center gap-2">
-                    ✅ All {users.length} users submitted their sadhana!
+                    ✅ All {eligibleCount} users submitted their sadhana!
                   </p>
                 ) : (
                   <>
@@ -427,7 +435,8 @@ function MobileView({ data, isPw }: { data: ReportData; isPw: boolean }) {
         const userDates = matrix[u.id] || {};
         const missedCount = dates.filter(d => userDates[d] === 'missed').length;
         const lateCount = dates.filter(d => userDates[d] === 'late').length;
-        const filledCount = dates.length - missedCount - lateCount;
+        const eligibleDays = dates.filter(d => userDates[d] !== 'not_registered').length;
+        const filledCount = eligibleDays - missedCount - lateCount;
         const isExpanded = expandedUser === u.id;
         const missedDates = dates.filter(d => userDates[d] === 'missed');
         const lateDates = dates.filter(d => userDates[d] === 'late');
@@ -469,14 +478,14 @@ function MobileView({ data, isPw }: { data: ReportData; isPw: boolean }) {
                   <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden flex">
                     <div
                       className="h-full bg-green-500 transition-all"
-                      style={{ width: `${(filledCount / dates.length) * 100}%` }}
+                      style={{ width: `${eligibleDays ? (filledCount / eligibleDays) * 100 : 0}%` }}
                     />
                     <div
                       className="h-full bg-amber-500 transition-all"
-                      style={{ width: `${(lateCount / dates.length) * 100}%` }}
+                      style={{ width: `${eligibleDays ? (lateCount / eligibleDays) * 100 : 0}%` }}
                     />
                   </div>
-                  <span className="text-[11px] text-muted-foreground shrink-0">{filledCount}/{dates.length}</span>
+                  <span className="text-[11px] text-muted-foreground shrink-0">{filledCount}/{eligibleDays}</span>
                   {lateCount > 0 && <span className="text-[11px] text-amber-600 dark:text-amber-400 shrink-0">{lateCount}L</span>}
                 </div>
               </div>
@@ -559,7 +568,9 @@ export default function MissingSadhanaTab({ guideId, segment }: Props) {
   const [view, setView] = useState<ViewMode>('matrix');
   const [hideZeroMissed, setHideZeroMissed] = useState(false);
   const [guideFilter, setGuideFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState('all');
+  // FOLK mentors primarily manage residents. Keep the broader view available
+  // as an explicit choice, but do not make "All Statuses" the first view.
+  const [statusFilter, setStatusFilter] = useState(() => isPw ? 'all' : 'Resident');
   const [residencies, setResidencies] = useState<{ residencyId: string; residencyName: string }[]>([]);
 
   // Default to cards on mobile
@@ -619,7 +630,7 @@ export default function MissingSadhanaTab({ guideId, segment }: Props) {
     if (hideZeroMissed) {
       users = users.filter(u => {
         const userDates = data.matrix[u.id] || {};
-        return data.dates.some(d => userDates[d] !== 'filled');
+        return data.dates.some(d => userDates[d] === 'missed' || userDates[d] === 'late');
       });
     }
     // Sort by most missed first, then most late, alphabetical tiebreaker
@@ -632,7 +643,8 @@ export default function MissingSadhanaTab({ guideId, segment }: Props) {
       if (bLate !== aLate) return bLate - aLate;
       return a.fullName.localeCompare(b.fullName);
     });
-    const statuses = users.flatMap(user => data.dates.map(date => data.matrix[user.id]?.[date]));
+    const statuses = users.flatMap(user => data.dates.map(date => data.matrix[user.id]?.[date]))
+      .filter(status => status !== 'not_registered');
     const totalMissing = statuses.filter(status => status === 'missed').length;
     const totalLate = statuses.filter(status => status === 'late').length;
     const totalFilled = statuses.filter(status => status === 'filled' || status === 'late').length;
@@ -661,11 +673,11 @@ export default function MissingSadhanaTab({ guideId, segment }: Props) {
         ...(isPw ? [] : [u.residencyName, u.residencyType]),
         ...filteredData.dates.map(d => {
           const s = userDates[d] || 'missed';
-          return s === 'filled' ? '✓' : s === 'late' ? 'L' : '✗';
+          return s === 'filled' ? '✓' : s === 'late' ? 'L' : s === 'not_registered' ? '—' : '✗';
         }),
         missedCount,
         lateCount,
-        filteredData.dates.length - missedCount - lateCount,
+        filteredData.dates.filter(d => userDates[d] === 'filled').length,
       ];
     });
     exportToCsv(`missing-sadhana-${start}-to-${end}.csv`, headers, rows as any);
