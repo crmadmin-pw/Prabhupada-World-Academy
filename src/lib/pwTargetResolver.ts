@@ -57,19 +57,18 @@ export function pwTargetSource(member: any, inBvGroup = false): PwTargetSource {
   return 'ashraya';
 }
 
-export function canSetPwTargets(actor: any, member: any, inBvGroup = false): { allowed: boolean; source: PwTargetSource; message: string } {
+export function canSetPwTargets(actor: any, member: any, inBvGroup = false, assignedRgf?: boolean): { allowed: boolean; source: PwTargetSource; message: string } {
   const source = pwTargetSource(member, inBvGroup);
-  // RGSFs can record session attendance, but cannot assign PW sadhana targets.
-  // Check this before RGF/mentor flags because migrated multi-role profiles may
-  // still carry an old facilitator flag.
-  if (isPwRgsf(actor)) {
-    return { allowed: false, source, message: 'RGSFs cannot assign Prabhupada World sadhana targets' };
+  if (isPwRgsf(actor) && !assignedRgf) {
+    return { allowed: false, source, message: 'RGSFs cannot set targets outside groups where they are the RGF' };
   }
   if (source === 'rgf') {
     return {
-      allowed: isPwRgf(actor) || isPwAdmin(actor),
+      // When a group is supplied, its RGF assignment is authoritative even
+      // if the same person is an RGSF elsewhere or profile flags are stale.
+      allowed: (assignedRgf ?? isPwRgf(actor)) || isPwAdmin(actor),
       source,
-      message: 'An RGF sets sadhana targets for BV members and RGSFs',
+      message: 'Only this member\'s RGF can set their sadhana targets',
     };
   }
   if (source === 'admin') {

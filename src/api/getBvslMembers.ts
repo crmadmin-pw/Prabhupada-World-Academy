@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { createEndpoint, Users, BvGroupMembers, FolkResidencies, AppError } from '@/lib/backend-sdk';
 import { serverCacheGetOrFetch } from '../lib/serverCache';
 import { bvUserAliases, resolveBvScopedGroups } from '../lib/bvGroupMemberScope';
-import { countsAsGroupMember, loadGroupFacilitators } from '@/lib/bvGroupFacilitators';
+import { countsAsGroupMember, groupHasFacilitator, loadGroupFacilitators } from '@/lib/bvGroupFacilitators';
 import { getScopedHierarchyUserIds, hierarchyAliases, isUserInHierarchy } from '../lib/hierarchyUtils';
 
 const formatPhone = (phone?: string) => {
@@ -226,6 +226,7 @@ async function fetchBvslMembers({ input, context }: { input: any; context: any }
       email: showContacts ? ((u.email as string) || '') : '',
       groupName: groupMap[gid] || '',
       groupId: groupIdMap[gid] || '',
+      canAssignSadhanaTargets: !!membershipGroup && groupHasFacilitator(membershipGroup.record, callerAliases),
       isResident: !!(u.residencyApproved && residencyId),
       residencyName: residencyId ? (residencyMap[residencyId] || null) : null,
       isRgsf: !!(u.isRgsf || u.role === 'RGSF' || (Array.isArray(u.roles) && u.roles.includes('RGSF'))),
@@ -252,6 +253,7 @@ async function fetchBvslMembers({ input, context }: { input: any; context: any }
         email: showContacts ? ((entry.user.email as string) || '') : '',
         groupName: group.groupName || '',
         groupId: group.groupId || '',
+        canAssignSadhanaTargets: groupHasFacilitator(group.record, callerAliases),
         isResident: false,
         residencyName: null,
         isRgsf: entry.badges.includes('RGSF'),

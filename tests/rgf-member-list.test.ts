@@ -89,14 +89,20 @@ test('an RGSF sees the members of the reporting RGF groups', async (t) => {
     status: 'Active',
   };
   fixture.Users.push(rgsf);
-  t.after(() => { fixture.Users = fixture.Users.filter(user => user.id !== rgsf.id); });
+  Object.assign(group, { subFacilitatorId: rgsf.id, rgsfId: rgsf.userId });
+  t.after(() => {
+    fixture.Users = fixture.Users.filter(user => user.id !== rgsf.id);
+    delete (group as any).subFacilitatorId;
+    delete (group as any).rgsfId;
+  });
   mockDatabase(t);
   await withHierarchyDatabase(null, async () => {
     const result = await getBvslMembers.execute({
       input: { bvslId: rgsf.userId },
       context: { user: rgsf },
     } as never);
-    assert.deepEqual(result.members.map((member: any) => member.fullName).sort(), ['BITS VEDANG', 'Vedanarayana Dasa']);
+    assert.deepEqual(result.members.map((member: any) => member.fullName).sort(), ['BITS VEDANG', 'F20190150H', 'Vedanarayana Dasa']);
+    assert.ok(result.members.every((member: any) => member.canAssignSadhanaTargets === false));
   });
 });
 
@@ -108,6 +114,7 @@ test('an RGF who is also a group member appears on the members tab', async (t) =
       context: { user: facilitator },
     } as never);
     assert.deepEqual(result.members.map((member: any) => member.fullName).sort(), ['BITS VEDANG', 'Vedanarayana Dasa']);
+    assert.ok(result.members.every((member: any) => member.canAssignSadhanaTargets === true));
   });
 });
 

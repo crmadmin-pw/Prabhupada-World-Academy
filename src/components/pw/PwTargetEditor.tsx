@@ -25,10 +25,11 @@ function wholeNumber(value: string): number | null | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-export default function PwTargetEditor({ userId, fullName, targets }: {
+export default function PwTargetEditor({ userId, fullName, targets, groupId }: {
   userId: string;
   fullName: string;
   targets?: PwTargetValues | null;
+  groupId?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [wakeUp, setWakeUp] = useState('');
@@ -65,6 +66,7 @@ export default function PwTargetEditor({ userId, fullName, targets }: {
     try {
       await setPwSadhanaTargets({
         userId,
+        ...(groupId ? { groupId } : {}),
         wakeUp: wakeUp || null,
         sleep: sleep || null,
         chantingRounds: chantingRounds ?? null,

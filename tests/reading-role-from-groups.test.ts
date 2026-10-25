@@ -142,6 +142,26 @@ test('an RGF with a stale RGSF flag does not inherit the parent facilitator grou
       context: { user: facilitator },
     } as never);
     assert.deepEqual(result.members.map((member: any) => member.fullName), ['Own Group Member', 'Stale Rgsf Flag']);
+    assert.ok(result.members.every((member: any) => member.canAssignSadhanaTargets === true));
+  });
+});
+
+test('a dual-role member list offers target editing only in the caller\'s RGF group', async t => {
+  Object.assign(parentGroup, { subFacilitatorId: facilitator.id, rgsfId: facilitator.userId });
+  t.after(() => {
+    delete (parentGroup as any).subFacilitatorId;
+    delete (parentGroup as any).rgsfId;
+  });
+  mockDatabase(t);
+  await withHierarchyDatabase(null, async () => {
+    const result = await getBvslMembers.execute({
+      input: { bvslId: facilitator.userId },
+      context: { user: facilitator },
+    } as never);
+    const own = result.members.find((member: any) => member.userId === ownMember.userId);
+    const assistant = result.members.find((member: any) => member.userId === parentMember.userId);
+    assert.equal(own?.canAssignSadhanaTargets, true);
+    assert.equal(assistant?.canAssignSadhanaTargets, false);
   });
 });
 

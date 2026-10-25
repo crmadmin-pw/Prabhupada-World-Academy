@@ -48,20 +48,62 @@ const group = {
   bvslLeader: rgf.id,
 };
 
-test('an RGSF cannot assign PW targets through the save endpoint, even with other role flags', async t => {
+test('a dual-role RGF/RGSF sets targets only for a member of their RGF group', async t => {
+  const actor = { ...rgf, id: 'dual-role-doc', userId: 'DUAL-ROLE', email: 'dual@example.invalid', role: 'RGSF', isBvSubFacilitator: true };
+  const ownMember = { ...unmarkedMember, id: 'own-member', userId: 'OWN-MEMBER', email: 'own@example.invalid', segment: 'PW', bvReportingFacilitatorId: actor.userId };
+  const assistantMember = { ...unmarkedMember, id: 'assistant-member', userId: 'ASSISTANT-MEMBER', email: 'assistant@example.invalid', segment: 'PW', bvReportingFacilitatorId: actor.userId };
+  const ownRgsf = { id: 'own-rgsf', userId: 'OWN-RGSF', email: 'own-rgsf@example.invalid', fullName: 'Own RGSF', role: 'RGSF', status: 'Active', segment: 'PW', isBvSubFacilitator: true, bvReportingFacilitatorId: actor.userId };
+  const ownGroup = { ...group, id: 'own-group', groupId: 'OWN-GROUP', bvslLeader: actor.id, bvslId: actor.userId, subFacilitatorId: ownRgsf.id, rgsfId: ownRgsf.userId };
+  const assistantGroup = { ...group, id: 'assistant-group', groupId: 'ASSISTANT-GROUP', bvslLeader: 'another-rgf', bvslId: 'ANOTHER-RGF', subFacilitatorId: actor.id, rgsfId: actor.userId };
+  const fixtures: Record<string, any[]> = {
+    Users: [actor, ownMember, assistantMember, ownRgsf],
+    BvGroups: [ownGroup, assistantGroup],
+    BvGroupMembers: [
+      { id: 'own-membership', group: ownGroup.id, groupId: ownGroup.groupId, user: ownMember.id, userId: ownMember.userId },
+      { id: 'assistant-membership', group: assistantGroup.id, groupId: assistantGroup.groupId, user: assistantMember.id, userId: assistantMember.userId },
+    ],
+  };
+  const matches = (record: any, filters: any) => Object.entries(filters || {}).every(([field, value]: any) => {
+    const actual = [record[field]].flat();
+    return value?.in ? actual.some(item => value.in.includes(item)) : actual.includes(value);
+  });
+  for (const [name, table] of Object.entries(sdk) as [string, any][]) {
+    if (typeof table?.findAll !== 'function') continue;
+    const query = (options: any = {}) => ({
+      records: (fixtures[name] || []).filter(record => (!options.id || record.id === options.id) && matches(record, options.filters))
+        .map(record => options.fields ? Object.fromEntries(['id', ...options.fields].map((key: string) => [key, record[key]])) : { ...record }),
+      hasMore: false,
+    });
+    t.mock.method(table, 'findAll', async (options: any) => query(options));
+    t.mock.method(table, 'findOne', async (options: any) => query(options).records[0]);
+  }
   const updates: any[] = [];
   t.mock.method(Users, 'update', async (value: any) => { updates.push(value); return value; });
-  for (const actor of [
-    { id: 'rgsf', role: 'RGSF', isBvSubFacilitator: true },
-    { id: 'dual-flagged-rgsf', role: 'RGSF', isBvSubFacilitator: true, isBvFacilitator: true },
-    { id: 'admin-flagged-rgsf', role: 'RGSF', isBvSubFacilitator: true, isBvAdmin: true },
+
+  const allowed = await setPwSadhanaTargets.execute({
+    input: { userId: ownMember.userId, groupId: ownGroup.groupId, chantingRounds: 8 },
+    context: { user: actor },
+  } as never);
+  assert.equal(allowed.success, true);
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0].id, ownMember.id);
+
+  const staffTarget = await setPwSadhanaTargets.execute({
+    input: { userId: ownRgsf.userId, groupId: ownGroup.groupId, chantingRounds: 12 },
+    context: { user: actor },
+  } as never);
+  assert.equal(staffTarget.success, true);
+  assert.equal(updates[1].id, ownRgsf.id);
+
+  for (const input of [
+    { userId: assistantMember.userId, groupId: assistantGroup.groupId, chantingRounds: 8 },
+    { userId: assistantMember.userId, groupId: ownGroup.groupId, chantingRounds: 8 },
+    { userId: assistantMember.userId, chantingRounds: 8 },
   ]) {
-    await assert.rejects(() => setPwSadhanaTargets.execute({
-      input: { userId: unmarkedMember.userId, chantingRounds: 8 },
-      context: { user: actor },
-    } as never), (error: any) => error?.code === 'FORBIDDEN');
+    await assert.rejects(() => setPwSadhanaTargets.execute({ input, context: { user: actor } } as never),
+      (error: any) => error?.code === 'FORBIDDEN');
   }
-  assert.deepEqual(updates, []);
+  assert.equal(updates.length, 2);
 });
 
 test('an RGF can assign sadhana targets when the member profile is missing its Prabhupada World flag', async () => {

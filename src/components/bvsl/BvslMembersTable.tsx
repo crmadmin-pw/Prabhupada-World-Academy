@@ -191,8 +191,8 @@ export default function BvslMembersTable({ bvslId, detailBasePath = '/guide/user
                             {m.ashrayLevel && <Badge variant="outline" className="text-xs">{m.ashrayLevel}</Badge>}
                             {isFolk && m.isResident && <Badge className="text-xs bg-primary/10 text-primary border-primary/30">{m.residencyName || 'Resident'}</Badge>}
                           </div>
-                          {canAssignSadhana && (
-                            <PwTargetEditor userId={m.userId} fullName={m.fullName} targets={(m as any).pwTargets || { chanting: m.pwChantingTarget, readingMin: m.pwReadingTarget }} />
+                          {canAssignSadhana && (m as any).canAssignSadhanaTargets && (
+                            <PwTargetEditor userId={m.userId} fullName={m.fullName} groupId={(m as any).groupId} targets={(m as any).pwTargets || { chanting: m.pwChantingTarget, readingMin: m.pwReadingTarget }} />
                           )}
                         </div>
                         <div className="flex gap-1 shrink-0">
@@ -254,7 +254,7 @@ export default function BvslMembersTable({ bvslId, detailBasePath = '/guide/user
                         <td className="p-2 text-muted-foreground">{m.ashrayLevel || '—'}</td>
                         {canAssignSadhana && (
                           <td className="p-2" onClick={event => event.stopPropagation()}>
-                            <PwTargetEditor userId={m.userId} fullName={m.fullName} targets={(m as any).pwTargets || { chanting: m.pwChantingTarget, readingMin: m.pwReadingTarget }} />
+                            {(m as any).canAssignSadhanaTargets && <PwTargetEditor userId={m.userId} fullName={m.fullName} groupId={(m as any).groupId} targets={(m as any).pwTargets || { chanting: m.pwChantingTarget, readingMin: m.pwReadingTarget }} />}
                           </td>
                         )}
                         {isFolk && (

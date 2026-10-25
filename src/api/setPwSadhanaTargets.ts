@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createEndpoint, BvGroupMembers, BvGroups, Users, AppError } from '@/lib/backend-sdk';
 import { bvGroupDepartment } from '@/lib/bvGroupName';
 import { bvUserAliases } from '@/lib/bvGroupMemberScope';
+import { groupHasFacilitator, groupHasSubFacilitator } from '@/lib/bvGroupFacilitators';
 import { getScopedHierarchyUserIds, isUserInHierarchy } from '@/lib/hierarchyUtils';
 import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
 import { pwTarget, pwTime, readPwTargets } from '@/lib/pwSadhana';
@@ -44,11 +45,10 @@ async function relatedProfiles(member: any): Promise<any[]> {
   return [...people.values()];
 }
 
-/** Older membership rows store a sign-in id, and some profiles never received
- * segment or isPrabhupadaWorldUser. The member list still shows them. */
-async function memberInAssignableGroup(people: any[]): Promise<boolean> {
+/** Resolve the member's actual PW groups, including staff without membership rows. */
+async function memberAssignableGroups(people: any[]): Promise<any[]> {
   const keys = [...new Set(people.flatMap(rawIdentity))];
-  if (keys.length === 0) return false;
+  if (keys.length === 0) return [];
   const aliasSet = new Set(keys.map(key => key.toLowerCase()));
   const memberships: any[] = [];
   for (let index = 0; index < keys.length; index += 10) {
@@ -70,19 +70,27 @@ async function memberInAssignableGroup(people: any[]): Promise<boolean> {
   const groupKeys = [...new Set(matched.flatMap(membership =>
     [membership.group, membership.groupId].flat().map(value => String(value || '').trim()).filter(Boolean),
   ))];
-  if (groupKeys.length === 0) return false;
   const groups: any[] = [];
   for (let index = 0; index < groupKeys.length; index += 10) {
     const chunk = groupKeys.slice(index, index + 10);
     const [byId, byGroupId] = await Promise.all([
-      BvGroups.findAll({ filters: { id: { in: chunk } } as any, fields: ['id', 'groupId', 'segment'], limit: 20 }),
-      BvGroups.findAll({ filters: { groupId: { in: chunk } } as any, fields: ['id', 'groupId', 'segment'], limit: 20 }),
+      BvGroups.findAll({ filters: { id: { in: chunk } } as any, fields: ['id', 'groupId', 'segment', 'isActive', 'bvslLeader', 'bvslId', 'bvslName', 'subFacilitatorId', 'rgsfId', 'subFacilitator'], limit: 20 }),
+      BvGroups.findAll({ filters: { groupId: { in: chunk } } as any, fields: ['id', 'groupId', 'segment', 'isActive', 'bvslLeader', 'bvslId', 'bvslName', 'subFacilitatorId', 'rgsfId', 'subFacilitator'], limit: 20 }),
     ]);
     groups.push(...(byId.records || []), ...(byGroupId.records || []));
   }
-  // A group with no department still belongs to this RGF's reading groups.
-  // Only an explicit FOLK group is out of scope for these targets.
-  return groups.some(group => bvGroupDepartment(group.segment) !== 'FOLK');
+  if (people.some(person => isPwRgf(person) || isPwRgsf(person))) {
+    const { records } = await BvGroups.findAll({
+      fields: ['id', 'groupId', 'segment', 'isActive', 'bvslLeader', 'bvslId', 'bvslName', 'subFacilitatorId', 'rgsfId', 'subFacilitator'],
+      limit: 1000,
+    });
+    groups.push(...records.filter(group =>
+      groupHasFacilitator(group, aliasSet) || groupHasSubFacilitator(group, aliasSet),
+    ));
+  }
+  // Legacy groups can lack a department. Only explicit FOLK groups are out of scope.
+  return [...new Map(groups.filter(group => group?.id && group.isActive !== false &&
+    bvGroupDepartment(group.segment) !== 'FOLK').map(group => [String(group.id), group])).values()];
 }
 
 const optionalMinutes = z.number().int().min(0).max(1440).nullable().optional();
@@ -92,6 +100,7 @@ export default createEndpoint({
   authenticated: true,
   inputSchema: z.object({
     userId: z.string().min(1),
+    groupId: z.string().min(1).optional(),
     chantingRounds: z.number().int().min(0).max(192).nullable().optional(),
     readingMinutes: optionalMinutes,
     wakeUp: z.string().nullable().optional(),
@@ -111,10 +120,7 @@ export default createEndpoint({
     const isRgf = isPwRgf(context.user);
     const isAdmin = isPwAdmin(context.user);
     const isMentor = !!(context.user.isSadhanaMentor);
-    if (isPwRgsf(context.user)) {
-      throw new AppError({ code: 'FORBIDDEN', message: 'RGSFs cannot assign Prabhupada World sadhana targets' });
-    }
-    if (!isRgf && !isAdmin && !isMentor) {
+    if (!isRgf && !isPwRgsf(context.user) && !isAdmin && !isMentor) {
       throw new AppError({ code: 'FORBIDDEN', message: 'Only a reading group facilitator, admin, or sadhana mentor can assign sadhana targets' });
     }
 
@@ -124,7 +130,8 @@ export default createEndpoint({
     if (!found) throw new AppError({ code: 'NOT_FOUND', message: 'Member not found' });
     const profiles = await relatedProfiles(found);
     const member = profiles.find(profile => profile.id && profile.userId && profile.id !== profile.userId) || found;
-    const inGroup = await memberInAssignableGroup(profiles);
+    const memberGroups = await memberAssignableGroups(profiles);
+    const inGroup = memberGroups.length > 0;
     if (!profiles.some(isPwSadhanaUser) && !inGroup) {
       throw new AppError({ code: 'FORBIDDEN', message: 'Sadhana targets apply only to Prabhupada World members' });
     }
@@ -135,7 +142,12 @@ export default createEndpoint({
     }
 
     const inBvGroup = inGroup || profiles.some(profile => profile.isBvMember || profile.bvGroupId || profile.isBvSubFacilitator || profile.isRgsf);
-    const permission = canSetPwTargets(context.user, member, inBvGroup);
+    const selectedGroups = input.groupId
+      ? memberGroups.filter(group => [group.id, group.groupId].some(id => String(id || '').toLowerCase() === String(input.groupId).toLowerCase()))
+      : memberGroups;
+    const callerAliases = new Set(bvUserAliases(context.user));
+    const assignedRgf = selectedGroups.length === 1 && groupHasFacilitator(selectedGroups[0], callerAliases);
+    const permission = canSetPwTargets(context.user, member, inBvGroup, assignedRgf);
     if (!permission.allowed) {
       throw new AppError({ code: 'FORBIDDEN', message: permission.message });
     }

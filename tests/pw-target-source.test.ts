@@ -31,6 +31,8 @@ test('only the matching authority can save those targets', () => {
   assert.equal(canSetPwTargets(rgf, { id: 'grouped' }, true).source, 'rgf');
   assert.equal(canSetPwTargets(rgsf, bvMember).allowed, false);
   assert.equal(canSetPwTargets({ ...rgsf, isBvFacilitator: true }, bvMember).allowed, false);
+  assert.equal(canSetPwTargets({ ...rgsf, isBvFacilitator: true }, bvMember, true, true).allowed, true);
+  assert.equal(canSetPwTargets({ ...rgsf, isBvFacilitator: true }, bvMember, true, false).allowed, false);
   assert.equal(canSetPwTargets({ ...rgsf, isSadhanaMentor: true }, mentee).allowed, false);
   assert.equal(canSetPwTargets({ ...rgsf, isBvAdmin: true }, supervisor).allowed, false);
 });
