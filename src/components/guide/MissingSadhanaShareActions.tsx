@@ -7,14 +7,14 @@ import SadhanaWhatsAppReminder from './SadhanaWhatsAppReminder';
 import { toast } from 'sonner';
 
 const GROUP_MESSAGE = [
-  'Hare Krishna, Prabhus! 🙏',
-  'Jay Srila Prabhupada',
+  'Hare Krishna, Prabhus!',
+  'Jai Srila Prabhupada',
   '',
-  'Just a gentle reminder that some Sadhana entries are still pending, as shown in the attached report.',
+  'Just a gentle reminder to please fill in any Sadhana entries that are still pending.',
   '',
-  'Whenever you get a chance, kindly check your pending entries and update them in the application while the submission window is open.',
+  'Whenever you get a chance, kindly update them in the application while the submission window is open.',
   '',
-  'Please feel free to let me know if you need any help. 😊',
+  'Please feel free to let me know if you need any help.',
   'Thank you, Prabhus!',
 ].join('\n');
 
@@ -76,7 +76,8 @@ export default function MissingSadhanaShareActions({ reportRef, recipients, file
     <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => setIndividualsOpen(true)} disabled={disabled || pending.length === 0}>
       <MessageCircle className="h-3.5 w-3.5" />Message Individuals
     </Button>
-    <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5 text-green-700" onClick={prepare} disabled={disabled || preparing}>
+    <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5 text-green-700" onClick={prepare} disabled={disabled || preparing}
+      title="Share the filtered report image and a group Sadhana reminder">
       <Users className="h-3.5 w-3.5" />{preparing ? 'Preparing image…' : 'Share to WhatsApp Group'}
     </Button>
     <Dialog open={individualsOpen} onOpenChange={setIndividualsOpen}>
@@ -93,7 +94,7 @@ export default function MissingSadhanaShareActions({ reportRef, recipients, file
     </Dialog>
     <Dialog open={!!image} onOpenChange={open => { if (!open) setImage(null); }}>
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-auto">
-        <DialogHeader><DialogTitle>Share missing Sadhana report</DialogTitle><DialogDescription>{canShare ? 'Choose WhatsApp and your group in the share menu. The image and message will be shared together.' : 'Download the image and copy the message below, then attach the image and paste the message in your WhatsApp group.'}</DialogDescription></DialogHeader>
+        <DialogHeader><DialogTitle>Share group Sadhana reminder</DialogTitle><DialogDescription>{canShare ? 'Choose WhatsApp and your group in the share menu. The filtered report image and reminder will be shared together.' : 'Download the image and copy the message below, then attach the image and paste the message in your WhatsApp group.'}</DialogDescription></DialogHeader>
         {image && <>
           <div className="max-h-[40vh] overflow-auto rounded-lg border"><img src={image.url} alt="Filtered missing Sadhana report" className="w-full h-auto" /></div>
           <p className="whitespace-pre-line rounded-lg bg-muted p-3 text-sm select-text">{GROUP_MESSAGE}</p>

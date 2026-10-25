@@ -121,8 +121,8 @@ async function main() {
         const shared = await page.evaluate(() => window.sharedReport);
         assert.ok(shared.size > 0);
         assert.match(shared.name, /^missing-sadhana-.*\.png$/);
-        assert.match(shared.text, /Hare Krishna, Prabhus! 🙏/);
-        assert.match(shared.text, /attached report/);
+        assert.match(shared.text, /^Hare Krishna, Prabhus!\nJai Srila Prabhupada/);
+        assert.match(shared.text, /fill in any Sadhana entries that are still pending/);
         assert.doesNotMatch(shared.text, /Pending Resident|2026-10/);
       } else {
         await expect(group.getByRole('button', { name: 'Copy Message' })).toBeVisible();
