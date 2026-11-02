@@ -9,6 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { FileText, TrendingUp, Flame, Edit, Plus, Target, ArrowRight, GraduationCap } from 'lucide-react';
 import FieldTrendChart, { RESIDENT_FIELD_CONFIGS, NR_FIELD_CONFIGS, PW_FIELD_CONFIGS } from '@/components/stats/FieldTrendChart';
 import { format, subDays } from 'date-fns';
+import { getTodayIST } from '@/lib/streakUtils';
 import { getUserDashboardData, getUserProgressStats } from '@/lib/endpoints-sdk';
 import { DASHBOARD_RECENT_DAYS } from '@/lib/sadhanaHistoryWindow';
 import SectionErrorBoundary from '@/components/SectionErrorBoundary';
@@ -256,6 +257,7 @@ function toHistoryEntry(entry: HistoryEntry): HistoryEntry | null {
 
 export default function SadhanaTab({ metrics, history, userId, residencyId, isResident, refreshVersion = 0, historyWindowStart }: Props) {
   const navigate = useNavigate();
+  const todayStr = getTodayIST();
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [olderEntries, setOlderEntries] = useState<HistoryEntry[]>([]);
   const loadedThroughRef = useRef<string | null>(historyWindowStart ?? null);
@@ -272,8 +274,22 @@ export default function SadhanaTab({ metrics, history, userId, residencyId, isRe
       const normalized = toHistoryEntry(entry);
       if (normalized) byDate.set(normalized.entryDate, normalized);
     }
+    // The summary and calendar can briefly come from different cache revisions.
+    // Keep today's cell in sync with the score shown in the summary card.
+    if (metrics.todaySubmitted) {
+      const existing = byDate.get(todayStr);
+      byDate.set(todayStr, {
+        entryId: existing?.entryId ?? '',
+        entryDate: todayStr,
+        totalScore: metrics.todayScore ?? existing?.totalScore ?? 0,
+        scorePercent: metrics.todayPercent ?? existing?.scorePercent ?? null,
+        submittedAt: existing?.submittedAt ?? '',
+        flagSick: existing?.flagSick ?? false,
+        flagOs: existing?.flagOs ?? false,
+      });
+    }
     return [...byDate.values()];
-  }, [history, olderEntries]);
+  }, [history, olderEntries, metrics.todaySubmitted, metrics.todayScore, metrics.todayPercent, todayStr]);
 
   const handleMonthChange = (monthStart: string) => {
     if (!loadedThroughRef.current) {
@@ -344,7 +360,6 @@ export default function SadhanaTab({ metrics, history, userId, residencyId, isRe
       .finally(() => !read.cancelled && setInsightLoading(false));
   }, [userId, insightPeriod, refreshVersion]);
 
-  const todayStr = format(new Date(), 'yyyy-MM-dd');
   const todayHistoryEntry = history.find(e => e.entryDate === todayStr);
   const submittedAtDisplay = todayHistoryEntry?.submittedAt ? formatSubmittedAt(todayHistoryEntry.submittedAt) : '';
   const entriesCount = metrics.entriesThisWeek ?? metrics.entriesLast7Days ?? 0;
@@ -367,7 +382,7 @@ export default function SadhanaTab({ metrics, history, userId, residencyId, isRe
               <p className="text-xs text-muted-foreground mt-1">
                 {submittedAtDisplay ? `Submitted ${submittedAtDisplay}` : `Submitted on ${format(new Date(), 'MMM dd, yyyy')}`}
               </p>
-              <Button variant="outline" size="sm" className="mt-3 w-full" onClick={() => navigate('/sadhana')}><Edit className="w-4 h-4 mr-2" />Edit Entry</Button>
+              <Button variant="outline" size="sm" className="mt-3 w-full" onClick={() => navigate(`/sadhana?date=${todayStr}`)}><Edit className="w-4 h-4 mr-2" />Edit Entry</Button>
             </>) : (<>
               <div className="text-3xl font-bold text-muted-foreground">—</div>
               <p className="text-xs text-muted-foreground mt-1">Not submitted yet</p>

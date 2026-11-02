@@ -288,9 +288,9 @@ function invalidateCachedEndpoints(names: readonly string[], extra?: Record<stri
   );
 }
 
-const MEMBER_HOME_READS = ['getUserDashboardData', 'getSadhanaLeaderboard', 'getUserHistory'] as const;
+const MEMBER_HOME_READS = ['getUserDashboardData', 'getSadhanaLeaderboard', 'getUserHistory', 'getSadhanaFormData'] as const;
 
-/** Mark the member home screens stale in the shared endpoint cache.
+/** Mark the member home screens and Sadhana form stale in the shared endpoint cache.
  * Realtime revisions cover other devices. The member's own save uses this
  * so those screens do not keep the pre-save response until a timer expires.
  */

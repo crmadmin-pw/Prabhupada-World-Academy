@@ -8,7 +8,7 @@ import { DASHBOARD_HISTORY_MAX_DAYS, DASHBOARD_RECENT_DAYS } from '@/lib/sadhana
 // Minimal field sets
 const USER_FIELDS = ['id', 'userId', 'fullName', 'email', 'ashrayLevel', 'residencyApproved', 'segment', 'isPrabhupadaWorldUser'];
 const ENTRY_FIELDS = ['id', 'entryId', 'user', 'entryDate', 'totalScore', 'maxScore', 'scorePercent',
-  'flagSick', 'flagOs', 'submittedAt', 'templateMode', 'ashrayLevelUsed', 'fieldValuesJson',
+  'flagSick', 'flagOs', 'submittedAt', 'templateMode', 'ashrayLevelUsed', 'fieldValuesJson', 'fieldValues',
   'maNaGvPoints', 'quotesTulasiPoints', 'japaVisiblePoints', 'sbPoints',
   'cleanlinessPoints', 'reportSendingPoints', 'dailyServicePoints',
   'roundsPoints', 'spReadingPoints', 'sleepQualityPoints'];
@@ -138,7 +138,7 @@ export default createEndpoint({
     // For residents: apply scorePercent correction immediately so all downstream calcs use it
     const correctedEntries = entries.map(e => {
       if (isPw) {
-        return { ...e, scorePercent: pwScoreFromFieldValues(e.fieldValuesJson).scorePercent, totalScore: null };
+        return { ...e, scorePercent: pwScoreFromFieldValues(e.fieldValuesJson ?? e.fieldValues).scorePercent, totalScore: null };
       }
       const isNR = String(e.templateMode || '').toUpperCase().includes('NON_RESIDENT');
       if (isNR) return e;
@@ -202,6 +202,20 @@ export default createEndpoint({
         streakAtRisk: !todayEntry && currentStreak > 0,
       },
       recentEntries: sorted.map(e => {
+        // PW percentages are calculated from the saved target snapshot. The
+        // generic non-resident calculation below assumes a 20-point form and
+        // disagrees with the PW headline score (and paints the calendar red).
+        if (isPw) return {
+          entryId: e.entryId || e.id,
+          rowId: e.id,
+          entryDate: (e.entryDate || '').slice(0, 10),
+          totalScore: e.totalScore ?? 0,
+          maxScore: e.maxScore ?? 0,
+          scorePercent: e.scorePercent ?? null,
+          flagSick: e.flagSick || false,
+          flagOs: e.flagOs || false,
+          submittedAt: e.submittedAt || '',
+        };
         // For residents: recalculate scorePercent using MAX(column sum, DB total)
         // so manual edits to individual point columns are reflected correctly
         const isNR = String(e.templateMode || '').toUpperCase().includes('NON_RESIDENT');

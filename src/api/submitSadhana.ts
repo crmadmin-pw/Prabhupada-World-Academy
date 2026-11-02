@@ -11,6 +11,7 @@ import { resolvePwTargetsForUser } from '../lib/pwTargetResolver';
 import { calculateTotalScore, computeSingleFieldScore } from '../lib/scoring';
 import { NON_RESIDENT_FIELDS, RESIDENT_FIELDS, toFormField } from '../config/sadhanaFields';
 import { ACCOUNT_DELETED_LOGIN_MESSAGE, isAccountDeleted } from '@/lib/accountDeletionPolicy';
+import { sadhanaOwnerIds } from '../lib/sadhanaOwnerIds';
 
 
 /** Normalize templateMode to canonical TEMPLATE_MODES values */
@@ -344,7 +345,7 @@ export default createEndpoint({
 
     // Block inactive users from submitting, and retain the legacy/custom ID only
     // to locate an entry saved by the earlier, incorrect write path.
-    const userRec = await Users.findOne({ id: authenticatedUserId, fields: ['id', 'userId', 'status', 'segment', 'isPrabhupadaWorldUser', 'isFolkUser', 'role', 'ashrayLevel', 'sadhanaMentor', 'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator', 'isBvSupervisor', 'isBvMember', 'isRgsf', 'bvGroupId', 'pwTargets', 'pwChantingTarget', 'pwReadingTarget', 'pwPendingBvAttendance'] });
+    const userRec = await Users.findOne({ id: authenticatedUserId, fields: ['id', 'userId', 'email', 'status', 'segment', 'isPrabhupadaWorldUser', 'isFolkUser', 'role', 'ashrayLevel', 'sadhanaMentor', 'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator', 'isBvSupervisor', 'isBvMember', 'isRgsf', 'bvGroupId', 'pwTargets', 'pwChantingTarget', 'pwReadingTarget', 'pwPendingBvAttendance'] });
     if (userRec?.status === 'Inactive') {
       throw new Error('Your account has been deactivated. Please contact your guide.');
     }
@@ -374,18 +375,8 @@ export default createEndpoint({
     // Never trust a row or user ID supplied by the client.  First locate the
     // authenticated user's entry.  The second lookup makes entries written by
     // the old custom-ID path editable; saving them below migrates their owner.
-    const inputUserId = typeof input.userId === 'string' ? input.userId : '';
-    const inputUserIdBelongsToCurrentUser = !!inputUserId && (
-      inputUserId === authenticatedUserId ||
-      inputUserId === context.user.uid ||
-      inputUserId === userRec?.userId
-    );
-    const legacyOwnerIds = [...new Set([
-      userRec?.userId,
-      context.user.uid,
-      ...(inputUserIdBelongsToCurrentUser ? [inputUserId] : []),
-    ])]
-      .filter((id): id is string => !!id && id !== authenticatedUserId);
+    const ownerIds = await sadhanaOwnerIds(authenticatedUserId, context.user.uid, context.user.email, userRec, input.userId);
+    const legacyOwnerIds = ownerIds.filter(id => id !== authenticatedUserId);
     const [currentEntry, ...legacyEntries] = await Promise.all([
       SadhanaEntries.findOne({
         filters: { user: authenticatedUserId, entryDate },

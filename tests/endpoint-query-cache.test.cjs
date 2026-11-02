@@ -40,6 +40,25 @@ test('equivalent filters and concurrent consumers share one read; cached revisit
   assert.equal(pending.length, 1);
 });
 
+test('saving Sadhana makes the previously empty form response stale for the same date', async () => {
+  const { sdk, pending, flush, reply } = setup();
+  const input = { userId: 'member-a', entryDate: '2026-10-25' };
+  const initial = sdk.getSadhanaFormData(input);
+  await flush();
+  reply(0, { exists: false, entry: null, fields: [] });
+  await initial;
+  assert.equal(sdk.isEndpointQueryFresh('getSadhanaFormData', input), true);
+
+  sdk.invalidateMemberHomeQueries();
+  assert.equal(sdk.isEndpointQueryFresh('getSadhanaFormData', input), false);
+
+  const reopened = sdk.getSadhanaFormData(input);
+  await flush();
+  assert.equal(pending.length, 2);
+  reply(1, { exists: true, entry: { fieldValues: { chanting: 16 } }, fields: [] });
+  assert.equal((await reopened).entry.fieldValues.chanting, 16);
+});
+
 test('committed query revisions invalidate exact reads without discarding unrelated in-flight queries', async () => {
   const { sdk, pending, flush, reply } = setup();
   const meeting = sdk.queryEndpoint('getMeetings', { department: 'PW' });

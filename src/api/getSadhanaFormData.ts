@@ -7,6 +7,7 @@ import { getUserDepartment } from '../lib/userDashboardRoutes';
 import { isPwSadhanaUser } from '../lib/sadhanaDepartment';
 import { pwFormFields, pwTarget } from '../lib/pwSadhana';
 import { resolvePwTargetsForUser } from '../lib/pwTargetResolver';
+import { sadhanaOwnerIds } from '../lib/sadhanaOwnerIds';
 
 // ── Field cache keys & TTL ─────────────────────────────────────────────────────
 export const FIELD_CACHE_KEY_RESIDENT  = 'sadhana_fields:resident';
@@ -115,7 +116,7 @@ async function loadFormFields(isResident: boolean): Promise<FormField[]> {
 }
 
 // ── User/entry field selectors ─────────────────────────────────────────────────
-const USER_FIELDS  = ['id', 'userId', 'residency', 'residencyApproved', 'residencyJoinDate', 'ashrayLevel',
+const USER_FIELDS  = ['id', 'userId', 'email', 'residency', 'residencyApproved', 'residencyJoinDate', 'ashrayLevel',
   'role', 'segment', 'isPrabhupadaWorldUser', 'isFolkUser', 'temporaryResidencyEnabled', 'temporaryResidency',
   'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator', 'isBvSupervisor', 'isBvMember', 'isRgsf', 'bvGroupId',
   'sadhanaMentor', 'pwTargets', 'pwChantingTarget', 'pwReadingTarget', 'pwPendingBvAttendance'];
@@ -140,18 +141,8 @@ export default createEndpoint({
     // `Users.userId` value.  Read that legacy location as a fallback so users
     // can open previously submitted dates; the next save migrates the entry.
     const userInfo = await Users.findOne({ id: userId, fields: USER_FIELDS });
-    const inputUserId = typeof input.userId === 'string' ? input.userId : '';
-    const inputUserIdBelongsToCurrentUser = !!inputUserId && (
-      inputUserId === userId ||
-      inputUserId === context.user?.uid ||
-      inputUserId === userInfo?.userId
-    );
-    const legacyOwnerIds = [...new Set([
-      userInfo?.userId,
-      context.user?.uid,
-      ...(inputUserIdBelongsToCurrentUser ? [inputUserId] : []),
-    ])]
-      .filter((id): id is string => !!id && id !== userId);
+    const ownerIds = await sadhanaOwnerIds(userId, context.user?.uid, context.user?.email, userInfo, input.userId);
+    const legacyOwnerIds = ownerIds.filter(id => id !== userId);
     const [currentEntry, ...legacyEntries] = await Promise.all([
       SadhanaEntries.findOne({ filters: { user: userId, entryDate }, fields: ENTRY_FIELDS }),
       ...legacyOwnerIds.map(ownerId =>

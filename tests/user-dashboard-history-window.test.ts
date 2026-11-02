@@ -96,3 +96,32 @@ test('older history is a separate bounded query, and days cannot exceed the cap'
     assert.equal(query.filters.entryDate.lte, undefined);
   }
 });
+
+test('PW calendar and headline use the same saved score snapshot', async (t) => {
+  const today = getTodayIST();
+  const yesterday = daysAgo(today, 1);
+  const earlier = daysAgo(today, 2);
+  const pwMember = { ...member, segment: 'PW' };
+  t.mock.method(Users, 'findOne', async () => pwMember);
+  const pwEntry = (date: string, percent: number) => ({
+    ...entry(date),
+    totalScore: 16,
+    maxScore: 60,
+    scorePercent: 27,
+    templateMode: 'NON_RESIDENT_TEMPLATE',
+    fieldValuesJson: JSON.stringify({ _meta: { pwVersion: 2, scorePercent: percent, pwEarned: 60, pwApplicableMax: 60 } }),
+  });
+  t.mock.method(SadhanaEntries, 'findAll', async () => ({ records: [
+    pwEntry(today, 100), pwEntry(yesterday, 60),
+    { ...pwEntry(earlier, 20), fieldValuesJson: undefined, fieldValues: { _meta: { pwVersion: 2, scorePercent: 20 } } },
+  ], hasMore: false }));
+
+  const result = await getUserDashboardData.execute({
+    input: { userId: member.userId },
+    context: { user: { id: member.id, email: member.email } },
+  } as never);
+  assert.equal(result.metrics.todayPercent, 100);
+  assert.deepEqual(result.recentEntries.map((row: any) => [row.entryDate, row.scorePercent]), [
+    [today, 100], [yesterday, 60], [earlier, 20],
+  ]);
+});
