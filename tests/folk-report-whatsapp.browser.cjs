@@ -8,8 +8,10 @@ async function main() {
   const browser = await chromium.launch({ headless: true });
   try {
     for (const { nativeShare, period } of [{ nativeShare: true, period: 'Daily' }, { nativeShare: true, period: 'Weekly' }, { nativeShare: false, period: 'Monthly' }]) {
-      const context = await browser.newContext({ serviceWorkers: 'block' });
+      const context = await browser.newContext({ serviceWorkers: 'block', timezoneId: 'America/Los_Angeles' });
       const page = await context.newPage();
+      // It is already October 30 in India, but still October 29 in this browser.
+      await page.clock.setFixedTime(new Date('2026-10-30T03:00:00Z'));
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
       await context.addInitScript(({ apiKey, nativeShare }) => {
@@ -50,8 +52,9 @@ async function main() {
             { id: 'missing-1', userId: 'missing-1', fullName: 'Pending Resident', segment: 'FOLK', phone: '9876543210', residencyType: 'Resident', guideName: 'Guide A', residencyName: 'Powai' },
             { id: 'missing-2', userId: 'missing-2', fullName: 'Filtered Nonresident', segment: 'FOLK', phone: '9876543211', residencyType: 'Non-Resident', guideName: 'Guide A' },
           ],
-          dates: ['2026-10-19', '2026-10-20'],
-          matrix: { 'missing-1': { '2026-10-19': 'missed', '2026-10-20': 'filled' }, 'missing-2': { '2026-10-19': 'filled', '2026-10-20': 'missed' } },
+          // Simulate a cached response from before the date cutoff was fixed.
+          dates: ['2026-10-19', '2026-10-20', '2026-10-29', '2026-10-30', '2026-10-31'],
+          matrix: { 'missing-1': { '2026-10-19': 'missed', '2026-10-20': 'filled', '2026-10-29': 'missed', '2026-10-30': 'missed', '2026-10-31': 'missed' }, 'missing-2': { '2026-10-19': 'filled', '2026-10-20': 'missed' } },
           stats: { totalUsers: 2, totalDays: 2, totalMissing: 2, totalLate: 0, completionRate: 50 }, guides: [],
         };
         if (name === 'getGuideDetailedReport') response = {
@@ -95,6 +98,7 @@ async function main() {
       }
       await dialog.getByRole('button', { name: 'Close', exact: true }).click();
       await page.getByRole('button', { name: 'Missing Sadhana', exact: true }).filter({ visible: true }).first().click();
+      await page.getByRole('button', { name: 'This Month', exact: true }).click();
       await expect(page.getByText('Pending Resident', { exact: true }).first()).toBeVisible();
       await expect(page.getByRole('combobox').filter({ hasText: 'Resident' }).first()).toBeVisible();
       await expect(page.getByText('Filtered Nonresident', { exact: true })).toHaveCount(0);
@@ -107,6 +111,8 @@ async function main() {
       assert.match(message, /Hare Krishna, Pending Prabhu!/);
       assert.match(message, /19 Oct 2026/);
       assert.doesNotMatch(message, /20 Oct 2026/);
+      assert.match(message, /29 Oct 2026/);
+      assert.doesNotMatch(message, /30 Oct 2026|31 Oct 2026/);
       await individuals.getByRole('button', { name: 'Close', exact: true }).click();
       if (period === 'Weekly') await page.getByRole('button', { name: 'List', exact: true }).click();
       if (period === 'Monthly') await page.getByRole('button', { name: 'Cards', exact: true }).click();
@@ -116,6 +122,9 @@ async function main() {
       const svg = await page.evaluate(() => window.reportSvg);
       assert.ok(svg.includes('Pending Resident'));
       assert.ok(!svg.includes('Filtered Nonresident'));
+      assert.ok(svg.includes('2026-10-01 – 2026-10-29'));
+      assert.ok(!svg.includes('2026-10-30'));
+      assert.ok(!svg.includes('2026-10-31'));
       if (nativeShare) {
         await group.getByRole('button', { name: 'Share Image and Message', exact: true }).click();
         const shared = await page.evaluate(() => window.sharedReport);
@@ -128,6 +137,28 @@ async function main() {
         await expect(group.getByRole('button', { name: 'Copy Message' })).toBeVisible();
         await expect(group.getByRole('link', { name: 'Download Image' })).toBeVisible();
       }
+      await group.getByRole('button', { name: 'Close', exact: true }).click();
+      const downloadEvent = page.waitForEvent('download');
+      await page.getByRole('button', { name: 'Export CSV', exact: true }).click();
+      const download = await downloadEvent;
+      assert.match(download.suggestedFilename(), /to-2026-10-29\.csv$/);
+      const chunks = [];
+      for await (const chunk of await download.createReadStream()) chunks.push(chunk);
+      const csv = Buffer.concat(chunks).toString('utf8');
+      assert.match(csv, /Oct 29/);
+      assert.doesNotMatch(csv, /Oct 30|Oct 31/);
+
+      await page.getByRole('button', { name: 'Custom', exact: true }).click();
+      const datePickers = page.locator('[data-slot="popover-trigger"]').filter({ has: page.locator('svg.lucide-calendar'), visible: true });
+      await expect(datePickers).toHaveCount(2);
+      await datePickers.nth(1).click();
+      await page.getByRole('button', { name: 'October 31, 2026', exact: true }).click();
+      await datePickers.nth(0).click();
+      await page.getByRole('button', { name: 'October 30, 2026', exact: true }).click();
+      await expect(page.getByText("No completed days in the selected range. Today's Sadhana is not due yet.")).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Share to WhatsApp Group', exact: true })).toBeDisabled();
+      await expect(page.getByRole('button', { name: 'Message Individuals', exact: true })).toBeDisabled();
+      await expect(page.getByRole('button', { name: 'Export CSV', exact: true })).toBeDisabled();
       assert.deepEqual(errors, []);
       await context.close();
       console.log(`PASS ${period} filtered PNG ${nativeShare ? 'native share' : 'download fallback'}`);

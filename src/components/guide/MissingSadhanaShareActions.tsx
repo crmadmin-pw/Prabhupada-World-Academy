@@ -32,7 +32,7 @@ export default function MissingSadhanaShareActions({ reportRef, recipients, file
   const [image, setImage] = useState<{ file: File; url: string } | null>(null);
   useEffect(() => () => { if (image) URL.revokeObjectURL(image.url); }, [image]);
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
-  const pending = recipients.map(person => ({ ...person, missingDates: person.missingDates.filter(date => date <= today) }))
+  const pending = recipients.map(person => ({ ...person, missingDates: person.missingDates.filter(date => date < today) }))
     .filter(person => person.segment === 'FOLK' && person.missingDates.length > 0);
 
   const prepare = async () => {

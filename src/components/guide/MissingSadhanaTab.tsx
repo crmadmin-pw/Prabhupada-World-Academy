@@ -19,6 +19,8 @@ import { useUserProfile } from '@/contexts/UserProfileContext';
 import { exportToCsv } from '@/utils/exportCsv';
 import { toast } from 'sonner';
 import { useEndpointQuery } from '@/hooks/useEndpointQuery';
+import { completedSadhanaEndDate } from '@/lib/missingSadhanaDateRange';
+import { getTodayIST } from '@/lib/streakUtils';
 import {
   startOfWeek, endOfWeek, startOfMonth, endOfMonth,
   subWeeks, subMonths, format,
@@ -52,8 +54,7 @@ type ViewMode = 'matrix' | 'list' | 'cards';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function getDateRange(period: Period, cStart: string, cEnd: string): { start: string; end: string } {
-  const today = new Date();
+function getDateRange(period: Period, cStart: string, cEnd: string, today: Date): { start: string; end: string } {
   const fmt = (d: Date) => format(d, 'yyyy-MM-dd');
   switch (period) {
     case 'this-week':  return { start: fmt(startOfWeek(today, { weekStartsOn: 1 })), end: fmt(endOfWeek(today, { weekStartsOn: 1 })) };
@@ -583,7 +584,9 @@ export default function MissingSadhanaTab({ guideId, segment }: Props) {
     read(() => getAllResidencies({ segment: isPw ? 'PW' : 'FOLK' } as any)).then(setResidencies).catch(() => {});
   }, [isPw]);
 
-  const { start, end } = getDateRange(period, customStart, customEnd);
+  const { start, end: requestedEnd } = getDateRange(period, customStart, customEnd,
+    isPw ? new Date() : new Date(getTodayIST() + 'T12:00:00'));
+  const end = isPw ? requestedEnd : completedSadhanaEndDate(requestedEnd);
 
   const reportQuery = useEndpointQuery<ReportData>('getMissingSadhanaReport', {
     startDate: start, endDate: end,
@@ -591,7 +594,7 @@ export default function MissingSadhanaTab({ guideId, segment }: Props) {
     filterGuideId: !isPw && guideFilter !== 'all' ? guideFilter : undefined,
     residencyId: residencyId !== 'all' ? residencyId : undefined,
     segment: isPw ? 'PW' : 'FOLK',
-  }, Boolean(start && end && start <= end));
+  }, Boolean(start && requestedEnd && start <= requestedEnd));
   const data = reportQuery.data;
   const loading = reportQuery.loading || reportQuery.fetching;
   useEffect(() => { if (reportQuery.error) toast.error(reportQuery.error.message || 'Failed to load report'); }, [reportQuery.error]);
@@ -599,6 +602,9 @@ export default function MissingSadhanaTab({ guideId, segment }: Props) {
   // Filtered data — client-side guide/status/hideZero filters and self-exclusion
   const filteredData = useMemo(() => {
     if (!data) return null;
+    // Also trim cached responses, so the table, exported image, CSV and
+    // reminders all use the same completed days and recalculated totals.
+    const dates = isPw ? data.dates : data.dates.filter(date => date >= start && date <= end);
     let users = data.users;
 
     // Filter out logged in user's own profile and admin/super admin accounts
@@ -630,30 +636,30 @@ export default function MissingSadhanaTab({ guideId, segment }: Props) {
     if (hideZeroMissed) {
       users = users.filter(u => {
         const userDates = data.matrix[u.id] || {};
-        return data.dates.some(d => userDates[d] === 'missed' || userDates[d] === 'late');
+        return dates.some(d => userDates[d] === 'missed' || userDates[d] === 'late');
       });
     }
     // Sort by most missed first, then most late, alphabetical tiebreaker
     users = [...users].sort((a, b) => {
-      const aMissed = data.dates.filter(d => data.matrix[a.id]?.[d] === 'missed').length;
-      const bMissed = data.dates.filter(d => data.matrix[b.id]?.[d] === 'missed').length;
+      const aMissed = dates.filter(d => data.matrix[a.id]?.[d] === 'missed').length;
+      const bMissed = dates.filter(d => data.matrix[b.id]?.[d] === 'missed').length;
       if (bMissed !== aMissed) return bMissed - aMissed;
-      const aLate = data.dates.filter(d => data.matrix[a.id]?.[d] === 'late').length;
-      const bLate = data.dates.filter(d => data.matrix[b.id]?.[d] === 'late').length;
+      const aLate = dates.filter(d => data.matrix[a.id]?.[d] === 'late').length;
+      const bLate = dates.filter(d => data.matrix[b.id]?.[d] === 'late').length;
       if (bLate !== aLate) return bLate - aLate;
       return a.fullName.localeCompare(b.fullName);
     });
-    const statuses = users.flatMap(user => data.dates.map(date => data.matrix[user.id]?.[date]))
+    const statuses = users.flatMap(user => dates.map(date => data.matrix[user.id]?.[date]))
       .filter(status => status !== 'not_registered');
     const totalMissing = statuses.filter(status => status === 'missed').length;
     const totalLate = statuses.filter(status => status === 'late').length;
     const totalFilled = statuses.filter(status => status === 'filled' || status === 'late').length;
-    return { ...data, users, stats: { ...data.stats, totalUsers: users.length, totalMissing, totalLate,
+    return { ...data, dates, users, stats: { ...data.stats, totalDays: dates.length, totalUsers: users.length, totalMissing, totalLate,
       completionRate: statuses.length ? Math.round(totalFilled / statuses.length * 100) : 100 } };
-  }, [data, guideFilter, statusFilter, hideZeroMissed, profile, isPw]);
+  }, [data, guideFilter, statusFilter, hideZeroMissed, profile, isPw, start, end]);
 
   const handleExport = () => {
-    if (!filteredData || filteredData.users.length === 0) return;
+    if (!filteredData?.dates.length || filteredData.users.length === 0) return;
     const headers = [
       'Name',
       'Guide',
@@ -693,6 +699,7 @@ export default function MissingSadhanaTab({ guideId, segment }: Props) {
       <div>
         <h2 className="text-lg font-bold">Missing Sadhana Report</h2>
         <p className="text-sm text-muted-foreground">Track who hasn't filled their sadhana (or filled late) — by date range</p>
+        {!isPw && <p className="text-xs text-muted-foreground mt-1">Includes completed days through yesterday (India time). Today's Sadhana is not due yet.</p>}
       </div>
 
       {/* Controls row 1: Period + Custom dates */}
@@ -824,22 +831,22 @@ export default function MissingSadhanaTab({ guideId, segment }: Props) {
         </div>
 
         {/* Export */}
-        <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={handleExport} disabled={!filteredData || loading}>
+        <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={handleExport} disabled={!filteredData?.dates.length || loading}>
           <Download className="w-3.5 h-3.5" /> Export CSV
         </Button>
         {!isPw && (segment === 'FOLK' || profile?.segment === 'FOLK') && <MissingSadhanaShareActions
           reportRef={reportRef}
           filename={`missing-sadhana-${start}-to-${end}.png`}
-          disabled={!filteredData?.users.length || loading || !!reportQuery.error}
+          disabled={!filteredData?.users.length || !filteredData?.dates.length || loading || !!reportQuery.error}
           recipients={(filteredData?.users || []).map(user => ({ ...user, missingDates: filteredData!.dates.filter(date => filteredData!.matrix[user.id]?.[date] === 'missed') }))}
         />}
       </div>
 
       {/* Date range + count label */}
-      {data && !loading && filteredData && (
+      {data && !loading && !!filteredData?.dates.length && (
         <p className="text-xs text-muted-foreground">
           Showing {format(new Date(start + 'T00:00:00'), 'MMM d')} – {format(new Date(end + 'T00:00:00'), 'MMM d, yyyy')}
-          {' · '}{data.dates.length} days
+          {' · '}{filteredData.dates.length} days
           {' · '}
           {filteredData.users.length !== data.users.length
             ? <>{filteredData.users.length} of {data.users.length} users</>
@@ -862,7 +869,7 @@ export default function MissingSadhanaTab({ guideId, segment }: Props) {
         <div ref={reportRef} className="space-y-3 bg-background">
           <div>
             <h3 className="font-semibold">{isPw ? '' : 'FOLK '}Missing Sadhana Report</h3>
-            <p className="text-xs text-muted-foreground">{start} – {end} · {filteredData.users.length} members · {view}
+            <p className="text-xs text-muted-foreground">{filteredData.dates.length ? `${start} – ${end}` : 'No completed days in this range'} · {filteredData.users.length} members · {view}
               {guideFilter !== 'all' ? ` · ${data.guides.find(guide => guide.id === guideFilter)?.name || guideFilter}` : ''}
               {statusFilter !== 'all' ? ` · ${statusFilter}` : ''}
               {residencyId !== 'all' ? ` · ${residencies.find(residency => residency.residencyId === residencyId)?.residencyName || residencyId}` : ''}
@@ -870,7 +877,11 @@ export default function MissingSadhanaTab({ guideId, segment }: Props) {
           </div>
           <StatsRow stats={filteredData.stats} />
           <Legend />
-          {filteredData.users.length === 0 ? (
+          {filteredData.dates.length === 0 ? (
+            <div className="text-center py-10 text-sm text-muted-foreground">
+              No completed days in the selected range. Today's Sadhana is not due yet.
+            </div>
+          ) : filteredData.users.length === 0 ? (
             <div className="text-center py-10 text-sm text-muted-foreground">
               No users found for the selected filters.
             </div>

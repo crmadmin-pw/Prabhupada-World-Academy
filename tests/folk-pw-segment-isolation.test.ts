@@ -249,6 +249,53 @@ test('missing report starts each volunteer on their registration date in India',
   assert.equal(report.stats.completionRate, 50);
 });
 
+test('FOLK missing report checks only completed India dates for current, future and historical ranges', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-30T03:00:00Z') });
+  mockDatabase(t);
+  const report = await call(getMissingSadhanaReport, {
+    segment: 'FOLK', startDate: '2026-10-01', endDate: '2026-10-31',
+  }, folkGuide);
+  assert.equal(report.dates.length, 29);
+  assert.equal(report.dates.at(-1), '2026-10-29');
+  assert.equal(report.stats.totalDays, 29);
+  assert.equal(report.stats.totalMissing, report.users.length * 29);
+  for (const row of Object.values(report.matrix) as any[]) {
+    assert.equal(row['2026-10-30'], undefined);
+    assert.equal(row['2026-10-31'], undefined);
+  }
+
+  for (const startDate of ['2026-10-30', '2026-10-31', '2026-11-01']) {
+    // Even a FOLK caller that omits segment cannot count undued dates.
+    const empty = await call(getMissingSadhanaReport, { startDate, endDate: '2026-11-30' }, folkGuide);
+    assert.deepEqual(empty.dates, []);
+    assert.deepEqual(empty.matrix, {});
+    assert.deepEqual(empty.stats, { totalUsers: 0, totalDays: 0, totalMissing: 0, totalLate: 0, completionRate: 100 });
+  }
+  const historical = await call(getMissingSadhanaReport, {
+    segment: 'FOLK', startDate: '2026-09-01', endDate: '2026-09-30',
+  }, folkGuide);
+  assert.equal(historical.dates.length, 30);
+  assert.equal(historical.dates.at(-1), '2026-09-30');
+
+  const pwReport = await call(getMissingSadhanaReport, {
+    segment: 'PW', startDate: '2026-10-30', endDate: '2026-10-31',
+  }, pwSuper);
+  assert.deepEqual(pwReport.dates, ['2026-10-30', '2026-10-31']);
+});
+
+test('FOLK missing report advances at India midnight, including a new month', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-31T18:29:59Z') });
+  mockDatabase(t);
+  const input = { segment: 'FOLK', startDate: '2026-10-30', endDate: '2026-11-02' };
+  const before = await call(getMissingSadhanaReport, input, folkGuide);
+  assert.deepEqual(before.dates, ['2026-10-30']);
+  t.mock.timers.setTime(new Date('2026-10-31T18:30:00Z').getTime());
+  const after = await call(getMissingSadhanaReport, input, folkGuide);
+  assert.deepEqual(after.dates, ['2026-10-30', '2026-10-31']);
+  const newMonth = await call(getMissingSadhanaReport, { ...input, startDate: '2026-11-01', endDate: '2026-11-30' }, folkGuide);
+  assert.deepEqual(newMonth.dates, []);
+});
+
 test('directory cache keys stay separate and a cached guide catalogue does not cross departments', async t => {
   mockDatabase(t);
   const folkKey = queryCacheKey('getGuideUsers', { guideId: 'ALL', statusFilter: 'all', segment: 'FOLK' });

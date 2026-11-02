@@ -44,12 +44,13 @@ test('PW, unspecified departments, invalid phones and complete reports have no c
   assert.equal(sadhanaWhatsAppLink({ ...member, missingDates: [] }, today), null);
 });
 
-test('missing dates exclude the future and invalid dates, are deduplicated, and preserve international numbers', () => {
-  const url = new URL(sadhanaWhatsAppLink({ ...member, phone: '+44 7700 900123', missingDates: ['2026-10-22', '2026-10-20', '2026-10-20', '2026-02-30', 'invalid'] }, today)!);
+test('missing dates exclude today, the future and invalid dates, are deduplicated, and preserve international numbers', () => {
+  const url = new URL(sadhanaWhatsAppLink({ ...member, phone: '+44 7700 900123', missingDates: ['2026-10-22', today, '2026-10-20', '2026-10-20', '2026-02-30', 'invalid'] }, today)!);
   assert.equal(url.pathname, '/447700900123');
   const message = url.searchParams.get('text')!;
   assert.equal(message.match(/20 Oct 2026/g)?.length, 1);
-  assert.doesNotMatch(message, /22 Oct|30 Feb|invalid/);
+  assert.doesNotMatch(message, /21 Oct|22 Oct|30 Feb|invalid/);
+  assert.equal(sadhanaWhatsAppLink({ ...member, missingDates: [today] }, today), null);
   assert.equal(sadhanaWhatsAppLink({ ...member, missingDates: ['2026-10-22'] }, today), null);
 });
 

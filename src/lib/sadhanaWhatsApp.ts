@@ -11,7 +11,7 @@ export function sadhanaWhatsAppLink(input: {
   const phone = normalizePhoneForLinks(input.phone);
   if (!/^[1-9]\d{7,14}$/.test(phone)) return null;
   const dates = [...new Set(input.missingDates)].filter(date =>
-    /^\d{4}-\d{2}-\d{2}$/.test(date) && date <= today &&
+    /^\d{4}-\d{2}-\d{2}$/.test(date) && date < today &&
     Number.isFinite(Date.parse(`${date}T00:00:00Z`)) && new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) === date,
   ).sort();
   if (!dates.length) return null;

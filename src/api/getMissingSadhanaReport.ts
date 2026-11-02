@@ -10,6 +10,7 @@ import { labelVisibleToCaller, organizationalDepartment } from '../lib/directory
 import { getGuideScope } from '../lib/guideScope';
 import getGuides from './getGuides';
 import { getReportReferenceData } from '../lib/reportReferenceData';
+import { completedSadhanaEndDate } from '../lib/missingSadhanaDateRange';
 
 const USER_FIELDS = ['phone', 'segment', 'isPrabhupadaWorldUser', 'id', 'userId', 'fullName', 'displayName', 'name', 'email', 'status', 'role', 'isBvAdmin', 'isBvSuperAdmin', 'residency', 'guide', 'isScholar', 'residencyClaimed', 'residencyApproved', 'residencyGuideVerified', 'residentSince', 'createdAt'];
 
@@ -61,6 +62,9 @@ export default createEndpoint({
       isSadhanaMentor: context.user.isSadhanaMentor,
       isBvsl: context.user.isBvsl,
     });
+    const endDate = callerDepartment === 'FOLK' || input.segment === 'FOLK'
+      ? completedSadhanaEndDate(input.endDate)
+      : input.endDate;
 
     const userRole = (context.user.role || 'User').toUpperCase().replace(/\s+/g, '_');
     const userEmail = (context.user.email || '').toLowerCase();
@@ -135,11 +139,11 @@ export default createEndpoint({
       });
     }
 
-    // Generate the requested dates even when the member result is empty so the
-    // report still shows the correct range and number of days.
+    // FOLK reports check completed days only, including direct API requests.
+    // A range starting today or later has no days due yet.
     const dates: string[] = [];
     const d = new Date(input.startDate + 'T00:00:00Z');
-    const endD = new Date(input.endDate + 'T00:00:00Z');
+    const endD = new Date(endDate + 'T00:00:00Z');
     while (d <= endD) {
       dates.push(d.toISOString().split('T')[0]);
       d.setUTCDate(d.getUTCDate() + 1);
@@ -152,10 +156,10 @@ export default createEndpoint({
       return u.userId &&
         String(u.fullName || u.displayName || u.name || '').trim().length > 0 &&
         !isSadhanaExemptUser(u) &&
-        (!joinedOn || joinedOn <= input.endDate);
+        (!joinedOn || joinedOn <= endDate);
     });
 
-    if (users.length === 0) {
+    if (users.length === 0 || dates.length === 0) {
       return {
         users: [],
         dates,
@@ -170,7 +174,7 @@ export default createEndpoint({
     // Load entry pages alongside parent display names, instead of delaying
     // the parent query until every page has arrived.
     const [submissionMap, { records: guideUsers }, { reference, availableGuides }] = await Promise.all([
-      loadMissingSubmissions(input.startDate, input.endDate),
+      loadMissingSubmissions(input.startDate, endDate),
       readScopedUsers(context.user, { filters: { status: 'Active' }, fields: ['id', 'userId', 'fullName', 'email', 'role', 'isBvAdmin', 'isBvSuperAdmin'], limit: 2000 }),
       displayPromise,
     ]);
