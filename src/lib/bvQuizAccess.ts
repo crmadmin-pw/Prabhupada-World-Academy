@@ -31,6 +31,7 @@ export interface QuizGroupScope {
   groupName: string;
   segment: QuizDepartment;
   isActive: boolean;
+  canToggleQuiz: boolean;
   record: any;
 }
 
@@ -74,7 +75,9 @@ export function isPwQuizFacilitator(user: QuizAccessUser | null | undefined): bo
 
 /** Turning a quiz on for a reading group belongs only to that group's facilitator. */
 export function canTurnPwQuizOnForGroup(user: QuizAccessUser | null | undefined): boolean {
-  return isPwQuizFacilitator(user) && !isPwQuizContentManager(user);
+  // An admin may also be an RGF. Group ownership is checked separately;
+  // the content-management role must not cancel their facilitator role.
+  return isPwQuizFacilitator(user);
 }
 
 export function readActiveGroupIds(quiz: any): string[] {
@@ -270,7 +273,7 @@ export async function getQuizGroupsForUser(
       const directlyAssigned = subFacilitators.some(reference => callerAliases.has(reference));
 
       if (department === 'PW') {
-        if (isPwQuizContentManager(user)) return true;
+        if (options.readOnly === true && isPwQuizContentManager(user)) return true;
         return isPwQuizFacilitator(user) && directlyOwned;
       }
       if (!isFolkQuizContentManager(user) && !allowFolkSupervisorRead) return false;
@@ -290,6 +293,8 @@ export async function getQuizGroupsForUser(
       groupName: String(group.groupName || 'Reading Group'),
       segment,
       isActive: group.isActive !== false,
+      canToggleQuiz: department === 'PW' && canTurnPwQuizOnForGroup(user) &&
+        groupOwnerRefs(group).some(reference => callerAliases.has(reference)),
       record: group,
     }))
     .filter(group => !!group.id);

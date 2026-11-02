@@ -217,7 +217,7 @@ async function listPwQuizzes(user: any, groupId?: string) {
       }),
     permissions: {
       canManageContent,
-      canToggleGroups,
+      canToggleGroups: canToggleGroups && (!selectedGroup || selectedGroup.canToggleQuiz),
       canViewAllGroups: canManageContent,
     },
   };

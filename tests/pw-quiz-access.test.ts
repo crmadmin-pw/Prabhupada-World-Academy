@@ -22,7 +22,8 @@ test('Prabhupada World admins can author quizzes and facilitators cannot', () =>
   assert.equal(isPwQuizFacilitator({ ...active, segment: 'FOLK', role: 'USER', isBvFacilitator: true }), false);
   assert.equal(canTurnPwQuizOnForGroup({ ...active, segment: 'PW', role: 'USER', isBvFacilitator: true }), true);
   assert.equal(canTurnPwQuizOnForGroup({ ...active, segment: 'PW', role: 'ADMIN', isBvAdmin: true }), false);
-  assert.equal(canTurnPwQuizOnForGroup({ ...active, segment: 'PW', role: 'SUPER_ADMIN', isBvSuperAdmin: true, isBvFacilitator: true }), false);
+  assert.equal(canTurnPwQuizOnForGroup({ ...active, segment: 'PW', role: 'SUPER_ADMIN', isBvSuperAdmin: true, isBvFacilitator: true }), true);
+  assert.equal(canTurnPwQuizOnForGroup({ ...active, segment: 'PW', role: 'ADMIN', isBvAdmin: true, isBvsl: true }), true);
 });
 
 test('a quiz stays hidden until the facilitator turns that group on', () => {
