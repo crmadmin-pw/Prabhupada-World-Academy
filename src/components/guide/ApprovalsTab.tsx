@@ -29,6 +29,7 @@ import { fmt } from '@/lib/fmt';
 import { EmptyState, ConfirmDialog, AsyncButton } from '@/shared';
 import { ASHRAY_LEVELS } from '@/types/enums';
 import AccountLinkReviews from './AccountLinkReviews';
+import { canReviewAccountLinks as canReviewLoginLinks } from '@/lib/accountLinkAccess';
 
 type PendingUser = GetPendingApprovalsOutputType[0];
 type GuideRequest = any;
@@ -47,13 +48,7 @@ export default function ApprovalsTab({ guideId = '', reviewerGuideId, isSuperGui
   const navigate = useNavigate();
   const { profile } = useUserProfile();
   const actionGuideId = reviewerGuideId || guideId;
-  const reviewerRole = String(profile?.role || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
-  const canReviewAccountLinks = !!(
-    profile?.isBvSuperAdmin ||
-    reviewerRole === 'SUPER_ADMIN' ||
-    reviewerRole === 'ADMIN' ||
-    reviewerRole === 'PW_ADMIN'
-  );
+  const canReviewAccountLinks = canReviewLoginLinks(profile);
   const onCountLoadedRef = useRef(onCountLoaded);
   onCountLoadedRef.current = onCountLoaded;
   const canReviewAccountLinksRef = useRef(canReviewAccountLinks);

@@ -5,7 +5,7 @@ import { canReviewAccountLinks, reviewAccountLinkRequest } from '@/lib/accountLi
 export default createEndpoint({
   description: 'Approve, reject, or reopen a reviewed login-to-profile link',
   authenticated: true,
-  requiredCapabilities: 'system.admin',
+  requiredCapabilities: 'account.links.review',
   inputSchema: z.object({
     requestId: z.string().min(1).max(200),
     action: z.enum(['approve', 'reject', 'reopen']),
@@ -26,6 +26,7 @@ export default createEndpoint({
       profileId: input.profileId,
       notes: input.notes,
       reviewerId: String(context.user.id || context.user.uid || context.user.email || ''),
+      reviewer: context.user,
     });
   },
 });

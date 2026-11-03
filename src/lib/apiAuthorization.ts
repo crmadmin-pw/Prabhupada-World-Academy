@@ -1,6 +1,9 @@
+import { organizationalDepartment } from './directoryDepartment';
+
 export type ApiCapability =
   | '*'
   | 'system.admin'
+  | 'account.links.review'
   | 'users.approve'
   | 'users.assigned.read'
   | 'users.bulk.manage'
@@ -110,6 +113,7 @@ export function deriveApiCapabilities(dbUser: ApiDatabaseUser | null): ApiCapabi
   if (role === 'ADMIN' || role === 'PW_ADMIN') {
     addCapabilities(capabilities, [
       'system.admin',
+      'account.links.review',
       'users.approve',
       'users.assigned.read',
       'roles.assign',
@@ -161,6 +165,7 @@ export function deriveApiCapabilities(dbUser: ApiDatabaseUser | null): ApiCapabi
 
   if (dbUser.isBvAdmin === true) {
     addCapabilities(capabilities, ['bv.manage', 'bv.roles.assign', 'attendance.manage', 'notifications.send', 'integrations.manage']);
+    if (organizationalDepartment(dbUser) === 'PW') capabilities.add('account.links.review');
   }
   if (dbUser.isBvSupervisor === true || dbUser.isBvMentor === true) {
     addCapabilities(capabilities, ['users.assigned.read', 'sadhana.reports', 'bv.manage']);

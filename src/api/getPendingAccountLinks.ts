@@ -1,11 +1,11 @@
 import { z } from 'zod';
 import { createEndpoint, AccountLinkRequests, AppError } from '@/lib/backend-sdk';
-import { canReviewAccountLinks } from '@/lib/accountLinkReview';
+import { canReviewAccountLinks, canReviewAccountLinkRequest } from '@/lib/accountLinkReview';
 
 export default createEndpoint({
   description: 'List login-to-profile links waiting for an administrator to confirm',
   authenticated: true,
-  requiredCapabilities: 'system.admin',
+  requiredCapabilities: 'account.links.review',
   inputSchema: z.object({}),
   outputSchema: z.any(),
   execute: async ({ context }: any) => {
@@ -13,8 +13,9 @@ export default createEndpoint({
       throw new AppError({ code: 'FORBIDDEN', message: 'Only an administrator can review account links' });
     }
     const { records } = await AccountLinkRequests.findAll({ limit: 200 });
-    return records
-      .filter((request: any) => request.status === 'Pending' || request.status === 'Rejected')
+    const pending = records.filter((request: any) => request.status === 'Pending' || request.status === 'Rejected');
+    const visible = await Promise.all(pending.map(request => canReviewAccountLinkRequest(context.user, request)));
+    return pending.filter((_, index) => visible[index])
       .map((request: any) => ({
         id: request.id,
         email: request.email,

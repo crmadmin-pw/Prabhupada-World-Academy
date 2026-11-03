@@ -3,6 +3,8 @@ import { AccountLinkRequests, AppError, Users } from '@/lib/backend-sdk';
 import type { ApiDatabaseUser } from '@/lib/apiAuthorization';
 import { publishCollectionRevision, publishUsersRevision } from '@/lib/publishUsersRevision';
 import { serverCacheInvalidate } from '@/lib/serverCache';
+import { canReviewAccountLinks, canReviewAccountLinkProfile, isScopedPwAccountLinkReviewer, type AccountLinkReviewer } from './accountLinkAccess';
+export { canReviewAccountLinks } from './accountLinkAccess';
 
 export type AccountLinkHold = 'account_link_pending' | 'account_link_rejected';
 
@@ -59,16 +61,14 @@ export function isLoginLinkedToProfile(
   return LINKED_UID_FIELDS.some(field => record[field] && String(record[field]) === uid);
 }
 
-export function canReviewAccountLinks(user: {
-  capabilities?: readonly string[];
-  role?: unknown;
-  normalizedRole?: unknown;
-  isBvSuperAdmin?: boolean;
-} | null | undefined): boolean {
-  if (!user) return false;
-  if (user.capabilities?.includes('*') || user.capabilities?.includes('system.admin')) return true;
-  const role = String(user.normalizedRole || user.role || '').trim().replace(/[\s-]+/g, '_').toUpperCase();
-  return role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'PW_ADMIN' || user.isBvSuperAdmin === true;
+export async function canReviewAccountLinkRequest(user: AccountLinkReviewer, request: any): Promise<boolean> {
+  if (!canReviewAccountLinks(user)) return false;
+  if (!isScopedPwAccountLinkReviewer(user)) return true;
+  const ids = [...new Set<string>((request.candidateProfileIds || request.candidates?.map((candidate: any) => candidate.id) || []).map(String))];
+  if (!ids.length) return false;
+  // Stored request summaries can be stale after a role or department change.
+  const profiles = await Promise.all(ids.map(id => Users.findOne({ id })));
+  return profiles.every(profile => canReviewAccountLinkProfile(user, profile));
 }
 
 function summarizeCandidate(record: any, authUid: string): AccountLinkCandidate {
@@ -227,9 +227,13 @@ export async function reviewAccountLinkRequest(input: {
   profileId?: string;
   notes?: string;
   reviewerId: string;
+  reviewer: AccountLinkReviewer;
 }): Promise<{ success: true; status: 'Approved' | 'Rejected' | 'Pending' }> {
   const request = await AccountLinkRequests.findOne({ id: input.requestId }) as AccountLinkRequestRecord | null;
   if (!request) throw new AppError({ code: 'NOT_FOUND', message: 'Account link request not found' });
+  if (!await canReviewAccountLinkRequest(input.reviewer, request)) {
+    throw new AppError({ code: 'FORBIDDEN', message: 'This login link requires a system administrator to review' });
+  }
 
   const now = new Date().toISOString();
   const notes = String(input.notes || '').trim();
@@ -280,6 +284,9 @@ export async function reviewAccountLinkRequest(input: {
   const profile = await Users.findOne({ id: profileId });
   if (!isCompleteProfile(profile)) {
     throw new AppError({ code: 'NOT_FOUND', message: 'That profile is no longer available to link' });
+  }
+  if (!canReviewAccountLinkProfile(input.reviewer, profile)) {
+    throw new AppError({ code: 'FORBIDDEN', message: 'This login link requires a system administrator to review' });
   }
   if (isAccountDeleted(profile.status)) {
     throw new AppError({ code: 'CONFLICT', message: ACCOUNT_DELETED_LOGIN_MESSAGE });
