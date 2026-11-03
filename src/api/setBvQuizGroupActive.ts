@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isQuizDraft } from '@/lib/quizPublication';
 import { createEndpoint, BvQuizzes, AppError } from '@/lib/backend-sdk';
 import {
   findScopedQuizGroup,
@@ -33,8 +34,8 @@ export default createEndpoint({
     if (await resolveQuizDepartment(quiz, 'PW') !== 'PW') {
       throw new AppError({ code: 'FORBIDDEN', message: 'Only Prabhupada World quizzes can be assigned to a group this way' });
     }
-    if (quiz.isActive === false) {
-      throw new AppError({ code: 'FORBIDDEN', message: 'Save the quiz before turning it on for a group' });
+    if (isQuizDraft(quiz) || quiz.isActive === false) {
+      throw new AppError({ code: 'FORBIDDEN', message: 'Publish the quiz before turning it on for a group' });
     }
 
     const groups = await getQuizGroupsForUser(context.user, 'PW');

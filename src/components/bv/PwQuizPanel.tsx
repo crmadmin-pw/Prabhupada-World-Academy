@@ -27,6 +27,7 @@ type QuizListItem = {
   createdAt: string;
   quizDate?: string;
   activeGroupCount?: number;
+  publicationStatus?: string;
 };
 
 type QuizGroup = { id: string; groupName: string };
@@ -169,7 +170,7 @@ export default function PwQuizPanel({ mode }: { mode: 'admin' | 'facilitator' })
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold text-sm truncate">{quiz.title}</span>
-                      {selectedGroup ? (
+                      {quiz.publicationStatus === 'draft' ? <Badge variant="outline">Draft · Only you</Badge> : selectedGroup ? (
                         <Badge variant="outline" className="text-xs">
                           {quiz.isActiveForGroup ? 'On for this group' : 'Off for this group'}
                         </Badge>
@@ -194,7 +195,7 @@ export default function PwQuizPanel({ mode }: { mode: 'admin' | 'facilitator' })
                     </Button>
                     {canManageContent && (
                       <>
-                        <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => { setEditingQuiz(quiz); setView('edit'); }}>
+                        <Button aria-label={`Edit ${quiz.title}`} variant="ghost" size="sm" className="h-8 px-2" onClick={() => { setEditingQuiz(quiz); setView('edit'); }}>
                           <Pencil className="w-4 h-4" />
                         </Button>
                         <AlertDialog>

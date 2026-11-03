@@ -1,5 +1,7 @@
 import { useReactiveEffect } from '@/hooks/useReactiveEffect';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useAuth } from '@/lib/auth-sdk';
+import { clearQuizWork, quizAttemptVersion, quizDraftKey, readQuizWork, saveQuizWork } from '@/lib/quizDraftStorage';
 import { useUnsavedWork } from '@/lib/formActivity';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -38,6 +40,8 @@ interface Props {
 }
 
 export default function BvQuizTaker({ quizId, submissionId, onBack, onSubmitted }: Props) {
+  const { user } = useAuth();
+  const storageKey = quizDraftKey(user?.id, 'attempt', quizId);
   const [quiz, setQuiz] = useState<QuizDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -45,7 +49,23 @@ export default function BvQuizTaker({ quizId, submissionId, onBack, onSubmitted 
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<SubmitResult | null>(null);
   const [showReview, setShowReview] = useState(false);
+  const [localSaveFailed, setLocalSaveFailed] = useState(false);
+  const restored = useRef(false);
+  const submitted = useRef(false);
+  const work = useRef<{ version: string; answers: [string, number[]][]; currentIndex: number } | null>(null);
   useUnsavedWork((!submissionId && !result) || submitting);
+
+  useEffect(() => {
+    if (!quiz || submissionId || result || !restored.current || submitted.current) return;
+    work.current = { version: quizAttemptVersion(quiz.questions), answers: [...answers], currentIndex };
+    setLocalSaveFailed(!saveQuizWork(storageKey, work.current));
+  }, [storageKey, quiz, answers, currentIndex, submissionId, result]);
+
+  useEffect(() => {
+    const persist = () => { if (!submissionId && !submitted.current && restored.current && work.current) saveQuizWork(storageKey, work.current); };
+    window.addEventListener('pagehide', persist);
+    return () => window.removeEventListener('pagehide', persist);
+  }, [storageKey, submissionId]);
 
   useReactiveEffect((read) => {
     !read.background && !read.cancelled && setLoading(true);
@@ -63,7 +83,27 @@ export default function BvQuizTaker({ quizId, submissionId, onBack, onSubmitted 
           !read.cancelled && setShowReview(true);
           return;
         }
-        !read.cancelled && setQuiz(response);
+        if (read.cancelled) return;
+        setQuiz(response);
+        if (!restored.current) {
+          restored.current = true;
+          const saved = readQuizWork<{ version: string; answers: [string, number[]][]; currentIndex: number }>(storageKey);
+          if (saved?.version === quizAttemptVersion(response.questions) && Array.isArray(saved.answers)) {
+            const valid = new Map<string, number[]>();
+            for (const question of response.questions as Question[]) {
+              const value = saved.answers.find(item => Array.isArray(item) && item[0] === question.id)?.[1];
+              if (!Array.isArray(value)) continue;
+              const selected = [...new Set(value.filter(index => Number.isInteger(index) && index >= 0 && index < question.options.length))];
+              valid.set(question.id, question.type === 'single' ? selected.slice(0, 1) : selected);
+            }
+            setAnswers(valid);
+            setCurrentIndex(Math.max(0, Math.min(Number(saved.currentIndex) || 0, response.questions.length - 1)));
+            if ([...valid.values()].some(value => value.length)) toast.info('Your unfinished quiz answers have been restored');
+          } else if (saved) {
+            clearQuizWork(storageKey);
+            toast.info('This quiz has changed. Please answer the updated questions.');
+          }
+        }
       })
       .catch(() => toast.error('Failed to load quiz'))
       .finally(() => !read.cancelled && setLoading(false));
@@ -94,6 +134,8 @@ export default function BvQuizTaker({ quizId, submissionId, onBack, onSubmitted 
     setSubmitting(true);
     try {
       const res = await submitBvQuiz({ quizId, answers: answersPayload });
+      submitted.current = true;
+      clearQuizWork(storageKey);
       setResult(res as SubmitResult);
       setShowReview(true);
       onSubmitted?.();
@@ -169,9 +211,12 @@ export default function BvQuizTaker({ quizId, submissionId, onBack, onSubmitted 
     <div className="w-full min-w-0 space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft className="w-4 h-4 mr-1" /> Back</Button>
+        <Button variant="ghost" size="sm" onClick={onBack} disabled={submitting}><ArrowLeft className="w-4 h-4 mr-1" /> Close and resume later</Button>
         <span className="text-sm text-muted-foreground font-medium">{currentIndex + 1} / {quiz.questions.length}</span>
       </div>
+      <p role="status" className="text-xs text-muted-foreground">
+        {localSaveFailed ? 'Your browser cannot save progress. Keep this quiz open until you submit.' : 'Your answers are saved automatically on this device. Reopen the quiz here to resume.'}
+      </p>
 
       {/* Progress */}
       <div className="space-y-1">
@@ -204,6 +249,8 @@ export default function BvQuizTaker({ quizId, submissionId, onBack, onSubmitted 
                     return (
                       <button
                         key={idx}
+                        aria-pressed={isSelected}
+                        disabled={submitting}
                         onClick={() => toggleOption(idx)}
                         className={`w-full flex items-center gap-3 p-3.5 rounded-xl border-2 text-left transition-all ${
                           isSelected
@@ -243,6 +290,7 @@ export default function BvQuizTaker({ quizId, submissionId, onBack, onSubmitted 
           {quiz.questions.map((q, i) => (
             <button
               key={i}
+              aria-label={`Question ${i + 1}`}
               onClick={() => setCurrentIndex(i)}
               className={`w-7 h-7 rounded-full text-xs font-medium transition-colors ${
                 i === currentIndex

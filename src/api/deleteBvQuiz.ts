@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { assertQuizDraftOwner } from '@/lib/quizPublication';
 import { createEndpoint, BvQuizzes, BvQuizSubmissions, AppError } from '@/lib/backend-sdk';
 import {
   findScopedQuizGroup,
@@ -20,6 +21,7 @@ export default createEndpoint({
     if (!context.user) throw new AppError({ code: 'UNAUTHORIZED', message: 'Authentication required' });
     const quiz = await BvQuizzes.findOne({ id: input.quizId });
     if (!quiz) throw new AppError({ code: 'NOT_FOUND', message: 'Quiz not found' });
+    assertQuizDraftOwner(quiz, context.user);
 
     const department = await resolveQuizDepartment(quiz, input.department || 'FOLK');
     if (input.department && input.department !== department) {

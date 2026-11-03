@@ -1,6 +1,8 @@
 import { useReactiveLoader } from '@/hooks/useReactiveLoader';
 import { useEffect, useRef, useState } from 'react';
 import { useUnsavedWork } from '@/lib/formActivity';
+import { useAuth } from '@/lib/auth-sdk';
+import { clearQuizWork, quizDraftKey, readQuizWork, saveQuizWork } from '@/lib/quizDraftStorage';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -49,7 +51,10 @@ type EditableQuiz = {
   description?: string;
   isActive?: boolean;
   quizDate?: string;
+  publicationStatus?: string;
 };
+
+type EditorDraft = { title: string; description: string; isActive: boolean; quizDate: string; questions: QuizQuestion[] };
 
 function generateId() {
   return Math.random().toString(36).slice(2, 10);
@@ -120,16 +125,24 @@ export function QuizEditor({
   onSaved: () => void;
   onCancel: () => void;
 }) {
-  const [title, setTitle] = useState(editingQuiz?.title || 'Untitled Quiz');
-  const [description, setDescription] = useState(editingQuiz?.description || '');
-  const [isActive, setIsActive] = useState(editingQuiz?.isActive ?? department !== 'PW');
+  const { user } = useAuth();
+  const storageKey = quizDraftKey(user?.id, 'editor', `${department}:${groupId || 'all'}:${editingQuiz?.id || 'new'}`);
+  const [recovered] = useState(() => {
+    const saved = readQuizWork<EditorDraft>(storageKey);
+    return saved && typeof saved.title === 'string' && Array.isArray(saved.questions) ? saved : null;
+  });
+  const [publicationStatus, setPublicationStatus] = useState(editingQuiz?.publicationStatus || (editingQuiz ? 'published' : 'draft'));
+  const [title, setTitle] = useState(recovered?.title ?? editingQuiz?.title ?? 'Untitled Quiz');
+  const [description, setDescription] = useState(recovered?.description ?? editingQuiz?.description ?? '');
+  const [isActive, setIsActive] = useState(recovered?.isActive ?? editingQuiz?.isActive ?? true);
   const [quizDate, setQuizDate] = useState(() => {
+    if (recovered?.quizDate) return recovered.quizDate;
     if (editingQuiz?.quizDate) return editingQuiz.quizDate;
     return format(new Date(), 'yyyy-MM-dd');
   });
   const [questions, setQuestions] = useState<QuizQuestion[]>(() => {
     // We don't have questions in list view, start fresh or load from detail
-    return [emptyQuestion()];
+    return recovered?.questions.map(normalizeQuestion) || [emptyQuestion()];
   });
   const [saving, setSaving] = useState(false);
   const [loadingQuiz, setLoadingQuiz] = useState(!!editingQuiz);
@@ -137,10 +150,31 @@ export function QuizEditor({
   const [expandedQ, setExpandedQ] = useState<string>(questions[0]?.id || '');
   const [saveError, setSaveError] = useState<{ questionId?: string; message: string } | null>(null);
   const draftRef = useRef({ title, description, isActive, quizDate, questions });
-  const draftDirtyRef = useRef(false);
-  const [draftDirty, setDraftDirty] = useState(false);
+  const draftDirtyRef = useRef(!!recovered);
+  const [draftDirty, setDraftDirty] = useState(!!recovered);
+  const [localSaveFailed, setLocalSaveFailed] = useState(false);
   useUnsavedWork(draftDirty || saving);
-  draftRef.current = { title, description, isActive, quizDate, questions };
+
+  useEffect(() => {
+    if (!draftDirty || loadingQuiz) return;
+    setLocalSaveFailed(!saveQuizWork(storageKey, draftRef.current));
+  }, [storageKey, title, description, isActive, quizDate, questions, draftDirty, loadingQuiz]);
+
+  useEffect(() => {
+    const persist = () => { if (draftDirtyRef.current) saveQuizWork(storageKey, draftRef.current); };
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      if (!draftDirtyRef.current) return;
+      persist();
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('pagehide', persist);
+    window.addEventListener('beforeunload', beforeUnload);
+    return () => {
+      window.removeEventListener('pagehide', persist);
+      window.removeEventListener('beforeunload', beforeUnload);
+    };
+  }, [storageKey]);
 
   const markDraftDirty = () => {
     draftDirtyRef.current = true;
@@ -158,10 +192,10 @@ export function QuizEditor({
   useEffect(() => {
     if (!editingQuiz) return;
     let cancelled = false;
-    draftDirtyRef.current = false;
-    setDraftDirty(false);
     getBvQuizDetail({ quizId: editingQuiz.id, department, includeAnswers: true, bypassCache: true })
       .then((quiz: any) => {
+        if (cancelled) return;
+        setPublicationStatus(quiz.publicationStatus || 'published');
         if (cancelled || draftDirtyRef.current) return;
         const nextTitle = quiz.title || 'Untitled Quiz';
         const nextDescription = quiz.description || '';
@@ -193,7 +227,7 @@ export function QuizEditor({
         if (!cancelled) setLoadingQuiz(false);
       });
     return () => { cancelled = true; };
-  }, [department, editingQuiz?.id]);
+  }, [department, editingQuiz, recovered]);
 
   const addQuestion = () => {
     markDraftDirty();
@@ -263,19 +297,20 @@ export function QuizEditor({
     toast.error(`Quiz was not saved. ${message}`, { duration: VALIDATION_TOAST_MS });
   };
 
-  const handleSave = async () => {
+  const handleSave = async (asDraft = false) => {
+    if (saving) return;
     const draft = draftRef.current;
     const draftTitle = draft.title;
     const draftQuestions = draft.questions.map(question => normalizeQuestion(question));
-    if (!draftTitle.trim()) return rejectSave('A quiz title is required');
-    const questionsToSave = draftQuestions.filter(question => !isBlankQuestion(question));
-    if (!questionsToSave.length) return rejectSave('Add at least one question');
+    if (!asDraft && !draftTitle.trim()) return rejectSave('A quiz title is required');
+    const questionsToSave = asDraft ? draftQuestions : draftQuestions.filter(question => !isBlankQuestion(question));
+    if (!asDraft && !questionsToSave.length) return rejectSave('Add at least one question');
     if (questionsToSave.length !== draftQuestions.length) replaceQuestions(questionsToSave);
     const missingText = questionsToSave.flatMap((q, i) => (q.text.trim() ? [] : [i + 1]));
-    if (missingText.length) {
+    if (!asDraft && missingText.length) {
       return rejectSave(missingTextMessage(missingText), questionsToSave[missingText[0] - 1].id);
     }
-    for (let i = 0; i < questionsToSave.length; i++) {
+    for (let i = 0; !asDraft && i < questionsToSave.length; i++) {
       const q = questionsToSave[i];
       const label = `Q${i + 1}`;
       if (q.options.some(o => !o.trim())) {
@@ -298,10 +333,14 @@ export function QuizEditor({
         description: draft.description,
         groupId: department === 'PW' ? undefined : (groupId || undefined),
         questions: questionsToSave,
-        isActive: department === 'PW' ? true : draft.isActive,
+        publicationStatus: asDraft ? 'draft' : 'published',
+        isActive: department === 'PW' || publicationStatus === 'draft' ? true : draft.isActive,
         quizDate: draft.quizDate,
       });
-      toast.success('Quiz saved');
+      draftDirtyRef.current = false;
+      setDraftDirty(false);
+      clearQuizWork(storageKey);
+      toast.success(asDraft ? 'Draft saved privately' : 'Quiz published');
       onSaved();
     } catch (e: any) {
       const message = e.message || 'Failed to save quiz';
@@ -329,12 +368,12 @@ export function QuizEditor({
   return (
     <div className="space-y-4">
       {/* Header actions */}
-      <div className="flex items-center justify-between">
-        <Button variant="ghost" size="sm" onClick={onCancel}>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <Button variant="ghost" size="sm" onClick={onCancel} disabled={saving}>
           <ArrowLeft className="w-4 h-4 mr-1" /> Back
         </Button>
         <div className="flex items-center gap-3">
-          {department !== 'PW' && (
+          {department !== 'PW' && publicationStatus === 'published' && (
             <div className="flex items-center gap-2">
               <Switch id="quiz-active" checked={isActive} onCheckedChange={value => {
                 markDraftDirty();
@@ -344,12 +383,18 @@ export function QuizEditor({
               <Label htmlFor="quiz-active" className="text-sm">Active</Label>
             </div>
           )}
-          <Button type="button" onClick={() => handleSave()} disabled={saving} size="sm">
+          {publicationStatus === 'draft' && <Button type="button" variant="outline" onClick={() => handleSave(true)} disabled={saving} size="sm">Save as Draft</Button>}
+          <Button type="button" onClick={() => handleSave(false)} disabled={saving} size="sm">
             {saving && <Loader2 className="w-4 h-4 animate-spin mr-1" />}
-            Save
+            {publicationStatus === 'draft' ? 'Publish Quiz' : 'Publish Changes'}
           </Button>
         </div>
       </div>
+
+      <p className="text-xs text-muted-foreground" role="status">
+        {publicationStatus === 'draft' ? 'Drafts are private to you. Publish when the quiz is ready. ' : ''}
+        {localSaveFailed ? 'Browser recovery is unavailable. Save your work before leaving.' : draftDirty ? `${recovered ? 'Recovered unfinished work. ' : ''}Changes saved on this device automatically.` : 'Unfinished changes are saved on this device automatically.'}
+      </p>
 
       {saveError && (
         <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-950">
@@ -844,7 +889,7 @@ export default function BvslQuizPanel({
                         variant={q.isActive ? 'default' : 'outline'}
                         className="text-xs shrink-0"
                       >
-                        {q.isActive ? 'Active' : 'Inactive'}
+                        {q.publicationStatus === 'draft' ? 'Draft · Only you' : q.isActive ? 'Published' : 'Inactive'}
                       </Badge>
                     </div>
                     {q.description && <p className="text-xs text-muted-foreground mt-0.5 truncate">{q.description}</p>}

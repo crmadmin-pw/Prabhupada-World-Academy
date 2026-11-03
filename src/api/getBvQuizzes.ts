@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { canReadQuizDraft } from '@/lib/quizPublication';
 import { AppError, BvGroupMembers, BvQuizzes, BvQuizSubmissions, createEndpoint } from '@/lib/backend-sdk';
 import {
   canManageQuizContent,
@@ -66,6 +67,7 @@ export default createEndpoint({
     const quizzes = departmentPairs
       .filter(pair => pair.department === 'FOLK')
       .map(pair => pair.quiz)
+      .filter(quiz => canReadQuizDraft(quiz, context.user!))
       .filter(quiz => canManageContent || quiz.isActive === true)
       .filter(quiz => !!selectedGroup && legacyQuizMatchesGroup(quiz, selectedGroup.record));
 
@@ -109,6 +111,7 @@ export default createEndpoint({
           description: quiz.description || '',
           department: 'FOLK',
           isActive: quiz.isActive === true,
+          publicationStatus: quiz.publicationStatus || 'published',
           isActiveForGroup: quiz.isActive === true,
           activeGroupCount: 0,
           questionCount: questions.length,
@@ -165,6 +168,7 @@ async function listPwQuizzes(user: any, groupId?: string) {
   const quizzes = departmentPairs
     .filter(pair => pair.department === 'PW')
     .map(pair => pair.quiz)
+    .filter(quiz => canReadQuizDraft(quiz, user))
     .filter(quiz => canManageContent || quiz.isActive !== false);
 
   const quizIds = quizzes.map(quiz => quiz.id);
@@ -205,6 +209,7 @@ async function listPwQuizzes(user: any, groupId?: string) {
           description: quiz.description || '',
           department: 'PW',
           isActive: quiz.isActive !== false,
+          publicationStatus: quiz.publicationStatus || 'published',
           isActiveForGroup: !!selectedGroup && pwQuizEnabledForGroup(quiz, selectedGroup.record),
           activeGroupCount: visibleGroups.filter(group => pwQuizEnabledForGroup(quiz, group.record)).length,
           questionCount: questions.length,

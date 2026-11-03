@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isQuizDraft } from '@/lib/quizPublication';
 import { AppError, BvQuizSubmissions, BvQuizzes, createEndpoint } from '@/lib/backend-sdk';
 import {
   getUserQuizGroups,
@@ -78,6 +79,7 @@ export default createEndpoint({
     const submittedQuizIds = new Set(submissions.map(submission => String(submission.quizId).toLowerCase()));
 
     const pendingQuizzes = departmentQuizzes
+      .filter(quiz => !isQuizDraft(quiz))
       .filter(quiz => quiz.isActive !== false && (department === 'FOLK' ? quiz.isActive === true : true))
       .filter(quiz => !submittedQuizIds.has(String(quiz.id).toLowerCase()))
       .filter(quiz => groups.some(group => department === 'PW' ? pwQuizEnabledForGroup(quiz, group) : legacyQuizMatchesGroup(quiz, group)))

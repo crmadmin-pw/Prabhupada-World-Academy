@@ -1,4 +1,5 @@
 import { AppError, BvGroupMembers, BvGroups, Guides, Users } from '@/lib/backend-sdk';
+import { isQuizDraft } from '@/lib/quizPublication';
 import type { ApiUserContext } from '@/lib/apiAuthorization';
 import { getScopedHierarchyUserIds } from '@/lib/hierarchyUtils';
 
@@ -95,6 +96,7 @@ export function readActiveGroupIds(quiz: any): string[] {
 
 /** A PW quiz reaches a group only after that group's facilitator turns it on. */
 export function pwQuizEnabledForGroup(quiz: any, group: any): boolean {
+  if (isQuizDraft(quiz)) return false;
   if (quiz?.isActive === false) return false;
   const active = new Set(quizRefValues(readActiveGroupIds(quiz)));
   return [...quizGroupAliases(group)].some(alias => active.has(alias));
@@ -444,7 +446,7 @@ export async function assertQuizParticipantAccess(
   if ((department !== 'FOLK' && department !== 'PW') || department !== userDepartment) {
     throw new AppError({ code: 'FORBIDDEN', message: 'This quiz belongs to another department' });
   }
-  if (quiz.isActive === false || (department === 'FOLK' && quiz.isActive !== true)) {
+  if (isQuizDraft(quiz) || quiz.isActive === false || (department === 'FOLK' && quiz.isActive !== true)) {
     throw new AppError({ code: 'FORBIDDEN', message: 'This quiz is not available' });
   }
 

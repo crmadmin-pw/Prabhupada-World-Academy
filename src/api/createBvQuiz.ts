@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { assertQuizDraftOwner, isQuizDraft } from '@/lib/quizPublication';
 import { createEndpoint, BvQuizzes, AppError } from '@/lib/backend-sdk';
 import {
   findScopedQuizGroup,
@@ -37,19 +38,37 @@ const questionsSchema = z.array(questionSchema).min(1).max(500).superRefine((que
   }
 });
 
+const draftQuestionsSchema = z.array(z.object({
+  id: z.coerce.string().min(1).max(100),
+  text: z.string().max(20000),
+  type: z.enum(['single', 'multiple']),
+  options: z.array(z.string().max(5000)).max(50),
+  correctAnswers: z.array(z.coerce.number().int().nonnegative()).max(50),
+  explanation: z.string().max(20000).optional(),
+})).max(500);
+
 export default createEndpoint({
   description: 'Create or update a department quiz',
   authenticated: true,
   inputSchema: z.object({
     quizId: z.string().optional(),
     department: z.enum(['FOLK', 'PW']).optional(),
-    title: z.string().trim().min(1).max(200),
+    title: z.string().trim().max(200),
     description: z.string().optional(),
     groupId: z.string().optional(),
-    questions: questionsSchema.optional(),
+    questions: draftQuestionsSchema.optional(),
+    publicationStatus: z.enum(['draft', 'published']).optional(),
     isActive: z.boolean().optional(),
     quizDate: z.string().optional(),
   }).superRefine((value, context) => {
+    if (value.publicationStatus === 'draft') return;
+    if (!value.title.trim()) context.addIssue({ code: 'custom', path: ['title'], message: 'A quiz title is required' });
+    if (value.questions) {
+      const checked = questionsSchema.safeParse(value.questions);
+      if (!checked.success) for (const issue of checked.error.issues) {
+        context.addIssue({ code: 'custom', path: ['questions', ...issue.path], message: issue.message });
+      }
+    }
     if (!value.quizId && !value.questions?.length) {
       context.addIssue({ code: 'custom', path: ['questions'], message: 'At least one question is required' });
     }
@@ -61,7 +80,18 @@ export default createEndpoint({
     if (input.quizId) {
       existingQuiz = await BvQuizzes.findOne({ id: input.quizId });
       if (!existingQuiz) throw new AppError({ code: 'NOT_FOUND', message: 'Quiz not found' });
+      assertQuizDraftOwner(existingQuiz, context.user);
     }
+
+    const draft = input.publicationStatus === 'draft';
+    if (draft && existingQuiz && !isQuizDraft(existingQuiz)) {
+      throw new AppError({ code: 'BAD_REQUEST', message: 'Published quizzes cannot be changed into drafts' });
+    }
+    const storedQuestions = input.questions ?? JSON.parse(existingQuiz?.questionsJson || '[]');
+    if (!draft && (!input.title.trim() || !questionsSchema.safeParse(storedQuestions).success)) {
+      throw new AppError({ code: 'BAD_REQUEST', message: 'Complete the quiz title, questions, options and correct answers before publishing' });
+    }
+    const publication = { publicationStatus: draft ? 'draft' : 'published', isActive: draft ? false : (input.isActive ?? true) };
 
     const department = existingQuiz
       ? await resolveQuizDepartment(existingQuiz, input.department || 'FOLK')
@@ -74,13 +104,13 @@ export default createEndpoint({
       if (!isPwQuizContentManager(context.user)) {
         throw new AppError({ code: 'FORBIDDEN', message: 'Only Prabhupada World admins can create quizzes' });
       }
-      const questionsJson = input.questions ? JSON.stringify(input.questions) : existingQuiz?.questionsJson;
+      const questionsJson = JSON.stringify(storedQuestions);
       if (!questionsJson) throw new AppError({ code: 'BAD_REQUEST', message: 'At least one question is required' });
       const record = {
-        quizTitle: input.title.trim(),
+        quizTitle: input.title.trim() || 'Untitled Quiz',
         description: input.description || '',
         questionsJson,
-        isActive: true,
+        ...publication,
         quizDate: input.quizDate,
         department: 'PW',
         updatedAt: new Date().toISOString(),
@@ -104,7 +134,7 @@ export default createEndpoint({
     if (department !== 'FOLK') {
       throw new AppError({ code: 'FORBIDDEN', message: 'Only FOLK quizzes can be managed here' });
     }
-    if (!input.questions?.length) {
+    if (!draft && !input.questions?.length) {
       throw new AppError({ code: 'BAD_REQUEST', message: 'At least one question is required' });
     }
     requireQuizContentManager(context.user, 'FOLK');
@@ -119,15 +149,15 @@ export default createEndpoint({
     }
     const groupId = group.id;
 
-    const questionsJson = JSON.stringify(input.questions || []);
+    const questionsJson = JSON.stringify(storedQuestions);
     if (input.quizId) {
       await BvQuizzes.update({
         id: input.quizId,
         record: {
-          quizTitle: input.title.trim(),
+          quizTitle: input.title.trim() || 'Untitled Quiz',
           description: input.description || '',
           questionsJson,
-          isActive: input.isActive ?? true,
+          ...publication,
           quizDate: input.quizDate,
           department: 'FOLK',
           updatedAt: new Date().toISOString(),
@@ -137,13 +167,13 @@ export default createEndpoint({
     }
     const quiz = await BvQuizzes.create({
       record: {
-        quizTitle: input.title.trim(),
+        quizTitle: input.title.trim() || 'Untitled Quiz',
         description: input.description || '',
         group: groupId,
         department: 'FOLK',
         createdBy: context.user.id,
         questionsJson,
-        isActive: input.isActive ?? true,
+        ...publication,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         quizDate: input.quizDate,

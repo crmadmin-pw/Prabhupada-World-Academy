@@ -164,7 +164,7 @@ export default function BvQuizSection({ userId }: Props) {
       )}
 
       {/* Quiz Dialog popup */}
-      <Dialog open={!!takingQuizId || !!reviewSubmissionId} onOpenChange={open => { if (!open) closeDialog(); }}>
+      <Dialog disablePointerDismissal={!!takingQuizId} open={!!takingQuizId || !!reviewSubmissionId} onOpenChange={open => { if (!open) closeDialog(); }}>
         <DialogContent className="w-[calc(100vw-1rem)] max-w-4xl max-h-[92vh] overflow-hidden p-0">
           <div className="min-w-0 max-h-[92vh] overflow-y-auto overflow-x-hidden p-5 sm:p-8">
             <DialogHeader className="border-b pb-4 mb-5">
@@ -172,6 +172,7 @@ export default function BvQuizSection({ userId }: Props) {
             </DialogHeader>
             {(takingQuizId || reviewSubmissionId) && (
               <BvQuizTaker
+                key={reviewSubmissionId || takingQuizId}
                 quizId={takingQuizId || ''}
                 submissionId={reviewSubmissionId || undefined}
                 onBack={closeDialog}

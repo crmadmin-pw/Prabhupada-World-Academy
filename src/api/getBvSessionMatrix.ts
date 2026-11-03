@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isQuizDraft } from '@/lib/quizPublication';
 import { getScopedHierarchyUserIds, isPwDepartmentAdmin, isUserInHierarchy } from '../lib/hierarchyUtils';
 import { createEndpoint, AppError, Users, BvGroups, BvGroupMembers, BvAttendance, BvQuizzes, BvQuizSubmissions, FolkResidencies } from '@/lib/backend-sdk';
 import { requireGuideRole } from '../lib/userUtils';
@@ -192,10 +193,11 @@ export default createEndpoint({
         const includeFolkQuizzes = String(context.user.segment || '').toUpperCase() === 'FOLK';
         if (includeFolkQuizzes && memberUserIds.length > 0) {
           const { records: allQuizzes } = await BvQuizzes.findAll({
-            fields: ['id', 'group', 'department'],
+            fields: ['id', 'group', 'department', 'publicationStatus'],
             limit: 500,
           });
           const quizIds = allQuizzes
+            .filter(quiz => !isQuizDraft(quiz))
             .filter((quiz: any) =>
               normalizeQuizDepartment(quiz.department, 'FOLK') === 'FOLK' &&
               groups.some((group: any) => legacyQuizMatchesGroup(quiz, group))

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isQuizDraft } from '@/lib/quizPublication';
 import { createEndpoint, BvGroups, BvGroupMembers, BvSessions, BvAttendance, BvQuizzes, Users, AppError } from '@/lib/backend-sdk';
 import { legacyQuizMatchesGroup, normalizeQuizDepartment } from '@/lib/bvQuizAccess';
 import { bvUserAliases, resolveBvScopedGroups } from '@/lib/bvGroupMemberScope';
@@ -138,7 +139,7 @@ export default createEndpoint({
         ? BvSessions.findAll({ filters: { groupId: group.groupId } as any, fields: ['id', 'sessionId', 'sessionDate', 'topic', 'notes'], limit: 50 })
         : Promise.resolve({ records: [] }),
       String(group.segment || '').toUpperCase() === 'FOLK'
-        ? BvQuizzes.findAll({ fields: ['id', 'group', 'groupId', 'department', 'isActive', 'quizTitle', 'createdAt'], limit: 500 })
+        ? BvQuizzes.findAll({ fields: ['id', 'group', 'groupId', 'department', 'isActive', 'quizTitle', 'createdAt', 'publicationStatus'], limit: 500 })
         : Promise.resolve({ records: [] }),
     ]);
 
@@ -287,7 +288,7 @@ export default createEndpoint({
       notes: (s.notes as string) || '',
     }));
 
-    const quizzes = quizRecords.map((q: any) => ({
+    const quizzes = quizRecords.filter(q => !isQuizDraft(q)).map(q => ({
       quizId: q.id,
       title: (q.quizTitle as string) || (q.title as string) || 'Untitled Quiz',
       createdAt: (q.createdAt as string) || '',
