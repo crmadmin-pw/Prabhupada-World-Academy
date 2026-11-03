@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { canViewPwSadhana, PW_SADHANA_PRIVACY_FIELDS } from '@/lib/pwSadhanaPrivacy';
 import { getScopedHierarchyUserIds, isUserInHierarchy, readScopedUsers } from '../lib/hierarchyUtils';
 import { createEndpoint, FolkResidencies } from '@/lib/backend-sdk';
 import { folkScoreFromTotals, loadFolkTotals, mergeFolkTotals, type FolkTotals } from '../lib/reportPeriodSummary';
@@ -9,7 +10,7 @@ import { resolveBvAdminFacilitators } from '../lib/bvAdminFacilitatorScope';
 import { getSadhanaMentorResidencyScope } from '../lib/sadhanaMentorResidencyScope';
 import { readFolkHostelSadhanaUsers } from '../lib/folkHostelSadhanaScope';
 
-const MEMBER_USER_FIELDS = ['id', 'userId', 'email', 'residency', 'residencyApproved', 'temporaryResidencyEnabled', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
+const MEMBER_USER_FIELDS = [...PW_SADHANA_PRIVACY_FIELDS, 'id', 'userId', 'email', 'residency', 'residencyApproved', 'temporaryResidencyEnabled', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
 
 const RESIDENT_FIELD_DEFS = [
   { key: 'quotes_tulasi',    shortLabel: 'Quotes/Pranam', maxPoints: 1,    isScoring: true,  forResident: true, forNR: false },
@@ -79,7 +80,7 @@ export default createEndpoint({
     while (!residencyMentorScope) {
       const { records, hasMore } = await readScopedUsers(context.user, {
         filters: { status: 'Active', residencyApproved: true },
-        fields: ['id', 'residency', 'residencyApproved', 'temporaryResidencyEnabled'],
+        fields: [...PW_SADHANA_PRIVACY_FIELDS, 'id', 'residency', 'residencyApproved', 'temporaryResidencyEnabled'],
         limit: 2000,
         offset: uOffset,
       });
@@ -114,6 +115,7 @@ export default createEndpoint({
         : allUsers;
     const hierarchy = residencyMentorScope ? null : await getScopedHierarchyUserIds(context.user);
     const residents = scopedUsers.filter(u => {
+      if (!canViewPwSadhana(context.user, u, false)) return false;
       if (!isUserInHierarchy(u, hierarchy)) return false;
       const resId = Array.isArray(u.residency) ? u.residency[0] : u.residency;
       const isApprovedRes = u.residencyApproved && resId && !u.temporaryResidencyEnabled;

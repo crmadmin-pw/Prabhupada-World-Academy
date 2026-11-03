@@ -1,7 +1,8 @@
 import { z } from 'zod';
-import { createEndpoint, SadhanaEntries, AppError } from '@/lib/backend-sdk';
+import { createEndpoint, SadhanaEntries, Users, AppError } from '@/lib/backend-sdk';
 import { getNRMaxScore, fillingSameDayApplies, normalizeAshrayLevel } from '../lib/userUtils';
-import { getScopedHierarchyUserIds } from '@/lib/hierarchyUtils';
+import { getScopedHierarchyUserIds, HIERARCHY_IDENTITY_FIELDS, hierarchyAliases } from '@/lib/hierarchyUtils';
+import { canViewPwSadhana, PW_SADHANA_PRIVACY_FIELDS } from '@/lib/pwSadhanaPrivacy';
 import { refreshUserPeriodSummaries } from '../lib/sadhanaPeriodSummary';
 import { pwScoreFromFieldValues, readPwTargets, scoreStoredPwDay } from '../lib/pwSadhana';
 
@@ -73,6 +74,14 @@ export default createEndpoint({
     const allowedUserIds = hierarchyScope === null
       ? requestedUserIds
       : new Set([...requestedUserIds].filter(id => hierarchyScope.has(id) || callerKeys.includes(id)));
+    const privateOwnerIds = new Set<string>();
+    for (let offset = 0; ; offset += 2000) {
+      const page = await Users.findAll({ fields: [...HIERARCHY_IDENTITY_FIELDS, ...PW_SADHANA_PRIVACY_FIELDS], limit: 2000, offset });
+      for (const person of page.records) {
+        if (!canViewPwSadhana(context.user, person, false)) hierarchyAliases(person).forEach(id => privateOwnerIds.add(id));
+      }
+      if (!page.hasMore) break;
+    }
 
     // Paginate until all entries in the date range are fetched
     let allEntries: any[] = [];
@@ -107,7 +116,7 @@ export default createEndpoint({
       const entryUserIds = refValues(e.user);
       const inRequestedScope = requestedUserIds.size === 0 || entryUserIds.some(id => allowedUserIds.has(id));
       const inHierarchyScope = hierarchyScope === null || entryUserIds.some(id => hierarchyScope.has(id) || callerKeys.includes(id));
-      if (!inRequestedScope || !inHierarchyScope) {
+      if (!inRequestedScope || !inHierarchyScope || entryUserIds.some(id => privateOwnerIds.has(id))) {
         skipped++;
         continue;
       }

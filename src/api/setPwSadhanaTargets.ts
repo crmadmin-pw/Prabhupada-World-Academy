@@ -8,11 +8,13 @@ import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
 import { pwTarget, pwTime, readPwTargets } from '@/lib/pwSadhana';
 import { canSetPwTargets, isPwAdmin, isPwRgf, isPwRgsf } from '@/lib/pwTargetResolver';
 import { serverCacheInvalidate } from '@/lib/serverCache';
+import { getUserDepartment } from '@/lib/userDashboardRoutes';
+import { isPwSadhanaAdmin, isPwSuperAdmin } from '@/lib/pwSadhanaPrivacy';
 
 const MEMBER_FIELDS = ['id', 'userId', 'email', 'fullName', 'segment', 'isPrabhupadaWorldUser', 'role',
   'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator', 'isBvAdmin', 'isBvSuperAdmin', 'isBvSupervisor',
   'isBvMember', 'isRgsf', 'isSadhanaMentor', 'bvGroupId', 'sadhanaMentor', 'ashrayLevel',
-  'pwTargets', 'pwChantingTarget', 'pwReadingTarget',
+  'pwTargets', 'pwChantingTarget', 'pwReadingTarget', 'isPwAdmin',
   'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
 
 function rawIdentity(user: any): string[] {
@@ -117,6 +119,9 @@ export default createEndpoint({
   }),
   execute: async ({ input, context }: any) => {
     if (!context.user) throw new Error('Unauthorized');
+    if (getUserDepartment(context.user) !== 'PW') {
+      throw new AppError({ code: 'FORBIDDEN', message: 'Only Prabhupada World staff can assign these targets' });
+    }
     const isRgf = isPwRgf(context.user);
     const isAdmin = isPwAdmin(context.user);
     const isMentor = !!(context.user.isSadhanaMentor);
@@ -129,7 +134,14 @@ export default createEndpoint({
       || await Users.findOne({ filters: { email: String(input.userId).toLowerCase() }, fields: MEMBER_FIELDS });
     if (!found) throw new AppError({ code: 'NOT_FOUND', message: 'Member not found' });
     const profiles = await relatedProfiles(found);
-    const member = profiles.find(profile => profile.id && profile.userId && profile.id !== profile.userId) || found;
+    let member = profiles.find(profile => profile.id && profile.userId && profile.id !== profile.userId) || found;
+    // Check the highest role before group or mentor relationships. A second
+    // RGF/RGSF role must never let someone set an admin's targets.
+    const protectedProfile = profiles.find(isPwSuperAdmin) || profiles.find(isPwSadhanaAdmin);
+    if (protectedProfile && !canSetPwTargets(context.user, protectedProfile).allowed) {
+      throw new AppError({ code: 'FORBIDDEN', message: canSetPwTargets(context.user, protectedProfile).message });
+    }
+    if (protectedProfile) member = { ...member, isBvAdmin: true };
     const memberGroups = await memberAssignableGroups(profiles);
     const inGroup = memberGroups.length > 0;
     if (!profiles.some(isPwSadhanaUser) && !inGroup) {

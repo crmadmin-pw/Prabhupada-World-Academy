@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { canViewPwSadhana, PW_SADHANA_PRIVACY_FIELDS } from '@/lib/pwSadhanaPrivacy';
 import { createEndpoint, SadhanaEntries, Users, AppError } from '@/lib/backend-sdk';
 import { getScopedHierarchyUserIds, isUserInHierarchy } from '@/lib/hierarchyUtils';
 import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
@@ -6,7 +7,7 @@ import { pwTarget, readPwTargets, scoreStoredPwDay } from '@/lib/pwSadhana';
 import { isPwAdmin, isPwRgf, isPwRgsf, resolvePwTargetsForUser } from '@/lib/pwTargetResolver';
 import { refreshUserPeriodSummaries } from '@/lib/sadhanaPeriodSummary';
 
-const USER_FIELDS = ['id', 'userId', 'email', 'segment', 'isPrabhupadaWorldUser', 'role', 'status',
+const USER_FIELDS = [...PW_SADHANA_PRIVACY_FIELDS, 'id', 'userId', 'email', 'segment', 'isPrabhupadaWorldUser', 'role', 'status',
   'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator', 'isBvSupervisor', 'isBvMember', 'bvGroupId',
   'sadhanaMentor', 'ashrayLevel', 'pwTargets', 'pwChantingTarget', 'pwReadingTarget', 'pwPendingBvAttendance'];
 
@@ -35,6 +36,9 @@ export default createEndpoint({
     const member = await Users.findOne({ id: input.userId, fields: USER_FIELDS })
       || await Users.findOne({ filters: { userId: input.userId }, fields: USER_FIELDS });
     if (!member) throw new AppError({ code: 'NOT_FOUND', message: 'Member not found' });
+    if (!canViewPwSadhana(context.user, member)) {
+      throw new AppError({ code: 'FORBIDDEN', message: 'This sadhana report is private' });
+    }
     if (!isPwSadhanaUser(member) && String(member.segment || '').toUpperCase() === 'FOLK') {
       throw new AppError({ code: 'FORBIDDEN', message: 'Attendance minutes apply to Prabhupada World members' });
     }

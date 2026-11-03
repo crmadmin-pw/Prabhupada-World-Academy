@@ -18,6 +18,7 @@ import { pwScoreFromFieldValues, pwTarget, PW_FIELDS } from '@/lib/pwSadhana';
 import { resolveBvAdminFacilitators } from '@/lib/bvAdminFacilitatorScope';
 import { residencyMatchesDepartment } from '../lib/residencyCategory';
 import { readEntriesForOwners } from '../lib/scopedEntryReads';
+import { canViewPwSadhana } from '@/lib/pwSadhanaPrivacy';
 
 const USER_FIELDS = ['status', 'id', 'userId', 'fullName', 'displayName', 'name', 'email', 'phone', 'segment', 'isPrabhupadaWorldUser', 'isFolkUser', 'isFolkLead', 'sadhanaMentor', 'ashrayLevel', 'residency', 'residencyApproved', 'temporaryResidencyEnabled', 'temporaryResidency', 'residencyJoinDate', 'scholarSince', 'residentSince', 'currentStreak', 'lastStreakUpdatedAt', 'guide', 'role', 'isBvSuperAdmin', 'isBvAdmin', 'isPwAdmin', 'pwChantingTarget', 'pwReadingTarget', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
 const ENTRY_FIELDS = [
@@ -28,18 +29,6 @@ const ENTRY_FIELDS = [
   'spReadingMinutes', 'spReadingPoints', 'japaFinishTime', 'sleepMinutes', 'studyMinutes', 'preachingMinutes',
   'booksDistributed', 'fieldValuesJson',
 ];
-
-/** Sadhana for a PW admin covers the member directory, not peer administrators. */
-function isExcludedFromPwAdminSadhana(user: any): boolean {
-  const role = String(user?.role || '').trim().toUpperCase().replace(/[\s_-]+/g, '');
-  return user?.isBvSuperAdmin === true
-    || user?.isBvAdmin === true
-    || user?.isPwAdmin === true
-    || role === 'SUPERADMIN'
-    || role === 'ADMIN'
-    || role === 'ADMINISTRATOR'
-    || role === 'PWADMIN';
-}
 
 function folkGuideRefsForDirectory(users: any[], guides: any[]): Set<string> {
   const refs = folkGuideIdentityRefs(users);
@@ -770,6 +759,8 @@ export default createEndpoint({
     }
     // Authorization: only Guide, Super Guide, BVSL, or Sadhana Mentor may access reports
     requireGuideRole(context.user.role, {
+      isBvAdmin: context.user.isBvAdmin,
+      isBvSuperAdmin: context.user.isBvSuperAdmin,
       isSadhanaMentor: context.user.isSadhanaMentor,
       isBvsl: context.user.isBvsl,
       isBvMentor: (context.user as any).isBvMentor,
@@ -811,8 +802,8 @@ export default createEndpoint({
 
     const isPwMentor = !!mentorMode && input.segment === 'PW';
     // A Prabhupada World admin's sadhana report matches the member directory:
-    // every PW member, including people who report to another admin. Super
-    // admins, other PW admins, and FOLK members stay out of this report.
+    // every PW member, including people who report to another admin.
+    // The privacy check below additionally permits admin reports to PW super admins.
     const pwDepartmentSadhana = input.segment === 'PW'
       && !bvslMode && !mentorMode && !facilitatorMode
       && isPwDepartmentAdmin(context.user)
@@ -1045,7 +1036,7 @@ export default createEndpoint({
         limit: 500,
       });
       const folkGuideRefs = folkGuideRefsForDirectory(users, guideRecords);
-      users = users.filter(user => isPrabhupadaWorldDirectoryMember(user, folkGuideRefs) && !isExcludedFromPwAdminSadhana(user));
+      users = users.filter(user => isPrabhupadaWorldDirectoryMember(user, folkGuideRefs));
     }
 
     // NR-VIS FIX: Non-residents must only appear for their own assigned guide.
@@ -1073,6 +1064,7 @@ export default createEndpoint({
       });
     }
 
+    users = users.filter(user => canViewPwSadhana(context.user, user, false));
     const reportGuideScope = hostelScope || residencyMentorScope;
     const availableGuidesPromise = reportGuideScope ? Promise.resolve(reportGuideScope.availableGuides) : getGuides.execute({ input: { segment: input.segment || 'ALL' }, context })
       .then(result => result.guides.map(guide => ({ guideId: guide.guideId, guideName: guide.name })));

@@ -1,6 +1,7 @@
 import { getFolkHostelSadhanaScope } from '../lib/folkHostelSadhanaScope';
 import { getSadhanaMentorResidencyScope } from '../lib/sadhanaMentorResidencyScope';
 import { z } from 'zod';
+import { canViewPwSadhana, PW_SADHANA_PRIVACY_FIELDS } from '@/lib/pwSadhanaPrivacy';
 import { callerDirectoryDepartment, getScopedHierarchyUserIds, isPwDepartmentAdmin, isUserInHierarchy, memberDirectoryDepartment } from '../lib/hierarchyUtils';
 import { createEndpoint, Users, Guides, SadhanaEntries, BvGroupMembers, BvGroups, FolkResidencies, AppError } from '@/lib/backend-sdk';
 import { computeStreak, getTodayIST } from '../lib/streakUtils';
@@ -13,7 +14,7 @@ import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
 import { pwScoreFromFieldValues } from '@/lib/pwSadhana';
 
 const LINK_FIELDS = ['id', 'userId', 'email', 'phone', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
-const USER_FIELDS = ['status', 'role', 'isFolkUser', 'isBvAdmin', 'isBvSuperAdmin', 'id', 'userId', 'fullName', 'displayName', 'name', 'phone', 'email', 'ashrayLevel', 'status', 'bvGroupId', 'bvGroupName',
+const USER_FIELDS = [...PW_SADHANA_PRIVACY_FIELDS, 'status', 'role', 'isFolkUser', 'isBvAdmin', 'isBvSuperAdmin', 'id', 'userId', 'fullName', 'displayName', 'name', 'phone', 'email', 'ashrayLevel', 'status', 'bvGroupId', 'bvGroupName',
   'residency', 'residencyApproved', 'residencyGuideVerified', 'selectedFolkResidency',
   'temporaryResidency', 'temporaryResidencyEnabled', 'createdAt', 'lastLoginAt', 'isBvsl', 'isSadhanaMentor',
   'currentStreak', 'lastStreakUpdatedAt', 'guide', 'sadhanaMentor', 'segment', 'isPrabhupadaWorldUser',
@@ -236,6 +237,9 @@ export default createEndpoint({
 
     const userRecord = await resolveUser(input.userId);
     if (!userRecord) throw new AppError({ code: 'NOT_FOUND', message: 'User not found' });
+    if (!canViewPwSadhana(context.user, userRecord)) {
+      throw new AppError({ code: 'FORBIDDEN', message: 'This sadhana report is private' });
+    }
     const callerRole = String(context.user.role || '').toUpperCase().replace(/[\s-]+/g, '_');
     const isRgf = !!(context.user.isBvsl || context.user.isBvFacilitator) || ['RGF', 'BVSL', 'FACILITATOR'].includes(callerRole);
     const isRgsf = !!context.user.isBvSubFacilitator || callerRole === 'RGSF' || callerRole === 'SUB_FACILITATOR';

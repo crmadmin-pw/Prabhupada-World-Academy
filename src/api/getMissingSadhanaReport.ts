@@ -11,8 +11,9 @@ import { getGuideScope } from '../lib/guideScope';
 import getGuides from './getGuides';
 import { getReportReferenceData } from '../lib/reportReferenceData';
 import { completedSadhanaEndDate } from '../lib/missingSadhanaDateRange';
+import { canViewPwSadhana, isPwSadhanaAdmin } from '@/lib/pwSadhanaPrivacy';
 
-const USER_FIELDS = ['phone', 'segment', 'isPrabhupadaWorldUser', 'id', 'userId', 'fullName', 'displayName', 'name', 'email', 'status', 'role', 'isBvAdmin', 'isBvSuperAdmin', 'residency', 'guide', 'isScholar', 'residencyClaimed', 'residencyApproved', 'residencyGuideVerified', 'residentSince', 'createdAt'];
+const USER_FIELDS = ['phone', 'segment', 'isPrabhupadaWorldUser', 'id', 'userId', 'fullName', 'displayName', 'name', 'email', 'status', 'role', 'isBvAdmin', 'isPwAdmin', 'isBvSuperAdmin', 'residency', 'guide', 'isScholar', 'residencyClaimed', 'residencyApproved', 'residencyGuideVerified', 'residentSince', 'createdAt'];
 
 function registrationDate(createdAt: unknown): string | null {
   if (typeof createdAt !== 'string' || !createdAt.trim()) return null;
@@ -59,6 +60,8 @@ export default createEndpoint({
       throw new Error('You cannot view users from another department');
     }
     requireGuideRole(context.user.role, {
+      isBvAdmin: context.user.isBvAdmin,
+      isBvSuperAdmin: context.user.isBvSuperAdmin,
       isSadhanaMentor: context.user.isSadhanaMentor,
       isBvsl: context.user.isBvsl,
     });
@@ -155,7 +158,8 @@ export default createEndpoint({
       const joinedOn = registrationDate(u.createdAt);
       return u.userId &&
         String(u.fullName || u.displayName || u.name || '').trim().length > 0 &&
-        !isSadhanaExemptUser(u) &&
+        (!isSadhanaExemptUser(u) || isPwSadhanaAdmin(u)) &&
+        canViewPwSadhana(context.user, u, false) &&
         (!joinedOn || joinedOn <= endDate);
     });
 

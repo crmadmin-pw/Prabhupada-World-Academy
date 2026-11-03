@@ -638,12 +638,13 @@ export default function DailySadhanaForm() {
           {isPwUser && (
             <div className="space-y-3">
               <p className="text-sm text-muted-foreground">
+                {pwContext.source === 'super_admin' && 'Your super admin sets these targets. Your report is private to you and PW super admins.'}
                 {pwContext.source === 'admin' && 'Your admin sets these targets.'}
                 {pwContext.source === 'mentor' && 'Your sadhana mentor sets these targets.'}
                 {pwContext.source === 'ashraya' && 'Your targets are determined by your Ashraya level.'}
-                {pwContext.source !== 'admin' && pwContext.source !== 'mentor' && pwContext.source !== 'ashraya' && 'Your RGF sets these targets.'}
+                {pwContext.source !== 'super_admin' && pwContext.source !== 'admin' && pwContext.source !== 'mentor' && pwContext.source !== 'ashraya' && 'Your RGF sets these targets.'}
                 {' '}Submission opens at 6:00 PM on the Sadhana date. Submissions received by 10:00 AM on the following day receive 2 points; submissions received between 10:00 AM and 2:00 PM receive 1 point. Submissions received after 2:00 PM do not receive timely-submission points. All times are based on the report time zone: {submissionTimeZone}. Other Sadhana points are awarded according to the established criteria.
-                {pwContext.attendance ? ` BV attendance recorded: ${pwContext.attendance.attended} of ${pwContext.attendance.session} minutes.` : ' BV attendance is added by your RGF or RGSF.'}
+                {pwContext.attendance ? ` BV attendance recorded: ${pwContext.attendance.attended} of ${pwContext.attendance.session} minutes.` : pwContext.source === 'super_admin' ? ' BV attendance is added by your super admin.' : ' BV attendance is added by your RGF or RGSF.'}
               </p>
               <p className="text-sm text-muted-foreground">
                 Please record the sleep time for the night preceding the Sadhana date, irrespective of whether the entry is submitted that evening or the following morning.

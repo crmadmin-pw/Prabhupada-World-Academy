@@ -12,6 +12,7 @@ import { calculateTotalScore, computeSingleFieldScore } from '../lib/scoring';
 import { NON_RESIDENT_FIELDS, RESIDENT_FIELDS, toFormField } from '../config/sadhanaFields';
 import { ACCOUNT_DELETED_LOGIN_MESSAGE, isAccountDeleted } from '@/lib/accountDeletionPolicy';
 import { sadhanaOwnerIds } from '../lib/sadhanaOwnerIds';
+import { isPwSuperAdmin, PW_SADHANA_PRIVACY_FIELDS } from '@/lib/pwSadhanaPrivacy';
 
 
 /** Normalize templateMode to canonical TEMPLATE_MODES values */
@@ -345,7 +346,10 @@ export default createEndpoint({
 
     // Block inactive users from submitting, and retain the legacy/custom ID only
     // to locate an entry saved by the earlier, incorrect write path.
-    const userRec = await Users.findOne({ id: authenticatedUserId, fields: ['id', 'userId', 'email', 'status', 'segment', 'isPrabhupadaWorldUser', 'isFolkUser', 'role', 'ashrayLevel', 'sadhanaMentor', 'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator', 'isBvSupervisor', 'isBvMember', 'isRgsf', 'bvGroupId', 'pwTargets', 'pwChantingTarget', 'pwReadingTarget', 'pwPendingBvAttendance'] });
+    const userRec = await Users.findOne({ id: authenticatedUserId, fields: [...PW_SADHANA_PRIVACY_FIELDS, 'id', 'userId', 'email', 'status', 'segment', 'isPrabhupadaWorldUser', 'isFolkUser', 'role', 'ashrayLevel', 'sadhanaMentor', 'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator', 'isBvSupervisor', 'isBvMember', 'isRgsf', 'bvGroupId', 'pwTargets', 'pwChantingTarget', 'pwReadingTarget', 'pwPendingBvAttendance'] });
+    if (isPwSuperAdmin(userRec) || isPwSuperAdmin(context.user)) {
+      throw new AppError({ code: 'FORBIDDEN', message: 'Prabhupada World super admins do not submit sadhana' });
+    }
     if (userRec?.status === 'Inactive') {
       throw new Error('Your account has been deactivated. Please contact your guide.');
     }

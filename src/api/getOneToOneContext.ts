@@ -1,6 +1,8 @@
 import { z } from 'zod';
+import { canViewPwSadhana, PW_SADHANA_PRIVACY_FIELDS } from '@/lib/pwSadhanaPrivacy';
+import { findSadhanaSubject } from '@/lib/sadhanaSubject';
 import { getScopedHierarchyUserIds, isUserInHierarchy } from '../lib/hierarchyUtils';
-import { createEndpoint, Users, SadhanaEntries, BvAttendance } from '@/lib/backend-sdk';
+import { AppError, createEndpoint, SadhanaEntries, BvAttendance } from '@/lib/backend-sdk';
 import { getTodayIST, daysAgo } from '../lib/streakUtils';
 import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
 import { getSadhanaMentorResidencyScope } from '@/lib/sadhanaMentorResidencyScope';
@@ -10,7 +12,7 @@ const USER_IDENTITY_FIELDS = [
   'id', 'userId', 'email', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId',
   'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id',
 ];
-const CONTEXT_USER_FIELDS = [...USER_IDENTITY_FIELDS, 'fullName', 'currentStreak', 'ashrayLevel', 'residencyApproved', 'residencyGuideVerified', 'segment', 'isPrabhupadaWorldUser', 'status', 'role', 'residency', 'selectedFolkResidency', 'isBvAdmin', 'isBvSuperAdmin'];
+const CONTEXT_USER_FIELDS = [...PW_SADHANA_PRIVACY_FIELDS, ...USER_IDENTITY_FIELDS, 'fullName', 'currentStreak', 'ashrayLevel', 'residencyApproved', 'residencyGuideVerified', 'segment', 'isPrabhupadaWorldUser', 'status', 'role', 'residency', 'selectedFolkResidency', 'isBvAdmin', 'isBvSuperAdmin'];
 
 function identityAliases(user: any): string[] {
   return [...new Set(USER_IDENTITY_FIELDS
@@ -56,16 +58,7 @@ export default createEndpoint({
     // One-to-one records normally pass the Users document id, but older
     // records can contain the app user id. Resolve it before querying Sadhana
     // and BV attendance so the context never silently shows empty values.
-    const user = await Users.findOne({
-      id: input.userId,
-      fields: CONTEXT_USER_FIELDS,
-    }) || await Users.findOne({
-      filters: { userId: input.userId },
-      fields: CONTEXT_USER_FIELDS,
-    }) || await Users.findOne({
-      filters: { email: input.userId },
-      fields: CONTEXT_USER_FIELDS,
-    });
+    const user = await findSadhanaSubject(input.userId, CONTEXT_USER_FIELDS);
 
     if (!user?.id) {
       return {
@@ -73,6 +66,9 @@ export default createEndpoint({
         weeks: [], bvAttendanceCount: 0, totalPreachingMins: 0,
         totalBooks: 0, improvementAreas: [],
       };
+    }
+    if (!canViewPwSadhana(context.user, user)) {
+      throw new AppError({ code: 'FORBIDDEN', message: 'This sadhana report is private' });
     }
     const mentorScope = await getSadhanaMentorResidencyScope(context.user);
     if (mentorScope ? !mentorScope.includes(user) : !isUserInHierarchy(user, await getScopedHierarchyUserIds(context.user))) {

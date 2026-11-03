@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { canViewPwSadhana } from '@/lib/pwSadhanaPrivacy';
 import { getScopedHierarchyUserIds, isPwDepartmentAdmin, isUserInHierarchy, readScopedUsers } from '../lib/hierarchyUtils';
 import { scopeRealtimeDependencies } from '@/lib/requestQueries';
 import { createEndpoint, AppError, Users, BvslPreachingEntries, BvGroups, Guides, SadhanaEntries } from '@/lib/backend-sdk';
@@ -151,6 +152,7 @@ async function _fetchBvPreachingReport({ input, context }: { input: any; context
 
     const hierarchy = isPwDepartmentAdmin(context.user) ? null : await getScopedHierarchyUserIds(context.user);
     bvslUsers = bvslUsers.filter(user => isUserInHierarchy(user, hierarchy));
+    if (isMemberMode) bvslUsers = bvslUsers.filter(user => canViewPwSadhana(context.user, user, false));
     const isFolkReport = (context.user as any).segment === 'FOLK' || (residencyIds && residencyIds.length > 0);
     if (isFolkReport) {
       bvslUsers = bvslUsers.filter(isFolkMemberLevelFacilitator);

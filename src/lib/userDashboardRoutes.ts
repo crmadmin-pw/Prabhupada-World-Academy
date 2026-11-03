@@ -8,14 +8,15 @@ type DepartmentProfile = {
   role?: unknown;
   isBvAdmin?: unknown;
   isBvSuperAdmin?: unknown;
+  isPwAdmin?: unknown;
 };
 
 export function normalizeProfileRole(role: unknown): string {
   return String(role || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
 }
 
-/** Management accounts never use the member dashboard, even when a legacy
- * record still carries the base USER role. */
+/** Identify management access even when a legacy account has the base USER role.
+ * PW admins also have a separate personal Sadhana dashboard. */
 export function isManagementProfile(profile?: DepartmentProfile | null): boolean {
   const role = normalizeProfileRole(profile?.role);
   const department = getUserDepartment(profile);
@@ -24,7 +25,7 @@ export function isManagementProfile(profile?: DepartmentProfile | null): boolean
       Boolean(profile?.isBvAdmin || profile?.isBvSuperAdmin);
   }
   return ['ADMIN', 'PW_ADMIN', 'SUPER_ADMIN'].includes(role) ||
-    Boolean(profile?.isBvAdmin || profile?.isBvSuperAdmin);
+    Boolean(profile?.isBvAdmin || profile?.isBvSuperAdmin || profile?.isPwAdmin);
 }
 
 export function getManagementDashboardPath(profile?: DepartmentProfile | null): string {
@@ -83,6 +84,10 @@ export function getUserDashboardRedirect(
 ): string | null {
   const pathname = getUserDashboardPath(profile);
   if (isManagementProfile(profile)) {
+    // PW admins retain management access and can open their personal Sadhana.
+    const pwAdminParticipant = getUserDepartment(profile) === 'PW' &&
+      !profile.isBvSuperAdmin && normalizeProfileRole(profile.role) !== 'SUPER_ADMIN';
+    if (pwAdminParticipant) return location.pathname === pathname ? null : `${pathname}${location.search}${location.hash}`;
     const managementPath = getManagementDashboardPath(profile);
     return location.pathname === managementPath ? null : `${managementPath}${location.search}${location.hash}`;
   }

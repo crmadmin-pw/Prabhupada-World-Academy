@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { canViewPwSadhana } from '@/lib/pwSadhanaPrivacy';
 import { getScopedHierarchyUserIds, isPwDepartmentAdmin, isUserInHierarchy, readScopedUsers } from '../lib/hierarchyUtils';
 import { scopeRealtimeDependencies } from '@/lib/requestQueries';
 import { createEndpoint, AppError, Users, Guides, BvslPreachingEntries, SadhanaEntries } from '@/lib/backend-sdk';
@@ -144,6 +145,7 @@ async function _fetchBvStats({ input, context }: { input: any; context: any }) {
 
     const hierarchy = isPwDepartmentAdmin(context.user) ? null : await getScopedHierarchyUserIds(context.user);
     bvslUsers = bvslUsers.filter(user => isUserInHierarchy(user, hierarchy));
+    if (isMemberMode) bvslUsers = bvslUsers.filter(user => canViewPwSadhana(context.user, user, false));
 
     // The individual trend view is allowed only for a facilitator already
     // resolved by the caller's scope above. This keeps supervisor reporting

@@ -1,7 +1,9 @@
 import { getFolkHostelSadhanaScope } from '../lib/folkHostelSadhanaScope';
 import { getSadhanaMentorResidencyScope } from '../lib/sadhanaMentorResidencyScope';
 import { z } from 'zod';
-import { AppError, createEndpoint, SadhanaEntries, Users } from '@/lib/backend-sdk';
+import { canViewPwSadhana, PW_SADHANA_PRIVACY_FIELDS } from '@/lib/pwSadhanaPrivacy';
+import { findSadhanaSubject } from '@/lib/sadhanaSubject';
+import { AppError, createEndpoint, SadhanaEntries } from '@/lib/backend-sdk';
 import { getScopedHierarchyUserIds, HIERARCHY_IDENTITY_FIELDS, isUserInHierarchy } from '@/lib/hierarchyUtils';
 import { NON_RESIDENT_FIELDS, RESIDENT_FIELDS } from '../config/sadhanaFields';
 import { isPwSadhanaUser, PW_SADHANA_FORM_KEYS } from '@/lib/sadhanaDepartment';
@@ -95,11 +97,14 @@ export default createEndpoint({
   execute: async ({ input, context }: { input: any; context: any }) => {
     if (!context.user) throw new Error('Unauthorized');
     let entry: any;
-    const ownerFields = [...HIERARCHY_IDENTITY_FIELDS, 'fullName', 'segment', 'isPrabhupadaWorldUser', 'status', 'role', 'isBvAdmin', 'isBvSuperAdmin', 'guide', 'residency', 'selectedFolkResidency', 'temporaryResidency', 'temporaryResidencyEnabled'];
+    const ownerFields = [...PW_SADHANA_PRIVACY_FIELDS, ...HIERARCHY_IDENTITY_FIELDS, 'fullName', 'segment', 'isPrabhupadaWorldUser', 'status', 'role', 'isBvAdmin', 'isBvSuperAdmin', 'guide', 'residency', 'selectedFolkResidency', 'temporaryResidency', 'temporaryResidencyEnabled'];
     // Same rule as the profile's CRM data: a member sees their own entry, and
     // guides, mentors and BV leaders see the members in their hierarchy.
     const callerKeys = new Set([context.user.id, context.user.userId, context.user.uid].filter(Boolean).map(String));
     const assertCanView = async (owner: any, ownerId: string) => {
+      if (!canViewPwSadhana(context.user, owner)) {
+        throw new AppError({ code: 'FORBIDDEN', message: 'This sadhana report is private' });
+      }
       const isOwn = [owner?.id, owner?.userId, ownerId].some(value => value && callerKeys.has(String(value)));
       if (isOwn) return;
       const hostelScope = await getFolkHostelSadhanaScope(context.user);
@@ -118,8 +123,7 @@ export default createEndpoint({
     if (input.entryId) {
       entry = await SadhanaEntries.findOne({ filters: { entryId: input.entryId } });
     } else if (input.userId && input.entryDate) {
-      const userRecord = await Users.findOne({ filters: { userId: input.userId }, fields: ownerFields })
-        || await Users.findOne({ id: input.userId, fields: ownerFields });
+      const userRecord = await findSadhanaSubject(input.userId, ownerFields);
       if (userRecord) {
         await assertCanView(userRecord, userRecord.id);
         owner = userRecord;
@@ -134,10 +138,7 @@ export default createEndpoint({
     const ownerId = String(Array.isArray(entry.user) ? entry.user[0] : entry.user || '');
     if (!owner) {
       // Looked up by entryId: the owner is only known once the entry is loaded.
-      owner = ownerId ? (
-        await Users.findOne({ id: ownerId, fields: ownerFields }) ||
-        await Users.findOne({ filters: { userId: ownerId }, fields: ownerFields })
-      ) : null;
+      owner = await findSadhanaSubject(ownerId, ownerFields);
       await assertCanView(owner, ownerId);
     }
     const isPw = isPwSadhanaUser(owner);

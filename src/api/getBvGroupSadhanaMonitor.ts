@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { canViewPwSadhana, PW_SADHANA_PRIVACY_FIELDS } from '@/lib/pwSadhanaPrivacy';
+import { bvUserAliases, resolveBvUsersByAliases } from '@/lib/bvGroupMemberScope';
 import { createEndpoint, BvGroups, BvGroupMembers, Users, Guides, SadhanaEntries } from '@/lib/backend-sdk';
 import { getTodayIST, daysAgo } from '../lib/streakUtils';
 import { assignedStaffSlots, joinFacilitatorNames, textList } from '@/lib/bvGroupFacilitators';
@@ -11,7 +13,7 @@ export default createEndpoint({
   authenticated: true,
   inputSchema: z.object({ guideId: z.string(), date: z.string().optional() }),
   outputSchema: z.any(),
-  execute: async ({ input }) => {
+  execute: async ({ input, context }) => {
     const targetDate = input.date || getTodayIST();
     const sevenDaysAgo = daysAgo(targetDate, 6);
 
@@ -104,11 +106,8 @@ export default createEndpoint({
     // --- Fetch sadhana entries SCOPED to BV group members only ---
     // This prevents hitting the global 2000-record limit and ensures accuracy
     const [{ records: memberUsers }, { records: todayEntries }, { records: weekEntries }] = await Promise.all([
-      Users.findAll({
-        filters: { id: { in: allMemberUserIds } as any },
-        fields: ['id', 'fullName', 'currentStreak', 'status'],
-        limit: 2000,
-      }),
+      resolveBvUsersByAliases(allMemberUserIds, [...PW_SADHANA_PRIVACY_FIELDS, 'id', 'fullName', 'currentStreak', 'status'])
+        .then(records => ({ records })),
       SadhanaEntries.findAll({
         filters: { entryDate: targetDate, user: { in: allMemberUserIds } as any },
         fields: ['user', 'entryDate'],
@@ -123,14 +122,14 @@ export default createEndpoint({
     const userInfoMap: Record<string, { fullName: string; currentStreak: number }> = {};
     const excusedMemberIds = new Set<string>();
     for (const u of memberUsers) {
-      if (isExcusedFromReporting(u.status)) {
-        excusedMemberIds.add(u.id);
+      if (isExcusedFromReporting(u.status) || !canViewPwSadhana(context.user, u, false)) {
+        bvUserAliases(u).forEach(id => excusedMemberIds.add(id));
         continue;
       }
-      userInfoMap[u.id] = { fullName: u.fullName || '', currentStreak: u.currentStreak ?? 0 };
+      userInfoMap[String(u.id)] = { fullName: String(u.fullName || ''), currentStreak: Number(u.currentStreak ?? 0) };
     }
     for (const [id, person] of Object.entries(bvslMap)) {
-      if (!userInfoMap[id]) userInfoMap[id] = { fullName: person.fullName, currentStreak: 0 };
+      if (!excusedMemberIds.has(id.toLowerCase()) && !userInfoMap[id]) userInfoMap[id] = { fullName: person.fullName, currentStreak: 0 };
     }
 
     // Entries are already scoped to BV members — no need for extra .includes() checks
@@ -173,7 +172,7 @@ export default createEndpoint({
         memberIds.push(resolved);
         slot.keys.forEach(key => seenMemberIds.add(key.toLowerCase()));
       }
-      const activeMemberIds = memberIds.filter(uid => uid && !excusedMemberIds.has(uid));
+      const activeMemberIds = memberIds.filter(uid => uid && !excusedMemberIds.has(uid.toLowerCase()));
       const filledCount = activeMemberIds.filter(uid => filledTodaySet.has(uid)).length;
       const fillPercent = activeMemberIds.length > 0 ? Math.round((filledCount / activeMemberIds.length) * 100) : 0;
 

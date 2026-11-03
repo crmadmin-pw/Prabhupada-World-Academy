@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { canViewPwSadhana } from '@/lib/pwSadhanaPrivacy';
 import { createEndpoint, Guides, Users, SadhanaEntries, FolkResidencies, AppError } from '@/lib/backend-sdk';
 import { getTodayIST } from '../lib/streakUtils';
 import { isActiveFolkResidency } from '../lib/residencyCategory';
@@ -117,7 +118,7 @@ export default createEndpoint({
     const submittedUserIds = new Set(
       todayEntriesRes.records.map(e => Array.isArray(e.user) ? e.user[0] : e.user).filter((id): id is string => !!id)
     );
-    const activeUserIds = new Set(activeUsers.map(u => u.id).filter((id): id is string => !!id));
+    const activeUserIds = new Set(activeUsers.filter(user => canViewPwSadhana(context.user, user, false)).map(u => u.id).filter((id): id is string => !!id));
     const todaySubmitted = [...submittedUserIds].filter(id => activeUserIds.has(id)).length;
 
     // Fetch residency display names

@@ -1,6 +1,7 @@
 import { getSadhanaMentorResidencyScope } from '@/lib/sadhanaMentorResidencyScope';
 import { readFolkHostelSadhanaUsers } from '../lib/folkHostelSadhanaScope';
 import { z } from 'zod';
+import { canViewPwSadhana, PW_SADHANA_PRIVACY_FIELDS } from '@/lib/pwSadhanaPrivacy';
 import { getScopedHierarchyUserIds, isUserInHierarchy, readScopedUsers } from '../lib/hierarchyUtils';
 import { createEndpoint, Users, SadhanaEntries, Guides, FolkResidencies } from '@/lib/backend-sdk';
 import { computeStreak, getTodayIST, daysAgo } from '../lib/streakUtils';
@@ -80,7 +81,7 @@ export default createEndpoint({
 
     const memberQuery = {
       filters: { status: 'Active' },
-      fields: ['status', 'role', 'isBvAdmin', 'isBvSuperAdmin', 'segment', 'isPrabhupadaWorldUser', 'id', 'userId', 'fullName', 'email', 'phone', 'ashrayLevel', 'residency', 'residencyApproved', 'residencyJoinDate', 'scholarSince', 'residentSince', 'currentStreak', 'lastStreakUpdatedAt', 'guide', 'bvReportingAdminId', 'sadhanaMentor', 'pwTargets', 'pwChantingTarget', 'pwReadingTarget'],
+      fields: [...PW_SADHANA_PRIVACY_FIELDS, 'status', 'role', 'isBvAdmin', 'isBvSuperAdmin', 'segment', 'isPrabhupadaWorldUser', 'id', 'userId', 'fullName', 'email', 'phone', 'ashrayLevel', 'residency', 'residencyApproved', 'residencyJoinDate', 'scholarSince', 'residentSince', 'currentStreak', 'lastStreakUpdatedAt', 'guide', 'bvReportingAdminId', 'sadhanaMentor', 'pwTargets', 'pwChantingTarget', 'pwReadingTarget'],
       limit: 1000,
     };
     // The guide label, the member rows, and the caller's hierarchy scope are
@@ -107,6 +108,7 @@ export default createEndpoint({
     const currentEmail = String(context.user?.email || '').toLowerCase();
 
     const users = visibleToCallerDepartment(context.user, allUsers).filter((u: any) => {
+      if (!canViewPwSadhana(context.user, u, false)) return false;
       if (residencyMentorScope) return !residencyMentorScope.isSelf(u) && residencyMentorScope.includes(u);
       if (!isUserInHierarchy(u, hierarchy)) return false;
       // Never expose incomplete profile records as blank member rows. A mentor

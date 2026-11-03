@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-sdk';
 import { readAccountLinkHold } from '@/lib/accountLinkHold';
 import { getDepartmentLandingUrl } from '@/lib/userDashboardRoutes';
+import { isPwSuperAdmin } from '@/lib/pwSadhanaPrivacy';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 
@@ -115,6 +116,9 @@ export default function ProtectedRoute({ children, allowedRoles }: Props) {
   if (profile.status === 'PENDING_DELETION') return <Navigate to="/account-deletion" replace />;
   if (profile.status === 'PENDING_APPROVAL') return <Navigate to="/pending" replace />;
   if (profile.status === 'REJECTED') return <Navigate to="/rejected" replace />;
+  if (window.location.pathname === '/sadhana' && isPwSuperAdmin(profile)) {
+    return <Navigate to="/pw-admin/dashboard" replace />;
+  }
 
   if (allowedRoles && !hasAccess(
     profile.role,

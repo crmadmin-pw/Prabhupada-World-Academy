@@ -8,6 +8,7 @@ import { useUserProfile } from '../contexts/UserProfileContext';
 import TransferNoticeModal from '@/components/TransferNoticeModal';
 import { useMeetingReminderScheduler } from '@/hooks/useMeetingReminderScheduler';
 import { getDepartmentLandingUrl, getUserDashboardPath, isManagementProfile } from '@/lib/userDashboardRoutes';
+import { canFillPersonalSadhana } from '@/lib/pwSadhanaPrivacy';
 
 const FOLK_LOGO = '/folk-mark.webp';
 
@@ -170,8 +171,8 @@ export default function DashboardLayout({
       });
     }
 
-    // 5. My Sadhana (Placed just before Profile & Logout) — Only for regular members/users who fill sadhana
-    if (!isManagementProfile(profile) && !isSuperAdminUser) {
+    // 5. Personal Sadhana, including PW admins. PW super admins do not fill it.
+    if (canFillPersonalSadhana(profile) && !isSuperAdminUser) {
       const personalDashboardPath = getUserDashboardPath(profile);
       const isMySadhanaActive = [personalDashboardPath, '/sadhana', '/history', '/bhaktivriksha'].includes(currentPath);
       tabItems.push({

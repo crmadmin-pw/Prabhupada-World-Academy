@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { canViewPwSadhana, PW_SADHANA_PRIVACY_FIELDS } from '@/lib/pwSadhanaPrivacy';
+import { bvUserAliases, resolveBvUsersByAliases } from '@/lib/bvGroupMemberScope';
 import { createEndpoint, BvGroups, BvGroupMembers, Users, Guides, SadhanaEntries } from '@/lib/backend-sdk';
 import { requireGuideRole } from '../lib/userUtils';
 import { assignedStaffSlots, joinFacilitatorNames, textList } from '@/lib/bvGroupFacilitators';
@@ -102,11 +104,8 @@ export default createEndpoint({
     // ── 5. Fetch member user records (both Active and Inactive) ──────────────
     // ── 6. Sadhana entries in the date range are fetched concurrently ───────
     const [{ records: memberUsers }, { records: entries }] = await Promise.all([
-      Users.findAll({
-        filters: { id: { in: allMemberUserIds } as any },
-        fields: ['id', 'fullName', 'phone', 'email', 'status', 'role'],
-        limit: 2000,
-      }),
+      resolveBvUsersByAliases(allMemberUserIds, [...PW_SADHANA_PRIVACY_FIELDS, 'id', 'fullName', 'phone', 'email', 'status', 'role'])
+        .then(records => ({ records })),
       SadhanaEntries.findAll({
         filters: {
           entryDate: { gte: input.startDate, lte: input.endDate } as any,
@@ -117,11 +116,12 @@ export default createEndpoint({
       }),
     ]);
     const userInfoMap: Record<string, { fullName: string; phone: string; email: string; status: string; role: string }> = {};
+    const privateMemberIds = new Set(memberUsers.filter(user => !canViewPwSadhana(context.user, user, false)).flatMap(bvUserAliases));
     for (const u of memberUsers) {
-      userInfoMap[u.id] = {
-        fullName: u.fullName || '',
-        phone: u.phone || '',
-        email: u.email || '',
+      userInfoMap[String(u.id)] = {
+        fullName: String(u.fullName || ''),
+        phone: String(u.phone || ''),
+        email: String(u.email || ''),
         status: (u.status as string) || 'Unknown',
         role: (u.role as string) || '',
       };
@@ -176,7 +176,7 @@ export default createEndpoint({
 
       for (const uid of memberIds) {
         const userInfo = userInfoMap[uid];
-        if (!userInfo || isSadhanaExemptLeadershipRole(userInfo.role) || isExcusedFromReporting(userInfo.status)) continue;
+        if (!userInfo || privateMemberIds.has(uid.toLowerCase()) || isSadhanaExemptLeadershipRole(userInfo.role) || isExcusedFromReporting(userInfo.status)) continue;
 
         const userEntries = userEntryMap[uid] || [];
         const filledDates = new Set(

@@ -1,5 +1,6 @@
 import { AppError, BvGroups, BvGroupMembers, Users } from '@/lib/backend-sdk';
 import { listedReadingRoles } from '@/lib/bvGroupFacilitators';
+import { PW_SADHANA_PRIVACY_FIELDS } from './pwSadhanaPrivacy';
 import { getScopedHierarchyUserIds, isHierarchyAdmin, isPwDepartmentAdmin, hierarchyRefs, readScopedUsers } from './hierarchyUtils';
 
 const IDENTITY_FIELDS = [
@@ -10,7 +11,7 @@ const IDENTITY_FIELDS = [
   // visible in the current RGF reports while all new writes use canonical IDs.
   'fullName', 'displayName', 'name',
 ];
-const PROFILE_RESOLUTION_FIELDS = ['fullName', 'displayName', 'name', 'status'];
+const PROFILE_RESOLUTION_FIELDS = ['fullName', 'displayName', 'name', 'status', ...PW_SADHANA_PRIVACY_FIELDS];
 type UserRecord = Record<string, unknown>;
 
 export interface BvGroupScopeOptions {

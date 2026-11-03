@@ -1,11 +1,13 @@
 import { z } from 'zod';
-import { createEndpoint, Users, SadhanaEntries, BvAttendance } from '@/lib/backend-sdk';
+import { AppError, createEndpoint, Users, SadhanaEntries, BvAttendance } from '@/lib/backend-sdk';
+import { canViewPwSadhana, PW_SADHANA_PRIVACY_FIELDS } from '@/lib/pwSadhanaPrivacy';
+import { findSadhanaSubject } from '@/lib/sadhanaSubject';
 import { daysAgo, getTodayIST } from '../lib/streakUtils';
 import { fillingSameDayApplies } from '@/lib/userUtils';
 import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
 import { pwFieldPercent, pwOverallPercent, pwScoreFromFieldValues, pwTarget } from '@/lib/pwSadhana';
 
-const USER_FIELDS = ['id', 'userId', 'email', 'segment', 'isPrabhupadaWorldUser', 'ashrayLevel', 'residencyApproved', 'residencyGuideVerified', 'residency', 'selectedFolkResidency', 'temporaryResidencyEnabled', 'temporaryResidency', 'pwChantingTarget', 'pwReadingTarget', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
+const USER_FIELDS = [...PW_SADHANA_PRIVACY_FIELDS, 'id', 'userId', 'email', 'segment', 'isPrabhupadaWorldUser', 'ashrayLevel', 'residencyApproved', 'residencyGuideVerified', 'residency', 'selectedFolkResidency', 'temporaryResidencyEnabled', 'temporaryResidency', 'pwChantingTarget', 'pwReadingTarget', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
 const USER_IDENTITY_FIELDS = ['id', 'userId', 'email', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
 const ENTRY_FIELDS = [
   'id', 'user', 'entryDate', 'scorePercent', 'totalScore', 'maxScore', 'roundsCount', 'spReadingMinutes',
@@ -420,6 +422,7 @@ export default createEndpoint({
         const { records } = await Users.findAll({ filters: { userId: targetUserId } as any, fields: USER_FIELDS });
         found = records.find(r => r.id !== r.userId) || records[0] || null;
       }
+      if (!found) found = await findSadhanaSubject(targetUserId, USER_FIELDS);
 
       if (found) {
         targetUser = found;
@@ -433,6 +436,9 @@ export default createEndpoint({
         isScholar = foundIsScholar;
       } else targetUser = { id: targetUserId };
 
+    if (!canViewPwSadhana(context.user, targetUser)) {
+      throw new AppError({ code: 'FORBIDDEN', message: 'This sadhana report is private' });
+    }
     const entryOwnerIds = userIdentityAliases(targetUser);
     if (entryOwnerIds.length === 0 && targetUserId) entryOwnerIds.push(targetUserId);
     const loadEntries = async (filters: Record<string, unknown>, limit = 500) => {

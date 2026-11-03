@@ -3,6 +3,8 @@ import { createEndpoint, Users, BvGroupMembers, FolkResidencies, AppError } from
 import { serverCacheGetOrFetch } from '../lib/serverCache';
 import { bvUserAliases, resolveBvScopedGroups } from '../lib/bvGroupMemberScope';
 import { countsAsGroupMember, groupHasFacilitator, loadGroupFacilitators } from '@/lib/bvGroupFacilitators';
+import { canViewPwSadhana, PW_SADHANA_PRIVACY_FIELDS } from '@/lib/pwSadhanaPrivacy';
+import { canSetPwTargets } from '@/lib/pwTargetResolver';
 import { getScopedHierarchyUserIds, hierarchyAliases, isUserInHierarchy } from '../lib/hierarchyUtils';
 
 const formatPhone = (phone?: string) => {
@@ -30,6 +32,7 @@ function isFacilitatorUser(user: any) {
 }
 
 const MEMBER_FIELDS = [
+  ...PW_SADHANA_PRIVACY_FIELDS,
   'id', 'userId', 'fullName', 'displayName', 'name', 'phone', 'ashrayLevel', 'email',
   'residency', 'residencyApproved', 'role', 'roles', 'status', 'isRgsf', 'isBvSuperAdmin',
   'isBvMember', 'bvGroupId', 'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator',
@@ -226,13 +229,13 @@ async function fetchBvslMembers({ input, context }: { input: any; context: any }
       email: showContacts ? ((u.email as string) || '') : '',
       groupName: groupMap[gid] || '',
       groupId: groupIdMap[gid] || '',
-      canAssignSadhanaTargets: !!membershipGroup && groupHasFacilitator(membershipGroup.record, callerAliases),
+      canAssignSadhanaTargets: !!membershipGroup && groupHasFacilitator(membershipGroup.record, callerAliases) && canSetPwTargets(caller, u, true, true).allowed,
       isResident: !!(u.residencyApproved && residencyId),
       residencyName: residencyId ? (residencyMap[residencyId] || null) : null,
       isRgsf: !!(u.isRgsf || u.role === 'RGSF' || (Array.isArray(u.roles) && u.roles.includes('RGSF'))),
-      pwChantingTarget: u.pwTargets?.chanting ?? u.pwChantingTarget ?? null,
-      pwReadingTarget: u.pwTargets?.readingMin ?? u.pwReadingTarget ?? null,
-      pwTargets: u.pwTargets ?? null,
+      pwChantingTarget: canViewPwSadhana(caller, u) ? u.pwTargets?.chanting ?? u.pwChantingTarget ?? null : null,
+      pwReadingTarget: canViewPwSadhana(caller, u) ? u.pwTargets?.readingMin ?? u.pwReadingTarget ?? null : null,
+      pwTargets: canViewPwSadhana(caller, u) ? u.pwTargets ?? null : null,
     };
   }).filter(member => member !== null);
 
@@ -253,13 +256,13 @@ async function fetchBvslMembers({ input, context }: { input: any; context: any }
         email: showContacts ? ((entry.user.email as string) || '') : '',
         groupName: group.groupName || '',
         groupId: group.groupId || '',
-        canAssignSadhanaTargets: groupHasFacilitator(group.record, callerAliases),
+        canAssignSadhanaTargets: groupHasFacilitator(group.record, callerAliases) && canSetPwTargets(caller, entry.user, true, true).allowed,
         isResident: false,
         residencyName: null,
         isRgsf: entry.badges.includes('RGSF'),
-        pwChantingTarget: entry.user.pwTargets?.chanting ?? entry.user.pwChantingTarget ?? null,
-        pwReadingTarget: entry.user.pwTargets?.readingMin ?? entry.user.pwReadingTarget ?? null,
-        pwTargets: entry.user.pwTargets ?? null,
+        pwChantingTarget: canViewPwSadhana(caller, entry.user) ? entry.user.pwTargets?.chanting ?? entry.user.pwChantingTarget ?? null : null,
+        pwReadingTarget: canViewPwSadhana(caller, entry.user) ? entry.user.pwTargets?.readingMin ?? entry.user.pwReadingTarget ?? null : null,
+        pwTargets: canViewPwSadhana(caller, entry.user) ? entry.user.pwTargets ?? null : null,
       });
       aliases.forEach(alias => listed.add(alias));
     }

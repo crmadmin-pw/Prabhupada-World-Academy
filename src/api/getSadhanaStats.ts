@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { canViewPwSadhana, PW_SADHANA_PRIVACY_FIELDS } from '@/lib/pwSadhanaPrivacy';
 import { getDashboardHierarchyScope, isUserInHierarchy, isHierarchyAdmin, readScopedUsers } from '../lib/hierarchyUtils';
 import { createEndpoint, Users, Guides, FolkResidencies, SadhanaEntries } from '@/lib/backend-sdk';
 import { getGuideScope } from '../lib/guideScope';
@@ -10,7 +11,7 @@ import { collectOwnerKeys, readEntriesForOwners } from '../lib/scopedEntryReads'
 import { getSadhanaMentorResidencyScope } from '../lib/sadhanaMentorResidencyScope';
 import { readFolkHostelSadhanaUsers } from '../lib/folkHostelSadhanaScope';
 
-const USER_FIELDS = ['id', 'userId', 'fullName', 'displayName', 'name', 'email', 'segment', 'ashrayLevel', 'residency', 'residencyApproved', 'temporaryResidencyEnabled', 'temporaryResidency', 'residencyJoinDate', 'scholarSince', 'residentSince', 'sadhanaMentor', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
+const USER_FIELDS = [...PW_SADHANA_PRIVACY_FIELDS, 'id', 'userId', 'fullName', 'displayName', 'name', 'email', 'segment', 'ashrayLevel', 'residency', 'residencyApproved', 'temporaryResidencyEnabled', 'temporaryResidency', 'residencyJoinDate', 'scholarSince', 'residentSince', 'sadhanaMentor', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
 const ENTRY_FIELDS = [
   'id', 'user', 'entryDate', 'totalScore', 'scorePercent', 'templateMode',
   'roundsCount', 'spReadingMinutes', 'preachingMinutes', 'booksDistributed',
@@ -83,6 +84,8 @@ export default createEndpoint({
     if (!context.user) throw new Error('Unauthorized');
     // Authorization: only Guide, Super Guide, BVSL, or Sadhana Mentor may access stats
     requireGuideRole(context.user.role, {
+      isBvAdmin: context.user.isBvAdmin,
+      isBvSuperAdmin: context.user.isBvSuperAdmin,
       isSadhanaMentor: context.user.isSadhanaMentor,
       isBvsl: context.user.isBvsl,
       isBvMentor: (context.user as any).isBvMentor,
@@ -182,7 +185,7 @@ export default createEndpoint({
     }
 
     const scope = residencyMentorScope ? null : await getDashboardHierarchyScope(context.user, guideId);
-    users = users.filter(user => isUserInHierarchy(user, scope));
+    users = users.filter(user => isUserInHierarchy(user, scope) && canViewPwSadhana(context.user, user, false));
 
     // Helper: is a user a scholar (temp resident visiting FOLK)?
     // Uses canonical isScholar() from userUtils — requires BOTH temporaryResidencyEnabled AND a linked residency

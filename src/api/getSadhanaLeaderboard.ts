@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { canViewPwSadhana, PW_SADHANA_PRIVACY_FIELDS } from '@/lib/pwSadhanaPrivacy';
 import { getDashboardHierarchyScope, isUserInHierarchy, readScopedUsers } from '../lib/hierarchyUtils';
 import { createEndpoint, Users, FolkResidencies, BvGroupMembers } from '@/lib/backend-sdk';
 import { computeStreak, getTodayIST } from '../lib/streakUtils';
@@ -11,7 +12,7 @@ import { aggregateForAliases, loadLeaderboardFacts, scoreFromAggregate } from '.
 import { getSadhanaMentorResidencyScope } from '../lib/sadhanaMentorResidencyScope';
 import { readFolkHostelSadhanaUsers } from '../lib/folkHostelSadhanaScope';
 
-const USER_FIELDS = ['id', 'fullName', 'displayName', 'name', 'email', 'segment', 'isPrabhupadaWorldUser', 'ashrayLevel', 'residency', 'residencyApproved', 'guide', 'status', 'userId', 'role', 'currentStreak', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
+const USER_FIELDS = [...PW_SADHANA_PRIVACY_FIELDS, 'id', 'fullName', 'displayName', 'name', 'email', 'segment', 'isPrabhupadaWorldUser', 'ashrayLevel', 'residency', 'residencyApproved', 'guide', 'status', 'userId', 'role', 'currentStreak', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
 
 /** Roles to exclude from the leaderboard — only administrative roles */
 const EXCLUDED_ROLES = new Set(['Guide', 'Super Guide']);
@@ -224,7 +225,7 @@ export default createEndpoint({
     }
 
     const hierarchy = residencyMentorScope ? null : await getDashboardHierarchyScope(context.user, input.guideId);
-    allUsers = allUsers.filter(user => isUserInHierarchy(user, hierarchy));
+    allUsers = allUsers.filter(user => isUserInHierarchy(user, hierarchy) && canViewPwSadhana(context.user, user, false));
 
     // ── Residency names ───────────────────────────────────────────────────
     const residencyIds = [...new Set(

@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { createEndpoint, Users, SadhanaEntries, SadhanaFields as SadhanaFieldsTable } from '@/lib/backend-sdk';
+import { AppError, createEndpoint, Users, SadhanaEntries, SadhanaFields as SadhanaFieldsTable } from '@/lib/backend-sdk';
+import { isPwSuperAdmin, PW_SADHANA_PRIVACY_FIELDS } from '@/lib/pwSadhanaPrivacy';
 import { getTodayIST } from '../lib/streakUtils';
 import { RESIDENT_FIELDS, NON_RESIDENT_FIELDS, toFormField } from '../config/sadhanaFields';
 import { serverCacheGetOrFetch } from '../lib/serverCache';
@@ -116,7 +117,7 @@ async function loadFormFields(isResident: boolean): Promise<FormField[]> {
 }
 
 // ── User/entry field selectors ─────────────────────────────────────────────────
-const USER_FIELDS  = ['id', 'userId', 'email', 'residency', 'residencyApproved', 'residencyJoinDate', 'ashrayLevel',
+const USER_FIELDS  = [...PW_SADHANA_PRIVACY_FIELDS, 'id', 'userId', 'email', 'residency', 'residencyApproved', 'residencyJoinDate', 'ashrayLevel',
   'role', 'segment', 'isPrabhupadaWorldUser', 'isFolkUser', 'temporaryResidencyEnabled', 'temporaryResidency',
   'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator', 'isBvSupervisor', 'isBvMember', 'isRgsf', 'bvGroupId',
   'sadhanaMentor', 'pwTargets', 'pwChantingTarget', 'pwReadingTarget', 'pwPendingBvAttendance'];
@@ -141,6 +142,9 @@ export default createEndpoint({
     // `Users.userId` value.  Read that legacy location as a fallback so users
     // can open previously submitted dates; the next save migrates the entry.
     const userInfo = await Users.findOne({ id: userId, fields: USER_FIELDS });
+    if (isPwSuperAdmin(userInfo) || isPwSuperAdmin(context.user)) {
+      throw new AppError({ code: 'FORBIDDEN', message: 'Prabhupada World super admins do not submit sadhana' });
+    }
     const ownerIds = await sadhanaOwnerIds(userId, context.user?.uid, context.user?.email, userInfo, input.userId);
     const legacyOwnerIds = ownerIds.filter(id => id !== userId);
     const [currentEntry, ...legacyEntries] = await Promise.all([

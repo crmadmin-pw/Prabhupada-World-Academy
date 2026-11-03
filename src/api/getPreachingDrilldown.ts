@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { canViewPwSadhana, PW_SADHANA_PRIVACY_FIELDS } from '@/lib/pwSadhanaPrivacy';
 import {
   createEndpoint, Users, BvslPreachingEntries,
   BvAttendance, BvGroups, SadhanaEntries,
@@ -80,10 +81,11 @@ export default createEndpoint({
     // Fetch all active users in this center
     const allUsers = await fetchAll(off => Users.findAll({
       filters: { status: 'Active', residency: centerId },
-      fields: ['id', 'fullName', 'phone', 'email', 'isB', 'isBvsl', 'residencyApproved', 'isOtherCenter'],
+      fields: [...PW_SADHANA_PRIVACY_FIELDS, 'id', 'fullName', 'phone', 'email', 'isB', 'isBvsl', 'residencyApproved', 'isOtherCenter'],
       limit: 2000, offset: off,
     }));
     const userMap = new Map(allUsers.map(u => [u.id, u]));
+    const sadhanaUsers = allUsers.filter(user => canViewPwSadhana(context.user, user, false));
     const bvslIds = new Set(allUsers.filter(u => u.isBvsl).map(u => u.id));
     const empty = (): { users: UserResult[] } => ({ users: [] });
 
@@ -117,7 +119,7 @@ export default createEndpoint({
 
     // No of Bs Non Residents: non-approved B's who submitted sadhana this week
     if (metricKey === 'No of Bs Non Residents') {
-      const nrBs = allUsers.filter(u => u.isB && !u.residencyApproved);
+      const nrBs = sadhanaUsers.filter(u => u.isB && !u.residencyApproved);
       if (!nrBs.length) return empty();
       const nrBIds = nrBs.map(u => u.id);
       const sadh = await fetchAll(off => SadhanaEntries.findAll({
@@ -213,7 +215,7 @@ export default createEndpoint({
 
     // Boys Chanting 16 Rounds: users in this center averaging ≥16 rounds this week
     if (metricKey === 'Boys Chanting 16 Rounds') {
-      const userIds = allUsers.map(u => u.id);
+      const userIds = sadhanaUsers.map(u => u.id);
       if (!userIds.length) return empty();
       const sadh = await fetchAll(off => SadhanaEntries.findAll({
         filters: { entryDate: { gte: weekStart!, lte: weekEnd! } as any, user: { in: userIds } as any },

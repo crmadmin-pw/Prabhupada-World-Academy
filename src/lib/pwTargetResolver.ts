@@ -1,9 +1,10 @@
 import { Config } from '@/lib/backend-sdk';
 import { ASHRAY_LEVELS } from '@/types/enums';
 import { emptyPwTargets, pwTarget, pwTime, readPwTargets, withLegacyTargets, type PwTargets } from '@/lib/pwSadhana';
+import { isPwSadhanaAdmin, isPwSuperAdmin } from './pwSadhanaPrivacy';
 
 export const PW_ASHRAYA_CONFIG_KEY = 'pw_ashraya_targets';
-export type PwTargetSource = 'rgf' | 'admin' | 'mentor' | 'ashraya';
+export type PwTargetSource = 'rgf' | 'admin' | 'super_admin' | 'mentor' | 'ashraya';
 
 export interface PwAshrayaConfig {
   submissionDeadline: string;
@@ -51,6 +52,7 @@ export function isAssignedSadhanaMentor(actor: any, member: any): boolean {
 
 /** Who the member's targets come from. Staff is checked before group membership. */
 export function pwTargetSource(member: any, inBvGroup = false): PwTargetSource {
+  if (isPwSadhanaAdmin(member) || isPwSuperAdmin(member)) return 'super_admin';
   if (isPwRgf(member) || isPwSupervisor(member)) return 'admin';
   if (isPwRgsf(member) || member?.isBvMember || member?.bvGroupId || inBvGroup) return 'rgf';
   if (hasSadhanaMentor(member)) return 'mentor';
@@ -59,6 +61,13 @@ export function pwTargetSource(member: any, inBvGroup = false): PwTargetSource {
 
 export function canSetPwTargets(actor: any, member: any, inBvGroup = false, assignedRgf?: boolean): { allowed: boolean; source: PwTargetSource; message: string } {
   const source = pwTargetSource(member, inBvGroup);
+  if (source === 'super_admin') {
+    return {
+      allowed: !isPwSuperAdmin(member) && isPwSuperAdmin(actor),
+      source,
+      message: 'Only a Prabhupada World super admin can set admin sadhana targets; super admins do not submit sadhana',
+    };
+  }
   if (isPwRgsf(actor) && !assignedRgf) {
     return { allowed: false, source, message: 'RGSFs cannot set targets outside groups where they are the RGF' };
   }
@@ -151,14 +160,14 @@ export async function resolvePwTargetsForUser(user: any, inBvGroup = false): Pro
   } else {
     const stored = user?.pwTargets;
     const role = stored && typeof stored === 'object' ? String(stored.setByRole || '') : '';
-    if (!role || role === source) {
+    if (role === source || (!role && source !== 'super_admin')) {
       targets = readPwTargets(stored);
       setByRole = role || null;
     }
   }
   return {
     source,
-    targets: withLegacyTargets(targets, user),
+    targets: source === 'super_admin' ? targets : withLegacyTargets(targets, user),
     deadline: '10:00',
     setByRole,
   };

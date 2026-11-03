@@ -231,7 +231,7 @@ export default function PwAdminDashboard() {
                   <DashboardPanel active={activeTab === 'sadhana'}>
                     <div className="space-y-1 mb-4">
                       <h2 className="text-lg font-bold">Sadhana Reports</h2>
-                      <p className="text-sm text-muted-foreground">Overview of all Prabhupada World sadhana records</p>
+                      <p className="text-sm text-muted-foreground">{isSuperAdmin ? 'Prabhupada World sadhana, including private admin reports. Super admin records are excluded.' : 'Prabhupada World member and staff sadhana reports'}</p>
                     </div>
                     <ReportsTab guideId="ALL" />
                   </DashboardPanel>
@@ -241,7 +241,7 @@ export default function PwAdminDashboard() {
                   <DashboardPanel active={activeTab === 'targets'}>
                     <div className="space-y-1 mb-4">
                       <h2 className="text-lg font-bold">Sadhana Targets</h2>
-                      <p className="text-sm text-muted-foreground">Ashraya-level targets, plus the targets for RGFs and supervisors</p>
+                      <p className="text-sm text-muted-foreground">{isSuperAdmin ? 'Set admin targets, Ashraya-level targets, and targets for RGFs and supervisors' : 'Ashraya-level targets, plus the targets for RGFs and supervisors'}</p>
                     </div>
                     <div className="space-y-8">
                       <AshrayExamDateSettings department="PW" />

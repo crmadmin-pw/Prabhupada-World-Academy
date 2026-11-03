@@ -1,4 +1,5 @@
 import { BvGroups } from '@/lib/backend-sdk';
+import { PW_SADHANA_PRIVACY_FIELDS } from './pwSadhanaPrivacy';
 import { bvUserAliases, resolveBvUsersByAliases } from './bvGroupMemberScope';
 
 export type GroupFacilitator = {
@@ -335,6 +336,7 @@ export async function loadGroupFacilitators(group: any): Promise<Array<{ user: a
   if (lookupAliases.length === 0) return [];
 
   const users = await resolveBvUsersByAliases(lookupAliases, [
+    ...PW_SADHANA_PRIVACY_FIELDS,
     'id', 'userId', 'fullName', 'email', 'phone', 'ashrayLevel', 'status',
     'bvGroupId', 'isBvMember', 'bvReportingSupervisorId', 'bvReportingSupervisorName',
   ]);

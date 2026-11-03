@@ -2,12 +2,16 @@ import { useEffect, useState } from 'react';
 import { listPwStaffTargets } from '@/lib/endpoints-sdk';
 import PwTargetEditor from '@/components/pw/PwTargetEditor';
 import { toast } from 'sonner';
+import { useUserProfile } from '@/contexts/UserProfileContext';
+import { isPwSuperAdmin } from '@/lib/pwSadhanaPrivacy';
 
 export default function PwStaffTargetsPanel() {
+  const { profile } = useUserProfile();
+  const superAdmin = isPwSuperAdmin(profile);
   const [members, setMembers] = useState<Array<{ userId: string; fullName: string; roleLabel: string; ashrayLevel: string | null; pwTargets: any }>>([]);
 
   const load = () => {
-    listPwStaffTargets({}).then(result => setMembers(result.members || [])).catch(() => toast.error('Could not load RGF and supervisor targets'));
+    listPwStaffTargets({}).then(result => setMembers(result.members || [])).catch(() => toast.error('Could not load staff targets'));
   };
 
   useEffect(() => { load(); }, []);
@@ -15,11 +19,11 @@ export default function PwStaffTargetsPanel() {
   return (
     <div className="space-y-3">
       <div>
-        <h3 className="font-semibold">RGF and supervisor targets</h3>
-        <p className="text-sm text-muted-foreground">Admins set these. BV members and RGSFs are set by their RGF.</p>
+        <h3 className="font-semibold">{superAdmin ? 'Admin, RGF and supervisor targets' : 'RGF and supervisor targets'}</h3>
+        <p className="text-sm text-muted-foreground">{superAdmin ? 'Super admins set admin targets. Admins set RGF and supervisor targets.' : 'Admins set these. BV members and RGSFs are set by their RGF.'}</p>
       </div>
       {members.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No RGFs or supervisors in your scope.</p>
+        <p className="text-sm text-muted-foreground">No staff targets in your scope.</p>
       ) : (
         <ul className="divide-y rounded-lg border">
           {members.map(member => (

@@ -8,6 +8,7 @@
  * Default date = today (IST / server local date).
  */
 import { z } from 'zod';
+import { canViewPwSadhana } from '@/lib/pwSadhanaPrivacy';
 import { createEndpoint, Users, SadhanaEntries, Guides, FolkResidencies, AppError } from '@/lib/backend-sdk';
 import { isExcusedFromReporting } from '@/lib/accountDeletionPolicy';
 
@@ -114,7 +115,7 @@ export default createEndpoint({
     missingCount: z.number(),
     data: z.array(UserStatusSchema),
   }),
-  execute: async ({ input }) => {
+  execute: async ({ input, context }) => {
     // ── 1. Resolve target date ────────────────────────────────────────────────
     const today = new Date().toISOString().split('T')[0];
     const targetDate = input.date ?? today;
@@ -195,7 +196,7 @@ export default createEndpoint({
 
     // ── 7. Join users with entries ────────────────────────────────────────────
     const data = allUsers
-      .filter(user => !isExcusedFromReporting(user.status))
+      .filter(user => !isExcusedFromReporting(user.status) && canViewPwSadhana(context.user, user, false))
       .map(user => {
         const entry = entryMap.get(user.id);
         const sadhanaStatus: 'submitted' | 'missing' = entry ? 'submitted' : 'missing';

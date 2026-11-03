@@ -1,5 +1,6 @@
 import { joinFacilitatorNames, textList } from '@/lib/bvGroupFacilitators';
 import { z } from 'zod';
+import { canViewPwSadhana } from '@/lib/pwSadhanaPrivacy';
 import { createEndpoint, Users, Guides, FolkResidencies, SadhanaEntries, BvGroups, BvGroupMembers } from '@/lib/backend-sdk';
 import { getTodayIST, daysAgo } from '../lib/streakUtils';
 import { normalizeRole, normalizeStatus } from './resolveUserLogin';
@@ -16,7 +17,7 @@ const USER_FIELDS = ['id', 'userId', 'fullName', 'phone', 'email', 'role', 'role
   'ashrayLevel', 'residency', 'residencyApproved', 'residencyClaimed', 'residencyGuideVerified',
   'guide', 'isBvsl', 'isBvMember', 'isSadhanaMentor', 'isServiceAllocator', 'isBvMentor',
   'isFolkLead', 'isTripCoordinator', 'isOtherCenter', 'isCleanlinessManager', 'createdAt',
-  'temporaryResidencyEnabled', 'temporaryResidency', 'isBvSupervisor', 'isBvFacilitator', 'isBvSubFacilitator', 'isBvAdmin',
+  'temporaryResidencyEnabled', 'temporaryResidency', 'isBvSupervisor', 'isBvFacilitator', 'isBvSubFacilitator', 'isBvAdmin', 'isBvSuperAdmin',
   'bvRegistrationStatus', 'bvReportingAdminId', 'bvReportingAdminName', 'bvReportingSupervisorId', 'bvReportingSupervisorName',
   'bvReportingFacilitatorId', 'bvReportingFacilitatorName', 'supervisorName', 'bvGroupId', 'bvGroupName', 'sadhanaMentor',
   ...HIERARCHY_IDENTITY_FIELDS];
@@ -506,7 +507,7 @@ export default createEndpoint({
           u.bvReportingFacilitatorName || groupRgf?.name,
         );
 
-        const userEntries = (entriesByUser.get(u.id) || [])
+        const userEntries = (canViewPwSadhana(context.user, u) ? entriesByUser.get(u.id) || [] : [])
           .sort((a, b) => b.entryDate.localeCompare(a.entryDate));
         const latestEntry = userEntries[0] || null;
 
@@ -530,7 +531,7 @@ export default createEndpoint({
           residencyId: residencyId || null,
           residencyName: residencyId ? (residencyMap.get(residencyId) || residencyMap.get(String(residencyId).toLowerCase()) || '') : '',
           isResident,
-          submittedToday: submittedToday.has(u.id),
+          submittedToday: canViewPwSadhana(context.user, u) ? submittedToday.has(u.id) : null,
           isBvsl: u.isBvsl || false,
           isBvMember: !!assignedGid,
           bvRegistrationStatus: u.bvRegistrationStatus || null,

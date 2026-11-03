@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { canViewPwSadhana, PW_SADHANA_PRIVACY_FIELDS } from '@/lib/pwSadhanaPrivacy';
 import { getScopedHierarchyUserIds, isUserInHierarchy, isHierarchyAdmin, readScopedUsers } from '../lib/hierarchyUtils';
 import { createEndpoint, Users, SadhanaEntries, Guides } from '@/lib/backend-sdk';
 import { getTodayIST, daysAgo } from '../lib/streakUtils';
@@ -30,7 +31,7 @@ export default createEndpoint({
 
     const [{ records: allActiveUsers }, { records: allPendingUsers }, { records: todayEntries }, { records: weekEntries }] =
       await Promise.all([
-        readScopedUsers(context.user, { filters: userFilter, fields: ['id'], limit: 2000 }),
+        readScopedUsers(context.user, { filters: userFilter, fields: ['id', ...PW_SADHANA_PRIVACY_FIELDS], limit: 2000 }),
         readScopedUsers(context.user, { filters: pendingFilter, fields: ['id'], limit: 500 }),
         SadhanaEntries.findAll({ filters: { entryDate: todayStr }, fields: ['id', 'user', 'scorePercent'], limit: 2000 }),
         SadhanaEntries.findAll({
@@ -39,7 +40,7 @@ export default createEndpoint({
         }),
       ]);
 
-    const activeUsers = allActiveUsers.filter(u => isUserInHierarchy(u, hierarchy));
+    const activeUsers = allActiveUsers.filter(u => isUserInHierarchy(u, hierarchy) && canViewPwSadhana(context.user, u, false));
     const pendingUsers = allPendingUsers.filter(u => isUserInHierarchy(u, hierarchy));
     const activeUserIds = new Set(activeUsers.map((u: any) => u.id));
     const submissionsToday = todayEntries.filter((e: any) => {

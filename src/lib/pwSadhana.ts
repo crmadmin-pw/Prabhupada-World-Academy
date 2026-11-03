@@ -454,6 +454,7 @@ export function pwDetailRows(fieldValuesJson: unknown): Array<{
 }
 
 const SOURCE_LABEL: Record<string, string> = {
+  super_admin: 'your super admin',
   rgf: 'your RGF',
   admin: 'your admin',
   mentor: 'your sadhana mentor',
