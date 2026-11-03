@@ -123,7 +123,7 @@ export default function RgfDashboard() {
               ) : (
                 <PwQuizPanel mode="facilitator" />
               ))}
-              {activeTab === 'onetone' && <BvslOneToOneTab />}
+              {activeTab === 'onetone' && <BvslOneToOneTab viewScope="facilitator" department={isFolk ? 'FOLK' : 'PW'} />}
               {!isFolk && activeTab === 'meetings' && <MeetingsAndMomTab department="PW" />}
             </>
           )}

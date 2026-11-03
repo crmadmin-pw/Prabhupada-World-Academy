@@ -32,6 +32,7 @@ export default createEndpoint({
   inputSchema: z.object({
     weeksBack: z.number().optional(),
     department: z.enum(['FOLK', 'PW']).optional(),
+    viewScope: z.enum(['facilitator', 'supervisor']).optional(),
   }),
   outputSchema: z.any(),
   execute: async ({ input, context }: any) => {
@@ -63,6 +64,10 @@ export default createEndpoint({
       context.user.isBvMentor ||
       ['SUPERVISOR', 'BV_SUPERVISOR', 'BV_MENTOR'].includes(String(context.user.role || '').toUpperCase().replace(/[\s-]+/g, '_'))
     );
+    const ownGroupView = input.viewScope === 'facilitator';
+    if (input.viewScope === 'supervisor' && !isSupervisor && !isHierarchyAdmin(context.user)) {
+      throw new Error('Supervisor access is required');
+    }
 
     const userFields = [
       'id', 'userId', 'email', 'fullName', 'role', 'roles', 'ashrayLevel', 'residencyApproved', 'oneToOneDelegate',
@@ -164,7 +169,15 @@ export default createEndpoint({
 
     // Supervisor reports include staff and members of explicitly assigned
     // groups only. Global reporting parents cannot add other groups' members.
-    if (isSupervisor && !isHierarchyAdmin(context.user)) {
+    if (ownGroupView) {
+      const groupMembers = await resolveBvGroupMemberUsers(context.user, userFields, {
+        segment: callerSegment === 'FOLK' ? 'FOLK' : 'PW',
+        facilitationOnly: true,
+      });
+      const callerAliases = new Set(normalizedRefs([dbUserId, customUserId, context.user.email]));
+      filteredUsers = groupMembers.filter(user => !normalizedRefs([user.id, user.userId, user.email])
+        .some(alias => callerAliases.has(alias)));
+    } else if (isSupervisor && !isHierarchyAdmin(context.user)) {
       const scopeOptions = {
         segment: callerSegment === 'FOLK' ? 'FOLK' : 'PW',
         supervisionOnly: true,
@@ -236,11 +249,14 @@ export default createEndpoint({
     });
 
     const groupMap = new Map<string, any>();
-    const supervisedIds = isSupervisor && !isHierarchyAdmin(context.user)
-      ? new Set((await resolveBvScopedGroups(context.user, { supervisionOnly: true })).map(group => group.id))
+    const scopedGroupIds = ownGroupView || (isSupervisor && !isHierarchyAdmin(context.user))
+      ? new Set((await resolveBvScopedGroups(context.user, {
+        segment: callerSegment === 'FOLK' ? 'FOLK' : 'PW',
+        ...(ownGroupView ? { facilitationOnly: true } : { supervisionOnly: true }),
+      })).map(group => group.id))
       : null;
     allBvGroups.forEach((g: any) => {
-      if (supervisedIds && !supervisedIds.has(String(g.id))) return;
+      if (scopedGroupIds && !scopedGroupIds.has(String(g.id))) return;
       normalizedRefs([g.id, g.groupId, g.groupName]).forEach(ref => groupMap.set(ref, g));
     });
 
@@ -331,7 +347,7 @@ export default createEndpoint({
           .filter(Boolean)
           .map((role: unknown) => String(role).toUpperCase().replace(/[\s-]+/g, '_'));
         const hasRole = (...roles: string[]) => roleValues.some((role: string) => roles.includes(role));
-        const roleLabel = u.isBvSuperAdmin || hasRole('SUPER_ADMIN', 'SUPER_GUIDE')
+        const roleLabel: 'Super Admin' | 'Admin' | 'Supervisor' | 'RGF' | 'RGSF' | 'User' = u.isBvSuperAdmin || hasRole('SUPER_ADMIN', 'SUPER_GUIDE')
           ? 'Super Admin'
           : (u.isBvAdmin || hasRole('ADMIN', 'PW_ADMIN'))
             ? 'Admin'

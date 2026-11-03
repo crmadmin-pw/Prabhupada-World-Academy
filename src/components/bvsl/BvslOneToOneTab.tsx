@@ -99,16 +99,17 @@ function formatCallDate(dateStr: string) {
 
 import { useUserProfile } from '@/contexts/UserProfileContext';
 
-export default function BvslOneToOneTab({ department }: { department?: 'FOLK' | 'PW' } = {}) {
+export default function BvslOneToOneTab({ department, viewScope }: { department?: 'FOLK' | 'PW'; viewScope?: 'facilitator' | 'supervisor' } = {}) {
   const { profile } = useUserProfile();
   const isFolk = profile?.segment === 'FOLK';
-  const isSuperAdmin = !!(
+  const profileRole = String(profile?.role || '');
+  const isSuperAdmin = !viewScope && !!(
     profile?.isBvSuperAdmin ||
-    (profile?.role as any) === 'SUPER_ADMIN' ||
-    (profile?.role as any) === 'SUPER_GUIDE'
+    profileRole === 'SUPER_ADMIN' ||
+    profileRole === 'SUPER_GUIDE'
   );
-  const isAdmin = !isSuperAdmin && !!(profile?.isBvAdmin || (profile?.role as any) === 'ADMIN');
-  const isSupervisor = !isSuperAdmin && !isAdmin && !!(profile?.isBvSupervisor || profile?.isBvMentor);
+  const isAdmin = !viewScope && !isSuperAdmin && !!(profile?.isBvAdmin || profileRole === 'ADMIN');
+  const isSupervisor = viewScope === 'supervisor' || (!viewScope && !isSuperAdmin && !isAdmin && !!(profile?.isBvSupervisor || profile?.isBvMentor));
 
   const [members, setMembers] = useState<Member[]>([]);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
@@ -126,7 +127,7 @@ export default function BvslOneToOneTab({ department }: { department?: 'FOLK' | 
   const loadData = useReactiveLoader(async (read) => {
     !read.background && !read.cancelled && setLoading(true);
     try {
-      const res = await read(() => getBvslOneToOneData({ department })) as any;
+      const res = await read(() => getBvslOneToOneData({ department, viewScope }));
       !read.cancelled && setMembers(res.users || []);
       !read.cancelled && setMeetings(res.meetings || []);
       !read.cancelled && setWeeks(res.weeks || []);
@@ -134,7 +135,7 @@ export default function BvslOneToOneTab({ department }: { department?: 'FOLK' | 
     } catch {
       if (read.cancelled) return; /* silent */ }
     finally { !read.cancelled && setLoading(false); }
-  }, []);
+  }, [department, viewScope]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -212,11 +213,11 @@ export default function BvslOneToOneTab({ department }: { department?: 'FOLK' | 
         <BvslBookingLinkSettings initialLink={bvslLink} />
         <div className="rounded-lg border border-dashed border-border p-8 text-center">
           <Info className="h-8 w-8 mx-auto text-muted-foreground mb-3" />
-          <p className="text-sm font-medium">{isSupervisor ? 'No supervised members yet' : 'No delegated members yet'}</p>
+          <p className="text-sm font-medium">{isSupervisor ? 'No supervised members yet' : viewScope === 'facilitator' ? 'No reading group members yet' : 'No delegated members yet'}</p>
           <p className="text-xs text-muted-foreground mt-1">
             {isSupervisor
               ? 'RGFs, RGSFs, and group members in your reporting hierarchy will appear here.'
-              : 'When your guide delegates members to you for 1:1 meetings, they will appear here.'}
+              : viewScope === 'facilitator' ? 'Members of the reading groups you facilitate or assist will appear here.' : 'When your guide delegates members to you for 1:1 meetings, they will appear here.'}
           </p>
         </div>
       </div>
@@ -231,7 +232,7 @@ export default function BvslOneToOneTab({ department }: { department?: 'FOLK' | 
           <p className="text-sm text-muted-foreground">
             {isSupervisor
               ? 'RGFs, RGSFs, and members in your supervised reading groups. Click any cell to log a meeting.'
-              : 'Members delegated to you for 1:1 meetings. Click any cell to log a meeting.'}
+              : viewScope === 'facilitator' ? 'Members of your own reading groups. Click any cell to log a meeting.' : 'Members delegated to you for 1:1 meetings. Click any cell to log a meeting.'}
           </p>
         </div>
         <div className="shrink-0 sm:min-w-[260px]">

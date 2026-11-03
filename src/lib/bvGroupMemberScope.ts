@@ -24,6 +24,8 @@ export interface BvGroupScopeOptions {
    * Only explicit supervisor assignments confer supervision.
    */
   supervisionOnly?: boolean;
+  /** Personal RGF/RGSF dashboard: exclude groups accessible only through supervision or administration. */
+  facilitationOnly?: boolean;
   /** Admin lists keep deactivated groups visible. Reports stay on active groups. */
   includeInactive?: boolean;
 }
@@ -230,7 +232,7 @@ export async function resolveBvScopedGroups(
   options: BvGroupScopeOptions = {},
 ): Promise<BvScopedGroup[]> {
   // Only Prabhupada World admins receive department-wide group access.
-  if (isPwDepartmentAdmin(contextUser) && options.segment !== 'FOLK') {
+  if (!options.facilitationOnly && isPwDepartmentAdmin(contextUser) && options.segment !== 'FOLK') {
     if (options.segment && options.segment !== 'PW') {
       throw new AppError({ code: 'FORBIDDEN', message: 'Choose a reading group in your department.' });
     }
@@ -241,7 +243,7 @@ export async function resolveBvScopedGroups(
     if (!selected.length) throw new AppError({ code: 'FORBIDDEN', message: 'This reading group is not assigned to your hierarchy' });
     return selected;
   }
-  if (isHierarchyAdmin(contextUser)) {
+  if (!options.facilitationOnly && isHierarchyAdmin(contextUser)) {
     const scope = await getScopedHierarchyUserIds(contextUser);
     const groups = options.segment
       ? await resolveBvDepartmentGroups(options.segment, undefined, { includeInactive: options.includeInactive })
@@ -385,6 +387,10 @@ export async function resolveBvScopedGroups(
       const inferredSegments = leaderRefs.map(ref => segmentByUserAlias.get(ref)).filter(Boolean);
       const groupSegment = explicitSegment || inferredSegments[0] || '';
       if (groupSegment && groupSegment !== requestedSegment) return false;
+    }
+    if (options.facilitationOnly) {
+      return isFacilitator && (leaderRefs.some(ref => callerAliases.has(ref)) ||
+        rgsfRefs.some(ref => callerAliases.has(ref)) || legacyNameMatch || assignedToCaller);
     }
     if (isAdmin || isSupervisor) {
       const legacyGuideRefs = refs(group.guide);

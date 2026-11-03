@@ -254,7 +254,7 @@ export default function BvSupervisorDashboard() {
               )}
 
               {activeTab === 'callreports' && (
-                <BvslOneToOneTab department={isFolk ? "FOLK" : "PW"} />
+                <BvslOneToOneTab viewScope="supervisor" department={isFolk ? "FOLK" : "PW"} />
               )}
 
               {!isFolk && activeTab === 'meetings' && (

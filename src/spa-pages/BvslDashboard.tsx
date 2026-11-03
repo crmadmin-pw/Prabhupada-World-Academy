@@ -129,7 +129,7 @@ export default function BvslDashboard() {
                   groups={groups.map((g: any) => ({ id: g.id, groupName: g.groupName }))}
                 />
               )}
-              {activeTab === 'onetone' && <BvslOneToOneTab />}
+              {activeTab === 'onetone' && <BvslOneToOneTab viewScope="facilitator" department={isFolk ? 'FOLK' : 'PW'} />}
               {!isFolk && activeTab === 'meetings' && <MeetingsAndMomTab department="PW" />}
             </>
           )}
