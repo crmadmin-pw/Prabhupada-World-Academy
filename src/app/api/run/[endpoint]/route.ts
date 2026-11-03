@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ACCOUNT_DELETED_LOGIN_MESSAGE, isAccountDeleted } from '@/lib/accountDeletionPolicy';
 import { resolveAuthenticatedProfile } from '@/lib/accountLinkReview';
+import { recoverVerifiedAccount } from '@/lib/automaticAccountRecovery';
 import { getApps, initializeApp, cert } from 'firebase-admin/app';
 import { verifyFirebaseIdToken } from '@/lib/verifyFirebaseIdToken';
 import { timingSafeEqual } from 'crypto';
@@ -203,7 +204,7 @@ export async function POST(
 ) {
   const requestStartedAt = Date.now();
   let authDurationMs = 0;
-  let realtimeDurationMs = 0;
+  const realtimeDurationMs = 0;
   const authHeader = req.headers.get('Authorization') || req.headers.get('authorization') || '';
   const token = authHeader.replace(/^Bearer\s+/i, '').trim();
   const clientIp = clientAddress(req);
@@ -279,7 +280,19 @@ export async function POST(
 
         // A role-revocation event can arrive inside the old burst-cache TTL.
         // Reactive reads must reauthorize against the current stored profile.
-        const dbUser = await resolveDatabaseUser(decodedUser, req.headers.get('X-Realtime-Query') === '1');
+        let dbUser = await resolveDatabaseUser(decodedUser, req.headers.get('X-Realtime-Query') === '1');
+        if ((endpoint === 'resolveUserLogin' || endpoint === 'registerUser') && !(dbUser?.userId && dbUser?.status)) {
+          try {
+            const recovered = await recoverVerifiedAccount(decodedUser);
+            if (recovered) {
+              dbUser = recovered;
+              resolvedUserBurstCache.delete(`${decodedUser.uid}:${decodedUser.email.toLowerCase()}`);
+            }
+          } catch (error) {
+            // A recovery failure leaves the existing review flow in place.
+            console.error('[account-link] Automatic recovery failed:', error);
+          }
+        }
         resolvedProfile = dbUser;
         context.loadedProfile = dbUser;
         context.user = buildApiUserContext(decodedUser, dbUser);
