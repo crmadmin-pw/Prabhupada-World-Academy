@@ -12,8 +12,9 @@ import getGuides from './getGuides';
 import { getReportReferenceData } from '../lib/reportReferenceData';
 import { completedSadhanaEndDate } from '../lib/missingSadhanaDateRange';
 import { canViewPwSadhana, isPwSadhanaAdmin } from '@/lib/pwSadhanaPrivacy';
+import { folkResidentStart } from '../lib/folkResidencyHistory';
 
-const USER_FIELDS = ['phone', 'segment', 'isPrabhupadaWorldUser', 'id', 'userId', 'fullName', 'displayName', 'name', 'email', 'status', 'role', 'isBvAdmin', 'isPwAdmin', 'isBvSuperAdmin', 'residency', 'guide', 'isScholar', 'residencyClaimed', 'residencyApproved', 'residencyGuideVerified', 'residentSince', 'createdAt'];
+const USER_FIELDS = ['phone', 'segment', 'isPrabhupadaWorldUser', 'id', 'userId', 'fullName', 'displayName', 'name', 'email', 'status', 'role', 'isBvAdmin', 'isPwAdmin', 'isBvSuperAdmin', 'residency', 'guide', 'isScholar', 'residencyClaimed', 'residencyApproved', 'residencyGuideVerified', 'residentSince', 'residencyJoinDate', 'createdAt'];
 
 function registrationDate(createdAt: unknown): string | null {
   if (typeof createdAt !== 'string' || !createdAt.trim()) return null;
@@ -167,7 +168,7 @@ export default createEndpoint({
       return {
         users: [],
         dates,
-        matrix: {} as Record<string, Record<string, 'filled' | 'late' | 'missed' | 'not_registered'>>,
+        matrix: {} as Record<string, Record<string, 'filled' | 'late' | 'missed' | 'not_registered' | 'not_required'>>,
         stats: { totalUsers: 0, totalDays: dates.length, totalMissing: 0, totalLate: 0, completionRate: 100 },
         guides: (await displayPromise).availableGuides,
       };
@@ -228,7 +229,7 @@ export default createEndpoint({
     // 9. Sort users alphabetically and build matrix
     users.sort((a, b) => (a.fullName || '').localeCompare(b.fullName || ''));
 
-    const matrix: Record<string, Record<string, 'filled' | 'late' | 'missed' | 'not_registered'>> = {};
+    const matrix: Record<string, Record<string, 'filled' | 'late' | 'missed' | 'not_registered' | 'not_required'>> = {};
     let totalMissing = 0;
     let totalLate = 0;
     let totalEligible = 0;
@@ -236,9 +237,17 @@ export default createEndpoint({
     for (const u of users) {
       matrix[u.id] = {};
       const joinedOn = registrationDate(u.createdAt);
+      const residency = Array.isArray(u.residency) ? u.residency[0] : u.residency;
+      const residentSince = (callerDepartment === 'FOLK' || input.segment === 'FOLK') &&
+        residency && (u.residencyApproved || u.residencyGuideVerified)
+        ? folkResidentStart(u) : null;
       for (const date of dates) {
         if (joinedOn && date < joinedOn) {
           matrix[u.id][date] = 'not_registered';
+          continue;
+        }
+        if (residentSince && date < residentSince) {
+          matrix[u.id][date] = 'not_required';
           continue;
         }
         totalEligible++;

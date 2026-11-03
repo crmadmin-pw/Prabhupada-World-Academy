@@ -52,8 +52,8 @@ test('legacy hostel links and temporary stays resolve; inactive hostels do not g
   assert.equal(inactive.includes(members[1]), false);
 });
 
-function mock(t: any) {
-  for (const [table, records] of [[Users, [a, b, c, ...members]], [Guides, guides], [FolkResidencies, centers], [SadhanaEntries, []]] as any[]) {
+function mock(t: any, memberOverrides: Record<string, any> = {}) {
+  for (const [table, records] of [[Users, [a, b, c, ...members.map(user => user.id === memberOverrides.id ? { ...user, ...memberOverrides } : user)]], [Guides, guides], [FolkResidencies, centers], [SadhanaEntries, []]] as any[]) {
     t.mock.method(table, 'findAll', async ({ filters = {}, offset = 0, limit = 2000 }: any = {}) => {
       const rows = records.filter((r: any) => Object.entries(filters).every(([k, v]) => r[k] === v));
       return { records: rows.slice(offset, offset + limit), hasMore: offset + limit < rows.length };
@@ -61,6 +61,20 @@ function mock(t: any) {
     t.mock.method(table, 'findOne', async ({ id, filters = {} }: any) => records.find((r: any) => id ? r.id === id : Object.entries(filters).every(([k, v]) => r[k] === v)));
   }
 }
+
+test('a new FOLK resident has no resident report or missing obligation before the move date', async t => {
+  mock(t, { id: 'resident', residencyApproved: true, residentSince: '2026-10-21' });
+  const { default: missing } = await import('../src/api/getMissingSadhanaReport');
+  const oldDay = '2026-10-20';
+  const newDay = '2026-10-21';
+  const oldReport = await detailed.execute({ input: { guideId: 'a', date: oldDay, reportType: 'daily', segment: 'FOLK' }, context: { user: a } } as any);
+  const newReport = await detailed.execute({ input: { guideId: 'a', date: newDay, reportType: 'daily', segment: 'FOLK' }, context: { user: a } } as any);
+  assert.equal(oldReport.users.find((user: any) => user.id === 'resident')?.isResident, false);
+  assert.equal(newReport.users.find((user: any) => user.id === 'resident')?.isResident, true);
+  const absent = await missing.execute({ input: { guideId: 'a', startDate: oldDay, endDate: newDay, segment: 'FOLK' }, context: { user: a } } as any);
+  assert.equal(absent.matrix.resident[oldDay], 'not_required');
+  assert.equal(absent.matrix.resident[newDay], 'missed');
+});
 
 test('detailed report ignores hostile scope selectors and permits only hostel guide filters', async t => {
   mock(t);

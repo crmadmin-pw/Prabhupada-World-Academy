@@ -5,6 +5,46 @@ import submitSadhana from '../src/api/submitSadhana';
 import setTemporaryResidency from '../src/api/setTemporaryResidency';
 import { Users, SadhanaEntries, SadhanaFields } from '../src/lib/app-backend-sdk';
 import { serverCacheInvalidate } from '../src/lib/serverCache';
+import { residentTemplateMode, wasFolkResidentOnDate } from '../src/lib/folkResidencyHistory';
+import updateUserResidency from '../src/api/updateUserResidency';
+import { getTodayIST } from '../src/lib/streakUtils';
+
+test('marking a FOLK resident again preserves the original move date', async t => {
+  const member = { id: 'member', residency: 'hostel', residencyApproved: true, residentSince: '2026-09-07' };
+  const updates: any[] = [];
+  t.mock.method(Users, 'findOne', async () => member);
+  t.mock.method(Users, 'update', async (update: any) => { updates.push(update.record); return update.record; });
+  const context = { user: { id: 'guide', role: 'Super Guide', segment: 'FOLK' } };
+  await updateUserResidency.execute({ input: { userId: member.id, makeResident: true, residencyId: 'hostel' }, context } as never);
+  assert.equal(updates[0].residentSince, '2026-09-07');
+  member.residencyApproved = false;
+  await updateUserResidency.execute({ input: { userId: member.id, makeResident: true, residencyId: 'hostel' }, context } as never);
+  assert.equal(updates[1].residentSince, getTodayIST());
+});
+
+test('FOLK residency begins on the move date and saved old NR entries keep their form', async t => {
+  const member = { id: 'moved-member', userId: 'moved-member', segment: 'FOLK', residency: 'hostel',
+    residencyApproved: true, residencyJoinDate: '2026-01-01', residentSince: '2026-09-07', ashrayLevel: 'Jigyasa' };
+  let savedEntry: any = null;
+  t.mock.method(Users, 'findOne', async () => member);
+  t.mock.method(SadhanaEntries, 'findOne', async () => savedEntry);
+  t.mock.method(SadhanaFields, 'findAll', async () => ({ records: [] }));
+  serverCacheInvalidate(FIELD_CACHE_KEY_NR);
+  t.after(() => serverCacheInvalidate(FIELD_CACHE_KEY_NR));
+  assert.equal(wasFolkResidentOnDate(member, '2026-09-06'), false);
+  assert.equal(wasFolkResidentOnDate(member, '2026-09-07'), true);
+  assert.equal(residentTemplateMode('NR_TEMPLATE'), false);
+
+  const before = await getSadhanaFormData.execute({ input: { entryDate: '2026-09-06' }, context: { user: member } } as never);
+  const after = await getSadhanaFormData.execute({ input: { entryDate: '2026-09-07' }, context: { user: member } } as never);
+  assert.equal(before.templateMode, 'NON_RESIDENT_TEMPLATE');
+  assert.equal(after.templateMode, 'RESIDENT_TEMPLATE');
+
+  savedEntry = { id: 'old-entry', templateMode: 'NR_TEMPLATE', fieldValuesJson: '{}' };
+  const reopened = await getSadhanaFormData.execute({ input: { entryDate: '2026-09-07' }, context: { user: member } } as never);
+  assert.equal(reopened.templateMode, 'NON_RESIDENT_TEMPLATE');
+  assert.equal(reopened.exists, true);
+});
 
 for (const { segment, official, temporary, resident } of [
   { segment: 'PW', official: true, temporary: true, resident: false },

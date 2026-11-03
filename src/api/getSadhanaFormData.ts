@@ -9,6 +9,7 @@ import { isPwSadhanaUser } from '../lib/sadhanaDepartment';
 import { pwFormFields, pwTarget } from '../lib/pwSadhana';
 import { resolvePwTargetsForUser } from '../lib/pwTargetResolver';
 import { sadhanaOwnerIds } from '../lib/sadhanaOwnerIds';
+import { residentTemplateMode, wasFolkResidentOnDate, wasFolkScholarOnDate } from '../lib/folkResidencyHistory';
 
 // ── Field cache keys & TTL ─────────────────────────────────────────────────────
 export const FIELD_CACHE_KEY_RESIDENT  = 'sadhana_fields:resident';
@@ -118,6 +119,7 @@ async function loadFormFields(isResident: boolean): Promise<FormField[]> {
 
 // ── User/entry field selectors ─────────────────────────────────────────────────
 const USER_FIELDS  = [...PW_SADHANA_PRIVACY_FIELDS, 'id', 'userId', 'email', 'residency', 'residencyApproved', 'residencyJoinDate', 'ashrayLevel',
+  'residentSince', 'scholarSince',
   'role', 'segment', 'isPrabhupadaWorldUser', 'isFolkUser', 'temporaryResidencyEnabled', 'temporaryResidency',
   'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator', 'isBvSupervisor', 'isBvMember', 'isRgsf', 'bvGroupId',
   'sadhanaMentor', 'pwTargets', 'pwChantingTarget', 'pwReadingTarget', 'pwPendingBvAttendance'];
@@ -155,18 +157,18 @@ export default createEndpoint({
     ]);
     const existingEntry = currentEntry || legacyEntries.find(Boolean);
 
-    const officialResidencyId = Array.isArray(userInfo?.residency)
-      ? userInfo!.residency[0] : userInfo?.residency;
     const isFolkUser = getUserDepartment(userInfo) === 'FOLK';
-    const isOfficialResident = isFolkUser && !!(userInfo?.residencyApproved && officialResidencyId);
+    const isOfficialResident = isFolkUser && wasFolkResidentOnDate(userInfo || {}, entryDate);
 
     const rawTempResidency = userInfo?.temporaryResidency;
     const tempResidencyId  = Array.isArray(rawTempResidency) ? rawTempResidency[0] : rawTempResidency;
     const tempResidencyEnabled = isFolkUser && !!(userInfo?.temporaryResidencyEnabled);
-    const isTempResident = !isOfficialResident && !!(tempResidencyEnabled && tempResidencyId);
+    const isTempResident = !isOfficialResident && !!(tempResidencyEnabled && tempResidencyId) &&
+      wasFolkScholarOnDate(userInfo || {}, entryDate);
 
     const isPw = isPwSadhanaUser(userInfo);
-    const isResident    = isOfficialResident || isTempResident;
+    const existingMode = residentTemplateMode(existingEntry?.templateMode);
+    const isResident = existingMode ?? (isOfficialResident || isTempResident);
     const templateMode  = isResident ? 'RESIDENT_TEMPLATE' : 'NON_RESIDENT_TEMPLATE';
     const resolvedTargets = isPw ? await resolvePwTargetsForUser(userInfo) : null;
 

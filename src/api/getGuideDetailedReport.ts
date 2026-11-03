@@ -19,6 +19,7 @@ import { resolveBvAdminFacilitators } from '@/lib/bvAdminFacilitatorScope';
 import { residencyMatchesDepartment } from '../lib/residencyCategory';
 import { readEntriesForOwners } from '../lib/scopedEntryReads';
 import { canViewPwSadhana } from '@/lib/pwSadhanaPrivacy';
+import { residentTemplateMode, wasFolkResidentOnDate, wasFolkScholarOnDate } from '../lib/folkResidencyHistory';
 
 const USER_FIELDS = ['status', 'id', 'userId', 'fullName', 'displayName', 'name', 'email', 'phone', 'segment', 'isPrabhupadaWorldUser', 'isFolkUser', 'isFolkLead', 'sadhanaMentor', 'ashrayLevel', 'residency', 'residencyApproved', 'temporaryResidencyEnabled', 'temporaryResidency', 'residencyJoinDate', 'scholarSince', 'residentSince', 'currentStreak', 'lastStreakUpdatedAt', 'guide', 'role', 'isBvSuperAdmin', 'isBvAdmin', 'isPwAdmin', 'pwChantingTarget', 'pwReadingTarget', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
 const ENTRY_FIELDS = [
@@ -1152,8 +1153,11 @@ export default createEndpoint({
       const isOfficialResident = !!(u.residencyApproved && officialResidencyId);
       const rawTempRes = u.temporaryResidency;
       const tempResidencyId = Array.isArray(rawTempRes) ? rawTempRes[0] : rawTempRes;
-      const isTempResident = !isOfficialResident && !!(u.temporaryResidencyEnabled && tempResidencyId);
-      const isResident = isOfficialResident || isTempResident;
+      const isTempResident = !isOfficialResident && !!(u.temporaryResidencyEnabled && tempResidencyId) &&
+        (input.segment !== 'FOLK' || wasFolkScholarOnDate(u, effectiveEnd));
+      const isResident = input.segment === 'FOLK'
+        ? wasFolkResidentOnDate(u, effectiveEnd) || wasFolkScholarOnDate(u, effectiveEnd)
+        : isOfficialResident || isTempResident;
       // Always use raw residencyId from the user's residency field, even if residencyApproved is false.
       // This lets NR users (whose application is pending) still be associated with a center.
       const residencyId = officialResidencyId || (isTempResident ? tempResidencyId : null);
@@ -1161,20 +1165,25 @@ export default createEndpoint({
         ? residencyNameByRef.get(String(residencyId).trim().toLowerCase()) || ''
         : '';
       const userEntries = (entriesByUser.get(u.id) || []);
-      const submitted = userEntries.length > 0;
-      // SCHOLAR FIX: For scholars (temp residents), determine isResident from the entry's
-      // actual templateMode — not the user's current status. Entries submitted as NR before
-      // becoming a scholar must be aggregated using the NR path, otherwise resident columns
-      // (all zeros) get masked by Math.max(computedTotal, dbTotal) which picks up the NR
-      // total score and incorrectly inflates the percentage.
+      let submitted = userEntries.length > 0;
+      // A member's current status must not turn old NR entries or missing days
+      // into resident reports. Saved entries retain their own template.
       let entryIsResident = isResident;
-      if (isTempResident && submitted) {
-        // Check the most recent entry's templateMode — if NR, aggregate as NR
-        const latestMode = String(userEntries[0].templateMode || '').toUpperCase();
-        const isEntryResident = latestMode.includes('RESIDENT') && !latestMode.includes('NON_RESIDENT');
-        entryIsResident = isEntryResident;
+      if ((input.segment === 'FOLK' || isTempResident) && submitted) {
+        const latest = [...userEntries].sort((a, b) => String(b.entryDate || '').localeCompare(String(a.entryDate || '')))[0];
+        const start = String(u.residentSince || u.residencyJoinDate || u.scholarSince || '').slice(0, 10);
+        if (reportType === 'daily' || !/^\d{4}-\d{2}-\d{2}$/.test(start) || String(latest.entryDate || '') >= start) {
+          entryIsResident = residentTemplateMode(latest.templateMode) ?? entryIsResident;
+        }
       }
-      const agg = aggregateEntries(userEntries, entryIsResident, u.ashrayLevel);
+      const sameTemplateEntries = (input.segment === 'FOLK' && reportType !== 'daily')
+        ? userEntries.filter(entry => {
+            const mode = residentTemplateMode(entry.templateMode);
+            return mode === null || mode === entryIsResident;
+          })
+        : userEntries;
+      submitted = sameTemplateEntries.length > 0;
+      const agg = aggregateEntries(sameTemplateEntries, entryIsResident, u.ashrayLevel);
       // Compute level-aware NR field colors and N/A fields
       const nrFieldColors = !entryIsResident && submitted ? computeNRColors(agg.fieldRawValues, u.ashrayLevel) : undefined;
       const nrFieldNA         = !entryIsResident ? computeNRNAFields(u.ashrayLevel) : undefined;

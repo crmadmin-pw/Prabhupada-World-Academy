@@ -28,7 +28,7 @@ import {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type CellStatus = 'filled' | 'late' | 'missed' | 'not_registered';
+type CellStatus = 'filled' | 'late' | 'missed' | 'not_registered' | 'not_required';
 
 type UserRow = {
   id: string;
@@ -78,6 +78,7 @@ function StatusBadge({ type }: { type: string }) {
 
 function CellIndicator({ status, size = 'sm' }: { status: CellStatus; size?: 'sm' | 'xs' }) {
   if (status === 'not_registered') return <span className="text-muted-foreground/60" title="Before registration">—</span>;
+  if (status === 'not_required') return <span className="text-muted-foreground/60" title="Before becoming a resident">—</span>;
   if (status === 'filled') {
     return <span className={`font-bold ${size === 'sm' ? 'text-sm' : 'text-xs'} text-green-600 dark:text-green-400`}>✓</span>;
   }
@@ -213,7 +214,7 @@ function MatrixView({ data, isPw }: { data: ReportData; isPw: boolean }) {
             const userDates = matrix[u.id] || {};
             const missedCount = dates.filter(d => userDates[d] === 'missed').length;
             const lateCount = dates.filter(d => userDates[d] === 'late').length;
-            const eligibleDays = dates.filter(d => userDates[d] !== 'not_registered').length;
+            const eligibleDays = dates.filter(d => userDates[d] !== 'not_registered' && userDates[d] !== 'not_required').length;
             const highlight = eligibleDays > 0 && missedCount / eligibleDays > 0.5;
             const rowBg = highlight ? 'bg-destructive/5' : idx % 2 === 0 ? 'bg-background' : 'bg-muted/10';
             return (
@@ -254,7 +255,7 @@ function MatrixView({ data, isPw }: { data: ReportData; isPw: boolean }) {
                 {dates.map(date => {
                   const status: CellStatus = userDates[date] || 'missed';
                   return (
-                    <td key={date} className="text-center px-1 py-1.5" title={status === 'filled' ? 'On time' : status === 'late' ? 'Late submission' : status === 'not_registered' ? 'Before registration' : 'Missed'}>
+                    <td key={date} className="text-center px-1 py-1.5" title={status === 'filled' ? 'On time' : status === 'late' ? 'Late submission' : status === 'not_registered' ? 'Before registration' : status === 'not_required' ? 'Before becoming a resident' : 'Missed'}>
                       <CellIndicator status={status} />
                     </td>
                   );
@@ -317,7 +318,7 @@ function ListView({ data, isPw }: { data: ReportData; isPw: boolean }) {
       {reversedDates.map(date => {
         const missing = users.filter(u => matrix[u.id]?.[date] === 'missed');
         const late = users.filter(u => matrix[u.id]?.[date] === 'late');
-        const eligibleCount = users.filter(u => matrix[u.id]?.[date] !== 'not_registered').length;
+        const eligibleCount = users.filter(u => matrix[u.id]?.[date] !== 'not_registered' && matrix[u.id]?.[date] !== 'not_required').length;
         const isOpen = expanded.has(date);
         const toggle = () => setExpanded(prev => {
           const next = new Set(prev);
@@ -436,7 +437,7 @@ function MobileView({ data, isPw }: { data: ReportData; isPw: boolean }) {
         const userDates = matrix[u.id] || {};
         const missedCount = dates.filter(d => userDates[d] === 'missed').length;
         const lateCount = dates.filter(d => userDates[d] === 'late').length;
-        const eligibleDays = dates.filter(d => userDates[d] !== 'not_registered').length;
+        const eligibleDays = dates.filter(d => userDates[d] !== 'not_registered' && userDates[d] !== 'not_required').length;
         const filledCount = eligibleDays - missedCount - lateCount;
         const isExpanded = expandedUser === u.id;
         const missedDates = dates.filter(d => userDates[d] === 'missed');
@@ -650,7 +651,7 @@ export default function MissingSadhanaTab({ guideId, segment }: Props) {
       return a.fullName.localeCompare(b.fullName);
     });
     const statuses = users.flatMap(user => dates.map(date => data.matrix[user.id]?.[date]))
-      .filter(status => status !== 'not_registered');
+      .filter(status => status !== 'not_registered' && status !== 'not_required');
     const totalMissing = statuses.filter(status => status === 'missed').length;
     const totalLate = statuses.filter(status => status === 'late').length;
     const totalFilled = statuses.filter(status => status === 'filled' || status === 'late').length;
@@ -679,7 +680,7 @@ export default function MissingSadhanaTab({ guideId, segment }: Props) {
         ...(isPw ? [] : [u.residencyName, u.residencyType]),
         ...filteredData.dates.map(d => {
           const s = userDates[d] || 'missed';
-          return s === 'filled' ? '✓' : s === 'late' ? 'L' : s === 'not_registered' ? '—' : '✗';
+          return s === 'filled' ? '✓' : s === 'late' ? 'L' : s === 'not_registered' || s === 'not_required' ? '—' : '✗';
         }),
         missedCount,
         lateCount,

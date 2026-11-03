@@ -23,22 +23,25 @@ export default createEndpoint({
       throw new AppError({ code: 'BAD_REQUEST', message: 'A FOLK residency must be selected when making a user a resident' });
     }
 
+    const userRecord = await Users.findOne({
+      id: input.userId,
+      fields: ['id', 'residency', 'residencyApproved', 'residentSince', 'guide'],
+    });
+    if (!userRecord) throw new AppError({ code: 'NOT_FOUND', message: 'User not found' });
+
     // Regular guides: verify user is in their center
     if (!isSuperGuide) {
       const scope = await getGuideScope(context.user.email);
       if (!scope) throw new AppError({ code: 'FORBIDDEN', message: 'Guide record not found' });
 
-      const userRecord = await Users.findOne({
-        id: input.userId,
-        fields: ['id', 'residency', 'guide'],
-      });
-      if (!userRecord) throw new AppError({ code: 'NOT_FOUND', message: 'User not found' });
       if (!isUserInGuideScope(scope, userRecord)) {
         throw new AppError({ code: 'FORBIDDEN', message: 'You can only update residency for users in your center' });
       }
     }
 
     const today = getTodayIST();
+    const wasResident = !!(userRecord.residencyApproved &&
+      (Array.isArray(userRecord.residency) ? userRecord.residency[0] : userRecord.residency));
 
     await Users.update({
       id: input.userId,
@@ -48,7 +51,7 @@ export default createEndpoint({
             residencyApproved: true,
             residencyClaimed: true,
             temporaryResidencyEnabled: false,
-            residentSince: today,
+            residentSince: wasResident ? (userRecord.residentSince || undefined) : today,
             scholarSince: undefined,
           }
         : {

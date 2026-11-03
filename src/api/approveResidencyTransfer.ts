@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createEndpoint, ResidencyTransferRequests, Users, Guides, AppError } from '@/lib/backend-sdk';
 import { serverCacheInvalidate } from '../lib/serverCache';
 import { getGuideScope } from '../lib/guideScope';
+import { getTodayIST } from '../lib/streakUtils';
 
 function firstRef(value: unknown): string {
   if (Array.isArray(value)) return String(value[0] || '');
@@ -88,7 +89,12 @@ export default createEndpoint({
       const newResidencyId = Array.isArray(request.toResidency) ? request.toResidency[0] : request.toResidency as string | null;
       if (userId) {
         if (newResidencyId) {
-          await Users.update({ id: userId, record: { residency: newResidencyId, residencyApproved: true } });
+          const wasResident = !!(targetUser?.residencyApproved && firstRef(targetUser.residency));
+          await Users.update({ id: userId, record: {
+            residency: newResidencyId,
+            residencyApproved: true,
+            ...(wasResident ? {} : { residentSince: getTodayIST() }),
+          } });
         } else {
           // No target residency means leaving the residency
           await Users.update({
@@ -97,6 +103,7 @@ export default createEndpoint({
               residency: null,
               residencyApproved: false,
               residencyClaimed: false,
+              residentSince: undefined,
               isFolkLead: false,
             },
           });

@@ -9,8 +9,9 @@ import { bvUserAliases, resolveBvGroupMemberUsers } from '../lib/bvGroupMemberSc
 import { resolveBvAdminFacilitators } from '../lib/bvAdminFacilitatorScope';
 import { getSadhanaMentorResidencyScope } from '../lib/sadhanaMentorResidencyScope';
 import { readFolkHostelSadhanaUsers } from '../lib/folkHostelSadhanaScope';
+import { folkResidentStart, wasFolkResidentOnDate } from '../lib/folkResidencyHistory';
 
-const MEMBER_USER_FIELDS = [...PW_SADHANA_PRIVACY_FIELDS, 'id', 'userId', 'email', 'residency', 'residencyApproved', 'temporaryResidencyEnabled', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
+const MEMBER_USER_FIELDS = [...PW_SADHANA_PRIVACY_FIELDS, 'id', 'userId', 'email', 'residency', 'residencyApproved', 'residentSince', 'residencyJoinDate', 'temporaryResidencyEnabled', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
 
 const RESIDENT_FIELD_DEFS = [
   { key: 'quotes_tulasi',    shortLabel: 'Quotes/Pranam', maxPoints: 1,    isScoring: true,  forResident: true, forNR: false },
@@ -80,7 +81,7 @@ export default createEndpoint({
     while (!residencyMentorScope) {
       const { records, hasMore } = await readScopedUsers(context.user, {
         filters: { status: 'Active', residencyApproved: true },
-        fields: [...PW_SADHANA_PRIVACY_FIELDS, 'id', 'residency', 'residencyApproved', 'temporaryResidencyEnabled'],
+        fields: [...PW_SADHANA_PRIVACY_FIELDS, 'id', 'residency', 'residencyApproved', 'residentSince', 'residencyJoinDate', 'temporaryResidencyEnabled'],
         limit: 2000,
         offset: uOffset,
       });
@@ -120,6 +121,7 @@ export default createEndpoint({
       const resId = Array.isArray(u.residency) ? u.residency[0] : u.residency;
       const isApprovedRes = u.residencyApproved && resId && !u.temporaryResidencyEnabled;
       if (!isApprovedRes) return false;
+      if (!wasFolkResidentOnDate(u, effectiveEnd)) return false;
       if (!residencyMentorScope && !input.bvslMode && !input.facilitatorMode && !isSuperGuide) {
         return guideRids.includes(resId);
       }
@@ -131,14 +133,27 @@ export default createEndpoint({
 
     const residentAliasToId = new Map<string, string>();
     residents.forEach(user => bvUserAliases(user).forEach(alias => residentAliasToId.set(alias, user.id)));
+    const residentStartById = new Map(residents.map(user => [user.id, folkResidentStart(user)]));
 
     const totalsByAlias = await loadFolkTotals(effectiveStart, effectiveEnd);
     const totalsByUser = new Map<string, FolkTotals>();
     for (const [rawUid, totals] of totalsByAlias) {
       const uid = residentAliasToId.get(rawUid);
       if (!uid) continue;
+      const residentStart = residentStartById.get(uid);
+      if (residentStart && residentStart > effectiveStart) continue;
       const existing = totalsByUser.get(uid);
       totalsByUser.set(uid, existing ? mergeFolkTotals(existing, totals) : totals);
+    }
+    const laterStarts = [...new Set([...residentStartById.values()].filter((start): start is string => !!start && start > effectiveStart && start <= effectiveEnd))];
+    for (const start of laterStarts) {
+      const laterTotals = await loadFolkTotals(start, effectiveEnd);
+      for (const [rawUid, totals] of laterTotals) {
+        const uid = residentAliasToId.get(rawUid);
+        if (!uid || residentStartById.get(uid) !== start) continue;
+        const existing = totalsByUser.get(uid);
+        totalsByUser.set(uid, existing ? mergeFolkTotals(existing, totals) : totals);
+      }
     }
 
     // 4. Group residents by residencyId
