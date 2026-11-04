@@ -22,6 +22,7 @@ import { useDebouncedCallback } from 'use-debounce';
 import { format, subDays, startOfMonth, endOfMonth, startOfISOWeek, endOfISOWeek, getISOWeek, getISOWeekYear } from 'date-fns';
 import { EmptyState } from '@/shared';
 import { exportToCsv } from '@/utils/exportCsv';
+import { ExcelExportButton } from '@/components/ExcelExportButton';
 import { exportBvslReportAsImage } from '@/utils/exportBvReportImage';
 import { useSupervisionOnly } from '@/components/guide/supervisionScope';
 import { useUserProfile } from '@/contexts/UserProfileContext';
@@ -215,7 +216,7 @@ export default function BvReportTab({ guideId, bvslMode, residencyIds, segment }
                 Overview of daily preaching entries submitted by RGFs and RGSFs.
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <button onClick={fetchReport} disabled={loading} title="Refresh"
                 className="flex items-center gap-1 px-2 py-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground disabled:opacity-40 text-xs font-medium">
                 <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Refresh
@@ -223,6 +224,18 @@ export default function BvReportTab({ guideId, bvslMode, residencyIds, segment }
               <Button size="sm" variant="outline" className="h-8" onClick={handleExportCsv} disabled={!data || loading}>
                 <FileDown className="w-3 h-3 mr-1" />CSV
               </Button>
+              <ExcelExportButton filename={`rgf-report-${computedStart || selectedDate}-to-${computedEnd || selectedDate}.xlsx`} disabled={!data || loading} getSheets={() => [
+                { name: 'RGF Report',
+                  headers: ['Name', 'Group', 'Status', 'Calling (min)', '1-on-1 (min)', 'Book Dist (min)', 'RDUA (min)', 'Plan (min)', 'Books', 'Contacts', '1-on-1s', 'Total (min)'],
+                  rows: filteredBvsls.map(r => [r.fullName, r.groupName, r.submitted ? 'Submitted' : 'Missing',
+                    ...[r.callingTime, r.oneOnOneTime, r.bookDistTime, r.rduaTime, r.planTime, r.booksDistributed, r.contactsCollected, r.uniqueOneOnOnes, r.totalMinutes].map(value => r.submitted ? value : null)]),
+                },
+                { name: 'Report Details', headers: ['Setting', 'Value'], rows: [
+                  ['Period', reportType], ['Start date', computedStart || selectedDate], ['End date', computedEnd || selectedDate],
+                  ['BV', availableGroups.find(group => group.id === selectedGroup)?.name || 'All BVs'], ['Search', searchQuery],
+                  ['Total', summary.total], ['Submitted', summary.submitted],
+                ] },
+              ]} />
               <Button size="sm" variant="outline" className="h-8" onClick={handleExportImage} disabled={!data || loading}>
                 <Image className="w-3 h-3 mr-1" />Image
               </Button>

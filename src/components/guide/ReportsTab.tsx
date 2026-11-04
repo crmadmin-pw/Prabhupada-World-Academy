@@ -26,6 +26,8 @@ import { EmptyState } from '@/shared';
 import SadhanaDetailTable, { FieldDef, TOGGLE_DISPLAY_KEYS, DURATION_MINUTE_KEYS, minutesToHHMM, canonicalSort, UserRow, reorderFieldDefs, buildAshrayGroups } from '@/components/guide/SadhanaDetailTable';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { exportToCsv } from '@/utils/exportCsv';
+import { ExcelExportButton } from '@/components/ExcelExportButton';
+import type { ExcelValue } from '@/utils/exportExcel';
 import { exportReportAsImage } from '@/utils/exportReportImage';
 import ScoringCriteriaPanel from '@/components/guide/ScoringCriteriaPanel';
 import { DateTimePicker } from '@/components/ui/date-time-picker';
@@ -523,7 +525,7 @@ export default function ReportsTab({ guideId = '', senderName, segment, bvslMode
 
     return [
       ...baseColumns,
-      String(u.currentStreak ?? 0),
+      u.currentStreak ?? 0,
       ...visibleFieldDefs.map(d => {
       const applicable = u.isResident ? d.forResident : d.forNR;
       if (!applicable) return 'NA';
@@ -536,14 +538,14 @@ export default function ReportsTab({ guideId = '', senderName, segment, bvslMode
         if (isNaN(mins) || mins < 0) return '';
         return minutesToHHMM(mins);
       }
-      return String(val);
+      return typeof val === 'number' ? val : String(val);
       }),
       u.scorePercent != null ? `${u.scorePercent}%` : '',
     ];
   };
 
   /** Build a descriptive kebab-case filename for exports */
-  const buildExportFilename = (ext: 'png' | 'csv'): string => {
+  const buildExportFilename = (ext: 'png' | 'csv' | 'xlsx'): string => {
     const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
     // Date segment
@@ -851,6 +853,26 @@ export default function ReportsTab({ guideId = '', senderName, segment, bvslMode
               </div>
               <div className="flex gap-2 items-center flex-wrap">
                 {loading && <span className="text-xs text-muted-foreground animate-pulse">Loading…</span>}
+                <ExcelExportButton filename={buildExportFilename('xlsx')} disabled={!rawReportData || loading} getSheets={() => {
+                  const ordered = residencyFilter === 'non_resident'
+                    ? buildAshrayGroups(usersForTable).flatMap(group => group.users.map(user => ({ user, rank: group.ranks.get(user.userId) ?? '' })))
+                    : [...usersForTable].sort(canonicalSort).map(user => ({ user, rank: user.submitted && user.rank != null ? user.rank : '' }));
+                  return [
+                    { name: 'Sadhana Report',
+                      headers: ['Rank', 'Name', 'Ashray Level', ...(!isPw ? ['FOLK'] : []), 'Streak', ...visibleFieldDefs.map(getFieldHeader), 'Total %', 'Status'],
+                      rows: ordered.map(({ user, rank }) => {
+                        const row: ExcelValue[] = buildUserCsvRow(user, rank);
+                        row[row.length - 1] = user.scorePercent ?? null;
+                        return [...row, user.submitted ? 'Submitted' : 'Missing'];
+                      }),
+                    },
+                    { name: 'Report Details', headers: ['Setting', 'Value'], rows: [
+                      ['Period', reportType], ['Start date', computedStart || selectedDate], ['End date', computedEnd || selectedDate],
+                      ['BV', groupOptions.find(group => group.id === selectedGroupId || group.groupId === selectedGroupId)?.groupName || 'All BVs'],
+                      ['Ashray level', ashrayLevelFilter], ['Residency', residencyFilter], ['Search', searchQuery],
+                    ] },
+                  ];
+                }} />
                 <Button size="sm" variant="outline" className="h-8" onClick={handleExportCsv} disabled={!rawReportData || loading}>
                   <FileDown className="w-3 h-3 mr-1" />Export CSV
                 </Button>

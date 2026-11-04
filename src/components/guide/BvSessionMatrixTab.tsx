@@ -21,6 +21,7 @@ import { useSupervisionOnly } from '@/components/guide/supervisionScope';
 import { ASHRAY_LEVELS } from '@/types/enums';
 import { EmptyState } from '@/shared';
 import { exportToCsv } from '@/utils/exportCsv';
+import { ExcelExportButton } from '@/components/ExcelExportButton';
 
 type ReportType = 'weekly' | 'monthly';
 type MemberRow = GetBvSessionMatrixOutputType['members'][0];
@@ -257,26 +258,29 @@ export default function BvSessionMatrixTab({ guideId, bvslMode, residencyIds, se
     link.click();
   };
 
-  const handleExportCsv = () => {
-    if (!data) return;
-    const dateHeaders = displayDates.flatMap(d => isPw
-      ? [`${format(new Date(d + 'T00:00:00'), 'MMM d')} Att`]
-      : [`${format(new Date(d + 'T00:00:00'), 'MMM d')} Att`, `${format(new Date(d + 'T00:00:00'), 'MMM d')} Quiz`]);
+  const getExportTable = () => {
+    const showAttendance = reportView !== 'quiz';
+    const showQuiz = reportView !== 'attendance';
+    const dateHeaders = displayDates.flatMap(d => [
+      ...(showAttendance ? [`${d} Attendance`] : []),
+      ...(showQuiz ? [`${d} Quiz %`] : []),
+    ]);
     const headers = isPw
       ? ['Name', 'Level', 'Group', ...dateHeaders, 'Att%']
-      : ['Name', 'Level', 'FOLK', 'Group', ...dateHeaders, 'Att%', 'Quiz%'];
+      : ['Name', 'Level', 'FOLK', 'Group', ...dateHeaders, ...(showAttendance ? ['Att%'] : []), ...(showQuiz ? ['Quiz%'] : [])];
     const rows = filteredMembers.map(m => {
-      const att = (data.attendance as Record<string, Record<string, boolean>>)[m.userId] || {};
-      const qs = (data.quizScores as Record<string, Record<string, number>>)[m.userId] || {};
+      const att = data?.attendance[m.userId] || {};
+      const qs = data?.quizScores[m.userId] || {};
       let attT = 0; let attP = 0; const ql: number[] = [];
       const dateCells = displayDates.flatMap(d => {
         const hasS = sessionDateSet.has(d);
         const a = att[d]; const q = qs[d];
         if (hasS && a !== undefined) { attP++; if (a) attT++; }
         if (q != null) ql.push(q);
-        return isPw
-          ? [hasS ? (a ? '✓' : '✗') : '—']
-          : [hasS ? (a ? '✓' : '✗') : '—', q != null ? `${q}%` : '—'];
+        return [
+          ...(showAttendance ? [hasS && a !== undefined ? (a ? 'Present' : 'Absent') : '—'] : []),
+          ...(showQuiz ? [q ?? null] : []),
+        ];
       });
       const identityCells = isPw
         ? [m.fullName, m.ashrayLevel || '', m.groupName]
@@ -284,10 +288,16 @@ export default function BvSessionMatrixTab({ guideId, bvslMode, residencyIds, se
       return [
         ...identityCells,
         ...dateCells,
-        attP > 0 ? `${Math.round(attT / attP * 100)}%` : '—',
-        ...(!isPw ? [ql.length > 0 ? `${Math.round(ql.reduce((a, b) => a + b, 0) / ql.length)}%` : '—'] : []),
+        ...(showAttendance ? [attP > 0 ? Math.round(attT / attP * 100) : null] : []),
+        ...(showQuiz ? [ql.length > 0 ? Math.round(ql.reduce((a, b) => a + b, 0) / ql.length) : null] : []),
       ];
     });
+    return { headers, rows };
+  };
+
+  const handleExportCsv = () => {
+    if (!data) return;
+    const { headers, rows } = getExportTable();
     exportToCsv(`${reportFileStem}.csv`, headers, rows);
   };
 
@@ -307,6 +317,16 @@ export default function BvSessionMatrixTab({ guideId, bvslMode, residencyIds, se
               </button>
             </div>
             <div className="flex gap-2 items-center flex-wrap">
+              <ExcelExportButton filename={`${reportFileStem}.xlsx`} disabled={!data || loading} getSheets={() => [
+                { name: 'BV Report', ...getExportTable() },
+                { name: 'Report Details', headers: ['Setting', 'Value'], rows: [
+                  ['Period', reportType], ['Start date', start], ['End date', end],
+                  ['BV', selectedBvName || 'All BVs'], ['Ashray level', ashrayFilter],
+                  ['Residency', residencyFilter], ['FOLK', folkFilter], ['View', reportView],
+                  ['Total members', filteredMembers.length], ['Session dates', stats.sessionDates],
+                  ['Attendance %', stats.attendancePct], ...(isPw ? [] : [['Average quiz %', stats.avgQuiz]]),
+                ] },
+              ]} />
               {reportType === 'monthly' && (
                 <Button size="sm" variant="outline" className="h-8" onClick={handleExportCsv} disabled={!data || loading}>
                   <FileDown className="w-3 h-3 mr-1" />Export CSV
