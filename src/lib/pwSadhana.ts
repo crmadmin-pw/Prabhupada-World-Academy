@@ -268,6 +268,24 @@ export interface PwStoredScore {
   fieldPoints: Partial<Record<PwFieldKey, number | null>> | null;
 }
 
+/** Reported durations cannot be recovered from score bands. Legacy Seva was
+ * Yes/No; only version 2 entries establish its duration in minutes. */
+export function pwRecordedMinutes(fieldValuesJson: unknown): {
+  pwHearingMinutes: number | null;
+  pwSevaMinutes: number | null;
+} {
+  const stored = parseStored(fieldValuesJson);
+  const minutes = (value: unknown): number | null => {
+    if ((typeof value !== 'number' && typeof value !== 'string') || String(value).trim() === '') return null;
+    const amount = Number(value);
+    return Number.isFinite(amount) && amount >= 0 ? amount : null;
+  };
+  return {
+    pwHearingMinutes: minutes(stored.hearing),
+    pwSevaMinutes: stored._meta?.pwVersion === 2 ? minutes(stored.seva) : null,
+  };
+}
+
 /** Percent stored with a submitted day. Days from before a target was assigned have no percentage. */
 export function pwScoreFromFieldValues(fieldValuesJson: unknown): PwStoredScore {
   const stored = parseStored(fieldValuesJson);

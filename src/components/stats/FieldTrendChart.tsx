@@ -85,16 +85,16 @@ export const NR_FIELD_CONFIGS: FieldConfig[] = [
 ];
 
 // Shared by every Prabhupada World dashboard chart: BV report Stats, member
-// progress, and user Sadhana trends. Raw chanting and reading stay, and the
-// rest of the 60-point rubric is selectable beside them.
+// progress, and user Sadhana trends. Duration fields show recorded minutes;
+// scores remain in points where no duration applies.
 export const PW_FIELD_CONFIGS: FieldConfig[] = [
   { key: 'scorePercent', label: 'Overall %', unit: '%', yMax: 100 },
   { key: 'pwWakeUpPts', label: 'Wake-up', unit: 'pts', yMax: 4 },
   { key: 'pwSleepPts', label: 'Sleep', unit: 'pts', yMax: 4 },
   { key: 'rounds', label: 'Chanting', unit: 'rounds', yMax: 32 },
   { key: 'reading', label: 'Reading', unit: 'min', yMax: 180 },
-  { key: 'pwHearingPts', label: 'Hearing', unit: 'pts', yMax: 8 },
-  { key: 'pwSevaPts', label: 'Seva', unit: 'pts', yMax: 8 },
+  { key: 'pwHearingMinutes', label: 'Hearing', unit: 'min', yMax: 180 },
+  { key: 'pwSevaMinutes', label: 'Seva', unit: 'min', yMax: 180 },
   { key: 'pwSubmittedPts', label: 'On time', unit: 'pts', yMax: 2 },
   { key: 'pwAttendancePts', label: 'BV', unit: 'pts', yMax: 10 },
 ];
@@ -180,6 +180,9 @@ export default function FieldTrendChart({
 
   return (
     <div>
+      {configs.some(config => config.key === 'pwSevaMinutes') && (
+        <p className="mb-3 text-xs text-muted-foreground">Hearing and seva show reported minutes. Entries without a recorded duration show —.</p>
+      )}
       {/* Single-select chips */}
       <div className="flex flex-wrap gap-1.5 mb-5">
         {configs.map((c, i) => {

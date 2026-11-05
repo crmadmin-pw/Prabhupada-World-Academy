@@ -5,7 +5,7 @@ import { findSadhanaSubject } from '@/lib/sadhanaSubject';
 import { daysAgo, getTodayIST } from '../lib/streakUtils';
 import { fillingSameDayApplies } from '@/lib/userUtils';
 import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
-import { pwFieldPercent, pwOverallPercent, pwScoreFromFieldValues, pwTarget } from '@/lib/pwSadhana';
+import { pwFieldPercent, pwOverallPercent, pwRecordedMinutes, pwScoreFromFieldValues, pwTarget } from '@/lib/pwSadhana';
 
 const USER_FIELDS = [...PW_SADHANA_PRIVACY_FIELDS, 'id', 'userId', 'email', 'segment', 'isPrabhupadaWorldUser', 'ashrayLevel', 'residencyApproved', 'residencyGuideVerified', 'residency', 'selectedFolkResidency', 'temporaryResidencyEnabled', 'temporaryResidency', 'pwChantingTarget', 'pwReadingTarget', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
 const USER_IDENTITY_FIELDS = ['id', 'userId', 'email', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
@@ -189,6 +189,8 @@ interface EntryValues {
   pwSevaPts?: number;
   pwSubmittedPts?: number;
   pwAttendancePts?: number;
+  pwHearingMinutes?: number | null;
+  pwSevaMinutes?: number | null;
 }
 
 function entryToValues(
@@ -279,6 +281,10 @@ function avgValues(vals: EntryValues[]): Omit<EntryValues, 'label' | 'date'> {
   const scoredVals = vals.filter(v => v.scorePercent != null);
   const sp = scoredVals.length > 0 ? Math.round(scoredVals.reduce((s, v) => s + v.scorePercent!, 0) / scoredVals.length) : null;
   const r = (k: keyof EntryValues) => Math.round(sum(k) / n * 10) / 10;
+  const recordedAverage = (key: 'pwHearingMinutes' | 'pwSevaMinutes') => {
+    const recorded = vals.map(value => value[key]).filter((value): value is number => value != null);
+    return recorded.length ? Math.round(recorded.reduce((sum, value) => sum + value, 0) / recorded.length * 10) / 10 : null;
+  };
   return {
     scorePercent: sp,
     rounds: r('rounds'), roundsCount: r('rounds'),
@@ -308,6 +314,8 @@ function avgValues(vals: EntryValues[]): Omit<EntryValues, 'label' | 'date'> {
     pwSevaPts: r('pwSevaPts'),
     pwSubmittedPts: r('pwSubmittedPts'),
     pwAttendancePts: r('pwAttendancePts'),
+    pwHearingMinutes: recordedAverage('pwHearingMinutes'),
+    pwSevaMinutes: recordedAverage('pwSevaMinutes'),
   };
 }
 
@@ -365,6 +373,8 @@ const PW_FIELD_DEFS = [
   { key: 'reading', label: 'Reading', unit: 'min' },
   { key: 'pwHearingPts', label: 'Hearing points', unit: 'pts' },
   { key: 'pwSevaPts', label: 'Seva points', unit: 'pts' },
+  { key: 'pwHearingMinutes', label: 'Hearing', unit: 'min' },
+  { key: 'pwSevaMinutes', label: 'Seva', unit: 'min' },
   { key: 'pwSubmittedPts', label: 'Submitted on time', unit: 'pts' },
   { key: 'pwAttendancePts', label: 'BV attendance', unit: 'pts' },
   { key: 'preachingMinutes', label: 'Preaching', unit: 'min' },
@@ -540,6 +550,7 @@ export default createEndpoint({
       for (const row of allValues) {
         const source = trendSorted.find(entry => String(entry.entryDate || '').slice(0, 10) === row.date);
         const stored = source ? parseFieldValues(source.fieldValuesJson as string) : {};
+        Object.assign(row, pwRecordedMinutes(stored));
         const meta = (stored._meta && typeof stored._meta === 'object') ? stored._meta as Record<string, unknown> : {};
         const scored = pwScoreFromFieldValues(stored);
         if (scored.version === 2 && scored.fieldPoints) {
@@ -598,21 +609,24 @@ export default createEndpoint({
     const SICK_OS_NR_TREND_KEYS = new Set(['rounds', 'roundsCount', 'reading', 'nrChantingPts', 'nrReadingPts', 'nrFillingSameDayPts']);
 
     const fieldTrends = fieldDefs.map(f => {
+      const recordedMinutes = f.key === 'pwHearingMinutes' || f.key === 'pwSevaMinutes';
       // For each entry, only include sick/OS entries if this field is scored during sick/OS
       const applicableVals = allValues.filter(v => {
+        if (recordedMinutes) return true;
         if (!v.isSickOs) return true;
         const sickOsKeys = isNR ? SICK_OS_NR_TREND_KEYS : SICK_OS_RESIDENT_TREND_KEYS;
         return sickOsKeys.has(f.key);
       });
-      const vals = applicableVals.map(v => (v as any)[f.key] as number ?? 0);
+      const vals = applicableVals.map(v => (v as any)[f.key] as number | null | undefined)
+        .flatMap(value => value == null ? (recordedMinutes ? [] : [0]) : [value]);
       const total = vals.reduce((a, b) => a + b, 0);
-      const avg = vals.length > 0 ? Math.round(total / vals.length * 10) / 10 : 0;
-      const midIdx = Math.floor(applicableVals.length / 2);
+      const avg = vals.length > 0 ? Math.round(total / vals.length * 10) / 10 : recordedMinutes ? null : 0;
+      const midIdx = Math.floor(vals.length / 2);
       const fh = vals.slice(0, midIdx);
       const sh = vals.slice(midIdx);
       const fhAvg = fh.length ? fh.reduce((a, b) => a + b, 0) / fh.length : 0;
       const shAvg = sh.length ? sh.reduce((a, b) => a + b, 0) / sh.length : 0;
-      const trend = applicableVals.length < 4 ? 'flat' : shAvg > fhAvg * 1.1 ? 'up' : shAvg < fhAvg * 0.9 ? 'down' : 'flat';
+      const trend = vals.length < 4 ? 'flat' : shAvg > fhAvg * 1.1 ? 'up' : shAvg < fhAvg * 0.9 ? 'down' : 'flat';
       return { field: f.key, label: f.label, unit: f.unit, avg, trend };
     });
 

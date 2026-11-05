@@ -6,7 +6,7 @@ import { getGuideScope } from '../lib/guideScope';
 import { requireGuideRole, isScholar as checkIsScholar } from '../lib/userUtils';
 import { resolveBvGroupMemberUsers } from '../lib/bvGroupMemberScope';
 import { resolveBvAdminFacilitators } from '../lib/bvAdminFacilitatorScope';
-import { pwScoreFromFieldValues } from '@/lib/pwSadhana';
+import { pwRecordedMinutes, pwScoreFromFieldValues } from '@/lib/pwSadhana';
 import { collectOwnerKeys, readEntriesForOwners } from '../lib/scopedEntryReads';
 import { getSadhanaMentorResidencyScope } from '../lib/sadhanaMentorResidencyScope';
 import { readFolkHostelSadhanaUsers } from '../lib/folkHostelSadhanaScope';
@@ -269,6 +269,9 @@ export default createEndpoint({
         if (scored.scorePercent != null) { agg.total += scored.scorePercent; agg.count++; }
         addField('rounds', scored.chanting);
         addField('reading', scored.reading);
+        for (const [key, minutes] of Object.entries(pwRecordedMinutes(fv))) {
+          if (minutes != null) addField(key, minutes);
+        }
         if (scored.version === 2 && scored.fieldPoints) {
           for (const [key, points] of Object.entries(scored.fieldPoints)) {
             const trendKey = PW_POINT_TREND_KEYS[key];
@@ -315,6 +318,7 @@ export default createEndpoint({
       'cleanlinessPoints', 'reportSending', 'dailyServicePoints', 'sleepQualityPoints',
       'sleepHours', 'studyMinutes', 'reading', 'hearing', 'fillingSameDay', 'seva', 'bhaktiVriksha',
       ...Object.values(PW_POINT_TREND_KEYS),
+      'pwHearingMinutes', 'pwSevaMinutes',
     ];
 
     const dailyTrend: Record<string, any>[] = [];

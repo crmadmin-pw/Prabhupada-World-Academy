@@ -92,6 +92,54 @@ function run(endpoint: any, user: any, input: any = {}): Promise<any> {
   return withHierarchyDatabase(null, async () => (await withRequestQueries(() => endpoint.execute({ input, context: { user: { uid: user.firebaseUid || user.id, ...user } } }))).result);
 }
 
+test('PW duration trends retain recorded minutes and zero without converting score bands or legacy Yes/No', async t => {
+  const { fixtures, writes } = database(t);
+  const version2 = (hearing?: number, seva?: number) => ({ hearing, seva, chanting: 16, reading: 30,
+    _meta: { pwVersion: 2, scorePercent: 73, pwFields: { hearing: 4, seva: 2 } } });
+  const values = [version2(40, 120), version2(0, 0),
+    { hearing: 20, seva: true, _meta: { pwChantingTarget: 16, pwReadingTarget: 30 } }, version2()];
+  fixtures.SadhanaEntries = values.map((fieldValues, index) => ({
+    id: `duration-entry-${index}`, user: member.id, entryDate: `2026-09-${String(7 + index).padStart(2, '0')}`,
+    templateMode: 'NR_TEMPLATE', fieldValuesJson: JSON.stringify(fieldValues),
+  }));
+  const range = { startDate: '2026-09-07', endDate: '2026-09-10' };
+  for (const period of ['daily', 'weekly', 'monthly']) {
+    const result = await run(progress, superAdmin, { userId: member.id, ...range, period });
+    const hearing = result.fieldTrends.find((field: any) => field.field === 'pwHearingMinutes');
+    const seva = result.fieldTrends.find((field: any) => field.field === 'pwSevaMinutes');
+    assert.equal(hearing.unit, 'min');
+    assert.equal(hearing.avg, 20);
+    assert.equal(seva.unit, 'min');
+    assert.equal(seva.avg, 60);
+    if (period === 'daily') {
+      assert.equal(result.entries[0].pwHearingMinutes, 40);
+      assert.equal(result.entries[0].pwSevaMinutes, 120);
+      assert.equal(result.entries[0].scorePercent, 73);
+      assert.equal(result.entries[0].pwHearingPts, 4);
+      assert.equal(result.entries[0].pwSevaPts, 2);
+      assert.equal(result.entries[1].pwSevaMinutes, 0);
+      assert.equal(result.entries[2].pwSevaMinutes, null);
+      assert.equal(result.entries[3].pwHearingMinutes, null);
+    } else {
+      assert.equal(result.entries[0].pwHearingMinutes, 20);
+      assert.equal(result.entries[0].pwSevaMinutes, 60);
+    }
+  }
+  const group = await run(stats, superAdmin, { guideId: 'ALL', segment: 'PW', ...range });
+  assert.equal(group.dailyTrend[0].pwHearingMinutes, 40);
+  assert.equal(group.dailyTrend[0].pwSevaMinutes, 120);
+  assert.equal(group.dailyTrend[0].pwHearingPts, 4);
+  assert.equal(group.dailyTrend[0].pwSevaPts, 2);
+  assert.equal(group.dailyTrend[0].avgScorePercent, 73);
+  assert.equal(group.dailyTrend[1].pwSevaMinutes, 0);
+  assert.equal(group.dailyTrend[2].pwSevaMinutes, null);
+  assert.equal(group.dailyTrend[3].pwHearingMinutes, null);
+  const missing = await run(progress, superAdmin, { userId: member.id, startDate: '2026-09-10', endDate: '2026-09-10', period: 'weekly' });
+  assert.equal(missing.entries[0].pwSevaMinutes, null);
+  assert.equal(missing.fieldTrends.find((field: any) => field.field === 'pwSevaMinutes').avg, null);
+  assert.equal(writes.length, 0);
+});
+
 test('PW admin participation and private visibility honor the highest role, including dual-role admins', () => {
   assert.equal(canFillPersonalSadhana(admin), true);
   assert.equal(canFillPersonalSadhana(superAdmin), false);

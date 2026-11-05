@@ -306,10 +306,10 @@ export default function GuideUserDetailPage() {
                       </span>
                       {ft.trend === 'up' && <ArrowUp className="w-3.5 h-3.5 text-green-600 shrink-0" />}
                       {ft.trend === 'down' && <ArrowDown className="w-3.5 h-3.5 text-destructive shrink-0" />}
-                      {ft.trend === 'flat' && <Minus className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
+                      {ft.trend === 'flat' && ft.avg != null && <Minus className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
                     </div>
                     <span className={`text-[10px] font-medium ${ft.trend === 'up' ? 'text-green-600' : ft.trend === 'down' ? 'text-destructive' : 'text-muted-foreground'}`}>
-                      {ft.trend === 'up' ? 'Improving' : ft.trend === 'down' ? 'Declining' : 'Stable'}
+                      {ft.avg == null ? 'Not recorded' : ft.trend === 'up' ? 'Improving' : ft.trend === 'down' ? 'Declining' : 'Stable'}
                     </span>
                   </div>
                 ))}
