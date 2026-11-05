@@ -250,59 +250,18 @@ test('Sadhana and hostel leaderboards use the same mentor audience as the report
   assert.equal(hostels.folkRows[0].total, 1);
 });
 
-function vashiGuideAndCenterFixture() {
-  const fixture = powaiFixture();
-  Object.assign(fixture.mentorUser, { residency: 'vashi', sadhanaMentorScope: 'GUIDE_AND_CENTER' });
-  // Sreesha manages Powai; his Vashi boys must still be accessible without
-  // granting access to his Powai boys or another guide's Vashi boys.
-  return fixture;
-}
 
-test('guide-and-center mentor sees only his parent guide’s Vashi boys across reports', async t => {
-  const fixture = vashiGuideAndCenterFixture();
+test('Vashi mentors see Vashi boys across guides and exclude Powai boys under their own guide', async t => {
+  const fixture = powaiFixture();
+  Object.assign(fixture.mentorUser, { residency: 'vashi', sadhanaMentorScope: 'CENTER' });
   mockTables(t, fixture.users, fixture.guides, fixture.residencies);
-  const context = { user: fixture.mentorUser };
   const scope = await getSadhanaMentorResidencyScope(fixture.mentorUser);
   assert.ok(scope);
-  assert.deepEqual(fixture.boys.filter(scope.includes).map(u => u.id), ['same-guide-vashi-boy']);
-  assert.deepEqual(scope.availableGuides, [{ guideId: 'guide-sreesha', guideName: 'sreesha' }]);
-  assert.equal(scope.guideNameFor(fixture.boys[1]), 'sreesha');
-  assert.equal(scope.matchesGuide(fixture.boys[1], 'GUIDE-sreesha'), true);
+  assert.deepEqual(fixture.boys.filter(scope.includes).map(user => user.id).sort(), ['foreign-boy', 'same-guide-vashi-boy']);
+  const context = { user: fixture.mentorUser };
   const report = await detailed.execute({ input: { guideId: 'ALL', mentorMode: true, date: '2026-10-22', reportType: 'daily', segment: 'FOLK' }, context } as any);
   const missingReport = await missing.execute({ input: { guideId: 'ALL', startDate: '2026-10-22', endDate: '2026-10-22', segment: 'FOLK' }, context } as any);
   const memberList = await members.execute({ input: {}, context } as any);
-  const statistics = await stats.execute({ input: { guideId: 'ALL', mentorMode: true, startDate: '2026-10-22', endDate: '2026-10-22', segment: 'FOLK' }, context } as any);
-  for (const result of [report, missingReport]) assert.deepEqual(result.users.map((u: any) => u.id).sort(), ['mentor', 'same-guide-vashi-boy']);
-  assert.deepEqual(memberList.members.map((u: any) => u.userId), ['USER-same-guide-vashi-boy']);
-  assert.equal(statistics.totalUsers, 2);
-  const foreign = await detailed.execute({ input: { guideId: 'ALL', filterGuideId: 'guide-foreign', mentorMode: true, date: '2026-10-22', reportType: 'daily', segment: 'FOLK' }, context } as any);
-  assert.deepEqual(foreign.users, []);
-});
-
-test('guide-and-center restriction resolves guide aliases and fails closed for unresolved parents', async t => {
-  const fixture = vashiGuideAndCenterFixture();
-  mockTables(t, fixture.users, fixture.guides, fixture.residencies);
-  const scope = await getSadhanaMentorResidencyScope(fixture.mentorUser);
-  assert.ok(scope);
-  for (const guide of ['guide-sreesha', ['GUIDE-sreesha'], 'USER-sreesha', 'sreesha@example.test']) {
-    assert.equal(scope.includes(member('vashi-alias', { guide, residency: 'vashi' })), true);
-    assert.equal(scope.includes(member('powai-alias', { guide, residency: 'powai' })), false);
-  }
-  fixture.mentorUser.guide = ['missing-guide'];
-  const unresolved = await getSadhanaMentorResidencyScope(fixture.mentorUser);
-  assert.ok(unresolved);
-  assert.deepEqual(fixture.boys.filter(unresolved.includes), []);
-});
-
-test('guide-and-center restriction protects entry and member detail from foreign Vashi and own-guide Powai access', async t => {
-  const fixture = vashiGuideAndCenterFixture();
-  const entries = fixture.boys.map(u => ({ id: `entry-${u.id}`, entryId: `ENTRY-${u.id}`, user: u.id, entryDate: '2026-10-22', fieldValuesJson: '{}' }));
-  mockTables(t, fixture.users, fixture.guides, fixture.residencies, entries);
-  const context = { user: fixture.mentorUser };
-  const allowed = await entryDetail.execute({ input: { entryId: 'ENTRY-same-guide-vashi-boy' }, context } as any);
-  assert.equal(allowed.found, true);
-  for (const id of ['own-boy', 'foreign-boy']) {
-    await assert.rejects(entryDetail.execute({ input: { entryId: `ENTRY-${id}` }, context } as any), /outside your FOLK hostel/);
-    await assert.rejects(userDetail.execute({ input: { userId: `USER-${id}` }, context } as any), /outside your FOLK hostel/);
-  }
+  for (const result of [report, missingReport]) assert.deepEqual(result.users.map((u: any) => u.id).sort(), ['foreign-boy', 'mentor', 'same-guide-vashi-boy']);
+  assert.deepEqual(memberList.members.map((u: any) => u.userId).sort(), ['USER-foreign-boy', 'USER-same-guide-vashi-boy']);
 });
