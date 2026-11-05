@@ -174,14 +174,14 @@ export default function FieldTrendChart({
     if (!cfg) return String(v);
     if (cfg.unit === '%') return `${v}%`;
     if (cfg.unit === 'hrs') return `${v}h`;
-    if (cfg.unit === 'min') return `${v}m`;
+    if (cfg.unit === 'min') return `${v} min`;
     return String(v);
   };
 
   return (
     <div>
       {configs.some(config => config.key === 'pwSevaMinutes') && (
-        <p className="mb-3 text-xs text-muted-foreground">Hearing and seva show reported minutes. Entries without a recorded duration show —.</p>
+        <p className="mb-3 text-xs text-muted-foreground">Reading, hearing, and seva graphs show reported minutes. Entries without a recorded duration show —.</p>
       )}
       {/* Single-select chips */}
       <div className="flex flex-wrap gap-1.5 mb-5">
@@ -192,6 +192,7 @@ export default function FieldTrendChart({
             <button
               key={c.key}
               onClick={() => setSelected(c.key)}
+              aria-pressed={isOn}
               className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
                 isOn
                   ? 'text-white border-transparent shadow-sm'
@@ -200,7 +201,7 @@ export default function FieldTrendChart({
               style={isOn ? { backgroundColor: color, borderColor: color } : {}}
             >
               {c.label}
-              {c.unit ? <span className="opacity-70 ml-0.5 text-[10px]">{c.unit}</span> : null}
+              {c.unit ? <span className="opacity-70 ml-0.5 text-[10px]">{' '}{c.unit}</span> : null}
             </button>
           );
         })}
@@ -208,7 +209,8 @@ export default function FieldTrendChart({
 
       {/* Chart */}
       <ResponsiveContainer width="100%" height={height}>
-        <LineChart data={chartData} margin={{ top: 5, right: 16, left: -8, bottom: 5 }}>
+        <LineChart data={chartData} margin={{ top: 5, right: 16, left: -8, bottom: 5 }}
+          aria-label={`${cfg?.label || 'Field'} trend${cfg?.unit ? ` (${cfg.unit})` : ''}`}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
           <XAxis
             dataKey="label"

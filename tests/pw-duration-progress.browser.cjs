@@ -41,12 +41,20 @@ async function main() {
         if (endpoint === 'getUserProgressStats') {
           const missing = route.request().postDataJSON().period === 'monthly';
           response = { isPw: segment === 'PW', isResident: false, submittedCount: 2, entries: [
-            { label: 'Nov 1', date: '2026-11-01', pwHearingMinutes: missing ? null : 75.5, pwSevaMinutes: missing ? null : 90, hearing: 60, seva: 1, scorePercent: 73 },
+            { label: 'Nov 1', date: '2026-11-01', reading: 12.9, pwReadingPts: 8,
+              pwHearingMinutes: missing ? null : 75.5, pwHearingPts: 4,
+              pwSevaMinutes: missing ? null : 90, pwSevaPts: 2,
+              pwWakeUpPts: 4, pwSleepPts: 2, pwSubmittedPts: 1, pwAttendancePts: 10,
+              rounds: 16, hearing: 60, seva: 1, scorePercent: 73 },
           ], fieldTrends: segment === 'PW' ? [
             { field: 'pwHearingMinutes', label: 'Hearing', unit: 'min', avg: missing ? null : 75.5, trend: 'flat' },
             { field: 'pwSevaMinutes', label: 'Seva', unit: 'min', avg: missing ? null : 90, trend: 'flat' },
             { field: 'pwHearingPts', label: 'Hearing points', unit: 'pts', avg: 4, trend: 'flat' },
             { field: 'pwSevaPts', label: 'Seva points', unit: 'pts', avg: 2, trend: 'flat' },
+            { field: 'pwWakeUpPts', label: 'Wake-up', unit: 'pts', avg: 4, trend: 'flat' },
+            { field: 'pwSleepPts', label: 'Sleep', unit: 'pts', avg: 2, trend: 'flat' },
+            { field: 'pwSubmittedPts', label: 'Submitted on time', unit: 'pts', avg: 1, trend: 'flat' },
+            { field: 'pwAttendancePts', label: 'BV attendance', unit: 'pts', avg: 10, trend: 'flat' },
           ] : [{ field: 'seva', label: 'Seva', unit: 'Yes/No', avg: 1, trend: 'flat' }], insightFields: [] };
         }
         return route.fulfill({ json: response });
@@ -60,16 +68,45 @@ async function main() {
         await expect(page.getByText('90min', { exact: false }).first()).toBeVisible();
         await expect(page.getByText('Hearing points', { exact: true })).toHaveCount(0);
         await expect(page.getByRole('button', { name: /^Seva\s*pts$/ })).toHaveCount(0);
-        await hearing.click();
-        await expect(page.locator('.recharts-cartesian-axis-tick-value').filter({ hasText: 'm' }).first()).toBeVisible();
+        for (const period of ['Daily', 'Weekly']) {
+          await page.getByRole('button', { name: period, exact: true }).click();
+          for (const [label, value, unit] of [
+            ['Reading', 12.9, 'min'], ['Hearing', 75.5, 'min'], ['Seva', 90, 'min'],
+            ['Wake-up', 4, 'pts'], ['Sleep', 2, 'pts'], ['On time', 1, 'pts'], ['BV', 10, 'pts'],
+            ['Overall %', 73, '%'], ['Chanting', 16, 'rounds'],
+          ]) {
+            const select = page.getByRole('button', { name: `${label} ${unit}`, exact: true });
+            await select.click();
+            await expect(select).toHaveAttribute('aria-pressed', 'true');
+            const chart = page.locator('.recharts-wrapper');
+            if (unit === 'min') {
+              await expect(chart.locator('.recharts-cartesian-axis-tick-value').filter({ hasText: /min$/ }).first()).toBeVisible();
+              await expect(chart).not.toContainText('pts');
+            }
+            await chart.locator('.recharts-line-dot').first().hover();
+            const tooltip = chart.locator('.recharts-tooltip-wrapper');
+            await expect(tooltip).toBeVisible();
+            await expect(tooltip).toContainText(`${value} ${unit}`);
+            await page.mouse.move(0, 0);
+          }
+        }
+        // Score cards outside the graphs keep their original points.
+        for (const label of ['Wake-up', 'Sleep', 'Submitted on time', 'BV attendance']) {
+          const card = page.locator('div[class~="bg-muted/40"]').filter({ has: page.getByText(label, { exact: true }) });
+          await expect(card).toContainText('pts');
+        }
         await page.getByRole('button', { name: 'Monthly', exact: true }).click();
         await expect(page.getByText('Not recorded', { exact: true })).toHaveCount(2);
         await expect(page.getByText('75.5min', { exact: false })).toHaveCount(0);
-        await expect(page.getByText(/Hearing and seva show reported minutes/)).toBeVisible();
+        for (const label of ['Hearing', 'Seva']) {
+          await page.getByRole('button', { name: `${label} min`, exact: true }).click();
+          await expect(page.locator('.recharts-line-dot')).toHaveCount(0);
+        }
+        await expect(page.getByText(/Reading, hearing, and seva graphs show reported minutes/)).toBeVisible();
       } else {
         await expect(page.getByRole('button', { name: /^Seva\s*Yes\/No$/ })).toBeVisible({ timeout: 30000 });
         await expect(page.getByRole('button', { name: /^Seva\s*min$/ })).toHaveCount(0);
-        await expect(page.getByText(/Hearing and seva show reported minutes/)).toHaveCount(0);
+        await expect(page.getByText(/Reading, hearing, and seva graphs show reported minutes/)).toHaveCount(0);
       }
       assert.deepEqual(errors, []);
       await context.close();
