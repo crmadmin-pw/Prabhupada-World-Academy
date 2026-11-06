@@ -1,8 +1,11 @@
 import { z } from 'zod';
-import { createEndpoint, BvGroups, BvGroupMembers, BvAttendance, Users, AppError } from '@/lib/backend-sdk';
-import { resolveBvScopedGroups } from '@/lib/bvGroupMemberScope';
+import { createEndpoint, BvGroups, BvGroupMembers, BvAttendance, AppError } from '@/lib/backend-sdk';
+import { resolveBvScopedGroups, resolveBvUsersByAliases } from '@/lib/bvGroupMemberScope';
 import { countsAsGroupMember, facilitatorRoleLabel, loadGroupFacilitators } from '@/lib/bvGroupFacilitators';
 import { bvUserAliases } from '@/lib/bvGroupMemberScope';
+import { bvMembershipJoinedOn, mergeReportAttendance } from '@/lib/bvReportAttendance';
+import { BV_REPORT_IDENTITY_FIELDS, readBvReportHistory } from '@/lib/bvReportHistory';
+import { findAllByIn } from '@/lib/scopedEntryReads';
 
 function firstValue(value: unknown): string {
   if (Array.isArray(value)) return String(value[0] || '');
@@ -25,7 +28,7 @@ export default createEndpoint({
     await resolveBvScopedGroups(context.user, { groupId: input.groupId });
 
     // Resolve group
-    const groupFields = ['id', 'groupId', 'groupName', 'bvslLeader', 'bvslId', 'bvslName', 'subFacilitatorId', 'rgsfId', 'subFacilitator'];
+    const groupFields = ['id', 'groupId', 'groupName', 'segment', 'bvslLeader', 'bvslId', 'bvslName', 'subFacilitatorId', 'rgsfId', 'subFacilitator'];
     let group = await BvGroups.findOne({ filters: { groupId: input.groupId }, fields: groupFields });
     if (!group) {
       group = await BvGroups.findOne({ id: input.groupId, fields: groupFields });
@@ -33,30 +36,20 @@ export default createEndpoint({
     if (!group) return { sessions: [], members: [], matrix: {}, rows: [], dates: [] };
 
     // Get group members
-    const membersByGroupRes = await BvGroupMembers.findAll({
-      filters: { group: group.id },
-      fields: ['id', 'user', 'userId'],
-      limit: 200,
-    });
-    const membersByGroupIdRes = group.groupId
-      ? await BvGroupMembers.findAll({ filters: { groupId: group.groupId } as any, fields: ['id', 'user', 'userId', 'group', 'groupId'], limit: 200 })
-      : { records: [] };
+    const groupRefs = [...new Set([group.id, group.groupId].filter(Boolean))];
+    const [membersByGroup, membersByGroupId] = await Promise.all(['group', 'groupId'].map(field =>
+      findAllByIn(query => BvGroupMembers.findAll(query), field, groupRefs, {},
+        ['id', 'user', 'userId', 'memberId', 'group', 'groupId', 'joinedAt'])));
     const membershipMap = new Map<string, any>();
-    [...membersByGroupRes.records, ...membersByGroupIdRes.records].forEach((membership: any) => membershipMap.set(String(membership.id), membership));
+    [...membersByGroup, ...membersByGroupId].forEach((membership: any) => membershipMap.set(String(membership.id), membership));
     const membersRes = { records: [...membershipMap.values()] };
 
     const memberUserIds = membersRes.records
-      .flatMap((m: any) => [firstValue(m.user), firstValue(m.userId)])
+      .flatMap((m: any) => [firstValue(m.user), firstValue(m.userId), firstValue(m.memberId)])
       .filter(Boolean) as string[];
 
-    const [userRecordsById, userRecordsByUserId] = await Promise.all([
-      memberUserIds.length > 0
-        ? Users.findAll({ filters: { id: { in: memberUserIds } }, fields: ['id', 'userId', 'fullName', 'email', 'ashrayLevel', 'status', 'role', 'isBvMember', 'bvGroupId', 'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator'], limit: 500 })
-        : { records: [] },
-      memberUserIds.length > 0
-        ? Users.findAll({ filters: { userId: { in: memberUserIds } }, fields: ['id', 'userId', 'fullName', 'email', 'ashrayLevel', 'status', 'role', 'isBvMember', 'bvGroupId', 'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator'], limit: 500 })
-        : { records: [] },
-    ]);
+    const users = await resolveBvUsersByAliases(memberUserIds, [...BV_REPORT_IDENTITY_FIELDS,
+      'fullName', 'ashrayLevel', 'status', 'role', 'isBvMember', 'bvGroupId', 'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator']);
 
     const userMap: Record<string, any> = {};
     const addRecord = (u: any) => {
@@ -64,35 +57,24 @@ export default createEndpoint({
       if (u.userId) {
         userMap[u.userId] = u;
       }
+      bvUserAliases(u).forEach(alias => { userMap[alias] = u; });
     };
-    userRecordsById.records.forEach(addRecord);
-    userRecordsByUserId.records.forEach(addRecord);
+    users.forEach(addRecord);
+    const memberUser = (membership: any) => [membership.user, membership.userId, membership.memberId]
+      .map(value => firstValue(value).trim().toLowerCase()).map(key => userMap[key]).find(Boolean);
 
     const activeMembers = membersRes.records.filter((m: any) => {
-      const uid = firstValue(m.user);
-      const altUid = firstValue(m.userId);
-      const u = userMap[uid] || userMap[uid.toLowerCase()] || userMap[altUid] || userMap[altUid.toLowerCase()];
+      const u = memberUser(m);
       return countsAsGroupMember(u, group);
     });
 
     // Query by group only. Combining group with an attendanceDate range needs
     // a Firestore composite index; filtering the small per-group result here
     // keeps the matrix reliable even before that index is deployed.
-    let attRecords: any[] = [];
-    let offset = 0;
-    while (true) {
-      const groupRefs = [...new Set([group.id, group.groupId].filter(Boolean))];
-      const filters: any = { group: groupRefs.length > 1 ? { in: groupRefs } : group.id };
-      const { records, hasMore } = await BvAttendance.findAll({
-        filters,
-        fields: ['id', 'user', 'present', 'attendanceDate'],
-        limit: 2000,
-        offset,
-      });
-      attRecords = attRecords.concat(records);
-      if (!hasMore) break;
-      offset += 2000;
-    }
+    const attendancePages = await Promise.all(['group', 'groupId'].map(field =>
+      findAllByIn(query => BvAttendance.findAll(query), field, groupRefs, {},
+        ['id', 'user', 'group', 'groupId', 'present', 'attendanceDate'])));
+    let attRecords = [...new Map(attendancePages.flat().map(record => [record.id, record])).values()];
     attRecords = attRecords.filter((attendance: any) => {
       const date = String(attendance.attendanceDate || '').slice(0, 10);
       return !!date &&
@@ -100,22 +82,46 @@ export default createEndpoint({
         (!input.endDate || date <= input.endDate);
     });
 
+    const staff = await loadGroupFacilitators(group);
+    staff.forEach(entry => addRecord(entry.user));
+    const isPwReport = ['PW', 'PRABHUPADA WORLD'].includes(String(group.segment || context.user.segment || '').toUpperCase()) || context.user.isPrabhupadaWorldUser === true;
+    const joinedOnByUserId = new Map<string, string>();
+    if (isPwReport) {
+      const history = await readBvReportHistory([...activeMembers.map(memberUser), ...staff.map(entry => entry.user)].filter(Boolean), input.startDate, input.endDate);
+      attRecords = [...new Map([...attRecords, ...history].map(record => [record.id, record])).values()];
+      for (const membership of membersRes.records) {
+        const user = memberUser(membership);
+        const joinedOn = bvMembershipJoinedOn(membership.joinedAt);
+        if (user && joinedOn) joinedOnByUserId.set(user.id, joinedOn);
+      }
+    }
+    const reportUsers = [...activeMembers.map(memberUser), ...staff.map(entry => entry.user)].filter(Boolean);
+    const merged = mergeReportAttendance(attRecords,
+      new Map(reportUsers.map(user => [String(user.id), String(group.id)])),
+      reference => userMap[reference.trim().toLowerCase()]?.id || reference,
+      reference => [group.id, group.groupId].includes(reference) ? String(group.id) : reference,
+      joinedOnByUserId);
+
     // Build date list from attendance records
     const dates = [...new Set(
-      attRecords.map((a: any) => a.attendanceDate).filter(Boolean)
+      merged.sessionDates
     )].sort() as string[];
 
     // Build userId → date → present map
     const userDateMap: Record<string, Record<string, number>> = {};
-    for (const a of attRecords) {
-      const uid = Array.isArray(a.user) ? a.user[0] : a.user as string;
-      const date = a.attendanceDate as string;
-      if (!uid || !date) continue;
-      if (!userDateMap[uid]) userDateMap[uid] = {};
-      userDateMap[uid][date] = a.present ? 1 : 0;
+    for (const [uid, attendance] of Object.entries(merged.attendance)) {
+      userDateMap[uid] = Object.fromEntries(Object.entries(attendance).map(([date, present]) => [date, present ? 1 : 0]));
     }
+    const attendanceFor = (uid: string): Record<string, number> => {
+      const attendance: Record<string, number> = {};
+      for (const date of dates) {
+        const stored = userDateMap[uid]?.[date];
+        if (stored !== undefined) attendance[date] = stored;
+        else if (merged.groupSessionDates.get(String(group.id))?.has(date) && date >= (joinedOnByUserId.get(uid) || '')) attendance[date] = 0;
+      }
+      return attendance;
+    };
 
-    const staff = await loadGroupFacilitators(group);
     const roleFor = (user: any): 'RGF' | 'RGSF' | null => {
       if (!user) return null;
       const aliases = new Set(bvUserAliases(user));
@@ -130,10 +136,8 @@ export default createEndpoint({
     };
     const rows = activeMembers.map((m: any) => {
       const uid = firstValue(m.user);
-      const altUid = firstValue(m.userId);
-      const u = (userMap[uid] || userMap[uid.toLowerCase()] || userMap[altUid] || userMap[altUid.toLowerCase()]) as any;
-      const attendance: Record<string, number> = {};
-      dates.forEach(d => { attendance[d] = userDateMap[uid]?.[d] ?? 0; });
+      const u = memberUser(m);
+      const attendance = attendanceFor(u?.id || uid);
       const weekTotal = Object.values(attendance).reduce((s, v) => s + v, 0);
       return {
         userId: u?.userId || uid || '',
@@ -148,20 +152,13 @@ export default createEndpoint({
     const covered = new Set(rows.flatMap(row => [row.userId, row.name].map(value => String(value || '').trim().toLowerCase()).filter(Boolean)));
     const matrixMembers = activeMembers.map((m: any) => {
       const uid = firstValue(m.user);
-      const altUid = firstValue(m.userId);
-      const u = (userMap[uid] || userMap[uid.toLowerCase()] || userMap[altUid] || userMap[altUid.toLowerCase()]) as any;
+      const u = memberUser(m);
       return { membershipId: m.id, userId: u?.userId || u?.id || uid, fullName: u?.fullName || '' };
     });
     for (const entry of staff) {
       const aliases = bvUserAliases(entry.user);
       if (aliases.some(alias => covered.has(alias))) continue;
-      const attendance: Record<string, number> = {};
-      dates.forEach(date => {
-        const stored = [entry.user.id, entry.user.userId, ...aliases]
-          .map(alias => userDateMap[String(alias || '')]?.[date])
-          .find(value => value !== undefined);
-        attendance[date] = stored ?? 0;
-      });
+      const attendance = attendanceFor(entry.user.id);
       const weekTotal = Object.values(attendance).reduce((sum, value) => sum + value, 0);
       rows.push({
         userId: entry.user.userId || entry.user.id || '',

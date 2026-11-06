@@ -5,6 +5,7 @@ import transferBvGroupMember from '../src/api/transferBvGroupMember';
 import getUserProfile from '../src/api/getUserProfile';
 import getUserBvStatus from '../src/api/getUserBvStatus';
 import acknowledgeBvRoleNotice from '../src/api/acknowledgeBvRoleNotice';
+import getSadhanaFormData from '../src/api/getSadhanaFormData';
 import { BvGroupMembers, BvGroups, Users } from '../src/lib/app-backend-sdk';
 
 test('moving a BV member replaces old memberships and synchronizes their profile', async () => {
@@ -27,6 +28,7 @@ test('moving a BV member replaces old memberships and synchronizes their profile
     segment: 'PW',
     isBvMember: true,
     bvGroupId: 'BV-TRANSFER-OLD-GROUP-DOC',
+    pwTargets: { wakeUp: '05:00', sleep: '22:00', chanting: 16, readingMin: 30, hearingMin: 30, sevaMin: 60, setByRole: 'rgf', setBy: 'previous-rgf' },
   };
   const oldGroup = { id: 'BV-TRANSFER-OLD-GROUP-DOC', groupId: 'BV-TRANSFER-OLD-GROUP', groupName: 'Old Group', segment: 'PW', isActive: true };
   const newGroup = { id: 'BV-TRANSFER-NEW-GROUP-DOC', groupId: 'BV-TRANSFER-NEW-GROUP', groupName: 'New Group', segment: 'PW', isActive: true, bvslLeader: facilitator.id };
@@ -58,8 +60,11 @@ test('moving a BV member replaces old memberships and synchronizes their profile
     assert.equal(updatedMember?.bvReportingFacilitatorId, facilitator.userId);
     assert.equal(updatedMember?.pendingBvGroupAssignmentNotice, true);
     assert.equal(updatedMember?.roleNoticeAcknowledged, false);
+    assert.deepEqual(updatedMember?.pwTargets, member.pwTargets);
 
     const assignedContext = { user: { id: member.id, userId: member.userId, email: member.email } };
+    const assignedForm = await getSadhanaFormData.execute({ input: { date: '2026-11-02' }, context: assignedContext } as never);
+    assert.deepEqual(assignedForm.pwTargets, { wakeUp: '05:00', sleep: '22:00', chanting: 16, readingMin: 30, hearingMin: 30, sevaMin: 60 });
     const assignedProfile = await getUserProfile.execute({ input: {}, context: assignedContext } as never);
     assert.equal(assignedProfile.user?.pendingBvGroupAssignmentNotice, true);
     assert.equal(assignedProfile.user?.bvGroupName, newGroup.groupName);

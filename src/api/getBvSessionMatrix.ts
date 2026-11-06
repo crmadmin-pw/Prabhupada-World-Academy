@@ -1,13 +1,15 @@
 import { z } from 'zod';
 import { isQuizDraft } from '@/lib/quizPublication';
 import { getScopedHierarchyUserIds, isPwDepartmentAdmin, isUserInHierarchy } from '../lib/hierarchyUtils';
-import { createEndpoint, AppError, Users, BvGroups, BvGroupMembers, BvAttendance, BvQuizzes, BvQuizSubmissions, FolkResidencies } from '@/lib/backend-sdk';
+import { createEndpoint, AppError, BvGroups, BvGroupMembers, BvAttendance, BvQuizzes, BvQuizSubmissions, FolkResidencies } from '@/lib/backend-sdk';
 import { requireGuideRole } from '../lib/userUtils';
 import { getGuideIdsForResidencies } from '../lib/guideScope';
 import { legacyQuizMatchesGroup, normalizeQuizDepartment } from '../lib/bvQuizAccess';
 import { bvGroupFacilitatorAliases, bvUserAliases, isBvDepartmentAdmin, isBvSuperAdminUser, isBvSupervisorUser, resolveBvDepartmentGroups, resolveBvScopedGroups, resolveBvUsersByAliases } from '../lib/bvGroupMemberScope';
 import { findAllByIn } from '../lib/scopedEntryReads';
-import { mergeReportAttendance } from '../lib/bvReportAttendance';
+import { bvMembershipJoinedOn, mergeReportAttendance } from '../lib/bvReportAttendance';
+import { readBvReportHistory } from '../lib/bvReportHistory';
+import { getUserDepartment } from '../lib/userDashboardRoutes';
 
 export default createEndpoint({
   description: 'BV attendance matrix with FOLK-only quiz results',
@@ -113,12 +115,12 @@ export default createEndpoint({
     const [membersByGroup, membersByGroupId] = await Promise.all([
       BvGroupMembers.findAll({
         filters: { group: { in: groupIds } } as any,
-        fields: ['id', 'user', 'userId', 'memberId', 'group', 'groupId'],
+        fields: ['id', 'user', 'userId', 'memberId', 'group', 'groupId', 'joinedAt'],
         limit: 2000,
       }),
       BvGroupMembers.findAll({
         filters: { groupId: { in: groupIds } } as any,
-        fields: ['id', 'user', 'userId', 'memberId', 'group', 'groupId'],
+        fields: ['id', 'user', 'userId', 'memberId', 'group', 'groupId', 'joinedAt'],
         limit: 2000,
       }),
     ]);
@@ -247,17 +249,27 @@ export default createEndpoint({
       : permittedUsers;
     const userMap = new Map<string, any>();
     scopedUsers.forEach(user => bvUserAliases(user).forEach(alias => userMap.set(alias, user)));
+    const isPwReport = (segment || getUserDepartment(context.user)) === 'PW';
+    const attendanceRecords = isPwReport
+      ? [...new Map([...allAttendance, ...await readBvReportHistory(scopedUsers, startDate, endDate)]
+        .map(record => [record.id, record])).values()]
+      : allAttendance;
 
     // Build member list
     const seenUserIds = new Set<string>();
     const memberGroupMap = new Map<string, string>();
+    const joinedOnByUserId = new Map<string, string>();
     for (const m of memberships) {
       const uid = (Array.isArray(m.user) ? m.user[0] : (m.user || (m as any).userId || (m as any).memberId)) as string;
       const gid = (Array.isArray(m.group) ? m.group[0] : (m.group || (m as any).groupId)) as string;
       const canonicalGroupId = groupCanonicalId.get(String(gid)) || String(gid);
       if (uid && canonicalGroupId) {
         const user = userMap.get(String(uid).trim().toLowerCase());
-        if (user && !memberGroupMap.has(user.id)) memberGroupMap.set(user.id, canonicalGroupId);
+        if (user && !memberGroupMap.has(user.id)) {
+          memberGroupMap.set(user.id, canonicalGroupId);
+          const joinedOn = isPwReport ? bvMembershipJoinedOn(m.joinedAt) : '';
+          if (joinedOn) joinedOnByUserId.set(user.id, joinedOn);
+        }
       }
     }
     for (const group of groups) {
@@ -308,10 +320,11 @@ export default createEndpoint({
     }
 
     const merged = mergeReportAttendance(
-      allAttendance,
+      attendanceRecords,
       memberGroupMap,
       reference => userMap.get(String(reference || '').trim().toLowerCase())?.id || reference,
       reference => groupCanonicalId.get(String(reference)) || String(reference || ''),
+      joinedOnByUserId,
     );
     const attendanceMap = merged.attendance;
     const groupSessionDates = merged.groupSessionDates;
@@ -323,6 +336,7 @@ export default createEndpoint({
       if (!gDates) continue;
       if (!attendanceMap[m.userId]) attendanceMap[m.userId] = {};
       for (const d of gDates) {
+        if (d < (joinedOnByUserId.get(m.userId) || '')) continue;
         if (attendanceMap[m.userId][d] === undefined) {
           attendanceMap[m.userId][d] = false;
         }

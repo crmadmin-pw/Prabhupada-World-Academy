@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mergeReportAttendance } from '../src/lib/bvReportAttendance';
+import { bvMembershipJoinedOn, mergeReportAttendance } from '../src/lib/bvReportAttendance';
 
 test('a moved member stays absent on days the new group met', () => {
   const memberGroup = new Map([['rimpy-doc', 'tempos-doc']]);
@@ -28,4 +28,24 @@ test('an unmarked day in the new group is not filled from the previous group', (
   ], memberGroup, reference => reference, reference => reference);
 
   assert.equal(merged.attendance['rimpy-doc']?.['2026-10-17'], undefined);
+});
+
+test('former-group history before the transfer overrides destination backfilled absences', () => {
+  const merged = mergeReportAttendance([
+    { user: 'member', group: 'old', attendanceDate: '2026-10-27', present: true },
+    { user: 'member', group: 'new', attendanceDate: '2026-10-27', present: false },
+    { user: 'member', group: 'old', attendanceDate: '2026-10-28', present: true },
+    { user: 'peer', group: 'new', attendanceDate: '2026-10-28', present: true },
+    { user: 'member', group: 'old', attendanceDate: '2026-11-02', present: true },
+    { user: 'member', group: 'new', attendanceDate: '2026-11-02', present: false },
+  ], new Map([['member', 'new']]), ref => ref, ref => ref, new Map([['member', '2026-11-02']]));
+  assert.equal(merged.attendance.member['2026-10-27'], true);
+  assert.equal(merged.attendance.member['2026-10-28'], true);
+  assert.equal(merged.attendance.member['2026-11-02'], false);
+});
+
+test('the transfer day uses IST and tolerates missing legacy timestamps', () => {
+  assert.equal(bvMembershipJoinedOn('2026-11-01T20:00:00Z'), '2026-11-02');
+  assert.equal(bvMembershipJoinedOn(undefined), '');
+  assert.equal(bvMembershipJoinedOn('invalid'), '');
 });

@@ -12,15 +12,16 @@ export type ReportAttendanceRecord = {
 };
 
 /**
- * Attendance follows the member's current reading group.
- * A present mark from the group she left must not override an absence, or a
- * session day with no mark, in the group she joined.
+ * Keep former-group marks before a known transfer date. From the joining day,
+ * a former-group presence must not override an absence, or an unmarked session,
+ * in the current group. Legacy memberships without dates retain that rule.
  */
 export function mergeReportAttendance(
   records: ReportAttendanceRecord[],
   memberGroupByUserId: Map<string, string>,
   userIdFor: (reference: string) => string,
   groupIdFor: (reference: string) => string,
+  joinedOnByUserId = new Map<string, string>(),
 ): {
   attendance: Record<string, Record<string, boolean>>;
   groupSessionDates: Map<string, Set<string>>;
@@ -63,10 +64,27 @@ export function mergeReportAttendance(
     const uid = key.slice(0, split);
     const date = key.slice(split + 1);
     const memberGroup = memberGroupByUserId.get(uid) || '';
-    if (memberGroup && groupSessionDates.get(memberGroup)?.has(date)) continue;
+    const joinedOn = joinedOnByUserId.get(uid);
+    if ((!joinedOn || date >= joinedOn) && memberGroup && groupSessionDates.get(memberGroup)?.has(date)) continue;
     write(key, present);
   }
-  for (const [key, present] of current) write(key, present);
+  for (const [key, present] of current) {
+    const split = key.indexOf('|');
+    const uid = key.slice(0, split);
+    const date = key.slice(split + 1);
+    const joinedOn = joinedOnByUserId.get(uid);
+    // Backfilled absences in the destination group must not erase the mark
+    // saved in the previous group before this member joined.
+    if (joinedOn && date < joinedOn && attendance[uid]?.[date] !== undefined) continue;
+    write(key, present);
+  }
 
   return { attendance, groupSessionDates, sessionDates: [...sessionDates].sort() };
+}
+
+/** Membership timestamps are UTC; attendance dates use the Indian calendar. */
+export function bvMembershipJoinedOn(value: unknown): string {
+  if (!value) return '';
+  const time = new Date(String(value)).getTime();
+  return Number.isFinite(time) ? new Date(time + 330 * 60_000).toISOString().slice(0, 10) : '';
 }

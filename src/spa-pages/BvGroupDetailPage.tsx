@@ -89,10 +89,10 @@ function AttendanceMatrix({ matrix, dates }: { matrix: MatrixData; dates: string
                 )}
               </td>
               {dates.map(d => {
-                const val = row.attendance[d] ?? 0;
+                const val = row.attendance[d];
                 return (
-                  <td key={d} className={`text-center px-2 py-2 font-mono font-bold ${val === 1 ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50'}`}>
-                    {val === 1 ? '✓' : '✗'}
+                  <td key={d} className={`text-center px-2 py-2 font-mono font-bold ${val === 1 ? 'text-green-600 bg-green-50' : val === 0 ? 'text-red-600 bg-red-50' : 'text-muted-foreground'}`}>
+                    {val === 1 ? '✓' : val === 0 ? '✗' : '—'}
                   </td>
                 );
               })}
