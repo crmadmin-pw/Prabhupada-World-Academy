@@ -120,8 +120,8 @@ export default createEndpoint({
       const [membersByGroup, membersByGroupId, attendanceByGroup, attendanceByGroupId] = await Promise.all([
         BvGroupMembers.findAll({ filters: { group: { in: groupIds } } as any, fields: ['id', 'user', 'userId', 'memberId'], limit: 500 }),
         BvGroupMembers.findAll({ filters: { groupId: { in: groupIds } } as any, fields: ['id', 'user', 'userId', 'memberId'], limit: 500 }),
-        BvAttendance.findAll({ filters: { group: { in: groupIds } } as any, fields: ['id', 'user', 'present', 'attendanceDate'], limit: 2000 }),
-        BvAttendance.findAll({ filters: { groupId: { in: groupIds } } as any, fields: ['id', 'user', 'present', 'attendanceDate'], limit: 2000 }),
+        BvAttendance.findAll({ filters: { group: { in: groupIds } } as any, fields: ['id', 'user', 'present', 'status', 'attendanceDate'], limit: 2000 }),
+        BvAttendance.findAll({ filters: { groupId: { in: groupIds } } as any, fields: ['id', 'user', 'present', 'status', 'attendanceDate'], limit: 2000 }),
       ]);
       const memberRows = [...membersByGroup.records, ...membersByGroupId.records]
         .filter((row, index, rows) => rows.findIndex(candidate => candidate.id === row.id) === index);
@@ -171,7 +171,7 @@ export default createEndpoint({
       const totalSessions = distinctDates.size;
 
       const presentCount = attRecords.filter((a: any) => a.present).length;
-      const totalPossible = memberCount * totalSessions;
+      const totalPossible = Math.max(0, memberCount * totalSessions - attRecords.filter((a: any) => a.status === 'L').length);
       return {
         groupId: (g.groupId as string) || g.id,
         groupName: (g.groupName as string) || '',

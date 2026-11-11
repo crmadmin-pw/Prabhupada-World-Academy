@@ -62,7 +62,7 @@ export default createEndpoint({
             group: { in: groupIds },
             attendanceDate: { gte: startDate, lte: endDate },
           } as any,
-          fields: ['id', 'group', 'user', 'present', 'attendanceDate'],
+          fields: ['id', 'group', 'user', 'present', 'status', 'attendanceDate'],
           limit: 2000,
           offset: attOff,
         });
@@ -126,17 +126,18 @@ export default createEndpoint({
     }
 
     // Group attendance by groupId + date
-    type AttBucket = { presentCount: number; total: number };
+    type AttBucket = { presentCount: number; leaveCount: number; total: number };
     const attByGroupDate = new Map<string, AttBucket>();
     for (const a of allAttendance) {
       const gid = Array.isArray(a.group) ? a.group[0] : a.group as string;
       const date = String(a.attendanceDate || '').slice(0, 10);
       if (!gid || !date) continue;
       const key = `${gid}::${date}`;
-      if (!attByGroupDate.has(key)) attByGroupDate.set(key, { presentCount: 0, total: 0 });
+      if (!attByGroupDate.has(key)) attByGroupDate.set(key, { presentCount: 0, leaveCount: 0, total: 0 });
       const bucket = attByGroupDate.get(key)!;
       bucket.total++;
       if (a.present) bucket.presentCount++;
+      if (a.status === 'L') bucket.leaveCount++;
     }
 
     // Build session rows from attendance buckets (one row per group+date)
@@ -148,7 +149,8 @@ export default createEndpoint({
       const leaderIds = textList(group.bvslLeader);
       const totalMembers = memberCountByGroup.get(gid) || bucket.total;
       const meta = sessionMetaMap.get(key) || { topic: '', notes: '' };
-      const attendancePercent = totalMembers > 0 ? Math.round((bucket.presentCount / totalMembers) * 100) : 0;
+      const eligibleMembers = Math.max(0, totalMembers - bucket.leaveCount);
+      const attendancePercent = eligibleMembers > 0 ? Math.round((bucket.presentCount / eligibleMembers) * 100) : 0;
       sessionRows.push({
         sessionId: key,
         sessionDate: date,
@@ -158,6 +160,7 @@ export default createEndpoint({
         topic: meta.topic,
         notes: meta.notes,
         presentCount: bucket.presentCount,
+        leaveCount: bucket.leaveCount,
         totalMembers,
         attendancePercent,
       });

@@ -290,7 +290,7 @@ async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<strin
       }),
       allGroupIds.length === 0 ? Promise.resolve({ records: [] }) : BvAttendance.findAll({
         filters: { group: { in: allGroupIds } } as any,
-        fields: ['id', 'group', 'present', 'attendanceDate'],
+        fields: ['id', 'group', 'present', 'status', 'attendanceDate'],
         limit: 10000,
       }),
     ]);
@@ -361,7 +361,7 @@ async function _fetchAllBvGroupsAdmin(inputGuideId: string, hierarchy: Set<strin
 
       // Compute avg attendance rate
       const totalPresent = attRecords.filter((a: any) => a.present).length;
-      const totalPossible = memberCount * sessionCount;
+      const totalPossible = Math.max(0, memberCount * sessionCount - attRecords.filter((a: any) => a.status === 'L').length);
       const avgAttendanceRate = totalPossible > 0
         ? Math.round((totalPresent / totalPossible) * 100)
         : 0;

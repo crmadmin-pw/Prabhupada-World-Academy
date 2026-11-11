@@ -49,3 +49,11 @@ test('the transfer day uses IST and tolerates missing legacy timestamps', () => 
   assert.equal(bvMembershipJoinedOn(undefined), '');
   assert.equal(bvMembershipJoinedOn('invalid'), '');
 });
+
+test('the BV report keeps leave distinct from absence after a transfer', () => {
+  const merged = mergeReportAttendance([
+    { user: 'member', group: 'old', attendanceDate: '2026-11-02', present: true },
+    { user: 'member', group: 'new', attendanceDate: '2026-11-02', present: false, status: 'L' },
+  ], new Map([['member', 'new']]), ref => ref, ref => ref, new Map([['member', '2026-11-02']]));
+  assert.equal(merged.attendance.member['2026-11-02'], 'L');
+});

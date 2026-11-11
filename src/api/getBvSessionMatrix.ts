@@ -181,7 +181,7 @@ export default createEndpoint({
             field,
             groupIds,
             { attendanceDate: { gte: startDate, lte: endDate } },
-            ['id', 'group', 'groupId', 'user', 'present', 'attendanceDate'],
+            ['id', 'group', 'groupId', 'user', 'present', 'status', 'attendanceDate'],
           );
           const [byGroup, byGroupId] = await Promise.all([loadAttendance('group'), loadAttendance('groupId')]);
           allAttendance = [...byGroup, ...byGroupId]

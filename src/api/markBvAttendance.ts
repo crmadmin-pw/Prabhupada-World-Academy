@@ -22,18 +22,22 @@ async function requireAssignedFacilitator(groupId: string, context: any) {
 }
 
 export default createEndpoint({
-  description: 'Mark a user present or absent in a specific BV session, or by date',
+  description: 'Mark a user present, absent, or on leave in a specific BV session, or by date',
   authenticated: true,
   inputSchema: z.object({
     sessionId: z.string().optional(),
     userId: z.string().optional(),
     present: z.boolean().optional(),
-    status: z.string().optional(),
+    status: z.enum(['P', 'A', 'L']).optional(),
     localDate: z.string().optional(),
   }),
   outputSchema: z.any(),
   execute: async ({ input, context }) => {
-    const isPresent = input.present ?? (input.status === 'P');
+    if (input.status && input.present !== undefined && input.present !== (input.status === 'P')) {
+      throw new AppError({ code: 'BAD_REQUEST', message: 'Conflicting attendance status' });
+    }
+    const status = input.status || (input.present ? 'P' : 'A');
+    const isPresent = status === 'P';
 
     // Resolve canonical user keys (document ID, custom user ID, email). The
     // attendance writer must use the same identity as group-session attendance
@@ -78,13 +82,14 @@ export default createEndpoint({
       });
 
       if (existing) {
-        await BvAttendance.update({ id: existing.id, record: { present: isPresent, group: groupId, session: input.sessionId } });
+        await BvAttendance.update({ id: existing.id, record: { present: isPresent, status, ...(!isPresent ? { attendedMinutes: 0 } : {}), group: groupId, session: input.sessionId } });
       } else {
         await BvAttendance.create({
           record: {
             session: input.sessionId,
             user: uid,
             present: isPresent,
+            status,
             ...(sessionDate ? { attendanceDate: sessionDate } : {}),
             ...(groupId ? { group: groupId } : {}),
           },
@@ -139,7 +144,7 @@ export default createEndpoint({
       });
 
       if (existing) {
-        await BvAttendance.update({ id: existing.id, record: { present: isPresent, group: groupId } });
+        await BvAttendance.update({ id: existing.id, record: { present: isPresent, status, ...(!isPresent ? { attendedMinutes: 0 } : {}), group: groupId } });
         return { success: true };
       }
 
@@ -151,6 +156,7 @@ export default createEndpoint({
         record: {
           user: uid,
           present: isPresent,
+          status,
           attendanceDate: input.localDate,
           ...(groupId ? { group: groupId } : {}),
           ...(session ? { session: session.id } : {}),

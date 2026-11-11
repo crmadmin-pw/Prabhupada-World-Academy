@@ -63,20 +63,23 @@ export default createEndpoint({
     // Query attendance directly by group + date (new approach)
     const { records: directAttRecords } = await BvAttendance.findAll({
       filters: { group: group.id, attendanceDate: input.date },
-      fields: ['id', 'user', 'present', 'attendedMinutes', 'totalMeetingMinutes'],
+      fields: ['id', 'user', 'present', 'status', 'attendedMinutes', 'totalMeetingMinutes'],
       limit: 500,
     });
 
     const attendanceMap: Record<string, boolean | null> = {};
+    const statusMap: Record<string, 'P' | 'A' | 'L'> = {};
     const attendedMinutesMap: Record<string, number | null> = {};
     let totalMeetingMinutes: number = 60;
     let sessionExists = directAttRecords.length > 0;
 
-    const rememberAttendance = (uid: unknown, present: boolean | null, minutes: number | null) => {
+    const rememberAttendance = (uid: unknown, present: boolean | null, minutes: number | null, status: 'P' | 'A' | 'L') => {
       const key = String(uid || '').trim();
       if (!key) return;
       attendanceMap[key] = present;
       attendanceMap[key.toLowerCase()] = present;
+      statusMap[key] = status;
+      statusMap[key.toLowerCase()] = status;
       attendedMinutesMap[key] = minutes;
       attendedMinutesMap[key.toLowerCase()] = minutes;
     };
@@ -86,7 +89,7 @@ export default createEndpoint({
         const uid = Array.isArray(a.user) ? a.user[0] : a.user;
         if (uid) {
           const minutes = typeof a.attendedMinutes === 'number' ? a.attendedMinutes : (a.present ? (a.totalMeetingMinutes || 60) : 0);
-          rememberAttendance(uid, a.present ?? null, minutes);
+          rememberAttendance(uid, a.present ?? null, minutes, a.status === 'L' ? 'L' : a.present ? 'P' : 'A');
         }
         if (a.totalMeetingMinutes && typeof a.totalMeetingMinutes === 'number') {
           totalMeetingMinutes = a.totalMeetingMinutes;
@@ -102,14 +105,14 @@ export default createEndpoint({
         sessionExists = true;
         const { records: attRecords } = await BvAttendance.findAll({
           filters: { session: session.id },
-          fields: ['id', 'user', 'present', 'attendedMinutes', 'totalMeetingMinutes'],
+          fields: ['id', 'user', 'present', 'status', 'attendedMinutes', 'totalMeetingMinutes'],
           limit: 500,
         });
         attRecords.forEach((a: any) => {
           const uid = Array.isArray(a.user) ? a.user[0] : a.user;
           if (uid) {
             const minutes = typeof a.attendedMinutes === 'number' ? a.attendedMinutes : (a.present ? (a.totalMeetingMinutes || 60) : 0);
-            rememberAttendance(uid, a.present ?? null, minutes);
+            rememberAttendance(uid, a.present ?? null, minutes, a.status === 'L' ? 'L' : a.present ? 'P' : 'A');
           }
           if (a.totalMeetingMinutes && typeof a.totalMeetingMinutes === 'number') {
             totalMeetingMinutes = a.totalMeetingMinutes;
@@ -141,11 +144,13 @@ export default createEndpoint({
       const keys = [...extraIds, ...bvUserAliases(user)].map(value => String(value || '').trim()).filter(Boolean);
       let present: boolean | null | undefined;
       let minutes: number | null | undefined;
+      let status: 'P' | 'A' | 'L' | undefined;
       for (const key of keys) {
         if (present === undefined && attendanceMap[key] !== undefined) present = attendanceMap[key];
         if (minutes === undefined && attendedMinutesMap[key] !== undefined) minutes = attendedMinutesMap[key];
+        if (status === undefined && statusMap[key] !== undefined) status = statusMap[key];
       }
-      return { present: present ?? null, minutes };
+      return { present: present ?? null, minutes, status };
     };
 
     const members = memberRecords
@@ -161,6 +166,7 @@ export default createEndpoint({
           userId: u.userId || u.id,
           fullName: u.fullName || '',
           present: isPresent,
+          status: sessionExists ? saved.status || (isPresent ? 'P' : 'A') : null,
           attendedMinutes: sessionExists ? (saved.minutes ?? (isPresent ? totalMeetingMinutes : 0)) : 0,
           roleLabel: roleFor(u),
           supervisor: isSupervisor(u),
@@ -179,6 +185,7 @@ export default createEndpoint({
         userId: entry.user.userId || entry.user.id,
         fullName: entry.user.fullName || '',
         present: isPresent,
+        status: sessionExists ? saved.status || (isPresent ? 'P' : 'A') : null,
         attendedMinutes: sessionExists ? (saved.minutes ?? (isPresent ? totalMeetingMinutes : 0)) : 0,
         roleLabel: facilitatorRoleLabel(entry.badges),
         supervisor: isSupervisor(entry.user),
@@ -203,6 +210,7 @@ export default createEndpoint({
         userId: supervisor.userId || supervisor.id,
         fullName: supervisor.fullName || '',
         present: isPresent,
+        status: sessionExists ? saved.status || (isPresent ? 'P' : 'A') : null,
         attendedMinutes: sessionExists ? (saved.minutes ?? (isPresent ? totalMeetingMinutes : 0)) : 0,
         roleLabel: null,
         supervisor: true,

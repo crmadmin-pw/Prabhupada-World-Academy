@@ -16,6 +16,7 @@ export default createEndpoint({
     memberAttendance: z.array(z.object({
       userDbId: z.string(),
       present: z.boolean(),
+      status: z.enum(['P', 'A', 'L']).optional(),
       attendedMinutes: z.number().optional(),
     })).optional(),
   }),
@@ -133,7 +134,7 @@ export default createEndpoint({
     // Load existing attendance records for this group+date (new approach)
     const { records: existingAtt } = await BvAttendance.findAll({
       filters: { group: group.id, attendanceDate: input.sessionDate },
-      fields: ['id', 'user'],
+      fields: ['id', 'user', 'status'],
       limit: 500,
     });
     const attByUserDbId: Record<string, string> = {};
@@ -145,13 +146,15 @@ export default createEndpoint({
     });
 
     const totalMinutes = input.totalMeetingMinutes || 60;
-    const memberAttMap: Record<string, { present: boolean; attendedMinutes: number }> = {};
+    const memberAttMap: Record<string, { present: boolean; status: 'P' | 'A' | 'L'; attendedMinutes: number }> = {};
 
     if (input.memberAttendance && input.memberAttendance.length > 0) {
       input.memberAttendance.forEach((ma: any) => {
+        const status: 'P' | 'A' | 'L' = ma.status || (ma.present ? 'P' : 'A');
         memberAttMap[ma.userDbId] = {
-          present: !!ma.present,
-          attendedMinutes: typeof ma.attendedMinutes === 'number' ? ma.attendedMinutes : (ma.present ? totalMinutes : 0),
+          present: status === 'P',
+          status,
+          attendedMinutes: status === 'P' ? (typeof ma.attendedMinutes === 'number' ? ma.attendedMinutes : totalMinutes) : 0,
         };
       });
     } else {
@@ -160,6 +163,7 @@ export default createEndpoint({
         const isPresent = person.keys.some(key => presentSet.has(key.toLowerCase()));
         memberAttMap[person.writeUserId] = {
           present: isPresent,
+          status: isPresent ? 'P' : 'A',
           attendedMinutes: isPresent ? totalMinutes : 0,
         };
       }
@@ -174,7 +178,7 @@ export default createEndpoint({
         const hit = lower.get(key.toLowerCase());
         if (hit) return hit;
       }
-      return { present: false, attendedMinutes: 0 };
+      return { present: false, status: 'A' as const, attendedMinutes: 0 };
     };
     const existingIdFor = (keys: string[]) => {
       for (const key of keys) {
@@ -185,8 +189,8 @@ export default createEndpoint({
     };
 
     // Split into records to update vs records to create
-    const toUpdate: { id: string; present: boolean; attendedMinutes: number; totalMeetingMinutes: number }[] = [];
-    const toCreate: { session: string; user: string; present: boolean; attendedMinutes: number; totalMeetingMinutes: number; attendanceDate: string; group: string }[] = [];
+    const toUpdate: { id: string; present: boolean; status: 'P' | 'A' | 'L'; attendedMinutes: number; totalMeetingMinutes: number }[] = [];
+    const toCreate: { session: string; user: string; present: boolean; status: 'P' | 'A' | 'L'; attendedMinutes: number; totalMeetingMinutes: number; attendanceDate: string; group: string }[] = [];
 
     for (const person of roster) {
       const attData = payloadFor(person.keys);
@@ -195,6 +199,7 @@ export default createEndpoint({
         toUpdate.push({
           id: existingId,
           present: attData.present,
+          status: attData.status,
           attendedMinutes: attData.attendedMinutes,
           totalMeetingMinutes: totalMinutes,
         });
@@ -203,6 +208,7 @@ export default createEndpoint({
           session: session.id,
           user: person.writeUserId,
           present: attData.present,
+          status: attData.status,
           attendedMinutes: attData.attendedMinutes,
           totalMeetingMinutes: totalMinutes,
           attendanceDate: input.sessionDate,
@@ -214,7 +220,7 @@ export default createEndpoint({
     // Update existing attendance records
     await Promise.all(toUpdate.map(u => BvAttendance.update({
       id: u.id,
-      record: { present: u.present, attendedMinutes: u.attendedMinutes, totalMeetingMinutes: u.totalMeetingMinutes },
+      record: { present: u.present, status: u.status, attendedMinutes: u.attendedMinutes, totalMeetingMinutes: u.totalMeetingMinutes },
     })));
 
     // Bulk create new attendance records (chunks of 100)

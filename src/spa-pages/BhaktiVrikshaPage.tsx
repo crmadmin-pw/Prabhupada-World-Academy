@@ -337,6 +337,8 @@ export default function BhaktiVrikshaPage() {
                     <XCircle className="w-5 h-5" />
                     <span className="text-lg font-bold">Absent</span>
                   </div>
+                ) : bvStatus.todayStatus === 'L' ? (
+                  <div className="text-lg font-bold text-amber-700">On leave</div>
                 ) : (
                   <div className="text-lg font-bold text-muted-foreground">—</div>
                 )}

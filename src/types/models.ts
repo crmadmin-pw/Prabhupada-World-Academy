@@ -218,7 +218,7 @@ export interface BvMember {
 
 export interface BvAttendanceRecord {
   attendanceDate: string;
-  status: 'P' | 'A';
+  status: 'P' | 'A' | 'L';
   sessionType?: string;
   notes?: string;
 }

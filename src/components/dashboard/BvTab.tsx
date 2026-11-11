@@ -236,6 +236,8 @@ export default function BvTab({ userId, segment }: Props) {
                   <XCircle className="w-4 h-4" />
                   <span className="font-bold text-sm">Absent</span>
                 </div>
+              ) : todayAttendance === 'L' ? (
+                <div className="text-sm font-bold text-amber-700">On leave</div>
               ) : (
                 <div className="text-sm font-bold text-muted-foreground">—</div>
               )}

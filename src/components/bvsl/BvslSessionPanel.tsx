@@ -41,6 +41,7 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
   const [durationDraft, setDurationDraft] = useState('60');
   const [members, setMembers] = useState<AttendanceMember[]>([]);
   const [presentIds, setPresentIds] = useState<Set<string>>(new Set());
+  const [leaveIds, setLeaveIds] = useState<Set<string>>(new Set());
   const [attendedMinutesMap, setAttendedMinutesMap] = useState<Record<string, number>>({});
   const [localMinutesMap, setLocalMinutesMap] = useState<Record<string, string>>({});
   const [sessionExists, setSessionExists] = useState(false);
@@ -55,6 +56,7 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
     try {
       const res = await read(() => getAttendanceForDate({ groupId, date }));
       setMembers(res.members);
+      setLeaveIds(new Set(res.members.filter((m: any) => m.status === 'L').map((m: AttendanceMember) => m.userDbId)));
       setSessionExists(res.sessionExists);
       const loadedMinutes = res.totalMeetingMinutes || 60;
       setTotalMeetingMinutes(loadedMinutes);
@@ -90,6 +92,7 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
 
   const togglePresent = (userDbId: string) => {
     setHasUnsavedChanges(true);
+    setLeaveIds(prev => { const next = new Set(prev); next.delete(userDbId); return next; });
     setPresentIds(prev => {
       const next = new Set(prev);
       if (next.has(userDbId)) {
@@ -105,9 +108,23 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
     });
   };
 
+  const toggleLeave = (userDbId: string) => {
+    setHasUnsavedChanges(true);
+    setLeaveIds(prev => {
+      const next = new Set(prev);
+      if (next.has(userDbId)) next.delete(userDbId);
+      else next.add(userDbId);
+      return next;
+    });
+    setPresentIds(prev => { const next = new Set(prev); next.delete(userDbId); return next; });
+    setAttendedMinutesMap(prev => ({ ...prev, [userDbId]: 0 }));
+    setLocalMinutesMap(prev => ({ ...prev, [userDbId]: '0' }));
+  };
+
   const handleAttendedMinutesChange = (userDbId: string, val: number) => {
     setHasUnsavedChanges(true);
     const clamped = Math.max(0, Math.min(totalMeetingMinutes, val));
+    if (clamped > 0) setLeaveIds(prev => { const next = new Set(prev); next.delete(userDbId); return next; });
     setAttendedMinutesMap(prev => ({ ...prev, [userDbId]: clamped }));
     if (clamped > 0 && !presentIds.has(userDbId)) {
       setPresentIds(prev => new Set(prev).add(userDbId));
@@ -170,6 +187,7 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
       const memberAttendance = members.map(m => ({
         userDbId: m.userDbId,
         present: presentIds.has(m.userDbId),
+        status: leaveIds.has(m.userDbId) ? 'L' : presentIds.has(m.userDbId) ? 'P' : 'A',
         attendedMinutes: presentIds.has(m.userDbId) ? Math.min(attendedMinutesMap[m.userDbId] ?? minutes, minutes) : 0,
       }));
 
@@ -281,6 +299,7 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
                   <Button size="sm" variant="outline" className="h-7 text-xs"
                     onClick={() => {
                       setPresentIds(new Set(members.map(m => m.userDbId)));
+                      setLeaveIds(new Set());
                       setHasUnsavedChanges(true);
                       const m: Record<string, number> = {};
                       members.forEach(mem => { m[mem.userDbId] = totalMeetingMinutes; });
@@ -291,6 +310,7 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
                   <Button size="sm" variant="outline" className="h-7 text-xs"
                     onClick={() => {
                       setPresentIds(new Set());
+                      setLeaveIds(new Set());
                       setHasUnsavedChanges(true);
                       setAttendedMinutesMap({});
                     }}>
@@ -301,6 +321,7 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
               <div className="grid gap-2 max-h-80 overflow-y-auto pr-1">
                 {members.map(m => {
                   const isPresent = presentIds.has(m.userDbId);
+                  const isLeave = leaveIds.has(m.userDbId);
                   const attMinutes = attendedMinutesMap[m.userDbId] ?? (isPresent ? totalMeetingMinutes : 0);
                   return (
                     <div
@@ -309,6 +330,8 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
                       className={`flex items-center justify-between gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors select-none ${
                         isPresent
                           ? 'border-green-400 bg-green-50 dark:bg-green-950/20'
+                          : isLeave
+                          ? 'border-amber-400 bg-amber-50 dark:bg-amber-950/20'
                           : 'border-border hover:border-muted-foreground'
                       }`}
                     >
@@ -334,6 +357,9 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
 
                       {/* Attended Time Input & Label */}
                       <div className="flex items-center gap-2 shrink-0" onClick={e => e.stopPropagation()}>
+                        <Button type="button" size="sm" variant={isLeave ? 'default' : 'outline'}
+                          className="h-7 text-xs" aria-label={isLeave ? `Remove leave for ${m.fullName}` : `Mark ${m.fullName} on leave`}
+                          onClick={() => toggleLeave(m.userDbId)}>Leave</Button>
                         {isPresent ? (
                           <div className="flex items-center gap-1.5 bg-background border border-green-300 dark:border-green-800 px-2 py-0.5 rounded-md shadow-xs">
                             <span className="text-[11px] text-muted-foreground font-medium">Attended:</span>
@@ -355,7 +381,7 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
                             <span className="text-[11px] text-muted-foreground">/ {totalMeetingMinutes} mins</span>
                           </div>
                         ) : (
-                          <span className="text-xs text-muted-foreground font-normal">Absent (0 mins)</span>
+                          <span className="text-xs text-muted-foreground font-normal">{isLeave ? 'On leave' : 'Absent (0 mins)'}</span>
                         )}
                       </div>
                     </div>

@@ -90,7 +90,7 @@ export default function BvAdminDataTable({ groupId, bvslId, guideId }: Props) {
       r.bvslName,
       r.ashrayLevel || '',
       r.isResident ? 'Yes' : 'No',
-      ...dates.map(d => r.attendance[d] ?? 0),
+      ...dates.map(d => r.attendance[d] === -1 ? 'Leave' : r.attendance[d] ?? 0),
       r.weekTotal,
     ]);
     const csv = [headers, ...csvRows].map(row =>
@@ -209,7 +209,7 @@ export default function BvAdminDataTable({ groupId, bvslId, guideId }: Props) {
                       const val = r.attendance[d] ?? 0;
                       return (
                         <td key={d} className="py-2 px-1 text-center">
-                          <span className={`font-bold ${val === 1 ? 'text-green-600' : 'text-muted-foreground/40'}`}>{val === 1 ? '✓' : '·'}</span>
+                          <span className={`font-bold ${val === 1 ? 'text-green-600' : val === -1 ? 'text-amber-700' : 'text-muted-foreground/40'}`}>{val === 1 ? '✓' : val === -1 ? 'L' : '·'}</span>
                         </td>
                       );
                     })}

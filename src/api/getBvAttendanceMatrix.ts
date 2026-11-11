@@ -73,7 +73,7 @@ export default createEndpoint({
     // keeps the matrix reliable even before that index is deployed.
     const attendancePages = await Promise.all(['group', 'groupId'].map(field =>
       findAllByIn(query => BvAttendance.findAll(query), field, groupRefs, {},
-        ['id', 'user', 'group', 'groupId', 'present', 'attendanceDate'])));
+        ['id', 'user', 'group', 'groupId', 'present', 'status', 'attendanceDate'])));
     let attRecords = [...new Map(attendancePages.flat().map(record => [record.id, record])).values()];
     attRecords = attRecords.filter((attendance: any) => {
       const date = String(attendance.attendanceDate || '').slice(0, 10);
@@ -110,7 +110,7 @@ export default createEndpoint({
     // Build userId → date → present map
     const userDateMap: Record<string, Record<string, number>> = {};
     for (const [uid, attendance] of Object.entries(merged.attendance)) {
-      userDateMap[uid] = Object.fromEntries(Object.entries(attendance).map(([date, present]) => [date, present ? 1 : 0]));
+      userDateMap[uid] = Object.fromEntries(Object.entries(attendance).map(([date, present]) => [date, present === 'L' ? -1 : present ? 1 : 0]));
     }
     const attendanceFor = (uid: string): Record<string, number> => {
       const attendance: Record<string, number> = {};
@@ -138,7 +138,7 @@ export default createEndpoint({
       const uid = firstValue(m.user);
       const u = memberUser(m);
       const attendance = attendanceFor(u?.id || uid);
-      const weekTotal = Object.values(attendance).reduce((s, v) => s + v, 0);
+      const weekTotal = Object.values(attendance).filter(value => value > 0).length;
       return {
         userId: u?.userId || uid || '',
         name: u?.fullName || '',
@@ -159,7 +159,7 @@ export default createEndpoint({
       const aliases = bvUserAliases(entry.user);
       if (aliases.some(alias => covered.has(alias))) continue;
       const attendance = attendanceFor(entry.user.id);
-      const weekTotal = Object.values(attendance).reduce((sum, value) => sum + value, 0);
+      const weekTotal = Object.values(attendance).filter(value => value > 0).length;
       rows.push({
         userId: entry.user.userId || entry.user.id || '',
         name: entry.user.fullName || '',

@@ -163,7 +163,7 @@ export default function BvSessionMatrixTab({ guideId, bvslMode, residencyIds, se
     if (!data) return new Set<string>();
     if (groupId === 'all') return new Set<string>(data.sessionDates);
     const dates = new Set<string>();
-    const attendance = data.attendance as Record<string, Record<string, boolean>>;
+    const attendance = data.attendance as Record<string, Record<string, boolean | 'L'>>;
     for (const member of data.members) {
       if (String(member.groupId || '') !== groupId) continue;
       for (const date of Object.keys(attendance[member.userId] || {})) dates.add(date);
@@ -178,10 +178,10 @@ export default function BvSessionMatrixTab({ guideId, bvslMode, residencyIds, se
     let possible = 0; let attended = 0;
     const quizList: number[] = [];
     for (const m of filteredMembers) {
-      const att = (data.attendance as Record<string, Record<string, boolean>>)[m.userId] || {};
+      const att = (data.attendance as Record<string, Record<string, boolean | 'L'>>)[m.userId] || {};
       const qs = (data.quizScores as Record<string, Record<string, number>>)[m.userId] || {};
       for (const d of sessionDateSet) {
-        if (att[d] !== undefined) { possible++; if (att[d]) attended++; }
+        if (att[d] !== undefined && att[d] !== 'L') { possible++; if (att[d] === true) attended++; }
       }
       for (const score of Object.values(qs)) { if (score != null) quizList.push(score as number); }
     }
@@ -275,10 +275,10 @@ export default function BvSessionMatrixTab({ guideId, bvslMode, residencyIds, se
       const dateCells = displayDates.flatMap(d => {
         const hasS = sessionDateSet.has(d);
         const a = att[d]; const q = qs[d];
-        if (hasS && a !== undefined) { attP++; if (a) attT++; }
+        if (hasS && a !== undefined && a !== 'L') { attP++; if (a === true) attT++; }
         if (q != null) ql.push(q);
         return [
-          ...(showAttendance ? [hasS && a !== undefined ? (a ? 'Present' : 'Absent') : '—'] : []),
+          ...(showAttendance ? [hasS && a !== undefined ? (a === 'L' ? 'Leave' : a ? 'Present' : 'Absent') : '—'] : []),
           ...(showQuiz ? [q ?? null] : []),
         ];
       });
@@ -462,6 +462,7 @@ export default function BvSessionMatrixTab({ guideId, bvslMode, residencyIds, se
             <span className="font-medium">Legend:</span>
             <span className="px-1.5 py-0.5 rounded bg-green-50 text-green-700 border border-green-200">✓ Attended</span>
             <span className="px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200">✗ Absent</span>
+            <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">L Leave</span>
             <span className="px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border">— No session</span>
             {showFolkAssessmentData && <>
               <span className="px-1.5 py-0.5 rounded bg-green-50 text-green-700 border border-green-200">Quiz ≥80%</span>
@@ -516,7 +517,7 @@ export default function BvSessionMatrixTab({ guideId, bvslMode, residencyIds, se
                           member={m}
                           dates={displayDates}
                           sessionDates={sessionDateSet}
-                          attendance={(data.attendance as Record<string, Record<string, boolean>>)[m.userId] || {}}
+                          attendance={(data.attendance as Record<string, Record<string, boolean | 'L'>>)[m.userId] || {}}
                           quizScores={(data.quizScores as Record<string, Record<string, number>>)[m.userId] || {}}
                           isEven={idx % 2 === 0}
                           viewFilter={reportView}
@@ -539,7 +540,7 @@ function MatrixRow({ member, dates, sessionDates, attendance, quizScores, isEven
   member: MemberRow;
   dates: string[];
   sessionDates: Set<string>;
-  attendance: Record<string, boolean>;
+  attendance: Record<string, boolean | 'L'>;
   quizScores: Record<string, number>;
   isEven: boolean;
   viewFilter: 'both' | 'attendance' | 'quiz';
@@ -551,9 +552,9 @@ function MatrixRow({ member, dates, sessionDates, attendance, quizScores, isEven
   let attTotal = 0; let attPossible = 0;
   const quizList: number[] = [];
   for (const d of dates) {
-    if (sessionDates.has(d) && attendance[d] !== undefined) {
+    if (sessionDates.has(d) && attendance[d] !== undefined && attendance[d] !== 'L') {
       attPossible++;
-      if (attendance[d]) attTotal++;
+      if (attendance[d] === true) attTotal++;
     }
     const q = quizScores[d];
     if (q != null) quizList.push(q);
@@ -613,6 +614,8 @@ function MatrixRow({ member, dates, sessionDates, attendance, quizScores, isEven
                 <span className="text-muted-foreground">—</span>
               ) : attVal === true ? (
                 <span className="inline-block px-1 rounded bg-green-50 text-green-700 font-bold">✓</span>
+              ) : attVal === 'L' ? (
+                <span className="inline-block px-1 rounded bg-amber-50 text-amber-700 font-bold" title="Leave">L</span>
               ) : attVal === false ? (
                 <span className="inline-block px-1 rounded bg-red-50 text-red-600 font-bold">✗</span>
               ) : (

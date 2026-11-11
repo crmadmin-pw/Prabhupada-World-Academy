@@ -220,8 +220,8 @@ export default createEndpoint({
     const [membersByGroup, membersByGroupId, attendanceByGroup, attendanceByGroupId] = await Promise.all([
       BvGroupMembers.findAll({ filters: { group: { in: groupQueryRefs } }, fields: ['id', 'user', 'userId', 'memberId'], limit: 1000 }),
       BvGroupMembers.findAll({ filters: { groupId: { in: groupQueryRefs } }, fields: ['id', 'user', 'userId', 'memberId'], limit: 1000 }),
-      BvAttendance.findAll({ filters: { group: { in: groupQueryRefs } }, fields: ['id', 'user', 'group', 'groupId', 'present', 'attendanceDate'], limit: 1000 }),
-      BvAttendance.findAll({ filters: { groupId: { in: groupQueryRefs } }, fields: ['id', 'user', 'group', 'groupId', 'present', 'attendanceDate'], limit: 1000 }),
+      BvAttendance.findAll({ filters: { group: { in: groupQueryRefs } }, fields: ['id', 'user', 'group', 'groupId', 'present', 'status', 'attendanceDate'], limit: 1000 }),
+      BvAttendance.findAll({ filters: { groupId: { in: groupQueryRefs } }, fields: ['id', 'user', 'group', 'groupId', 'present', 'status', 'attendanceDate'], limit: 1000 }),
     ]);
 
     const group = groupRecord as any;
@@ -251,7 +251,7 @@ export default createEndpoint({
     // marks in memory when the indexed read was stored under another alias.
     if (allGroupAtt.length === 0 && groupMatchKeys.size > 0) {
       const { records: attendanceRows } = await BvAttendance.findAll({
-        fields: ['id', 'user', 'group', 'groupId', 'present', 'attendanceDate'],
+        fields: ['id', 'user', 'group', 'groupId', 'present', 'status', 'attendanceDate'],
         limit: 5000,
       });
       allGroupAtt = attendanceRows.filter((attendance: any) =>
@@ -266,10 +266,14 @@ export default createEndpoint({
     });
 
     // Build maps
-    const myAttByDate = new Map<string, boolean>();
+    const myAttByDate = new Map<string, 'P' | 'A' | 'L'>();
     for (const a of myAtt) {
       const date = a.attendanceDate as string;
-      if (date) myAttByDate.set(date, !!a.present);
+      if (date) {
+        const mark = a.status === 'L' ? 'L' : a.present ? 'P' : 'A';
+        const previous = myAttByDate.get(date);
+        myAttByDate.set(date, previous === 'L' || mark === 'L' ? 'L' : previous === 'P' || mark === 'P' ? 'P' : 'A');
+      }
     }
 
     // All distinct session dates for this group (sorted desc)
@@ -278,17 +282,18 @@ export default createEndpoint({
     )].sort((a: any, b: any) => b.localeCompare(a)) as string[];
 
     // Today status
-    const todayStatus = myAttByDate.has(today) ? (myAttByDate.get(today) ? 'P' : 'A') : null;
+    const todayStatus = myAttByDate.get(today) || null;
 
     // Streak: consecutive sessions (most recent first) where user was present
     let streak = 0;
     for (const date of sessionDates) {
       const wasPresent = myAttByDate.get(date);
-      if (wasPresent) streak++;
+      if (wasPresent === 'P') streak++;
       else break;
     }
 
-    const presentCount = myAtt.filter((a: any) => a.present).length;
+    const presentCount = [...myAttByDate.values()].filter(mark => mark === 'P').length;
+    const eligibleSessions = sessionDates.filter(date => myAttByDate.get(date) !== 'L').length;
 
     const leaders = readGroupFacilitators(group);
     const resolvedLeaderNames = await Promise.all(leaders.map(async (leader): Promise<string | null> => {
@@ -350,7 +355,7 @@ export default createEndpoint({
       todayStatus,
       streak,
       presentCount,
-      totalSessions: sessionDates.length,
+      totalSessions: eligibleSessions,
     };
   },
 });

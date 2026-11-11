@@ -54,10 +54,10 @@ export default function AttendanceTab({ userId, segment }: Props) {
   const entries: any[] = data?.entries || [];
 
   // Map each date to present status: true (P), false (A)
-  const attendanceMap = new Map<string, boolean>();
+  const attendanceMap = new Map<string, boolean | 'L'>();
   entries.forEach((e: any) => {
     if (e.date) {
-      attendanceMap.set(e.date, e.present ?? (e.status === 'P'));
+      attendanceMap.set(e.date, e.status === 'L' ? 'L' : (e.present ?? (e.status === 'P')));
     }
   });
 
@@ -110,6 +110,7 @@ export default function AttendanceTab({ userId, segment }: Props) {
             <div className="divide-y max-h-[400px] overflow-y-auto">
               {entries.slice(0, 20).map((e: any, i: number) => {
                 const isPresent = e.present ?? (e.status === 'P');
+                const isLeave = e.status === 'L';
                 return (
                   <div key={i} className="py-2.5 flex items-center justify-between">
                     <div>
@@ -117,8 +118,8 @@ export default function AttendanceTab({ userId, segment }: Props) {
                       <p className="text-xs text-muted-foreground">{e.eventTitle}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Badge variant="outline" className={isPresent ? 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950 dark:text-rose-300'}>
-                        {isPresent ? '✓ Attended' : '✗ Not Attended'}
+                      <Badge variant="outline" className={isLeave ? 'bg-amber-50 text-amber-700 border-amber-300' : isPresent ? 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950 dark:text-rose-300'}>
+                        {isLeave ? 'L Leave' : isPresent ? '✓ Attended' : '✗ Not Attended'}
                       </Badge>
                       <Badge variant="outline" className="text-xs">{fmt.date(e.date)}</Badge>
                     </div>
@@ -134,7 +135,7 @@ export default function AttendanceTab({ userId, segment }: Props) {
 }
 
 function AttendanceCalendar({ attendanceMap, quizDates, currentMonth, onMonthChange }: {
-  attendanceMap: Map<string, boolean>;
+  attendanceMap: Map<string, boolean | 'L'>;
   quizDates: { date: string; percentage: number; quizTitle?: string }[];
   currentMonth: Date;
   onMonthChange: (d: Date) => void;
@@ -185,13 +186,14 @@ function AttendanceCalendar({ attendanceMap, quizDates, currentMonth, onMonthCha
             const dateStr = format(day, 'yyyy-MM-dd');
             const hasRecord = attendanceMap.has(dateStr);
             const isPresent = attendanceMap.get(dateStr) === true;
-            const isAbsent = hasRecord && !isPresent;
+            const isLeave = attendanceMap.get(dateStr) === 'L';
+            const isAbsent = hasRecord && !isPresent && !isLeave;
             const quiz = quizMap.get(dateStr);
             const isToday = dateStr === today;
             const isFuture = isBefore(startOfDay(new Date()), startOfDay(day)) && !isToday;
 
             const title = [
-              isPresent ? `${dateStr}: Attended` : isAbsent ? `${dateStr}: Not attended` : `${dateStr}: Not marked`,
+              isPresent ? `${dateStr}: Attended` : isLeave ? `${dateStr}: Leave` : isAbsent ? `${dateStr}: Not attended` : `${dateStr}: Not marked`,
               quiz ? `Quiz completed: ${quiz.percentage}%${quiz.quizTitle ? ` — ${quiz.quizTitle}` : ''}` : '',
             ].filter(Boolean).join('\n');
 
@@ -205,6 +207,8 @@ function AttendanceCalendar({ attendanceMap, quizDates, currentMonth, onMonthCha
                     ? 'bg-transparent border-transparent text-muted-foreground/30'
                     : isPresent
                     ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-600 dark:text-emerald-400 font-bold'
+                    : isLeave
+                    ? 'bg-amber-500/15 border-amber-500/40 text-amber-700 font-bold'
                     : isAbsent
                     ? 'bg-rose-500/15 border-rose-500/40 text-rose-600 dark:text-rose-400 font-bold'
                     : 'bg-muted/30 border-muted text-muted-foreground',
@@ -214,6 +218,7 @@ function AttendanceCalendar({ attendanceMap, quizDates, currentMonth, onMonthCha
                 <span className="text-sm leading-none">{format(day, 'd')}</span>
                 <div className="flex items-center gap-0.5 mt-0.5 min-h-[12px]">
                   {isPresent && <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 leading-none">✓</span>}
+                  {isLeave && <span className="text-[11px] font-bold text-amber-700 leading-none">L</span>}
                   {isAbsent && <span className="text-[11px] font-bold text-rose-600 dark:text-rose-400 leading-none">✗</span>}
                 </div>
                 {quiz && (

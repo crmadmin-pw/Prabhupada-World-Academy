@@ -161,7 +161,7 @@ export default createEndpoint({
       memberUserIds.length > 0 ? findUsersForKeys(memberUserIds) : Promise.resolve([]),
       BvAttendance.findAll({
         filters: { group: groupRefs.length > 1 ? { in: groupRefs } : group.id } as any,
-        fields: ['id', 'user', 'userId', 'present', 'attendanceDate'],
+        fields: ['id', 'user', 'userId', 'present', 'status', 'attendanceDate'],
         limit: 2000,
       }),
     ]);
@@ -221,7 +221,7 @@ export default createEndpoint({
       if (!rawMatch) continue;
       const canonicalId = memberKeyToCanonical.get(normalizeKey(rawMatch)) || rawMatch;
       const stats = attendanceStats.get(canonicalId) || { presentCount: 0, totalCount: 0, lastPresent: '' };
-      stats.totalCount += 1;
+      if (a.status !== 'L') stats.totalCount += 1;
       if (a.present) {
         stats.presentCount += 1;
         const attendanceDate = String(a.attendanceDate || '').slice(0, 10);

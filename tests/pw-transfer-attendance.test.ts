@@ -29,6 +29,7 @@ for (const asStaff of [false, true]) {
         mark('old-28', [member.firebaseUid], 'old-group', '2026-10-28', true),
         mark('peer-28', peer.id, group.id, '2026-10-28', true),
         mark('old-only-sunday', member.id, 'old-group', '2026-11-01', true),
+        { ...mark('leave-03', member.id, group.id, '2026-11-03', false), status: 'L' },
         mark('old-04', member.id, 'old-group', '2026-11-04', true),
         mark('absent-04', member.id, group.id, '2026-11-04', false),
         mark('old-05', member.id, 'old-group', '2026-11-05', true),
@@ -65,6 +66,7 @@ for (const asStaff of [false, true]) {
     assert.equal(sessions.attendance[member.id]['2026-10-27'], true);
     assert.equal(sessions.attendance[member.id]['2026-10-28'], true);
     assert.equal(sessions.attendance[member.id]['2026-11-04'], false);
+    assert.equal(sessions.attendance[member.id]['2026-11-03'], 'L');
     assert.equal(sessions.attendance[member.id]['2026-11-05'], false);
     assert.equal(sessions.attendance[member.id]['2026-11-06'], true);
     assert.equal(sessions.attendance['private-member'], undefined);
@@ -76,6 +78,7 @@ for (const asStaff of [false, true]) {
     assert.equal(row.attendance['2026-10-27'], 1);
     assert.equal(row.attendance['2026-10-28'], 1);
     assert.equal(row.attendance['2026-11-04'], 0);
+    assert.equal(row.attendance['2026-11-03'], -1);
     assert.equal(row.attendance['2026-11-05'], 0);
     assert.equal(row.attendance['2026-11-06'], 1);
     assert.equal(row.attendance['2026-11-01'], 1);

@@ -134,6 +134,7 @@ export default function BvslBvReportPanel({ bvslId }: Props) {
                         <th className="p-2 text-left font-medium">Group</th>
                         <th className="p-2 text-left font-medium">Topic</th>
                         <th className="p-2 text-right font-medium">Attendees</th>
+                        <th className="p-2 text-right font-medium">Leave</th>
                         <th className="p-2 text-right font-medium">Total</th>
                         <th className="p-2 text-right font-medium">Attendance</th>
                       </tr>
@@ -147,6 +148,7 @@ export default function BvslBvReportPanel({ bvslId }: Props) {
                             <td className="p-2">{s.groupName}</td>
                             <td className="p-2 text-muted-foreground max-w-[200px] truncate">{s.topic || '—'}</td>
                             <td className="p-2 text-right font-medium">{s.presentCount}</td>
+                            <td className="p-2 text-right text-amber-700">{s.leaveCount || 0}</td>
                             <td className="p-2 text-right text-muted-foreground">{s.totalMembers}</td>
                             <td className="p-2 text-right">
                               <Badge variant="outline" className={`${rateColor} border-current`}>{s.attendancePercent}%</Badge>

@@ -55,7 +55,7 @@ export default createEndpoint({
       while (true) {
         const { records, hasMore } = await BvAttendance.findAll({
           filters: attFilter,
-          fields: ['id', 'user', 'present', 'attendanceDate'],
+          fields: ['id', 'user', 'present', 'status', 'attendanceDate'],
           limit: 2000,
           offset,
         });
@@ -140,7 +140,9 @@ export default createEndpoint({
       const date = a.attendanceDate as string;
       if (!uid || !date) continue;
       if (!userDateMap[uid]) userDateMap[uid] = {};
-      userDateMap[uid][date] = a.present ? 1 : 0;
+      const mark = a.status === 'L' ? -1 : a.present ? 1 : 0;
+      const previous = userDateMap[uid][date];
+      userDateMap[uid][date] = previous === -1 || mark === -1 ? -1 : previous === 1 || mark === 1 ? 1 : 0;
     }
 
     // Build matrix rows
@@ -150,7 +152,7 @@ export default createEndpoint({
       const groupInfo = gid ? groupInfoMap[gid] : { groupName: '', bvslName: '' };
       const attendance: Record<string, number> = {};
       dates.forEach(d => { attendance[d] = userDateMap[uid]?.[d] ?? 0; });
-      const weekTotal = Object.values(attendance).reduce((s, v) => s + (v as number), 0);
+      const weekTotal = Object.values(attendance).filter(value => value > 0).length;
       return {
         userId: u?.userId || uid || '',
         name: u?.fullName || '',

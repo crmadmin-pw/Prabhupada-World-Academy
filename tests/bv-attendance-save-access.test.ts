@@ -112,6 +112,26 @@ test('an RGF assigned to the reading group can save attendance', async (t) => {
   assert.equal(created.some(record => record.group === colliding.id), false);
 });
 
+test('an RGF can save one member on leave with zero attendance minutes', async (t) => {
+  const created = mockDatabase(t);
+  await conductBvSession.execute({
+    input: {
+      bvslId: ramya.userId,
+      groupId: tempos.id,
+      sessionDate: '2026-10-15',
+      memberAttendance: [
+        { userDbId: ramya.id, present: true, attendedMinutes: 60 },
+        { userDbId: member.id, present: false, status: 'L', attendedMinutes: 45 },
+      ],
+    },
+    context: { user: { id: ramya.id, email: ramya.email, isBvFacilitator: true } },
+  } as never);
+  const leave = created.find(record => record.user === member.id);
+  assert.equal(leave?.status, 'L');
+  assert.equal(leave?.present, false);
+  assert.equal(leave?.attendedMinutes, 0);
+});
+
 test('a member who is not an RGF still cannot save attendance', async (t) => {
   mockDatabase(t);
   await assert.rejects(

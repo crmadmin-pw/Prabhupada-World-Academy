@@ -111,6 +111,21 @@ test('attendance lists the group RGF and RGSF with the members', async (t) => {
   ]);
 });
 
+test('saved leave loads as leave for the member without attendance minutes', async (t) => {
+  mockDatabase(t, [{
+    id: 'att-leave', group: group.id, user: devotee.id,
+    present: false, status: 'L', attendedMinutes: 0,
+    totalMeetingMinutes: 60, attendanceDate: '2026-10-15',
+  }]);
+  const result = await getAttendanceForDate.execute({
+    input: { groupId: group.id, date: '2026-10-15' }, context: { user: rgf },
+  } as never);
+  const member = result.members.find((row: any) => row.userDbId === devotee.id);
+  assert.equal(member?.status, 'L');
+  assert.equal(member?.present, false);
+  assert.equal(member?.attendedMinutes, 0);
+});
+
 test('an RGF who is already a member is listed and saved once', async (t) => {
   const created = mockDatabase(t);
   const fixtureMember = {

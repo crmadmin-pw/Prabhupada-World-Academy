@@ -89,7 +89,7 @@ export default createEndpoint({
     // Fetch BvAttendance records for user
     const { records: allBv } = await BvAttendance.findAll({
       limit: 2000,
-      fields: ['id', 'user', 'group', 'groupId', 'attendanceDate', 'present'],
+      fields: ['id', 'user', 'group', 'groupId', 'attendanceDate', 'present', 'status'],
     });
 
     const bvAtt = allBv.filter((a: any) => {
@@ -147,18 +147,20 @@ export default createEndpoint({
       events.forEach(e => eventMap.set(e.id, e.title || ''));
     }
 
-    const entryMap = new Map<string, { date: string; present: boolean; status: 'P' | 'A'; sessionName: string; eventTitle: string }>();
+    const entryMap = new Map<string, { date: string; present: boolean; status: 'P' | 'A' | 'L'; sessionName: string; eventTitle: string }>();
 
     // Add BvAttendance records (present: true or false)
     bvAtt.forEach((a: any) => {
       if (a.attendanceDate) {
         const isPres = !!a.present;
+        const previous = entryMap.get(a.attendanceDate);
+        if (previous?.status === 'L' || (previous?.status === 'P' && a.status !== 'L')) return;
         entryMap.set(a.attendanceDate, {
           date: a.attendanceDate,
           present: isPres,
-          status: isPres ? 'P' : 'A',
+          status: a.status === 'L' ? 'L' : isPres ? 'P' : 'A',
           sessionName: 'Bhakti Vriksha Session',
-          eventTitle: isPres ? 'Present' : 'Absent',
+          eventTitle: a.status === 'L' ? 'Leave' : isPres ? 'Present' : 'Absent',
         });
       }
     });

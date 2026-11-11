@@ -8,6 +8,7 @@ export type ReportAttendanceRecord = {
   group?: unknown;
   groupId?: unknown;
   present?: unknown;
+  status?: unknown;
   attendanceDate?: unknown;
 };
 
@@ -23,14 +24,16 @@ export function mergeReportAttendance(
   groupIdFor: (reference: string) => string,
   joinedOnByUserId = new Map<string, string>(),
 ): {
-  attendance: Record<string, Record<string, boolean>>;
+  attendance: Record<string, Record<string, boolean | 'L'>>;
   groupSessionDates: Map<string, Set<string>>;
   sessionDates: string[];
 } {
   const groupSessionDates = new Map<string, Set<string>>();
   const sessionDates = new Set<string>();
-  const current = new Map<string, boolean>();
-  const former = new Map<string, boolean>();
+  const current = new Map<string, boolean | 'L'>();
+  const former = new Map<string, boolean | 'L'>();
+  const combine = (previous: boolean | 'L' | undefined, mark: boolean | 'L') =>
+    previous === 'L' || mark === 'L' ? 'L' as const : previous === true || mark === true;
 
   for (const record of records) {
     const reference = firstValue(record.user).trim();
@@ -47,12 +50,13 @@ export function mergeReportAttendance(
     const memberGroup = memberGroupByUserId.get(uid) || '';
     const inCurrentGroup = !memberGroup || !gid || gid === memberGroup;
     const key = `${uid}|${date}`;
-    if (inCurrentGroup) current.set(key, !!record.present);
-    else former.set(key, !!record.present);
+    const mark = record.status === 'L' ? 'L' : !!record.present;
+    if (inCurrentGroup) current.set(key, combine(current.get(key), mark));
+    else former.set(key, combine(former.get(key), mark));
   }
 
-  const attendance: Record<string, Record<string, boolean>> = {};
-  const write = (key: string, present: boolean) => {
+  const attendance: Record<string, Record<string, boolean | 'L'>> = {};
+  const write = (key: string, present: boolean | 'L') => {
     const split = key.indexOf('|');
     const uid = key.slice(0, split);
     const date = key.slice(split + 1);

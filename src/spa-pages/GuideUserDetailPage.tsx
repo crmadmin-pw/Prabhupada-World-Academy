@@ -157,6 +157,7 @@ export default function GuideUserDetailPage() {
       ? (typeof h.attendanceDate === 'string' ? h.attendanceDate.slice(0, 10) : format(new Date(h.attendanceDate), 'yyyy-MM-dd'))
       : '',
     scorePercent: h.status === 'P' ? 100 : 0,
+    attendanceStatus: h.status,
     totalScore: h.status === 'P' ? (h.totalPoints || 1) : 0,
   })).filter((e: any) => e.entryDate);
 
@@ -343,14 +344,14 @@ export default function GuideUserDetailPage() {
                 {bvSessions.map((h: any, i: number) => (
                   <div key={i} className="flex items-center justify-between py-2 border-b last:border-0">
                     <div className="flex items-center gap-3">
-                      <span className={`w-2 h-2 rounded-full ${h.status === 'P' ? 'bg-green-500' : 'bg-red-400'}`} />
+                      <span className={`w-2 h-2 rounded-full ${h.status === 'P' ? 'bg-green-500' : h.status === 'L' ? 'bg-amber-500' : 'bg-red-400'}`} />
                       <span className="text-sm font-medium">
                         {h.attendanceDate ? format(new Date(typeof h.attendanceDate === 'string' && h.attendanceDate.length === 10 ? h.attendanceDate + 'T00:00:00' : h.attendanceDate), 'MMM d, yyyy') : '—'}
                       </span>
                     </div>
                     <div className="flex items-center gap-3">
                       <Badge variant={h.status === 'P' ? 'default' : 'secondary'} className="text-xs">
-                        {h.status === 'P' ? 'Present' : 'Absent'}
+                        {h.status === 'P' ? 'Present' : h.status === 'L' ? 'Leave' : 'Absent'}
                       </Badge>
                       {h.totalPoints != null && (
                         <span className="text-xs text-muted-foreground">{h.totalPoints} pts</span>

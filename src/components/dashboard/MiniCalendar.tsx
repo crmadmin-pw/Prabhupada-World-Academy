@@ -7,6 +7,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMont
 interface HistoryEntry {
   entryDate: string;
   scorePercent: number | null;
+  attendanceStatus?: 'P' | 'A' | 'L';
   totalScore: number;
   submittedAt?: string;
   flagSick?: boolean;
@@ -100,7 +101,7 @@ function MiniCalendar({ entries, onDayClick, isResident = false, mode = 'sadhana
             const entry = entryMap.get(dateStr);
             const isFuture = dateStr > today;
             const isToday = dateStr === today;
-            const attendanceStatus = !entry || isFuture ? 'Not marked' : entry.scorePercent === 100 ? 'Present' : 'Absent';
+            const attendanceStatus = !entry || isFuture ? 'Not marked' : entry.attendanceStatus === 'L' ? 'Leave' : entry.scorePercent === 100 ? 'Present' : 'Absent';
             const emoji = getDayEmoji(isFuture ? undefined : entry);
             return (
               <button
@@ -113,6 +114,7 @@ function MiniCalendar({ entries, onDayClick, isResident = false, mode = 'sadhana
                   transition-opacity leading-tight
                   ${mode === 'attendance'
                     ? attendanceStatus === 'Present' ? 'bg-green-500 text-white'
+                      : attendanceStatus === 'Leave' ? 'bg-amber-400 text-amber-950'
                       : attendanceStatus === 'Absent' ? 'bg-red-400 text-white'
                       : 'bg-muted/40 text-muted-foreground/50'
                     : getDayColor(isFuture ? undefined : entry, isResident)}
@@ -144,6 +146,7 @@ function MiniCalendar({ entries, onDayClick, isResident = false, mode = 'sadhana
           {mode === 'attendance' ? <>
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-500 inline-block" />Present</span>
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-400 inline-block" />Absent</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-amber-400 inline-block" />Leave</span>
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-muted/40 inline-block" />Not marked</span>
           </> : <>
           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-500 inline-block" />{isResident ? '≥95%' : '≥75%'}</span>

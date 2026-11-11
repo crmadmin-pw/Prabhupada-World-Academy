@@ -62,7 +62,7 @@ export default createEndpoint({
             group: { in: groupIds },
             attendanceDate: { gte: startDate, lte: endDate },
           } as any,
-          fields: ['id', 'group', 'present', 'attendanceDate'],
+          fields: ['id', 'group', 'present', 'status', 'attendanceDate'],
           limit: 2000,
         }).then(result => result.records as any[]),
       ])
@@ -78,16 +78,17 @@ export default createEndpoint({
     }
 
     // Group attendance by group+date
-    const attByGroupDate = new Map<string, { present: number; total: number }>();
+    const attByGroupDate = new Map<string, { present: number; leave: number; total: number }>();
     for (const a of attendanceRecords) {
       const gid = Array.isArray(a.group) ? a.group[0] : a.group as string;
       const date = String(a.attendanceDate || '').slice(0, 10);
       if (!gid || !date) continue;
       const key = `${gid}::${date}`;
-      if (!attByGroupDate.has(key)) attByGroupDate.set(key, { present: 0, total: 0 });
+      if (!attByGroupDate.has(key)) attByGroupDate.set(key, { present: 0, leave: 0, total: 0 });
       const data = attByGroupDate.get(key)!;
       data.total++;
       if (a.present) data.present++;
+      if (a.status === 'L') data.leave++;
     }
 
     // Build preaching rows
@@ -115,8 +116,9 @@ export default createEndpoint({
         groupName: groupMap.get(gid) || '—',
         topic: meta.topic,
         presentCount: stats.present,
+        leaveCount: stats.leave,
         totalMembers: stats.total,
-        attendancePercent: stats.total > 0 ? Math.round((stats.present / stats.total) * 100) : 0,
+        attendancePercent: stats.total > stats.leave ? Math.round((stats.present / (stats.total - stats.leave)) * 100) : 0,
       };
     }).sort((a, b) => b.sessionDate.localeCompare(a.sessionDate));
 

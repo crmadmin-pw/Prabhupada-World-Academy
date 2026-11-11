@@ -22,7 +22,7 @@ export default function BvCalendarView({ history, userId, onRefresh, quizDates }
   const activeUserId = userId || (profile as any)?.id || profile?.userId;
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [marking, setMarking] = useState<'P' | 'A' | null>(null);
+  const [marking, setMarking] = useState<'P' | 'A' | 'L' | null>(null);
   const [overrideMap, setOverrideMap] = useState<Record<string, string>>({});
 
   const statusMap = new Map<string, string>();
@@ -56,14 +56,14 @@ export default function BvCalendarView({ history, userId, onRefresh, quizDates }
   );
 
   const presentCount = Array.from(statusMap.values()).filter(st => st === 'P').length;
-  const totalCount = statusMap.size || history.length;
+  const totalCount = Array.from(statusMap.values()).filter(st => st !== 'L').length;
 
   const handleDayClick = (dateStr: string, isFuture: boolean) => {
     if (isFuture || !activeUserId || !canMarkAttendance) return;
     setSelectedDate(prev => prev === dateStr ? null : dateStr);
   };
 
-  const handleMark = async (status: 'P' | 'A') => {
+  const handleMark = async (status: 'P' | 'A' | 'L') => {
     if (!selectedDate || !activeUserId || !canMarkAttendance) return;
     const targetDate = selectedDate;
     setMarking(status);
@@ -71,13 +71,14 @@ export default function BvCalendarView({ history, userId, onRefresh, quizDates }
     setOverrideMap(prev => ({ ...prev, [targetDate]: status }));
     try {
       await markBvAttendance({ userId: activeUserId, status, localDate: targetDate } as any);
-      toast.success(`Marked ${status === 'P' ? 'Present' : 'Absent'} for ${targetDate}`);
+      toast.success(`Marked ${status === 'P' ? 'Present' : status === 'L' ? 'Leave' : 'Absent'} for ${targetDate}`);
       setSelectedDate(null);
       window.dispatchEvent(new Event('attendanceUpdated'));
       if (onRefresh) {
         onRefresh();
       }
     } catch {
+      setOverrideMap(prev => { const next = { ...prev }; delete next[targetDate]; return next; });
       toast.error('Failed to mark attendance');
     } finally {
       setMarking(null);
@@ -133,6 +134,11 @@ export default function BvCalendarView({ history, userId, onRefresh, quizDates }
                 onClick={() => handleMark('A')}>
                 {marking === 'A' ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <XCircle className="w-3 h-3 mr-1" />}Absent
               </Button>
+              <Button size="sm" variant="outline" disabled={marking !== null}
+                className="text-xs border-amber-400 text-amber-700 hover:bg-amber-50"
+                onClick={() => handleMark('L')}>
+                {marking === 'L' ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : 'L'} Leave
+              </Button>
               <Button size="sm" variant="ghost" className="text-xs" onClick={() => setSelectedDate(null)}>Cancel</Button>
             </div>
           </div>
@@ -153,7 +159,7 @@ export default function BvCalendarView({ history, userId, onRefresh, quizDates }
 
             const showClickToMark = canMarkAttendance && !status;
             const tooltipTitle = status
-              ? `${dateStr}: ${status === 'P' ? 'Present' : 'Absent'}`
+              ? `${dateStr}: ${status === 'P' ? 'Present' : status === 'L' ? 'Leave' : 'Absent'}`
               : isFuture
               ? ''
               : `${dateStr}: Not marked${showClickToMark ? ' — click to mark' : ''}`;
@@ -171,6 +177,8 @@ export default function BvCalendarView({ history, userId, onRefresh, quizDates }
                     ? 'bg-green-100 border-green-400 text-green-700'
                     : status === 'A'
                     ? 'bg-red-50 border-red-300 text-red-500'
+                    : status === 'L'
+                    ? 'bg-amber-50 border-amber-400 text-amber-700'
                     : isPast || isToday
                     ? `bg-muted/40 border-muted text-muted-foreground ${canMarkAttendance ? 'cursor-pointer hover:bg-muted/70' : ''}`
                     : 'bg-muted/30 border-muted text-muted-foreground',
@@ -182,7 +190,7 @@ export default function BvCalendarView({ history, userId, onRefresh, quizDates }
                 <span className="text-sm font-bold leading-none">{format(day, 'd')}</span>
                 {status && (
                   <span className="text-[11px] font-semibold leading-none">
-                    {status === 'P' ? '✓' : '✗'}
+                    {status === 'P' ? '✓' : status === 'L' ? 'L' : '✗'}
                   </span>
                 )}
                 {quizDateMap.has(dateStr) && (
@@ -200,6 +208,9 @@ export default function BvCalendarView({ history, userId, onRefresh, quizDates }
           </span>
           <span className="flex items-center gap-1.5">
             <span className="w-4 h-4 rounded bg-red-50 border border-red-300 inline-block" />Absent
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-4 h-4 rounded bg-amber-50 border border-amber-400 inline-block" />Leave
           </span>
           <span className="flex items-center gap-1.5">
             <span className="w-4 h-4 rounded bg-muted/40 border border-muted inline-block" />Not marked

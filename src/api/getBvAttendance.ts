@@ -169,7 +169,7 @@ export default createEndpoint({
     const [attendanceByGroup, membersByGroup, attendanceByGroupId, membersByGroupId] = await Promise.all([
       BvAttendance.findAll({
         filters: { group: { in: groupReferences } },
-        fields: ['id', 'group', 'groupId', 'user', 'present', 'attendanceDate'],
+        fields: ['id', 'group', 'groupId', 'user', 'present', 'status', 'attendanceDate'],
         limit: 5000,
       }),
       BvGroupMembers.findAll({
@@ -179,7 +179,7 @@ export default createEndpoint({
       }),
       BvAttendance.findAll({
         filters: { groupId: { in: groupReferences } },
-        fields: ['id', 'group', 'groupId', 'user', 'present', 'attendanceDate'],
+        fields: ['id', 'group', 'groupId', 'user', 'present', 'status', 'attendanceDate'],
         limit: 5000,
       }),
       BvGroupMembers.findAll({
@@ -194,7 +194,7 @@ export default createEndpoint({
     if (attendanceRecords.length === 0 && groupReferences.length > 0) {
       const groupKeys = new Set(groupReferences.map(value => value.toLowerCase()));
       const { records } = await BvAttendance.findAll({
-        fields: ['id', 'group', 'groupId', 'user', 'present', 'attendanceDate'],
+        fields: ['id', 'group', 'groupId', 'user', 'present', 'status', 'attendanceDate'],
         limit: 5000,
       });
       attendanceRecords = records.filter((record: any) =>
@@ -291,8 +291,8 @@ export default createEndpoint({
     }
 
     // De-duplicate repeated legacy rows by canonical user/date. If duplicate
-    // rows disagree, a present mark wins for that session.
-    const attendanceByUser = new Map<string, Map<string, boolean>>();
+    // rows disagree, an explicit leave mark wins over legacy booleans.
+    const attendanceByUser = new Map<string, Map<string, 'P' | 'A' | 'L'>>();
     for (const record of allAtt) {
       const rawAlias = firstValue(record.user);
       if (!rawAlias) continue;
@@ -300,8 +300,9 @@ export default createEndpoint({
       const canonicalId = info?.canonicalId || rawAlias.toLowerCase();
       if (!attendanceByUser.has(canonicalId)) attendanceByUser.set(canonicalId, new Map());
       const date = String(record.attendanceDate || '');
-      const previous = attendanceByUser.get(canonicalId)!.get(date) || false;
-      attendanceByUser.get(canonicalId)!.set(date, previous || !!record.present);
+      const previous = attendanceByUser.get(canonicalId)!.get(date);
+      const mark = record.status === 'L' ? 'L' : record.present ? 'P' : 'A';
+      attendanceByUser.get(canonicalId)!.set(date, previous === 'L' || mark === 'L' ? 'L' : previous === 'P' || mark === 'P' ? 'P' : 'A');
     }
 
     const sessionDates = [...new Set(allAtt.map((record: any) => String(record.attendanceDate || '')).filter(Boolean))];
@@ -315,8 +316,9 @@ export default createEndpoint({
     canonicalMembers.set(currentCanonicalId, currentInfo || null);
 
     const leaderboard = [...canonicalMembers.entries()].map(([canonicalId, info]) => {
-      const memberAttendance = attendanceByUser.get(canonicalId) || new Map<string, boolean>();
-      const presentCount = [...memberAttendance.values()].filter(Boolean).length;
+      const memberAttendance = attendanceByUser.get(canonicalId) || new Map<string, 'P' | 'A' | 'L'>();
+      const presentCount = [...memberAttendance.values()].filter(mark => mark === 'P').length;
+      const eligibleCount = sessionDates.length - [...memberAttendance.values()].filter(mark => mark === 'L').length;
       const nameCandidate = info?.name || canonicalId;
       const displayName = nameCandidate.includes('@') ? formatDisplayName(nameCandidate) : nameCandidate;
       return {
@@ -324,18 +326,18 @@ export default createEndpoint({
         displayName,
         presentCount,
         totalCount: sessionDates.length,
-        attendanceRate: sessionDates.length > 0 ? Math.round((presentCount / sessionDates.length) * 100) : 0,
+        attendanceRate: eligibleCount > 0 ? Math.round((presentCount / eligibleCount) * 100) : 0,
         isResident: info?.isResident ?? false,
         residencyName: info?.residencyName ?? '',
         ashrayLevel: info?.ashrayLevel ?? '',
       };
     }).sort((a, b) => b.presentCount - a.presentCount || a.displayName.localeCompare(b.displayName));
 
-    const myAttendance = attendanceByUser.get(currentCanonicalId) || new Map<string, boolean>();
-    const userHistory = [...myAttendance.entries()].map(([attendanceDate, present]) => ({
+    const myAttendance = attendanceByUser.get(currentCanonicalId) || new Map<string, 'P' | 'A' | 'L'>();
+    const userHistory = [...myAttendance.entries()].map(([attendanceDate, status]) => ({
       attendanceDate,
-      present,
-      status: present ? 'P' : 'A',
+      present: status === 'P',
+      status,
       sessionTopic: '',
     })).sort((a, b) => b.attendanceDate.localeCompare(a.attendanceDate));
 

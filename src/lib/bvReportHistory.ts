@@ -21,7 +21,7 @@ export async function readBvReportHistory(users: Record<string, unknown>[], star
       while (true) {
         const page = await BvAttendance.findAll({
           filters: { user: { in: chunk } },
-          fields: ['id', 'user', 'group', 'groupId', 'attendanceDate', 'present'],
+          fields: ['id', 'user', 'group', 'groupId', 'attendanceDate', 'present', 'status'],
           limit: 2000, offset,
         });
         for (const record of page.records) {
