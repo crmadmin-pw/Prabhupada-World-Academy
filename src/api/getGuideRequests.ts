@@ -181,12 +181,12 @@ export default createEndpoint({
       const filteredAshray = rawAshray.filter((r: any) => {
         const u = ashrayUserMap.get(r.userId);
         if (!u) return false;
-        if (!isUserInHierarchy(u, hierarchy)) return false;
         const isPwMember = organizationalDepartment(u) === 'PW';
 
         if (userSegment === 'PW') {
           if (!isPwMember) return false;
           if (isHiranyavarnaOrPwAdmin) return true;
+          if (!isUserInHierarchy(u, hierarchy)) return false;
           const userGuideId = Array.isArray(u.guide) ? u.guide[0] : u.guide;
           const uGuideStrLower = String(userGuideId || '').toLowerCase();
           return uGuideStrLower === String(guideDbId || '').toLowerCase() || 
@@ -195,6 +195,7 @@ export default createEndpoint({
         } else {
           // FOLK guide view
           if (isPwMember) return false;
+          if (!isUserInHierarchy(u, hierarchy)) return false;
           if (isSuperGuide) return true;
           const userGuideId = Array.isArray(u.guide) ? u.guide[0] : u.guide;
           const uGuideStrLower = String(userGuideId || '').toLowerCase();

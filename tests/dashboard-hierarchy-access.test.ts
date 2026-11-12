@@ -13,6 +13,7 @@ import getSadhanaStats from '../src/api/getSadhanaStats';
 import getSadhanaLeaderboard from '../src/api/getSadhanaLeaderboard';
 import getActiveSadhanaMentors from '../src/api/getActiveSadhanaMentors';
 import getPendingApprovals from '../src/api/getPendingApprovals';
+import getGuideRequests from '../src/api/getGuideRequests';
 import getPendingBvRegistrations from '../src/api/getPendingBvRegistrations';
 import getUserDetailForGuide from '../src/api/getUserDetailForGuide';
 import getOneToOneContext from '../src/api/getOneToOneContext';
@@ -57,6 +58,12 @@ const ownIds = ['admin-a', 'supervisor-a', 'rgf-a', 'rgsf-a', 'direct-a', 'group
 const ownActive = ownIds.filter(id => id !== 'pending-a');
 const date = '2026-09-08';
 const fixture: Record<string, any[]> = { Users: users, BvGroups: groups, BvGroupMembers: memberships,
+  AshrayUpgradeRequests: [
+    { id: 'ashray-a', userId: 'public-direct-a', status: 'Pending' },
+    { id: 'ashray-b', userId: 'public-member-b', status: 'APPROVED' },
+    { id: 'ashray-unassigned', userId: 'public-unassigned', status: 'Pending' },
+    { id: 'ashray-folk', userId: 'public-folk-outsider', status: 'Pending' },
+  ],
   SadhanaEntries: ['direct-a', 'member-b', 'rgf-a', 'rgf-b'].map(id => ({ id: `entry-${id}`, user: id, entryDate: date, scorePercent: 80, totalScore: 16, maxScore: 20 })),
   BvAttendance: [{ id: 'attendance-a', user: 'auth-member-a', group: 'group-a', attendanceDate: date, present: true },
     { id: 'attendance-b', user: 'member-b', group: 'group-b', attendanceDate: date, present: true }],
@@ -215,6 +222,13 @@ test('PW admin sees the full member directory while reports stay in their hierar
   assert.equal(detail.user.dbId, 'member-b');
   await assert.rejects(call(getUserDetailForGuide, { userId: 'folk-outsider' }), /another department/);
   await assert.rejects(call(getOneToOneContext, { userId: 'member-b' }), /not assigned/);
+});
+
+test('PW admin sees the shared Ashraya approval queue without FOLK requests', async t => {
+  mockDatabase(t);
+  const requests = await call(getGuideRequests, { guideId: 'ALL' });
+  assert.deepEqual(sorted(requests.ashrayUpgrades.map((request: any) => request.logId)),
+    ['ashray-a', 'ashray-b', 'ashray-unassigned']);
 });
 
 test('PW admin directory excludes FOLK guides and members assigned to them', async t => {
