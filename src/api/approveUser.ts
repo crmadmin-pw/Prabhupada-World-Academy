@@ -5,6 +5,7 @@ import { getGuideScope, isUserInGuideScope } from '../lib/guideScope';
 import { enrollUserOnTagMango } from '../lib/tagMangoEnroll';
 import { serverCacheInvalidate } from '../lib/serverCache';
 import { profileCacheKey } from './getUserProfile';
+import { organizationalDepartment } from '../lib/directoryDepartment';
 
 export default createEndpoint({
   description: 'Approve a user (Guide/Super Guide only) — center-based access',
@@ -54,6 +55,10 @@ export default createEndpoint({
       context.user.isBvSuperAdmin ||
       (isPwAdmin && String(context.user.segment || '').toUpperCase() === 'PW')
     );
+
+    if (context.user.capabilities?.includes('pw.approvals') && !context.user.capabilities?.includes('users.approve') && (!canApprovePwUser || organizationalDepartment(userRecord) !== 'PW')) {
+      throw new AppError({ code: 'FORBIDDEN', message: 'PW administrators can only approve PW users' });
+    }
 
     // PW administrators approve PW registrations directly.  Other approvers
     // remain limited to their established FOLK guide scope.

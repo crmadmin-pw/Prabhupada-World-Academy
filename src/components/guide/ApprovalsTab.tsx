@@ -98,7 +98,7 @@ export default function ApprovalsTab({ guideId = '', reviewerGuideId, isSuperGui
         }),
         read(() => getResidenciesForGuide({ guideId: residencyFetchId } as any)),
         read(() => getGuideRequests({ guideId } as any)),
-        read(() => getResidencyTransferRequests({ guideId } as any)),
+        !isPwAdmin ? read(() => getResidencyTransferRequests({ guideId } as any)) : Promise.resolve([]),
         read(() => getGuides({ segment: isPwAdmin ? 'PW' : 'FOLK' })),
         !isPwAdmin ? read(() => getCleanlinessReviews({ guideId } as any)).catch(() => []) : Promise.resolve([]),
         isPwAdmin ? read(() => getActiveSadhanaMentors({ segment: 'PW' } as any)).catch(() => []) : Promise.resolve([]),

@@ -3,6 +3,7 @@ import { createEndpoint, Users, AppError } from '@/lib/backend-sdk';
 import { getGuideScope, isUserInGuideScope } from '../lib/guideScope';
 import { serverCacheInvalidate } from '../lib/serverCache';
 import { profileCacheKey } from './getUserProfile';
+import { organizationalDepartment } from '../lib/directoryDepartment';
 
 export default createEndpoint({
   description: 'Reject a user application — center-based access',
@@ -46,6 +47,10 @@ export default createEndpoint({
       context.user.isBvSuperAdmin ||
       (isPwAdmin && String(context.user.segment || '').toUpperCase() === 'PW')
     );
+
+    if (context.user.capabilities?.includes('pw.approvals') && !context.user.capabilities?.includes('users.approve') && (!canRejectPwUser || organizationalDepartment(userRecord) !== 'PW')) {
+      throw new AppError({ code: 'FORBIDDEN', message: 'PW administrators can only reject PW users' });
+    }
 
     if (!isSuperGuide && !canRejectPwUser) {
       const scope = await getGuideScope(context.user.email);

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createEndpoint, AshrayUpgradeRequests, Users, AppError } from '@/lib/backend-sdk';
 import { migrateUserCourse } from '../lib/tagMangoEnroll';
 import { serverCacheInvalidate } from '../lib/serverCache';
+import { organizationalDepartment } from '../lib/directoryDepartment';
 
 export default createEndpoint({
   description: 'Approve or reject an Ashray level upgrade request (two-step: approve→then pass/fail)',
@@ -26,6 +27,14 @@ export default createEndpoint({
 
     const request = await AshrayUpgradeRequests.findOne({ id });
     if (!request) throw new AppError({ code: 'NOT_FOUND', message: 'Request not found' });
+
+    if (context.user?.capabilities?.includes('pw.approvals') && !context.user.capabilities.includes('users.approve')) {
+      const target = await Users.findOne({ id: request.userId }) ||
+        await Users.findOne({ filters: { userId: request.userId } });
+      if (!target || organizationalDepartment(target) !== 'PW') {
+        throw new AppError({ code: 'FORBIDDEN', message: 'PW administrators can only review PW requests' });
+      }
+    }
 
     let newStatus: string;
     let shouldUpgradeUser = false;

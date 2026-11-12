@@ -5,6 +5,7 @@ export type ApiCapability =
   | 'system.admin'
   | 'account.links.review'
   | 'users.approve'
+  | 'pw.approvals'
   | 'users.assigned.read'
   | 'users.bulk.manage'
   | 'roles.assign'
@@ -165,7 +166,10 @@ export function deriveApiCapabilities(dbUser: ApiDatabaseUser | null): ApiCapabi
 
   if (dbUser.isBvAdmin === true) {
     addCapabilities(capabilities, ['bv.manage', 'bv.roles.assign', 'attendance.manage', 'notifications.send', 'integrations.manage']);
-    if (organizationalDepartment(dbUser) === 'PW') capabilities.add('account.links.review');
+    if (organizationalDepartment(dbUser) === 'PW') {
+      capabilities.add('account.links.review');
+      capabilities.add('pw.approvals');
+    }
   }
   if (dbUser.isBvSupervisor === true || dbUser.isBvMentor === true) {
     addCapabilities(capabilities, ['users.assigned.read', 'sadhana.reports', 'bv.manage']);
@@ -189,6 +193,15 @@ export function deriveApiCapabilities(dbUser: ApiDatabaseUser | null): ApiCapabi
   if (dbUser.isCleanlinessManager === true) capabilities.add('cleanliness.manage');
 
   return [...capabilities];
+}
+
+const PW_APPROVAL_ENDPOINTS = new Set(['getPendingApprovals', 'getGuideRequests', 'approveUser', 'rejectUser', 'approveAshrayUpgrade']);
+
+/** Flag-based PW admins may use only the PW approval workflow. */
+export function hasEndpointCapabilities(user: ApiUserContext | null, endpoint: string, required: ApiCapability | ApiCapability[] | undefined): boolean {
+  return hasApiCapabilities(user, required) || (
+    required === 'users.approve' && PW_APPROVAL_ENDPOINTS.has(endpoint) && hasApiCapabilities(user, 'pw.approvals')
+  );
 }
 
 export function buildApiUserContext(

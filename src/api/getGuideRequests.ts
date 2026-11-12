@@ -227,6 +227,6 @@ export default createEndpoint({
       });
     }
 
-    return { guideTransfers, ashrayUpgrades };
+    return { guideTransfers: organizationalDepartment(context.user) === 'PW' ? [] : guideTransfers, ashrayUpgrades };
   },
 });

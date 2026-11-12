@@ -9,7 +9,7 @@ import fs from 'fs';
 import path from 'path';
 import {
   buildApiUserContext,
-  hasApiCapabilities,
+  hasEndpointCapabilities,
   type ApiCapability,
   type ApiDatabaseUser,
   type ApiUserContext,
@@ -326,7 +326,7 @@ export async function POST(
     }
 
     const requiredCapabilities = endpointConfig.requiredCapabilities as ApiCapability | ApiCapability[] | undefined;
-    if (!hasApiCapabilities(context.user, requiredCapabilities)) {
+    if (!hasEndpointCapabilities(context.user, endpoint, requiredCapabilities)) {
       return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
     }
     if (ACTIVE_ACCOUNT_ENDPOINTS.has(endpoint) && context.user && !context.user.isActive) {
