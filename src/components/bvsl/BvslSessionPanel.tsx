@@ -34,7 +34,11 @@ interface Props {
 }
 
 export default function BvslAttendancePanel({ bvslId, groups }: Props) {
-  const [selectedGroupId, setSelectedGroupId] = useState(() => groups[0]?.id || '');
+  const [groupSelection, setGroupSelection] = useState(() => groups[0]?.id || '');
+  // Groups can arrive after mount or change when assignments refresh. Use the
+  // same fallback the selector displays, rather than leaving an empty/stale id.
+  const selectedGroupId = groups.some(group => group.id === groupSelection)
+    ? groupSelection : groups[0]?.id || '';
   const [sessionDate, setSessionDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [totalMeetingMinutes, setTotalMeetingMinutes] = useState(60);
   // String while typing so clearing "60" or replacing the first digit is not snapped back to 60.
@@ -46,15 +50,20 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
   const [localMinutesMap, setLocalMinutesMap] = useState<Record<string, string>>({});
   const [sessionExists, setSessionExists] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   useUnsavedWork(hasUnsavedChanges || saving);
 
   const loadAttendance = useReactiveLoader(async (read, groupId: string, date: string, silent = false) => {
     if (!groupId || !date) return;
-    if (!silent && !read.background) setLoading(true);
+    if (!read.background) {
+      setLoadError(null);
+      if (!silent) setLoading(true);
+    }
     try {
       const res = await read(() => getAttendanceForDate({ groupId, date }));
+      setLoadError(null);
       setMembers(res.members);
       setLeaveIds(new Set(res.members.filter((m: any) => m.status === 'L').map((m: AttendanceMember) => m.userDbId)));
       setSessionExists(res.sessionExists);
@@ -81,12 +90,24 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
       } else {
         setPresentIds(new Set());
       }
-    } catch { if (!read.cancelled && !read.background) toast.error('Failed to load members'); }
+    } catch {
+      if (!read.cancelled && !read.background) {
+        setLoadError('Could not load attendance members. Please try again.');
+        toast.error('Failed to load members');
+      }
+    }
     finally { if (!read.cancelled && !silent) setLoading(false); }
   }, [], !hasUnsavedChanges && !saving);
 
   useEffect(() => {
     setHasUnsavedChanges(false);
+    setMembers([]);
+    setPresentIds(new Set());
+    setLeaveIds(new Set());
+    setAttendedMinutesMap({});
+    setLocalMinutesMap({});
+    setSessionExists(false);
+    setLoadError(null);
     if (selectedGroupId && sessionDate) loadAttendance(selectedGroupId, sessionDate);
   }, [selectedGroupId, sessionDate, loadAttendance]);
 
@@ -235,7 +256,7 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
         <GroupSelect
           groups={groups}
           selectedGroupId={selectedGroupId}
-          onSelectGroup={setSelectedGroupId}
+          onSelectGroup={setGroupSelection}
         />
       </div>
 
@@ -287,6 +308,14 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
           {loading ? (
             <div className="space-y-2">
               {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-12" />)}
+            </div>
+          ) : loadError ? (
+            <div role="alert" className="rounded-lg border border-destructive/30 p-3 text-sm">
+              <p>{loadError}</p>
+              <Button type="button" size="sm" variant="outline" className="mt-2"
+                onClick={() => loadAttendance(selectedGroupId, sessionDate)}>
+                Retry loading members
+              </Button>
             </div>
           ) : members.length > 0 ? (
             <div>
@@ -395,7 +424,7 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
 
           <Button
             onClick={handleSave}
-            disabled={saving || !selectedGroupId || members.length === 0 || loading}
+            disabled={saving || !selectedGroupId || members.length === 0 || loading || !!loadError}
             className="w-full"
           >
             {saving ? 'Saving...' : sessionExists ? 'Update Attendance' : 'Save Attendance'}
