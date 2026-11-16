@@ -11,7 +11,7 @@ import { serverCacheInvalidate } from '@/lib/serverCache';
 import { getUserDepartment } from '@/lib/userDashboardRoutes';
 import { isPwSadhanaAdmin, isPwSuperAdmin } from '@/lib/pwSadhanaPrivacy';
 
-const MEMBER_FIELDS = ['id', 'userId', 'email', 'fullName', 'segment', 'isPrabhupadaWorldUser', 'role',
+const MEMBER_FIELDS = ['id', 'userId', 'email', 'fullName', 'segment', 'isPrabhupadaWorldUser', 'role', 'status',
   'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator', 'isBvAdmin', 'isBvSuperAdmin', 'isBvSupervisor',
   'isBvMember', 'isRgsf', 'isSadhanaMentor', 'bvGroupId', 'sadhanaMentor', 'ashrayLevel',
   'pwTargets', 'pwChantingTarget', 'pwReadingTarget', 'isPwAdmin',
@@ -58,13 +58,14 @@ async function memberAssignableGroups(people: any[]): Promise<any[]> {
     const pages = await Promise.all(['user', 'userId', 'memberId'].map(field =>
       BvGroupMembers.findAll({
         filters: { [field]: { in: chunk } } as any,
-        fields: ['user', 'userId', 'memberId', 'group', 'groupId'],
+        fields: ['user', 'userId', 'memberId', 'group', 'groupId', 'isActive', 'status'],
         limit: 30,
       }),
     ));
     pages.forEach(page => memberships.push(...(page.records || [])));
   }
-  const matched = memberships.filter(membership =>
+  const matched = memberships.filter(membership => membership.isActive !== false &&
+    !['inactive', 'removed', 'left'].includes(String(membership.status || '').trim().toLowerCase()) &&
     [membership.user, membership.userId, membership.memberId]
       .flat()
       .some(value => aliasSet.has(String(value || '').trim().toLowerCase())),
@@ -148,11 +149,6 @@ export default createEndpoint({
       throw new AppError({ code: 'FORBIDDEN', message: 'Sadhana targets apply only to Prabhupada World members' });
     }
 
-    const scope = await getScopedHierarchyUserIds(context.user);
-    if (!isUserInHierarchy(member, scope)) {
-      throw new AppError({ code: 'FORBIDDEN', message: 'You can only assign sadhana for your own members' });
-    }
-
     const inBvGroup = inGroup || profiles.some(profile => profile.isBvMember || profile.bvGroupId || profile.isBvSubFacilitator || profile.isRgsf);
     const selectedGroups = input.groupId
       ? memberGroups.filter(group => [group.id, group.groupId].some(id => String(id || '').toLowerCase() === String(input.groupId).toLowerCase()))
@@ -162,6 +158,17 @@ export default createEndpoint({
     const permission = canSetPwTargets(context.user, member, inBvGroup, assignedRgf);
     if (!permission.allowed) {
       throw new AppError({ code: 'FORBIDDEN', message: permission.message });
+    }
+
+    // The live group and membership prove ownership of an ordinary member's
+    // RGF targets. Cached reporting chains can still contain the previous RGF
+    // after a transfer. Staff/admin/mentor assignments retain the hierarchy gate.
+    const activeGroupMember = String(member.status || '').trim().toLowerCase() === 'active';
+    if (!(assignedRgf && permission.source === 'rgf' && activeGroupMember)) {
+      const scope = await getScopedHierarchyUserIds(context.user);
+      if (!isUserInHierarchy(member, scope)) {
+        throw new AppError({ code: 'FORBIDDEN', message: 'You can only assign sadhana for your own members' });
+      }
     }
 
     const next = readPwTargets(member.pwTargets);
