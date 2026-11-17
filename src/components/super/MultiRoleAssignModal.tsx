@@ -342,7 +342,7 @@ export default function MultiRoleAssignModal({
                   <UserCheck className="w-4 h-4" /> Reading group role
                 </p>
                 <p className="text-[11px] text-muted-foreground mt-1">
-                  The same person can be an RGF in one group and an RGSF in another. Each choice stays on that group.
+                  Choose RGF, RGSF, or Member separately for each group. A role selected here applies only to that group.
                 </p>
               </div>
               {readingGroups.map(group => (
