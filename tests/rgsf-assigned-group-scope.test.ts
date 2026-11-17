@@ -70,11 +70,59 @@ test('selecting another RGF/group pair moves RGSF access to exactly that group',
   assert.ok(!scoped.some(user => user.id === members[0].id));
 });
 
+test('one RGSF can assist multiple reading groups and see both member rosters', async t => {
+  const { caller, groups, rows } = fixture(t, { groups: [{ ...gadadhara }, { ...krishna }] });
+  t.mock.method(sdk.BvGroups, 'update', async ({ id, record }: { id: string; record: Record<string, unknown> }) => { Object.assign(groups.find(group => group.id === id)!, record); return { id }; });
+  t.mock.method(sdk.Users, 'update', async ({ id, record }: { id: string; record: Record<string, unknown> }) => { Object.assign(rows.Users.find(user => user.id === id)!, record); return { id }; });
+
+  await assignBvRole.execute({
+    input: {
+      userId: caller.id,
+      role: 'SUB_FACILITATOR',
+      rgsfAssignments: [
+        { groupId: gadadhara.id, rgfId: rgf.id },
+        { groupId: krishna.id, rgfId: rgf.id },
+      ],
+      multiRoles: { isSubFacilitator: true },
+    },
+    context: context({ id: 'super', role: 'SUPER_ADMIN', isBvSuperAdmin: true }),
+  } as never);
+
+  assert.deepEqual((await resolveBvScopedGroups(caller)).map(group => group.id).sort(), [gadadhara.id, krishna.id].sort());
+  assert.equal(await callerCanRecordGroupAttendance(groups[0], caller), true);
+  assert.equal(await callerCanRecordGroupAttendance(groups[1], caller), true);
+  const scoped = await resolveBvGroupMemberUsers(caller, ['id', 'userId', 'fullName']);
+  assert.ok(scoped.some(user => user.id === members[0].id));
+  assert.ok(scoped.some(user => user.id === members[1].id));
+
+  await assignBvRole.execute({
+    input: {
+      userId: caller.id,
+      role: 'SUB_FACILITATOR',
+      rgsfAssignments: [{ groupId: krishna.id, rgfId: rgf.id }],
+      multiRoles: { isSubFacilitator: true },
+    },
+    context: context({ id: 'super', role: 'SUPER_ADMIN', isBvSuperAdmin: true }),
+  } as never);
+  assert.deepEqual((await resolveBvScopedGroups(caller)).map(group => group.id), [krishna.id]);
+});
+
 test('an RGF/group mismatch or another department is rejected before any writes', async t => {
   const { caller, writes } = fixture(t, { groups: [{ ...gadadhara }, { ...krishna, bvslId: 'someone-else' }, { ...krishna, id: 'folk', segment: 'FOLK' }] });
   for (const groupId of [krishna.id, 'folk']) {
     await assert.rejects(assignBvRole.execute({ input: { userId: caller.id, role: 'SUB_FACILITATOR', parentId: rgf.id, rgsfGroupId: groupId }, context: context({ id: 'super', role: 'SUPER_ADMIN', isBvSuperAdmin: true }) } as never), /selected RGF|active Reading Group/);
   }
+  await assert.rejects(assignBvRole.execute({
+    input: {
+      userId: caller.id,
+      role: 'SUB_FACILITATOR',
+      rgsfAssignments: [
+        { groupId: gadadhara.id, rgfId: rgf.id },
+        { groupId: krishna.id, rgfId: rgf.id },
+      ],
+    },
+    context: context({ id: 'super', role: 'SUPER_ADMIN', isBvSuperAdmin: true }),
+  } as never), /selected RGF/);
   assert.deepEqual(writes, []);
 });
 

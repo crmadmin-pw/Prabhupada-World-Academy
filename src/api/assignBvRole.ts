@@ -289,6 +289,12 @@ export default createEndpoint({
     groupId: z.string().optional(),
     // Explicit RGF/group pair chosen in the role dialog; null removes RGSF assignments.
     rgsfGroupId: z.string().min(1).nullable().optional(),
+    // Complete set of RGF/group pairs chosen for this RGSF. An empty array
+    // removes every RGSF assignment while preserving any RGF assignments.
+    rgsfAssignments: z.array(z.object({
+      groupId: z.string().min(1),
+      rgfId: z.string().min(1),
+    })).max(20).optional(),
     groupRoles: z.array(z.object({
       groupId: z.string().min(1),
       role: z.enum(['FACILITATOR', 'SUB_FACILITATOR', 'MEMBER']),
@@ -341,34 +347,57 @@ export default createEndpoint({
       throw new AppError({ code: 'FORBIDDEN', message: 'Only Super Admins can change BV Admin roles' });
     }
 
-    if (input.rgsfGroupId !== undefined) {
+    if (input.rgsfGroupId !== undefined || input.rgsfAssignments !== undefined) {
       const { records } = await BvGroups.findAll({ fields: GROUP_ROLE_FIELDS, limit: 500 });
       const groups = records.filter((group: any) => sameDepartment(group, userDepartment(targetUser)));
-      const selected = input.rgsfGroupId === null ? null : groups.find((group: any) =>
-        group.isActive !== false && referenceValues([group.id, group.groupId]).includes(String(input.rgsfGroupId).toLowerCase()));
-      if (input.rgsfGroupId !== null && !selected) throw new AppError({ code: 'BAD_REQUEST', message: 'Select an active Reading Group in this department' });
-      if (selected) {
-        const rgfId = input.rgsfReportsToId || (input.role === 'SUB_FACILITATOR' ? input.parentId : '');
-        const rgf = rgfId ? await resolveMemberRecord(rgfId) : null;
-        if (!rgf || String(rgf.id) === String(targetUser.id) || !groupHasFacilitator(selected, personAliases(rgf))) {
-          throw new AppError({ code: 'BAD_REQUEST', message: 'The selected RGF must facilitate the selected Reading Group' });
+      const requestedAssignments = input.rgsfAssignments !== undefined
+        ? input.rgsfAssignments
+        : input.rgsfGroupId === null
+          ? []
+          : [{
+              groupId: input.rgsfGroupId,
+              rgfId: input.rgsfReportsToId || (input.role === 'SUB_FACILITATOR' ? input.parentId : ''),
+            }];
+      const selected = new Map<string, {
+        group: (typeof groups)[number];
+        rgf: NonNullable<Awaited<ReturnType<typeof resolveMemberRecord>>>;
+      }>();
+      for (const assignment of requestedAssignments) {
+        const group = groups.find(item =>
+          item.isActive !== false && referenceValues([item.id, item.groupId]).includes(String(assignment.groupId).toLowerCase()));
+        if (!group) throw new AppError({ code: 'BAD_REQUEST', message: 'Select active Reading Groups in this department' });
+        const rgf = assignment.rgfId ? await resolveMemberRecord(assignment.rgfId) : null;
+        if (!rgf || String(rgf.id) === String(targetUser.id) || !groupHasFacilitator(group, personAliases(rgf))) {
+          throw new AppError({ code: 'BAD_REQUEST', message: 'Each selected RGF must facilitate its selected Reading Group' });
         }
-        input = { ...input, rgsfReportsToId: rgf.userId || rgf.id, rgsfReportsToName: rgf.fullName || rgf.email || '' };
+        selected.set(group.id, { group, rgf });
+      }
+      const first = selected.values().next().value;
+      if (first) {
+        input = {
+          ...input,
+          rgsfReportsToId: first.rgf.userId || first.rgf.id,
+          rgsfReportsToName: first.rgf.fullName || first.rgf.email || '',
+        };
       }
       const changes = new Map<string, any>();
       for (const change of input.groupRoles || []) {
         const group = groups.find((group: any) => referenceValues([group.id, group.groupId]).includes(String(change.groupId).toLowerCase()));
         if (!group) throw new AppError({ code: 'BAD_REQUEST', message: 'Reading Group not found in this department' });
-        if (change.role === 'SUB_FACILITATOR' && group.id !== selected?.id) throw new AppError({ code: 'BAD_REQUEST', message: 'Choose one Reading Group for the RGSF assignment' });
+        if (change.role === 'SUB_FACILITATOR' && !selected.has(group.id)) {
+          throw new AppError({ code: 'BAD_REQUEST', message: 'Choose an RGF for every RGSF Reading Group' });
+        }
         changes.set(group.id, { ...change, groupId: group.id });
       }
       const aliases = personAliases(targetUser);
       for (const group of groups) {
-        if (group.id !== selected?.id && groupHasSubFacilitator(group, aliases) && !changes.has(group.id)) {
+        if (!selected.has(group.id) && groupHasSubFacilitator(group, aliases) && !changes.has(group.id)) {
           changes.set(group.id, { groupId: group.id, role: groupHasFacilitator(group, aliases) ? 'FACILITATOR' : 'MEMBER' });
         }
       }
-      if (selected) changes.set(selected.id, { groupId: selected.id, role: 'SUB_FACILITATOR' });
+      for (const { group } of selected.values()) {
+        changes.set(group.id, { groupId: group.id, role: 'SUB_FACILITATOR' });
+      }
       input = { ...input, groupRoles: [...changes.values()] };
     }
 

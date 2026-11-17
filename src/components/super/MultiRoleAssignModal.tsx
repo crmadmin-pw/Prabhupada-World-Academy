@@ -88,29 +88,50 @@ export default function MultiRoleAssignModal({
 
   const [adminParentId, setAdminParentId] = useState(() => resolveInitialParentId(user?.bvReportingAdminId, filteredAdminsList));
   const rgsfOptions = rgsfAssignmentOptions(filteredFacilitatorsList, departmentGroups);
-  const [rgsfKey, setRgsfKey] = useState(() => {
+  const [rgsfKeys, setRgsfKeys] = useState<string[]>(() => {
     const current = readingGroups.filter(group => group.role === 'SUB_FACILITATOR');
     const parent = resolveInitialParentId(user?.bvReportingFacilitatorId, filteredFacilitatorsList);
-    const matches = rgsfOptions.filter(option => current.some(group => group.id === option.groupId) && option.rgfId === parent);
-    return matches.length === 1 ? matches[0].key : '';
+    return current.flatMap(group => {
+      const options = rgsfOptions.filter(option => option.groupId === group.id);
+      const preferred = options.find(option => option.rgfId === parent);
+      const selected = preferred || options[0];
+      return selected ? [selected.key] : [];
+    });
   });
-  const selectedRgsf = rgsfOptions.find(option => option.key === rgsfKey);
+  const selectedRgsfs = rgsfOptions.filter(option => rgsfKeys.includes(option.key));
+  const selectedRgsf = selectedRgsfs[0];
   const facilitatorParentId = selectedRgsf?.rgfId || '';
-  const chooseRgsf = (key: string) => {
-    setRgsfKey(key);
+  const chooseRgsf = (key: string, checked: boolean) => {
     const option = rgsfOptions.find(item => item.key === key);
-    if (groupScoped && option) setGroupRoles(current => ({
-      ...Object.fromEntries(Object.entries(current).map(([id, role]) => [id, role === 'SUB_FACILITATOR' ? 'MEMBER' : role])),
-      [option.groupId]: 'SUB_FACILITATOR',
+    if (!option) return;
+    setRgsfKeys(current => checked
+      ? [...current.filter(currentKey => rgsfOptions.find(item => item.key === currentKey)?.groupId !== option.groupId), key]
+      : current.filter(currentKey => currentKey !== key));
+    if (groupScoped) setGroupRoles(current => ({
+      ...current,
+      [option.groupId]: checked ? 'SUB_FACILITATOR' : current[option.groupId] === 'SUB_FACILITATOR' ? 'MEMBER' : current[option.groupId],
     }));
   };
   const rgsfSelector = (
-    <div className="space-y-1">
-    <Select value={rgsfKey} onValueChange={value => chooseRgsf(value || '')}>
-      <SelectTrigger className="h-auto min-h-8 text-xs"><SelectValue placeholder="Select RGF and reading group">{selectedRgsf?.label || 'Select RGF and reading group'}</SelectValue></SelectTrigger>
-      <SelectContent>{rgsfOptions.map(option => <SelectItem key={option.key} value={option.key}>{option.label}</SelectItem>)}</SelectContent>
-    </Select>
-    <p className="text-[11px] text-muted-foreground">{rgsfOptions.length ? 'RGSF access is limited to the selected reading group.' : 'No active reading groups with an RGF are available.'}</p>
+    <div className="space-y-1.5">
+      {rgsfOptions.length ? (
+        <div className="max-h-40 space-y-1.5 overflow-y-auto rounded-md border p-2">
+          {rgsfOptions.map(option => {
+            const checked = rgsfKeys.includes(option.key);
+            return (
+              <div key={option.key} className="flex items-center gap-2">
+                <Checkbox
+                  id={`rgsf-${option.key}`}
+                  checked={checked}
+                  onCheckedChange={value => chooseRgsf(option.key, value === true)}
+                />
+                <Label htmlFor={`rgsf-${option.key}`} className="text-xs font-normal cursor-pointer">{option.label}</Label>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+      <p className="text-[11px] text-muted-foreground">{rgsfOptions.length ? 'Select every reading group this RGSF assists.' : 'No active reading groups with an RGF are available.'}</p>
     </div>
   );
   const personRefs = new Set(
@@ -135,7 +156,7 @@ export default function MultiRoleAssignModal({
       // Determine primary role to assign via assignBvRole API while keeping multi-role flags
       const effectiveFacilitator = groupScoped ? facilitatorInAGroup : isFacilitator;
       const effectiveSubFacilitator = groupScoped ? subFacilitatorInAGroup : isSubFacilitator;
-      if (effectiveSubFacilitator && !selectedRgsf) throw new Error('Select the RGF and reading group for this RGSF');
+      if (effectiveSubFacilitator && selectedRgsfs.length === 0) throw new Error('Select at least one RGF and reading group for this RGSF');
       let primaryRole = 'MEMBER';
       let parentId = '';
       let parentName = '';
@@ -161,7 +182,9 @@ export default function MultiRoleAssignModal({
       const submission = {
         userId: user.userId || user.id,
         role: primaryRole as any,
-        rgsfGroupId: effectiveSubFacilitator ? selectedRgsf!.groupId : null,
+        rgsfAssignments: effectiveSubFacilitator
+          ? selectedRgsfs.map(option => ({ groupId: option.groupId, rgfId: option.rgfId }))
+          : [],
         parentId: parentId || undefined,
         parentName: parentName || undefined,
         ...(changedGroupRoles.length > 0 ? { groupRoles: changedGroupRoles } : {}),
@@ -329,10 +352,12 @@ export default function MultiRoleAssignModal({
                     value={groupRoles[group.id] || group.role}
                     onValueChange={(value) => {
                       if (value !== 'FACILITATOR' && value !== 'SUB_FACILITATOR' && value !== 'MEMBER') return;
-                      setGroupRoles(current => ({ ...Object.fromEntries(Object.entries(current).map(([id, role]) => [id, value === 'SUB_FACILITATOR' && role === 'SUB_FACILITATOR' ? 'MEMBER' : role])), [group.id]: value }));
+                      setGroupRoles(current => ({ ...current, [group.id]: value }));
                       if (value === 'SUB_FACILITATOR') {
                         const options = rgsfOptions.filter(option => option.groupId === group.id);
-                        setRgsfKey(options.length === 1 ? options[0].key : '');
+                        if (options.length === 1) chooseRgsf(options[0].key, true);
+                      } else {
+                        setRgsfKeys(current => current.filter(key => rgsfOptions.find(option => option.key === key)?.groupId !== group.id));
                       }
                     }}
                   >
@@ -409,7 +434,7 @@ export default function MultiRoleAssignModal({
 
         <DialogFooter className="gap-2 sm:gap-0">
           <Button variant="outline" size="sm" onClick={onClose} disabled={saving}>Cancel</Button>
-          <Button size="sm" onClick={handleSave} disabled={saving || ((groupScoped ? subFacilitatorInAGroup : isSubFacilitator) && !selectedRgsf)}>
+          <Button size="sm" onClick={handleSave} disabled={saving || ((groupScoped ? subFacilitatorInAGroup : isSubFacilitator) && selectedRgsfs.length === 0)}>
             {saving ? 'Saving...' : 'Save Roles'}
           </Button>
         </DialogFooter>
