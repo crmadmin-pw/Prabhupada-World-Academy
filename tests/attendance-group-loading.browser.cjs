@@ -1,10 +1,14 @@
 // Isolated real-component browser test. Endpoint calls are mocked; no Firebase access.
 const assert = require('node:assert/strict');
 const http = require('node:http');
+const fs = require('node:fs');
+const postcss = require('postcss');
+const tailwind = require('@tailwindcss/postcss');
 const esbuild = require('esbuild');
 const { chromium, expect } = require('@playwright/test');
 
 async function main() {
+  const css = await postcss([tailwind()]).process(fs.readFileSync('src/index.css', 'utf8'), { from: 'src/index.css' });
   const built = await esbuild.build({
     stdin: { resolveDir: process.cwd(), loader: 'tsx', contents: `
       import React, {useState} from 'react';
@@ -35,8 +39,12 @@ async function main() {
     } }],
   });
   const server = http.createServer((request, response) => {
+    if (request.url === '/styles.css') {
+      response.setHeader('Content-Type', 'text/css');
+      return response.end(css.css + fs.readFileSync('src/mobile.css', 'utf8'));
+    }
     response.setHeader('Content-Type', request.url === '/bundle.js' ? 'text/javascript' : 'text/html');
-    response.end(request.url === '/bundle.js' ? built.outputFiles[0].contents : '<div id="root"></div><script src="/bundle.js"></script>');
+    response.end(request.url === '/bundle.js' ? built.outputFiles[0].contents : '<meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/styles.css"><div id="root"></div><script src="/bundle.js"></script>');
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const origin = `http://127.0.0.1:${server.address().port}`;
@@ -44,8 +52,9 @@ async function main() {
   const sri = { id: 'sri-advaita', groupId: 'SRI-ADVAITA', groupName: 'Sri Advaita' };
   const other = { id: 'other-group', groupId: 'OTHER', groupName: 'Other assigned group' };
   try {
-    for (const width of [1440, 390]) {
-      const page = await browser.newPage({ viewport: { width, height: 1000 } });
+    for (const width of [1440, 320]) {
+      const mobile = width < 768;
+      const page = await browser.newPage({ viewport: { width, height: mobile ? 640 : 1000 }, hasTouch: mobile, isMobile: mobile });
       const errors = [], reads = [], writes = [];
       let fail = false, failSave = false, saved = false;
       page.on('pageerror', error => errors.push(error.message));
@@ -93,6 +102,19 @@ async function main() {
       await page.evaluate(groups => window.setAttendanceGroups(groups), [sri]);
       await expect(page.getByText('Sri Advaita Member', { exact: true })).toBeVisible();
       await page.getByLabel('Total meeting duration in minutes').fill('40');
+      if (mobile) {
+        await page.getByText('Yogalakshmi Shrinivas', { exact: true }).tap();
+        await expect(page.getByRole('checkbox', { name: 'Present: Yogalakshmi Shrinivas' })).toBeChecked();
+        const minutes = page.getByRole('spinbutton', { name: 'Minutes attended by Yogalakshmi Shrinivas' });
+        await expect(minutes).toBeVisible();
+        const box = await minutes.boundingBox();
+        assert.ok(box.x >= 0 && box.x + box.width <= width);
+        assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+        await page.getByRole('button', { name: 'Mark Yogalakshmi Shrinivas on leave' }).tap();
+        await expect(page.getByText('On leave', { exact: true })).toBeVisible();
+        const save = page.getByRole('button', { name: 'Save Attendance', exact: true });
+        await expect(save).toBeInViewport({ ratio: 1 });
+      }
       await page.getByRole('button', { name: 'All Present', exact: true }).click();
       await expect(page.getByRole('status')).toContainText('Draft saved on this device');
       failSave = true;
@@ -106,14 +128,20 @@ async function main() {
       await page.getByRole('button', { name: 'Restore draft', exact: true }).click();
       await expect(page.getByText('2/2 present (Meeting: 40 mins)', { exact: true })).toBeVisible();
       failSave = false;
-      await page.getByRole('button', { name: 'Save Attendance', exact: true }).click();
+      const save = page.getByRole('button', { name: 'Save Attendance', exact: true });
+      if (mobile) {
+        await page.getByRole('spinbutton', { name: 'Minutes attended by Yogalakshmi Shrinivas' }).fill('25');
+        await save.tap();
+      } else {
+        await save.click();
+      }
       await expect(page.getByRole('button', { name: 'Update Attendance', exact: true })).toBeVisible();
       assert.equal(writes.length, 2);
       assert.equal(writes[1].groupId, sri.id);
       assert.equal(writes[1].sessionDate, reads.at(-1).date);
       assert.equal(writes[1].totalMeetingMinutes, 40);
       assert.deepEqual(writes[1].memberAttendance.map(member => [member.userDbId, member.attendedMinutes]),
-        [['sri-advaita-0', 40], ['sri-advaita-1', 40]]);
+        [['sri-advaita-0', mobile ? 25 : 40], ['sri-advaita-1', 40]]);
       assert.equal(await page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('attendance-draft:')).length), 0);
       assert.deepEqual(errors, []);
       await page.close();

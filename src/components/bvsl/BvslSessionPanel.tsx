@@ -247,12 +247,19 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
     setSaveError(null);
     setSaving(true);
     try {
-      const memberAttendance = members.map(m => ({
-        userDbId: m.userDbId,
-        present: presentIds.has(m.userDbId),
-        status: leaveIds.has(m.userDbId) ? 'L' : presentIds.has(m.userDbId) ? 'P' : 'A',
-        attendedMinutes: presentIds.has(m.userDbId) ? Math.min(attendedMinutesMap[m.userDbId] ?? minutes, minutes) : 0,
-      }));
+      const memberAttendance = members.map(({ userDbId }) => {
+        const raw = localMinutesMap[userDbId];
+        const attendedMinutes = presentIds.has(userDbId)
+          ? Math.max(0, Math.min(minutes, raw === undefined ? attendedMinutesMap[userDbId] ?? minutes : Number.parseInt(raw, 10) || 0))
+          : 0;
+        const present = attendedMinutes > 0;
+        return {
+          userDbId,
+          present,
+          status: leaveIds.has(userDbId) ? 'L' as const : present ? 'P' as const : 'A' as const,
+          attendedMinutes,
+        };
+      });
 
       const res = await conductBvSession({
         bvslId,
@@ -260,8 +267,8 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
         sessionDate,
         totalMeetingMinutes: minutes,
         memberAttendance,
-        presentUserIds: Array.from(presentIds),
-      } as any);
+        presentUserIds: memberAttendance.filter(member => member.present).map(member => member.userDbId),
+      });
       if (!res.success) throw new Error(res.message || 'Failed to save attendance');
       try { if (draftKey) localStorage.removeItem(draftKey); } catch { /* Storage can be unavailable. */ }
       setRecoverableDraft(null);
@@ -306,7 +313,7 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
         />
       </div>
 
-      <Card>
+      <Card className="overflow-visible md:overflow-hidden">
         <CardContent className="pt-4 space-y-4">
           <fieldset disabled={saving} className="min-w-0 space-y-4">
           {/* Date & Meeting Duration picker */}
@@ -431,7 +438,7 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
                   </Button>
                 </div>
               </div>
-              <div className="grid gap-2 max-h-80 overflow-y-auto pr-1">
+              <div className="grid min-w-0 gap-2 md:max-h-80 md:overflow-y-auto md:pr-1">
                 {members.map(m => {
                   const isPresent = presentIds.has(m.userDbId);
                   const isLeave = leaveIds.has(m.userDbId);
@@ -439,8 +446,7 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
                   return (
                     <div
                       key={m.userDbId}
-                      onClick={() => togglePresent(m.userDbId)}
-                      className={`flex items-center justify-between gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors select-none ${
+                      className={`flex min-w-0 flex-col gap-1 rounded-lg border p-2.5 transition-colors md:flex-row md:items-center md:justify-between md:gap-3 ${
                         isPresent
                           ? 'border-green-400 bg-green-50 dark:bg-green-950/20'
                           : isLeave
@@ -448,14 +454,16 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
                           : 'border-border hover:border-muted-foreground'
                       }`}
                     >
-                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2">
+                        <label className="flex min-h-11 min-w-0 cursor-pointer items-center gap-2 md:min-h-0">
                         <Checkbox
+                          aria-label={`Present: ${m.fullName}`}
                           checked={isPresent}
                           onCheckedChange={() => togglePresent(m.userDbId)}
-                          onClick={e => e.stopPropagation()}
                           className="shrink-0"
                         />
-                        <p className="text-sm font-medium truncate">{m.fullName}</p>
+                        <span className="break-words text-sm font-medium">{m.fullName}</span>
+                        </label>
                         {m.roleLabel && (
                           <span className="shrink-0 rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
                             {m.roleLabel}
@@ -469,15 +477,17 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
                       </div>
 
                       {/* Attended Time Input & Label */}
-                      <div className="flex items-center gap-2 shrink-0" onClick={e => e.stopPropagation()}>
+                      <div className="flex min-w-0 flex-wrap items-center gap-2 md:shrink-0">
                         <Button type="button" size="sm" variant={isLeave ? 'default' : 'outline'}
                           className="h-7 text-xs" aria-label={isLeave ? `Remove leave for ${m.fullName}` : `Mark ${m.fullName} on leave`}
                           onClick={() => toggleLeave(m.userDbId)}>Leave</Button>
                         {isPresent ? (
-                          <div className="flex items-center gap-1.5 bg-background border border-green-300 dark:border-green-800 px-2 py-0.5 rounded-md shadow-xs">
+                          <div className="flex max-w-full flex-wrap items-center gap-1.5 rounded-md border border-green-300 bg-background px-2 py-0.5 shadow-xs dark:border-green-800">
                             <span className="text-[11px] text-muted-foreground font-medium">Attended:</span>
                             <input
                               type="number"
+                              inputMode="numeric"
+                              aria-label={`Minutes attended by ${m.fullName}`}
                               min={0}
                               max={totalMeetingMinutes}
                               value={localMinutesMap[m.userDbId] ?? String(attMinutes)}
@@ -488,7 +498,6 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
                               }}
                               onBlur={e => commitMinutes(m.userDbId, e.target.value)}
                               onKeyDown={e => { if (e.key === 'Enter') commitMinutes(m.userDbId, (e.target as HTMLInputElement).value); }}
-                              onClick={e => e.stopPropagation()}
                               className="w-12 h-6 text-center text-xs font-bold bg-transparent focus:outline-none focus:ring-1 focus:ring-primary rounded"
                             />
                             <span className="text-[11px] text-muted-foreground">/ {totalMeetingMinutes} mins</span>
@@ -507,6 +516,7 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
           ) : null}
           </fieldset>
 
+          <div className="sticky bottom-0 z-10 -mx-4 border-t bg-card px-4 pt-2 pb-[max(.5rem,env(safe-area-inset-bottom))] md:static md:mx-0 md:border-0 md:p-0">
           {saveError && !loading && (
             <p role="alert" className="text-sm text-destructive">
               Attendance was not confirmed saved. {saveError} Please try again.
@@ -519,6 +529,7 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
           >
             {saving ? 'Saving...' : sessionExists ? 'Update Attendance' : 'Save Attendance'}
           </Button>
+          </div>
         </CardContent>
       </Card>
     </div>
