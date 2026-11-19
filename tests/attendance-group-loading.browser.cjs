@@ -47,12 +47,14 @@ async function main() {
     for (const width of [1440, 390]) {
       const page = await browser.newPage({ viewport: { width, height: 1000 } });
       const errors = [], reads = [], writes = [];
-      let fail = false, saved = false;
+      let fail = false, failSave = false, saved = false;
       page.on('pageerror', error => errors.push(error.message));
       await page.route('**/api/*', async route => {
         const input = route.request().postDataJSON();
         if (route.request().url().endsWith('/save')) {
-          writes.push(input); saved = true;
+          writes.push(input);
+          if (failSave) return route.fulfill({ json: { success: false, message: 'Unable to save' } });
+          saved = true;
           return route.fulfill({ json: { success: true } });
         }
         reads.push(input);
@@ -92,13 +94,27 @@ async function main() {
       await expect(page.getByText('Sri Advaita Member', { exact: true })).toBeVisible();
       await page.getByLabel('Total meeting duration in minutes').fill('40');
       await page.getByRole('button', { name: 'All Present', exact: true }).click();
+      await expect(page.getByRole('status')).toContainText('Draft saved on this device');
+      failSave = true;
+      await page.getByRole('button', { name: 'Save Attendance', exact: true }).click();
+      await expect(page.getByRole('alert')).toContainText('Attendance was not confirmed saved');
+      await expect(page.getByRole('button', { name: 'Save Attendance', exact: true })).toBeEnabled();
+      await page.reload();
+      await page.evaluate(groups => window.setAttendanceGroups(groups), [sri]);
+      await expect(page.getByRole('status')).toContainText('No attendance has been saved');
+      await expect(page.getByRole('button', { name: 'Save Attendance', exact: true })).toBeDisabled();
+      await page.getByRole('button', { name: 'Restore draft', exact: true }).click();
+      await expect(page.getByText('2/2 present (Meeting: 40 mins)', { exact: true })).toBeVisible();
+      failSave = false;
       await page.getByRole('button', { name: 'Save Attendance', exact: true }).click();
       await expect(page.getByRole('button', { name: 'Update Attendance', exact: true })).toBeVisible();
-      assert.equal(writes.length, 1);
-      assert.equal(writes[0].groupId, sri.id);
-      assert.equal(writes[0].sessionDate, reads.at(-1).date);
-      assert.equal(writes[0].totalMeetingMinutes, 40);
-      assert.deepEqual(writes[0].memberAttendance.map(member => member.userDbId), ['sri-advaita-0', 'sri-advaita-1']);
+      assert.equal(writes.length, 2);
+      assert.equal(writes[1].groupId, sri.id);
+      assert.equal(writes[1].sessionDate, reads.at(-1).date);
+      assert.equal(writes[1].totalMeetingMinutes, 40);
+      assert.deepEqual(writes[1].memberAttendance.map(member => [member.userDbId, member.attendedMinutes]),
+        [['sri-advaita-0', 40], ['sri-advaita-1', 40]]);
+      assert.equal(await page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('attendance-draft:')).length), 0);
       assert.deepEqual(errors, []);
       await page.close();
       console.log(`PASS attendance loads delayed groups, retains selection, retries failures and saves the correct roster (${width}px)`);

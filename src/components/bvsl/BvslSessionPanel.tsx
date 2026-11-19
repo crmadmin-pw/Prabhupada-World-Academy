@@ -17,6 +17,12 @@ import type { GetAttendanceForDateOutputType, GetBvslGroupsOutputType } from '@/
 
 type Group = GetBvslGroupsOutputType['groups'][0];
 type AttendanceMember = GetAttendanceForDateOutputType['members'][0];
+type AttendanceDraft = {
+  duration: string;
+  present: string[];
+  leave: string[];
+  minutes: Record<string, string>;
+};
 
 const MIN_MEETING_MINUTES = 15;
 const MAX_MEETING_MINUTES = 300;
@@ -52,8 +58,32 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const draftKey = bvslId && selectedGroupId && sessionDate
+    ? 'attendance-draft:v1:' + JSON.stringify([bvslId, selectedGroupId, sessionDate])
+    : '';
+  const [loadedKey, setLoadedKey] = useState('');
+  const [recoverableDraft, setRecoverableDraft] = useState<AttendanceDraft | null>(null);
+  const [draftStored, setDraftStored] = useState(false);
   useUnsavedWork(hasUnsavedChanges || saving);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges || loading || loadedKey !== draftKey || !draftKey) return;
+    const draft: AttendanceDraft = {
+      duration: durationDraft,
+      present: [...presentIds],
+      leave: [...leaveIds],
+      minutes: Object.fromEntries([...presentIds].map(id => [
+        id, localMinutesMap[id] ?? String(attendedMinutesMap[id] ?? totalMeetingMinutes),
+      ])),
+    };
+    try {
+      localStorage.setItem(draftKey, JSON.stringify(draft));
+      setDraftStored(true);
+    } catch { setDraftStored(false); }
+  }, [draftKey, loadedKey, hasUnsavedChanges, loading, durationDraft, presentIds, leaveIds,
+    localMinutesMap, attendedMinutesMap, totalMeetingMinutes]);
 
   const loadAttendance = useReactiveLoader(async (read, groupId: string, date: string, silent = false) => {
     if (!groupId || !date) return;
@@ -63,6 +93,13 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
     }
     try {
       const res = await read(() => getAttendanceForDate({ groupId, date }));
+      if (!read.background) {
+        const key = bvslId ? 'attendance-draft:v1:' + JSON.stringify([bvslId, groupId, date]) : '';
+        setLoadedKey(key);
+        try {
+          setRecoverableDraft(key ? JSON.parse(localStorage.getItem(key) || 'null') : null);
+        } catch { setRecoverableDraft(null); }
+      }
       setLoadError(null);
       setMembers(res.members);
       setLeaveIds(new Set(res.members.filter((m: any) => m.status === 'L').map((m: AttendanceMember) => m.userDbId)));
@@ -81,7 +118,7 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
       // Sync local display map too
       setLocalMinutesMap(Object.fromEntries(Object.entries(minutesMap).map(([k, v]) => [k, String(v)])));
 
-      // Pre-populate: if session exists, use saved values; otherwise mark all present
+      // An unsaved session starts with no marks.
       if (res.sessionExists) {
         const presentSet = new Set<string>(
           res.members.filter((m: AttendanceMember) => m.present === true).map((m: AttendanceMember) => m.userDbId as string)
@@ -101,6 +138,10 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
 
   useEffect(() => {
     setHasUnsavedChanges(false);
+    setSaveError(null);
+    setDraftStored(false);
+    setRecoverableDraft(null);
+    setLoadedKey('');
     setMembers([]);
     setPresentIds(new Set());
     setLeaveIds(new Set());
@@ -109,7 +150,7 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
     setSessionExists(false);
     setLoadError(null);
     if (selectedGroupId && sessionDate) loadAttendance(selectedGroupId, sessionDate);
-  }, [selectedGroupId, sessionDate, loadAttendance]);
+  }, [selectedGroupId, sessionDate, draftKey, loadAttendance]);
 
   const togglePresent = (userDbId: string) => {
     setHasUnsavedChanges(true);
@@ -203,6 +244,7 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
   const handleSave = async () => {
     if (!selectedGroupId) { toast.error('Select a group'); return; }
     const minutes = commitDurationDraft(durationDraft);
+    setSaveError(null);
     setSaving(true);
     try {
       const memberAttendance = members.map(m => ({
@@ -220,12 +262,16 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
         memberAttendance,
         presentUserIds: Array.from(presentIds),
       } as any);
-      toast.success(res.message || 'Attendance saved!');
+      if (!res.success) throw new Error(res.message || 'Failed to save attendance');
+      try { if (draftKey) localStorage.removeItem(draftKey); } catch { /* Storage can be unavailable. */ }
+      setRecoverableDraft(null);
+      setDraftStored(false);
+      toast.success(`Attendance saved for ${groups.find(group => group.id === selectedGroupId)?.groupName || 'this group'} on ${format(new Date(sessionDate + 'T12:00:00'), 'MMM d, yyyy')}.`);
       setSessionExists(true);
       setHasUnsavedChanges(false);
       await loadAttendance(selectedGroupId, sessionDate, true);
-    } catch (e: any) {
-      toast.error(e?.message || 'Failed to save attendance');
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Failed to save attendance');
     } finally { setSaving(false); }
   };
 
@@ -256,18 +302,20 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
         <GroupSelect
           groups={groups}
           selectedGroupId={selectedGroupId}
-          onSelectGroup={setGroupSelection}
+          onSelectGroup={id => { if (!saving) setGroupSelection(id); }}
         />
       </div>
 
       <Card>
         <CardContent className="pt-4 space-y-4">
+          <fieldset disabled={saving} className="min-w-0 space-y-4">
           {/* Date & Meeting Duration picker */}
           <div className="flex items-center justify-between gap-4 flex-wrap border-b border-border pb-3">
             <div className="flex items-center gap-2 flex-1 min-w-[200px]">
               <label className="text-xs font-semibold text-muted-foreground whitespace-nowrap">Session Date</label>
               <Input
                 type="date"
+                aria-label="Session date"
                 value={sessionDate}
                 onChange={e => setSessionDate(e.target.value)}
                 className="h-9 max-w-[170px]"
@@ -297,12 +345,46 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
               />
               <span className="text-xs text-muted-foreground font-medium">mins</span>
             </div>
-            {sessionExists && !loading && (
+            {sessionExists && !loading && !loadError && (
               <Badge className="bg-green-100 text-green-700 border-green-300 gap-1 text-xs">
                 <CheckCircle2 className="w-3 h-3" /> Previously saved
               </Badge>
             )}
           </div>
+
+          {!loading && !loadError && members.length > 0 && (
+            <div role="status" className="text-sm text-muted-foreground">
+              {hasUnsavedChanges
+                ? draftStored ? 'Draft saved on this device. Select Save Attendance or Update Attendance to submit it.' : 'Unsaved changes. Submit attendance before leaving.'
+                : !sessionExists ? 'No attendance has been saved for this group and session date.' : null}
+              {recoverableDraft && !hasUnsavedChanges && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span>An unfinished draft is available for this date.</span>
+                  <Button type="button" size="sm" variant="outline" onClick={() => {
+                    const draft = recoverableDraft;
+                    const ids = new Set(members.map(member => member.userDbId));
+                    const duration = commitMeetingMinutes(draft.duration, totalMeetingMinutes);
+                    const present = new Set(draft.present.filter(id => ids.has(id)));
+                    const minutes = Object.fromEntries([...present].map(id => [
+                      id, Math.min(duration, Math.max(0, Number.parseInt(draft.minutes[id], 10) || 0)),
+                    ]));
+                    setDurationDraft(String(duration));
+                    setTotalMeetingMinutes(duration);
+                    setPresentIds(present);
+                    setLeaveIds(new Set(draft.leave.filter(id => ids.has(id))));
+                    setAttendedMinutesMap(minutes);
+                    setLocalMinutesMap(Object.fromEntries(Object.entries(minutes).map(([id, value]) => [id, String(value)])));
+                    setRecoverableDraft(null);
+                    setHasUnsavedChanges(true);
+                  }}>Restore draft</Button>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => {
+                    try { localStorage.removeItem(draftKey); } catch { /* Storage can be unavailable. */ }
+                    setRecoverableDraft(null);
+                  }}>Discard draft</Button>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Member list */}
           {loading ? (
@@ -333,6 +415,7 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
                       const m: Record<string, number> = {};
                       members.forEach(mem => { m[mem.userDbId] = totalMeetingMinutes; });
                       setAttendedMinutesMap(m);
+                      setLocalMinutesMap(Object.fromEntries(Object.entries(m).map(([id, value]) => [id, String(value)])));
                     }}>
                     All Present
                   </Button>
@@ -342,6 +425,7 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
                       setLeaveIds(new Set());
                       setHasUnsavedChanges(true);
                       setAttendedMinutesMap({});
+                      setLocalMinutesMap({});
                     }}>
                     All Absent
                   </Button>
@@ -410,7 +494,7 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
                             <span className="text-[11px] text-muted-foreground">/ {totalMeetingMinutes} mins</span>
                           </div>
                         ) : (
-                          <span className="text-xs text-muted-foreground font-normal">{isLeave ? 'On leave' : 'Absent (0 mins)'}</span>
+                          <span className="text-xs text-muted-foreground font-normal">{isLeave ? 'On leave' : sessionExists || hasUnsavedChanges ? 'Absent (0 mins)' : 'Unmarked'}</span>
                         )}
                       </div>
                     </div>
@@ -421,10 +505,16 @@ export default function BvslAttendancePanel({ bvslId, groups }: Props) {
           ) : selectedGroupId ? (
             <p className="text-sm text-muted-foreground text-center py-4">No members in this group yet.</p>
           ) : null}
+          </fieldset>
 
+          {saveError && !loading && (
+            <p role="alert" className="text-sm text-destructive">
+              Attendance was not confirmed saved. {saveError} Please try again.
+            </p>
+          )}
           <Button
             onClick={handleSave}
-            disabled={saving || !selectedGroupId || members.length === 0 || loading || !!loadError}
+            disabled={saving || !draftKey || loadedKey !== draftKey || members.length === 0 || loading || !!loadError || (!sessionExists && !hasUnsavedChanges)}
             className="w-full"
           >
             {saving ? 'Saving...' : sessionExists ? 'Update Attendance' : 'Save Attendance'}
