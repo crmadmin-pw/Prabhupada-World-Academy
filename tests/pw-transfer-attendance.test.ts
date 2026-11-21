@@ -27,6 +27,8 @@ for (const asStaff of [false, true]) {
         mark('old-27', member.userId, 'old-group', '2026-10-27', true),
         mark('backfilled-27', member.id, group.id, '2026-10-27', false),
         mark('old-28', [member.firebaseUid], 'old-group', '2026-10-28', true),
+        mark('old-29-absent', member.id, 'old-group', '2026-10-29', false),
+        mark('new-29-present', member.id, group.id, '2026-10-29', true),
         mark('peer-28', peer.id, group.id, '2026-10-28', true),
         mark('old-only-sunday', member.id, 'old-group', '2026-11-01', true),
         { ...mark('leave-03', member.id, group.id, '2026-11-03', false), status: 'L' },
@@ -37,7 +39,7 @@ for (const asStaff of [false, true]) {
         mark('present-06', member.firebaseUid, group.id, '2026-11-06', true),
         mark('outside-peer', 'private-member', 'old-group', '2026-10-30', true),
         mark('outside-range', member.id, 'old-group', '2026-09-01', true),
-        mark('sadhana-only', member.id, '', '2026-10-29', true),
+        mark('sadhana-only', member.id, '', '2026-10-31', true),
       ],
     };
     void serverCacheInvalidate(undefined, { publish: false });
@@ -65,18 +67,20 @@ for (const asStaff of [false, true]) {
     const sessions = await run(sessionMatrix, { guideId: 'ALL', segment: 'PW', groupId: group.id, ...range });
     assert.equal(sessions.attendance[member.id]['2026-10-27'], true);
     assert.equal(sessions.attendance[member.id]['2026-10-28'], true);
+    assert.equal(sessions.attendance[member.id]['2026-10-29'], true);
     assert.equal(sessions.attendance[member.id]['2026-11-04'], false);
     assert.equal(sessions.attendance[member.id]['2026-11-03'], 'L');
     assert.equal(sessions.attendance[member.id]['2026-11-05'], false);
     assert.equal(sessions.attendance[member.id]['2026-11-06'], true);
     assert.equal(sessions.attendance['private-member'], undefined);
-    assert.ok(!sessions.sessionDates.includes('2026-10-29'));
+    assert.ok(!sessions.sessionDates.includes('2026-10-31'));
     assert.ok(!sessions.sessionDates.includes('2026-09-01'));
     const details = await run(groupMatrix, { groupId: group.id, ...range });
     const row = details.rows.find((row: any) => row.userId === member.userId);
     assert.ok(row);
     assert.equal(row.attendance['2026-10-27'], 1);
     assert.equal(row.attendance['2026-10-28'], 1);
+    assert.equal(row.attendance['2026-10-29'], 1);
     assert.equal(row.attendance['2026-11-04'], 0);
     assert.equal(row.attendance['2026-11-03'], -1);
     assert.equal(row.attendance['2026-11-05'], 0);

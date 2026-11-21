@@ -77,9 +77,9 @@ export function mergeReportAttendance(
     const uid = key.slice(0, split);
     const date = key.slice(split + 1);
     const joinedOn = joinedOnByUserId.get(uid);
-    // Backfilled absences in the destination group must not erase the mark
-    // saved in the previous group before this member joined.
-    if (joinedOn && date < joinedOn && attendance[uid]?.[date] !== undefined) continue;
+    // A destination-group absence may be a backfill for a date before the
+    // transfer. An explicit presence or leave there is a recorded mark.
+    if (present === false && joinedOn && date < joinedOn && attendance[uid]?.[date] !== undefined) continue;
     write(key, present);
   }
 
