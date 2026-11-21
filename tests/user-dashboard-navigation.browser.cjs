@@ -9,7 +9,7 @@ async function main() {
   const browser = await chromium.launch({ headless: true });
   try {
     for (const segment of ['PW', 'FOLK']) {
-      const context = await browser.newContext({ serviceWorkers: 'block' });
+      const context = await browser.newContext({ serviceWorkers: 'block', timezoneId: 'Asia/Kolkata' });
       const page = await context.newPage();
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
@@ -20,7 +20,10 @@ async function main() {
       const opposite = segment === 'PW' ? '/user/folk-dashboard' : '/user/pw-dashboard';
       let saved = false;
       let dashboardReads = 0;
-      const today = new Date().toISOString().slice(0, 10);
+      const indiaNow = Date.now() + 330 * 60_000;
+      const today = new Date(indiaNow).toISOString().slice(0, 10);
+      const yesterday = new Date(indiaNow - 86_400_000).toISOString().slice(0, 10);
+      await page.clock.setFixedTime(new Date(`${today}T21:00:00+05:30`));
       // Seed a test-only Firebase session so the actual endpoint client can
       // obtain a token. No test token or API call is sent to a real server.
       await context.addInitScript(({ apiKey }) => {
@@ -43,8 +46,11 @@ async function main() {
         if (endpoint === 'getUserProfile') response = { user: profile };
         if (endpoint === 'getUserDashboardData') {
           dashboardReads++;
-          response = { metrics: { todaySubmitted: saved, todayPercent: saved ? 75 : null, entriesThisWeek: saved ? 1 : 0 },
-            recentEntries: saved ? [{ entryId: 'saved-entry', entryDate: today, scorePercent: 75, submittedAt: new Date().toISOString() }] : [] };
+          // A stale summary still claims yesterday's 96% as today's score.
+          response = { metrics: { todaySubmitted: true, todayPercent: 96, entriesThisWeek: saved ? 2 : 1 },
+            recentEntries: saved
+              ? [{ entryId: 'saved-entry', entryDate: today, scorePercent: 75, submittedAt: new Date().toISOString() }]
+              : [{ entryId: 'yesterday-entry', entryDate: yesterday, scorePercent: 96 }] };
         }
         if (endpoint === 'getUserProgressStats') response = { isPw: segment === 'PW', entries: [], fieldTrends: [], insightFields: [] };
         if (endpoint === 'getSadhanaLeaderboard') response = { leaderboard: [], currentUserAshrayLevel: 'Sevak' };
@@ -68,6 +74,8 @@ async function main() {
       await page.goto(`${origin}${opposite}#sadhana`);
       await expect(page).toHaveURL(`${origin}${canonical}#sadhana`);
       await expect(page.getByRole('button', { name: 'Fill / Edit Sadhana Form', exact: true })).toBeVisible();
+      await expect(page.getByText('Not submitted yet', { exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: today, exact: true })).not.toHaveClass(/bg-green-500/);
       await expect(page.getByRole('tab', { name: 'Cleanliness', exact: true })).toHaveCount(segment === 'FOLK' ? 1 : 0);
       const mySadhana = page.getByRole('button', { name: 'My Sadhana', exact: true });
       await expect(mySadhana).toHaveClass(/bg-primary/);
@@ -85,6 +93,7 @@ async function main() {
       await page.getByRole('button', { name: 'Submit Sadhana', exact: true }).click();
       await expect(page).toHaveURL(`${origin}${canonical}#sadhana`);
       await expect(page.getByRole('button', { name: 'Edit Entry', exact: true })).toBeVisible();
+      await expect(page.getByText('75%', { exact: true })).toBeVisible();
       assert.ok(saved, 'form must submit successfully');
       assert.ok(dashboardReads > readsBeforeSave, 'dashboard must refresh after save');
       assert.deepEqual(errors, [], 'dashboard and form should render without runtime errors');

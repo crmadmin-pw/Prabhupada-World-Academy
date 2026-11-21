@@ -274,22 +274,8 @@ export default function SadhanaTab({ metrics, history, userId, residencyId, isRe
       const normalized = toHistoryEntry(entry);
       if (normalized) byDate.set(normalized.entryDate, normalized);
     }
-    // The summary and calendar can briefly come from different cache revisions.
-    // Keep today's cell in sync with the score shown in the summary card.
-    if (metrics.todaySubmitted) {
-      const existing = byDate.get(todayStr);
-      byDate.set(todayStr, {
-        entryId: existing?.entryId ?? '',
-        entryDate: todayStr,
-        totalScore: metrics.todayScore ?? existing?.totalScore ?? 0,
-        scorePercent: metrics.todayPercent ?? existing?.scorePercent ?? null,
-        submittedAt: existing?.submittedAt ?? '',
-        flagSick: existing?.flagSick ?? false,
-        flagOs: existing?.flagOs ?? false,
-      });
-    }
     return [...byDate.values()];
-  }, [history, olderEntries, metrics.todaySubmitted, metrics.todayScore, metrics.todayPercent, todayStr]);
+  }, [history, olderEntries]);
 
   const handleMonthChange = (monthStart: string) => {
     if (!loadedThroughRef.current) {
@@ -360,7 +346,9 @@ export default function SadhanaTab({ metrics, history, userId, residencyId, isRe
       .finally(() => !read.cancelled && setInsightLoading(false));
   }, [userId, insightPeriod, refreshVersion]);
 
-  const todayHistoryEntry = history.find(e => e.entryDate === todayStr);
+  // The summary may have been cached before midnight. Only a dated entry
+  // can confirm a submission for the day shown in the calendar.
+  const todayHistoryEntry = calendarHistory.find(e => e.entryDate === todayStr);
   const submittedAtDisplay = todayHistoryEntry?.submittedAt ? formatSubmittedAt(todayHistoryEntry.submittedAt) : '';
   const entriesCount = metrics.entriesThisWeek ?? metrics.entriesLast7Days ?? 0;
   const daysApplicable = 7;
@@ -377,10 +365,10 @@ export default function SadhanaTab({ metrics, history, userId, residencyId, isRe
         <Card className="col-span-2 md:col-span-1">
           <CardHeader className="pb-3"><CardTitle className="text-sm font-medium text-muted-foreground">Today's Score</CardTitle></CardHeader>
           <CardContent>
-            {metrics.todaySubmitted ? (<>
-              <div className="text-3xl font-bold text-primary">{metrics.todayPercent != null ? `${metrics.todayPercent}%` : (metrics.todayScore != null ? metrics.todayScore : '—')}</div>
+            {todayHistoryEntry ? (<>
+              <div className="text-3xl font-bold text-primary">{todayHistoryEntry.scorePercent != null ? `${todayHistoryEntry.scorePercent}%` : todayHistoryEntry.totalScore}</div>
               <p className="text-xs text-muted-foreground mt-1">
-                {submittedAtDisplay ? `Submitted ${submittedAtDisplay}` : `Submitted on ${format(new Date(), 'MMM dd, yyyy')}`}
+                {submittedAtDisplay ? `Submitted ${submittedAtDisplay}` : 'Submitted for this date'}
               </p>
               <Button variant="outline" size="sm" className="mt-3 w-full" onClick={() => navigate(`/sadhana?date=${todayStr}`)}><Edit className="w-4 h-4 mr-2" />Edit Entry</Button>
             </>) : (<>
@@ -394,7 +382,7 @@ export default function SadhanaTab({ metrics, history, userId, residencyId, isRe
           <CardHeader className="pb-3"><CardTitle className="text-sm font-medium text-muted-foreground">Current Streak</CardTitle></CardHeader>
           <CardContent>
             <div className="flex items-center gap-2"><Flame className="w-8 h-8 text-orange-500" /><div className="text-3xl font-bold">{metrics.currentStreak}</div></div>
-            <p className="text-xs text-muted-foreground mt-1">{metrics.currentStreak === 0 ? (metrics.todaySubmitted ? 'Submitted today' : 'Start your streak today!') : `${metrics.currentStreak} consecutive day${metrics.currentStreak !== 1 ? 's' : ''}`}</p>
+            <p className="text-xs text-muted-foreground mt-1">{metrics.currentStreak === 0 ? (todayHistoryEntry ? 'Submitted today' : 'Start your streak today!') : `${metrics.currentStreak} consecutive day${metrics.currentStreak !== 1 ? 's' : ''}`}</p>
             {!progressData?.isPw && <p className="text-xs text-muted-foreground/70 mt-0.5">Sadhana Score {isResident ? '≥ 95%' : '≥ 75%'}</p>}
             {metrics.streakAtRisk && (
               <p className="text-xs text-orange-500 mt-1 font-medium">⚠️ Submit today to keep your streak!</p>
