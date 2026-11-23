@@ -1,10 +1,10 @@
 import { z } from 'zod';
-import { createEndpoint, BvGroups, BvGroupMembers, BvAttendance, AppError } from '@/lib/backend-sdk';
+import { createEndpoint, BvGroups, BvGroupMembers, AppError } from '@/lib/backend-sdk';
 import { resolveBvScopedGroups, resolveBvUsersByAliases } from '@/lib/bvGroupMemberScope';
 import { countsAsGroupMember, facilitatorRoleLabel, loadGroupFacilitators } from '@/lib/bvGroupFacilitators';
 import { bvUserAliases } from '@/lib/bvGroupMemberScope';
 import { bvMembershipJoinedOn, mergeReportAttendance } from '@/lib/bvReportAttendance';
-import { BV_REPORT_IDENTITY_FIELDS, readBvReportHistory } from '@/lib/bvReportHistory';
+import { BV_REPORT_IDENTITY_FIELDS, readGroupReportAttendance } from '@/lib/bvReportHistory';
 import { findAllByIn } from '@/lib/scopedEntryReads';
 
 function firstValue(value: unknown): string {
@@ -68,27 +68,12 @@ export default createEndpoint({
       return countsAsGroupMember(u, group);
     });
 
-    // Query by group only. Combining group with an attendanceDate range needs
-    // a Firestore composite index; filtering the small per-group result here
-    // keeps the matrix reliable even before that index is deployed.
-    const attendancePages = await Promise.all(['group', 'groupId'].map(field =>
-      findAllByIn(query => BvAttendance.findAll(query), field, groupRefs, {},
-        ['id', 'user', 'group', 'groupId', 'present', 'status', 'attendanceDate'])));
-    let attRecords = [...new Map(attendancePages.flat().map(record => [record.id, record])).values()];
-    attRecords = attRecords.filter((attendance: any) => {
-      const date = String(attendance.attendanceDate || '').slice(0, 10);
-      return !!date &&
-        (!input.startDate || date >= input.startDate) &&
-        (!input.endDate || date <= input.endDate);
-    });
-
+    const attRecords = await readGroupReportAttendance(groupRefs, input.startDate, input.endDate);
     const staff = await loadGroupFacilitators(group);
     staff.forEach(entry => addRecord(entry.user));
     const isPwReport = ['PW', 'PRABHUPADA WORLD'].includes(String(group.segment || context.user.segment || '').toUpperCase()) || context.user.isPrabhupadaWorldUser === true;
     const joinedOnByUserId = new Map<string, string>();
     if (isPwReport) {
-      const history = await readBvReportHistory([...activeMembers.map(memberUser), ...staff.map(entry => entry.user)].filter(Boolean), input.startDate, input.endDate);
-      attRecords = [...new Map([...attRecords, ...history].map(record => [record.id, record])).values()];
       for (const membership of membersRes.records) {
         const user = memberUser(membership);
         const joinedOn = bvMembershipJoinedOn(membership.joinedAt);

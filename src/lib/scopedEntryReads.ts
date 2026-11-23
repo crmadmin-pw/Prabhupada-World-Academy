@@ -43,7 +43,7 @@ export function collectOwnerKeys(users: readonly any[], fields: readonly string[
   return keys;
 }
 
-async function readPages(findAll: FindAll, filters: Record<string, unknown>, fields?: string[]): Promise<any[]> {
+export async function readPages(findAll: FindAll, filters: Record<string, unknown>, fields?: string[]): Promise<any[]> {
   const rows: any[] = [];
   let offset = 0;
   while (true) {

@@ -97,11 +97,15 @@ export default function BvSessionMatrixTab({ guideId, bvslMode, residencyIds, se
     return parseMonthInput(selectedMonth);
   }, [reportType, selectedWeek, selectedMonth]);
 
-  const reportQuery = useEndpointQuery<GetBvSessionMatrixOutputType>('getBvSessionMatrix', {
+  const reportInput = {
     guideId, startDate: start, endDate: end,
     bvslMode, segment, supervisionOnly: supervisionOnly || undefined,
     residencyIds: residencyIds?.length ? residencyIds : undefined,
-  }, Boolean(guideId));
+  };
+  const overview = useEndpointQuery<GetBvSessionMatrixOutputType>('getBvSessionMatrix', reportInput, Boolean(guideId));
+  const selected = useEndpointQuery<GetBvSessionMatrixOutputType>('getBvSessionMatrix',
+    { ...reportInput, groupId }, Boolean(guideId && groupId !== 'all'), { keepPreviousData: false });
+  const reportQuery = groupId === 'all' ? overview : selected;
   const data = reportQuery.data;
   const loading = reportQuery.loading || reportQuery.fetching;
   const fetchData = reportQuery.refetch;
@@ -109,11 +113,11 @@ export default function BvSessionMatrixTab({ guideId, bvslMode, residencyIds, se
 
   const bvOptions = useMemo(() => {
     const listed = new Map<string, string>();
-    const apiGroups = ((data as { groups?: { id: string; name: string }[] } | null)?.groups) ?? [];
+    const apiGroups = ((overview.data as { groups?: { id: string; name: string }[] } | null)?.groups) ?? [];
     for (const group of apiGroups) {
       if (group?.id) listed.set(String(group.id), group.name || 'Untitled BV');
     }
-    for (const member of data?.members ?? []) {
+    for (const member of overview.data?.members ?? []) {
       const memberGroupId = member.groupId ? String(member.groupId) : '';
       if (memberGroupId && !listed.has(memberGroupId)) {
         listed.set(memberGroupId, member.groupName || 'Untitled BV');
@@ -122,7 +126,7 @@ export default function BvSessionMatrixTab({ guideId, bvslMode, residencyIds, se
     return [...listed.entries()]
       .map(([id, name]) => ({ id, name }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [data]);
+  }, [overview.data]);
   const selectedBvName = groupId === 'all' ? '' : (bvOptions.find(group => group.id === groupId)?.name || '');
 
   useEffect(() => {
@@ -159,17 +163,7 @@ export default function BvSessionMatrixTab({ guideId, bvslMode, residencyIds, se
     }).sort((a, b) => a.fullName.localeCompare(b.fullName));
   }, [data, groupId, ashrayFilter, residencyFilter, folkFilter]);
 
-  const sessionDateSet = useMemo(() => {
-    if (!data) return new Set<string>();
-    if (groupId === 'all') return new Set<string>(data.sessionDates);
-    const dates = new Set<string>();
-    const attendance = data.attendance as Record<string, Record<string, boolean | 'L'>>;
-    for (const member of data.members) {
-      if (String(member.groupId || '') !== groupId) continue;
-      for (const date of Object.keys(attendance[member.userId] || {})) dates.add(date);
-    }
-    return dates;
-  }, [data, groupId]);
+  const sessionDateSet = useMemo(() => new Set<string>(data?.sessionDates ?? []), [data]);
 
   // Summary stats
   const stats = useMemo(() => {

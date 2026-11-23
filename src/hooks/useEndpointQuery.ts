@@ -6,7 +6,7 @@ import {
 import { useDashboardActivity } from '@/components/DashboardPanel';
 
 /** Reactive SWR over the existing endpoint cache (no second copy of API data). */
-export function useEndpointQuery<T>(name: string, input: Record<string, unknown>, enabled = true) {
+export function useEndpointQuery<T>(name: string, input: Record<string, unknown>, enabled = true, { keepPreviousData = true } = {}) {
   const scope = useSyncExternalStore(subscribeEndpointCache, getEndpointIdentityScope, () => 'public');
   const key = queryCacheKey(name, input);
   const inputRef = useRef(input);
@@ -26,7 +26,7 @@ export function useEndpointQuery<T>(name: string, input: Record<string, unknown>
   latest.current = key;
   const previous = useRef<{ name: string; scope: string; data: T } | null>(null);
   const denied = state.key === key && [401, 403].includes((state.error as any)?.status);
-  const data = denied ? undefined : (cache?.data as T | undefined) ?? (previous.current?.name === name && previous.current.scope === scope ? previous.current.data : undefined);
+  const data = denied ? undefined : (cache?.data as T | undefined) ?? (keepPreviousData && previous.current?.name === name && previous.current.scope === scope ? previous.current.data : undefined);
   useEffect(() => {
     if (cache) previous.current = { name, scope, data: cache.data };
   }, [cache, name, scope]);

@@ -8,7 +8,7 @@ import { withRequestQueries } from '../src/lib/requestQueries';
 import { serverCacheInvalidate } from '../src/lib/serverCache';
 
 for (const asStaff of [false, true]) {
-  test(`PW transferred ${asStaff ? 'RGSF/admin' : 'member'} keeps former-group attendance in both reports`, async t => {
+  test(`PW transferred ${asStaff ? 'RGSF/admin' : 'member'} has separate group matrices and combined personal history in the overview`, async t => {
     const admin = { id: 'super', userId: 'SUPER', role: 'User', segment: 'PW', isBvSuperAdmin: true, isBvAdmin: true };
     const member = { id: 'member-doc', userId: 'MEMBER', email: 'member@example.invalid', firebaseUid: 'member-auth',
       fullName: 'Transferred Member', status: 'Active', role: asStaff ? 'Admin' : 'User', segment: 'PW',
@@ -36,7 +36,7 @@ for (const asStaff of [false, true]) {
         mark('absent-04', member.id, group.id, '2026-11-04', false),
         mark('old-05', member.id, 'old-group', '2026-11-05', true),
         mark('peer-05', peer.id, group.id, '2026-11-05', true),
-        mark('present-06', member.firebaseUid, group.id, '2026-11-06', true),
+        { ...mark('present-06', member.firebaseUid, '', '2026-11-06', true), groupId: [group.groupId] },
         mark('outside-peer', 'private-member', 'old-group', '2026-10-30', true),
         mark('outside-range', member.id, 'old-group', '2026-09-01', true),
         mark('sadhana-only', member.id, '', '2026-10-31', true),
@@ -64,7 +64,7 @@ for (const asStaff of [false, true]) {
     const range = { startDate: '2026-10-26', endDate: '2026-11-06' };
     const run = (endpoint: any, input: any) => withHierarchyDatabase(null, async () =>
       (await withRequestQueries(() => endpoint.execute({ input, context: { user: admin } }))).result as any);
-    const sessions = await run(sessionMatrix, { guideId: 'ALL', segment: 'PW', groupId: group.id, ...range });
+    const sessions = await run(sessionMatrix, { guideId: 'ALL', segment: 'PW', ...range });
     assert.equal(sessions.attendance[member.id]['2026-10-27'], true);
     assert.equal(sessions.attendance[member.id]['2026-10-28'], true);
     assert.equal(sessions.attendance[member.id]['2026-10-29'], true);
@@ -78,14 +78,27 @@ for (const asStaff of [false, true]) {
     const details = await run(groupMatrix, { groupId: group.id, ...range });
     const row = details.rows.find((row: any) => row.userId === member.userId);
     assert.ok(row);
-    assert.equal(row.attendance['2026-10-27'], 1);
-    assert.equal(row.attendance['2026-10-28'], 1);
+    assert.equal(row.attendance['2026-10-27'], 0);
+    assert.equal(row.attendance['2026-10-28'], undefined);
     assert.equal(row.attendance['2026-10-29'], 1);
     assert.equal(row.attendance['2026-11-04'], 0);
     assert.equal(row.attendance['2026-11-03'], -1);
     assert.equal(row.attendance['2026-11-05'], 0);
     assert.equal(row.attendance['2026-11-06'], 1);
-    assert.equal(row.attendance['2026-11-01'], 1);
+    assert.equal(row.attendance['2026-11-01'], undefined);
+    assert.ok(!details.dates.includes('2026-11-01'));
+    fixtures.BvGroups.push({ id: 'old-group', groupId: 'OLD', groupName: 'Other group', segment: 'PW',
+      isActive: true, bvslLeader: member.id });
+    void serverCacheInvalidate(undefined, { publish: false });
+    const other = await run(groupMatrix, { groupId: 'OLD', ...range });
+    const otherRow = other.rows.find((item: any) => item.userId === member.userId);
+    assert.equal(otherRow.attendance['2026-11-01'], 1);
+    assert.equal(otherRow.attendance['2026-11-04'], 1);
+    assert.ok(!other.dates.includes('2026-11-06'));
+    const selected = await run(sessionMatrix, { guideId: 'ALL', segment: 'PW', groupId: group.id, ...range });
+    assert.deepEqual(selected.sessionDates, details.dates);
+    assert.equal(selected.attendance[member.id]['2026-11-01'], undefined);
+    assert.equal(selected.attendance[member.id]['2026-11-04'], false);
     assert.equal(details.rows.find((row: any) => row.userId === peer.userId)?.attendance['2026-11-01'], undefined);
     assert.ok(!details.dates.includes('2026-10-30'));
   });

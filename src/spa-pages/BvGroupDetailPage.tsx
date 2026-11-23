@@ -399,7 +399,7 @@ export default function BvGroupDetailPage() {
 
   const matrixQuery = useEndpointQuery<MatrixData>('getBvAttendanceMatrix', {
     groupId, startDate: dateRange?.start, endDate: dateRange?.end,
-  }, Boolean(groupId && dateRange && !deleting));
+  }, Boolean(groupId && dateRange && !deleting), { keepPreviousData: false });
   const matrix = matrixQuery.data || null;
   const matrixLoading = matrixQuery.loading;
   const matrixError = matrixQuery.error && !matrix ? 'Unable to load attendance for this date range.' : '';

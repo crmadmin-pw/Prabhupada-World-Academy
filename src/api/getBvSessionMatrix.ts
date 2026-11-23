@@ -8,7 +8,7 @@ import { legacyQuizMatchesGroup, normalizeQuizDepartment } from '../lib/bvQuizAc
 import { bvGroupFacilitatorAliases, bvUserAliases, isBvDepartmentAdmin, isBvSuperAdminUser, isBvSupervisorUser, resolveBvDepartmentGroups, resolveBvScopedGroups, resolveBvUsersByAliases } from '../lib/bvGroupMemberScope';
 import { findAllByIn } from '../lib/scopedEntryReads';
 import { bvMembershipJoinedOn, mergeReportAttendance } from '../lib/bvReportAttendance';
-import { readBvReportHistory } from '../lib/bvReportHistory';
+import { readBvReportHistory, readGroupReportAttendance } from '../lib/bvReportHistory';
 import { getUserDepartment } from '../lib/userDashboardRoutes';
 
 export default createEndpoint({
@@ -173,6 +173,7 @@ export default createEndpoint({
         return { users, residencyNameMap };
       })(),
       (async () => {
+        if (groupId) return readGroupReportAttendance(groupIds, startDate, endDate);
         // Query attendance by group+date range directly (new approach)
         let allAttendance: any[] = [];
         if (groupIds.length > 0) {
@@ -250,7 +251,7 @@ export default createEndpoint({
     const userMap = new Map<string, any>();
     scopedUsers.forEach(user => bvUserAliases(user).forEach(alias => userMap.set(alias, user)));
     const isPwReport = (segment || getUserDepartment(context.user)) === 'PW';
-    const attendanceRecords = isPwReport
+    const attendanceRecords = isPwReport && !groupId
       ? [...new Map([...allAttendance, ...await readBvReportHistory(scopedUsers, startDate, endDate)]
         .map(record => [record.id, record])).values()]
       : allAttendance;
