@@ -3,16 +3,16 @@
 const IDENTITY_FIELDS = ['userId', 'email'];
 
 const AUTHORIZATION_FIELDS = [
-  'segment', 'role', 'roles', 'status',
+  'segment', 'role', 'roles', 'status', 'activeDepartment', 'baseDepartment', 'baseRole',
   'isBvAdmin', 'isBvSuperAdmin', 'isBvSupervisor', 'isBvMentor', 'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator',
-  'isSadhanaMentor',
+  'isSadhanaMentor', 'pwSuperAdminAccess',
   'guideId', 'guide', 'selectedGuideId', 'selectedFolkResidency', 'folkResidencies', 'bvGroupId',
   'bvReportingAdminId', 'bvReportingSupervisorId', 'bvReportingFacilitatorId',
 ];
 
 const FLAG_FIELDS = new Set([
   'isBvAdmin', 'isBvSuperAdmin', 'isBvSupervisor', 'isBvMentor', 'isBvFacilitator', 'isBvsl', 'isBvSubFacilitator',
-  'isSadhanaMentor',
+  'isSadhanaMentor', 'pwSuperAdminAccess',
 ]);
 
 const TOKEN_FIELDS = new Set(['segment', 'role', 'roles', 'status']);

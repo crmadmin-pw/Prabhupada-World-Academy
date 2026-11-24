@@ -15,7 +15,8 @@ const USER_FIELDS = ['id', 'userId', 'fullName', 'phone', 'phoneCountryCode', 'e
   'acknowledgedFolkLead', 'acknowledgedTripCoordinator', 'acknowledgedSadhanaMentor',
   'isBvSuperAdmin', 'isBvAdmin', 'isBvSupervisor', 'isBvFacilitator', 'isBvSubFacilitator',
   'pendingRoleNotice', 'pendingBvGroupAssignmentNotice', 'pendingBvGroupRemovalNotice', 'roleNoticeAcknowledged', 'bvRegistrationStatus', 'bvGroupId', 'bvGroupName', 'bvReportingFacilitatorName', 'bvReportingSupervisorName', 'isBvMember', 'isPrabhupadaWorldUser', 'pendingBvRejectionNotice', 'segment', 'pendingBvApprovalNotice',
-  'pendingAshrayNoticeStatus', 'pendingAshrayNoticeLevel', 'ashrayNoticeAcknowledged', 'isFolkUser'];
+  'pendingAshrayNoticeStatus', 'pendingAshrayNoticeLevel', 'ashrayNoticeAcknowledged', 'isFolkUser',
+  'pwSuperAdminAccess'];
 const GUIDE_FIELDS = ['id', 'fullName', 'abbr'];
 const RESIDENCY_FIELDS = ['id', 'residencyName', 'residencyId'];
 
@@ -48,6 +49,63 @@ export default createEndpoint({
     // Authentication-sync documents are not registrations. A real profile is
     // valid only after the registration flow has assigned both fields.
     if (!userRecord?.userId || !userRecord?.status) return { user: null };
+
+    // A dual-department account keeps its stored FOLK profile unchanged. In
+    // PW mode, return a clean effective Super Admin profile immediately so no
+    // FOLK guide, residency, transfer, or membership data is queried or
+    // exposed to the PW dashboard.
+    if (context.user.pwSuperAdminAccess === true && context.user.activeDepartment === 'PW') {
+      let lastLoginAt = userRecord.lastLoginAt || null;
+      if (!lastLoginAt) {
+        const now = new Date().toISOString();
+        Users.update({ id: context.user.id, record: { lastLoginAt: now } }).catch(() => {});
+        lastLoginAt = now;
+      }
+      return {
+        user: {
+          userId: userRecord.userId,
+          fullName: userRecord.fullName || '',
+          phone: userRecord.phone || '',
+          phoneCountryCode: userRecord.phoneCountryCode || '',
+          email: userRecord.email || context.user.email,
+          role: 'SUPER_ADMIN',
+          status: normalizeStatus(userRecord.status || 'Pending Approval'),
+          deletionRequestedAt: userRecord.deletionRequestedAt || null,
+          deletionPurgeAt: userRecord.deletionPurgeAt || null,
+          createdAt: userRecord.createdAt || new Date().toISOString(),
+          lastLoginAt,
+          segment: 'PW',
+          isPrabhupadaWorldUser: true,
+          isBvSuperAdmin: true,
+          isBvAdmin: true,
+          isBvSupervisor: false,
+          isBvMentor: false,
+          isBvFacilitator: false,
+          isBvSubFacilitator: false,
+          isBvsl: false,
+          isSadhanaMentor: false,
+          isServiceAllocator: false,
+          isCleanlinessManager: false,
+          isFolkLead: false,
+          isTripCoordinator: false,
+          isBvMember: false,
+          isResident: false,
+          residencyJoinDate: null,
+          residencyUserClaim: false,
+          residencyGuideVerified: false,
+          selectedGuideId: null,
+          selectedFolkResidency: null,
+          folkResidencyCustomId: null,
+          residencyName: null,
+          guideName: null,
+          ashrayLevel: null,
+          pwSuperAdminAccess: true,
+          activeDepartment: 'PW',
+          baseDepartment: context.user.baseDepartment,
+          baseRole: context.user.baseRole,
+        },
+      };
+    }
 
     const userIdentities = [...new Set([
       context.user.id,
@@ -135,7 +193,16 @@ export default createEndpoint({
       latestAshrayId: latestAshrayRequest?.id || null,
       latestAshrayRequestedLevel: latestAshrayRequest?.requestedLevel || null,
     });
-    return result;
+    const baseRole = String(userRecord.role || 'User');
+    const baseDepartment = getUserDepartment(userRecord);
+    const pwSuperAdminAccess = context.user.pwSuperAdminAccess === true;
+    const commonAccess = {
+      pwSuperAdminAccess,
+      activeDepartment: context.user.activeDepartment || baseDepartment,
+      baseDepartment,
+      baseRole,
+    };
+    return { user: { ...result.user, ...commonAccess } };
   },
 });
 

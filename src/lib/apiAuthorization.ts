@@ -50,6 +50,7 @@ export interface ApiDatabaseUser {
   isCleanlinessManager?: boolean;
   isFolkLead?: boolean;
   isTripCoordinator?: boolean;
+  pwSuperAdminAccess?: boolean;
 }
 
 export interface ApiUserContext {
@@ -78,6 +79,10 @@ export interface ApiUserContext {
   isCleanlinessManager: boolean;
   isFolkLead: boolean;
   isTripCoordinator: boolean;
+  activeDepartment: 'FOLK' | 'PW' | null;
+  baseDepartment: 'FOLK' | 'PW' | null;
+  baseRole: string;
+  pwSuperAdminAccess: boolean;
   capabilities: ApiCapability[];
   authTime: number | null;
 }
@@ -207,42 +212,73 @@ export function hasEndpointCapabilities(user: ApiUserContext | null, endpoint: s
 export function buildApiUserContext(
   identity: VerifiedApiIdentity,
   dbUser: ApiDatabaseUser | null,
+  requestedDepartment?: string | null,
 ): ApiUserContext {
-  const normalizedRole = normalizeApiRole(dbUser?.role);
-  const status = dbUser?.status ? String(dbUser.status) : null;
+  const baseDepartment = organizationalDepartment(dbUser);
+  const baseRole = dbUser?.role || 'UNREGISTERED';
+  const pwSuperAdminAccess = !!(
+    dbUser?.pwSuperAdminAccess === true &&
+    normalizeApiStatus(dbUser?.status) === 'ACTIVE' &&
+    baseDepartment === 'FOLK' &&
+    normalizeApiRole(baseRole) === 'SUPER_GUIDE'
+  );
+  const usePwMode = pwSuperAdminAccess && String(requestedDepartment || '').toUpperCase() === 'PW';
+  const effectiveUser: ApiDatabaseUser | null = dbUser && usePwMode ? {
+    ...dbUser,
+    role: 'SUPER_ADMIN',
+    segment: 'PW',
+    isBvAdmin: true,
+    isBvSuperAdmin: true,
+    isBvSupervisor: false,
+    isBvMentor: false,
+    isBvFacilitator: false,
+    isBvSubFacilitator: false,
+    isBvsl: false,
+    isSadhanaMentor: false,
+    isServiceAllocator: false,
+    isCleanlinessManager: false,
+    isFolkLead: false,
+    isTripCoordinator: false,
+  } : dbUser;
+  const normalizedRole = normalizeApiRole(effectiveUser?.role);
+  const status = effectiveUser?.status ? String(effectiveUser.status) : null;
   const isActive = normalizeApiStatus(status) === 'ACTIVE';
   const isAdminRole = normalizedRole === 'ADMIN' || normalizedRole === 'PW_ADMIN';
   const isSuperAdminRole = normalizedRole === 'SUPER_ADMIN';
 
-  const nameVal = dbUser?.fullName || dbUser?.name || '';
+  const nameVal = effectiveUser?.fullName || effectiveUser?.name || '';
 
   return {
-    id: dbUser?.id || identity.uid,
+    id: effectiveUser?.id || identity.uid,
     uid: identity.uid,
-    userId: dbUser?.userId || dbUser?.id || identity.uid,
+    userId: effectiveUser?.userId || effectiveUser?.id || identity.uid,
     email: identity.email.toLowerCase(),
     emailVerified: identity.emailVerified,
-    role: dbUser?.role || 'UNREGISTERED',
+    role: effectiveUser?.role || 'UNREGISTERED',
     normalizedRole,
     status,
-    segment: dbUser?.segment || null,
+    segment: effectiveUser?.segment || null,
     fullName: nameVal,
     name: nameVal,
-    isRegistered: !!(dbUser?.userId && dbUser?.status),
+    isRegistered: !!(effectiveUser?.userId && effectiveUser?.status),
     isActive,
-    isBvAdmin: isActive && (isAdminRole || isSuperAdminRole || dbUser?.isBvAdmin === true),
-    isBvSuperAdmin: isActive && (isSuperAdminRole || dbUser?.isBvSuperAdmin === true),
-    isBvSupervisor: isActive && (dbUser?.isBvSupervisor === true || dbUser?.isBvMentor === true),
-    isBvMentor: isActive && (dbUser?.isBvMentor === true || dbUser?.isBvSupervisor === true),
-    isBvFacilitator: isActive && dbUser?.isBvFacilitator === true,
-    isBvSubFacilitator: isActive && dbUser?.isBvSubFacilitator === true,
-    isBvsl: isActive && dbUser?.isBvsl === true,
-    isSadhanaMentor: isActive && dbUser?.isSadhanaMentor === true,
-    isServiceAllocator: isActive && dbUser?.isServiceAllocator === true,
-    isCleanlinessManager: isActive && dbUser?.isCleanlinessManager === true,
-    isFolkLead: isActive && dbUser?.isFolkLead === true,
-    isTripCoordinator: isActive && dbUser?.isTripCoordinator === true,
-    capabilities: deriveApiCapabilities(dbUser),
+    isBvAdmin: isActive && (isAdminRole || isSuperAdminRole || effectiveUser?.isBvAdmin === true),
+    isBvSuperAdmin: isActive && (isSuperAdminRole || effectiveUser?.isBvSuperAdmin === true),
+    isBvSupervisor: isActive && (effectiveUser?.isBvSupervisor === true || effectiveUser?.isBvMentor === true),
+    isBvMentor: isActive && (effectiveUser?.isBvMentor === true || effectiveUser?.isBvSupervisor === true),
+    isBvFacilitator: isActive && effectiveUser?.isBvFacilitator === true,
+    isBvSubFacilitator: isActive && effectiveUser?.isBvSubFacilitator === true,
+    isBvsl: isActive && effectiveUser?.isBvsl === true,
+    isSadhanaMentor: isActive && effectiveUser?.isSadhanaMentor === true,
+    isServiceAllocator: isActive && effectiveUser?.isServiceAllocator === true,
+    isCleanlinessManager: isActive && effectiveUser?.isCleanlinessManager === true,
+    isFolkLead: isActive && effectiveUser?.isFolkLead === true,
+    isTripCoordinator: isActive && effectiveUser?.isTripCoordinator === true,
+    activeDepartment: organizationalDepartment(effectiveUser),
+    baseDepartment,
+    baseRole,
+    pwSuperAdminAccess,
+    capabilities: deriveApiCapabilities(effectiveUser),
     authTime: identity.authTime ?? null,
   };
 }

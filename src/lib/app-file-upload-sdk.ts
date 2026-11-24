@@ -5,6 +5,7 @@
 import { auth } from './app-auth-sdk';
 import type { UploadPurpose } from './uploadPolicy';
 import { withDeadline } from './withDeadline';
+import { activeDepartmentRequestHeaders } from './departmentSession';
 
 export async function uploadFile({
   data,
@@ -27,7 +28,7 @@ export async function uploadFile({
   try {
     res = await fetch('/api/upload', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${idToken}` },
+      headers: { Authorization: `Bearer ${idToken}`, ...activeDepartmentRequestHeaders() },
       body: formData,
       signal: AbortSignal.timeout(60_000),
     });

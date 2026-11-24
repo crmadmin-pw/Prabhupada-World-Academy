@@ -4,6 +4,7 @@
 import { auth } from './app-auth-sdk';
 import { withDeadline } from './withDeadline';
 import { confirmBvGroupDeletion } from './confirmBvGroupDeletion';
+import { activeDepartmentRequestHeaders, getActiveDepartmentMode } from './departmentSession';
 import type { z } from 'zod';
 import {
   isReadOnlyEndpoint,
@@ -119,7 +120,7 @@ export const PUBLIC_ENDPOINTS = new Set([
 
 function currentIdentity(): string {
   const currentUser = auth?.currentUser;
-  return `${String(currentUser?.uid || currentUser?.email || 'public')}:${permissionScope}`;
+  return `${String(currentUser?.uid || currentUser?.email || 'public')}:${getActiveDepartmentMode() || 'DEFAULT'}:${permissionScope}`;
 }
 export const getEndpointIdentityScope = () => currentIdentity();
 
@@ -434,7 +435,8 @@ async function invokeEndpoint(name: string, input: any): Promise<any> {
         headers: {
           'Content-Type': 'application/json',
           ...(isQuery ? { 'X-Realtime-Query': '1' } : {}),
-          ...(idToken ? { 'Authorization': `Bearer ${idToken}` } : {})
+          ...(idToken ? { 'Authorization': `Bearer ${idToken}` } : {}),
+          ...activeDepartmentRequestHeaders(),
         },
         body: JSON.stringify(input),
         signal: AbortSignal.timeout(timeoutMs),

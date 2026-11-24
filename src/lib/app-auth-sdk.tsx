@@ -16,6 +16,7 @@ import {
 } from 'firebase/auth';
 import { getDepartmentLandingUrl } from '@/lib/userDashboardRoutes';
 import { withDeadline } from '@/lib/withDeadline';
+import { clearActiveDepartmentMode } from '@/lib/departmentSession';
 
 // ══════════════════════════════════════════════════════════════════════════════
 // app-auth-sdk.tsx — Firebase Auth integration with Google sign-in.
@@ -147,6 +148,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await withDeadline(signOut(auth), 8_000).catch(() => undefined);
     }
     if (typeof window !== 'undefined') {
+      clearActiveDepartmentMode();
       localStorage.removeItem('auth_email');
       localStorage.removeItem('auth_mock_mode');
       localStorage.removeItem('auth_profile_email');

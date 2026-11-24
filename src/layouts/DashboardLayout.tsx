@@ -9,6 +9,7 @@ import TransferNoticeModal from '@/components/TransferNoticeModal';
 import { useMeetingReminderScheduler } from '@/hooks/useMeetingReminderScheduler';
 import { getDepartmentLandingUrl, getUserDashboardPath, isManagementProfile } from '@/lib/userDashboardRoutes';
 import { canFillPersonalSadhana } from '@/lib/pwSadhanaPrivacy';
+import { setActiveDepartmentMode, type ActiveDepartment } from '@/lib/departmentSession';
 
 const FOLK_LOGO = '/folk-mark.webp';
 
@@ -61,7 +62,15 @@ export default function DashboardLayout({
   };
 
   const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
-  const tabItems: Array<{ label: string; path: string; active: boolean; icon: React.ReactNode }> = [];
+  const tabItems: Array<{ label: string; path: string; active: boolean; icon: React.ReactNode; switchTo?: ActiveDepartment }> = [];
+  const openDashboard = (item: (typeof tabItems)[number]) => {
+    if (item.switchTo) {
+      setActiveDepartmentMode(item.switchTo);
+      window.location.assign(item.path);
+      return;
+    }
+    navigate(item.path);
+  };
 
 
   const isSuperAdminUser = !!(
@@ -123,6 +132,22 @@ export default function DashboardLayout({
           icon: <ShieldAlert className="w-4 h-4 mr-1 md:mr-1.5" />,
         });
       }
+    }
+
+    if (profile.pwSuperAdminAccess) {
+      tabItems.push(isFolkUser ? {
+        label: 'PW Super Admin',
+        path: '/pw-admin/dashboard',
+        active: false,
+        switchTo: 'PW',
+        icon: <ShieldAlert className="w-4 h-4 mr-1 md:mr-1.5" />,
+      } : {
+        label: 'FOLK Super Guide',
+        path: '/folk-guide/dashboard',
+        active: false,
+        switchTo: 'FOLK',
+        icon: <ShieldAlert className="w-4 h-4 mr-1 md:mr-1.5" />,
+      });
     }
 
     // 2. BV Supervisor Dashboard — ONLY visible for explicitly assigned Supervisors/Mentors
@@ -207,11 +232,11 @@ export default function DashboardLayout({
               {headerActions}
               {tabItems.map((item) => (
                 <Button
-                  key={item.path}
+                  key={`${item.path}:${item.switchTo || 'current'}`}
                   aria-label={item.label}
                   variant={item.active ? "default" : "ghost"}
                   size="sm"
-                  onClick={() => navigate(item.path)}
+                  onClick={() => openDashboard(item)}
                   className="font-medium shrink-0"
                 >
                   {item.icon}
@@ -240,7 +265,7 @@ export default function DashboardLayout({
                 <SheetHeader className="border-b px-5 py-6 pr-14"><SheetTitle>My account</SheetTitle><SheetDescription className="break-words">{profile?.fullName || title}</SheetDescription></SheetHeader>
                 <nav aria-label="Account and dashboards" className="space-y-2 overflow-y-auto p-4">
                   {headerActions && <div className="flex flex-wrap gap-2">{headerActions}</div>}
-                  {tabItems.map(item => <Button key={item.path} variant={item.active ? 'secondary' : 'ghost'} className="w-full justify-start whitespace-normal text-left" onClick={() => { navigate(item.path); setAccountOpen(false); }}>{item.icon}{item.label}</Button>)}
+                  {tabItems.map(item => <Button key={`${item.path}:${item.switchTo || 'current'}`} variant={item.active ? 'secondary' : 'ghost'} className="w-full justify-start whitespace-normal text-left" onClick={() => { openDashboard(item); setAccountOpen(false); }}>{item.icon}{item.label}</Button>)}
                   {showProfile && <Button variant="ghost" className="w-full justify-start" onClick={() => { navigate('/profile'); setAccountOpen(false); }}><User className="size-4" />Profile</Button>}
                   <Button variant="ghost" className="w-full justify-start" onClick={() => logout({ returnTo: getDepartmentLandingUrl(profile) })}><LogOut className="size-4" />Logout</Button>
                 </nav>

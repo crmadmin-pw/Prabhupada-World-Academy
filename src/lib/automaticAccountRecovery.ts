@@ -9,7 +9,7 @@ import { publishCollectionRevision, publishUsersRevision } from '@/lib/publishUs
 import { serverCacheInvalidate } from '@/lib/serverCache';
 
 const UID_FIELDS = ['uid', 'firebaseUid', 'authUid', 'firebaseAuthUid', 'firebaseUserId', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'] as const;
-const ELEVATED_FLAGS = ['isBvAdmin', 'isBvSuperAdmin', 'isBvSupervisor', 'isBvMentor', 'isBvFacilitator', 'isBvSubFacilitator', 'isBvsl', 'isSadhanaMentor', 'isServiceAllocator', 'isCleanlinessManager', 'isFolkLead', 'isTripCoordinator', 'isPwAdmin'] as const;
+const ELEVATED_FLAGS = ['pwSuperAdminAccess', 'isBvAdmin', 'isBvSuperAdmin', 'isBvSupervisor', 'isBvMentor', 'isBvFacilitator', 'isBvSubFacilitator', 'isBvsl', 'isSadhanaMentor', 'isServiceAllocator', 'isCleanlinessManager', 'isFolkLead', 'isTripCoordinator', 'isPwAdmin'] as const;
 
 type Identity = { uid: string; email: string; emailVerified: boolean };
 type Dependencies = { db: Firestore; auth: { getUserByEmail(email: string): Promise<UserRecord>; getUser(uid: string): Promise<UserRecord> } };

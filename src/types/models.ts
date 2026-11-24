@@ -29,6 +29,10 @@ export interface UserProfile {
   isSadhanaMentor?: boolean;
   isBvSuperAdmin?: boolean;
   isBvAdmin?: boolean;
+  pwSuperAdminAccess?: boolean;
+  activeDepartment?: 'PW' | 'FOLK';
+  baseDepartment?: 'PW' | 'FOLK';
+  baseRole?: string;
   isBvSupervisor?: boolean;
   isBvFacilitator?: boolean;
   isBvSubFacilitator?: boolean;
@@ -59,6 +63,10 @@ export interface ProfileSummary {
   isBvSuperAdmin?: boolean;
   /** BV Admin: manages Bhakti Vriksha module and assigns Supervisors */
   isBvAdmin?: boolean;
+  pwSuperAdminAccess?: boolean;
+  activeDepartment?: 'PW' | 'FOLK';
+  baseDepartment?: 'PW' | 'FOLK';
+  baseRole?: string;
   /** BV Supervisor: manages Bhakti Vriksha groups & BVSLs (replaces BV Mentor) */
   isBvSupervisor?: boolean;
   /** Reading Group Facilitator (RGF) */

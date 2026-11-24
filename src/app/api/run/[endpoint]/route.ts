@@ -295,7 +295,7 @@ export async function POST(
         }
         resolvedProfile = dbUser;
         context.loadedProfile = dbUser;
-        context.user = buildApiUserContext(decodedUser, dbUser);
+        context.user = buildApiUserContext(decodedUser, dbUser, req.headers.get('X-Active-Department'));
         authDurationMs = Date.now() - authStartedAt;
       } catch (authError: unknown) {
         const authFailure = caughtApiError(authError);

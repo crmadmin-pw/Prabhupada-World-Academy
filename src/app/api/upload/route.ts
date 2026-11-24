@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
       uid: decoded.uid,
       email: decoded.email,
       emailVerified: true,
-    }, dbUser);
+    }, dbUser, req.headers.get('X-Active-Department'));
     if (!hasApiCapabilities(user, requiredUploadCapability(purpose))) {
       return jsonError('You are not authorized to upload this image', 403);
     }

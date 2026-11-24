@@ -142,7 +142,8 @@ export default function ProfilePage() {
 
       <main className="container mx-auto px-4 py-6 max-w-7xl space-y-6">
         {/* SAD-C02 FIX: isResident requires guide-verified approval + valid residency ID */}
-        <ProfileHero fullName={profile.fullName} email={user?.email || ''} segment={profile.segment}
+        <ProfileHero fullName={profile.fullName} email={user?.email || ''}
+          segment={profile.segment === 'FOLK' || profile.segment === 'PW' ? profile.segment : null}
           isResident={!!(profile.residencyGuideVerified && profile.selectedFolkResidency)} ashrayLevel={isManagement ? null : profile.ashrayLevel}
           role={profile.role} isBvsl={profile.isBvsl} isSadhanaMentor={profile.isSadhanaMentor}
           isFolkLead={profile.isFolkLead} isTripCoordinator={profile.isTripCoordinator} isBvMentor={profile.isBvMentor}
