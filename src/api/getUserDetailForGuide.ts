@@ -2,6 +2,7 @@ import { getFolkHostelSadhanaScope } from '../lib/folkHostelSadhanaScope';
 import { getSadhanaMentorResidencyScope } from '../lib/sadhanaMentorResidencyScope';
 import { z } from 'zod';
 import { canViewPwSadhana, PW_SADHANA_PRIVACY_FIELDS } from '@/lib/pwSadhanaPrivacy';
+import { pwSadhanaGroupAccess } from '@/lib/pwSadhanaGroupAccess';
 import { callerDirectoryDepartment, getScopedHierarchyUserIds, isPwDepartmentAdmin, isUserInHierarchy, memberDirectoryDepartment } from '../lib/hierarchyUtils';
 import { createEndpoint, Users, Guides, SadhanaEntries, BvGroupMembers, BvGroups, FolkResidencies, AppError } from '@/lib/backend-sdk';
 import { computeStreak, getTodayIST } from '../lib/streakUtils';
@@ -237,7 +238,9 @@ export default createEndpoint({
 
     const userRecord = await resolveUser(input.userId);
     if (!userRecord) throw new AppError({ code: 'NOT_FOUND', message: 'User not found' });
-    if (!canViewPwSadhana(context.user, userRecord)) {
+    const canViewBase = canViewPwSadhana(context.user, userRecord);
+    const canViewThroughGroup = !canViewBase && await pwSadhanaGroupAccess(context.user)(userRecord);
+    if (!canViewBase && !canViewThroughGroup) {
       throw new AppError({ code: 'FORBIDDEN', message: 'This sadhana report is private' });
     }
     const callerRole = String(context.user.role || '').toUpperCase().replace(/[\s-]+/g, '_');
@@ -250,7 +253,7 @@ export default createEndpoint({
     const isGuideRole = ['GUIDE', 'SUPER_GUIDE'].includes(callerRole);
     // The roster and this profile must agree. A member stored by phone, an
     // older auth id, or a duplicate profile is still the person on the list.
-    const onRoster = await isOnCallerGroupRoster(context.user, userRecord);
+    const onRoster = canViewThroughGroup || await isOnCallerGroupRoster(context.user, userRecord);
     // A current group membership is enough. Reporting chains can lag behind
     // the member list the RGF just opened.
     const groupMember = onRoster || (

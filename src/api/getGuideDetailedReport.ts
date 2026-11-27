@@ -19,6 +19,7 @@ import { resolveBvAdminFacilitators } from '@/lib/bvAdminFacilitatorScope';
 import { residencyMatchesDepartment } from '../lib/residencyCategory';
 import { readEntriesForOwners } from '../lib/scopedEntryReads';
 import { canViewPwSadhana } from '@/lib/pwSadhanaPrivacy';
+import { pwSadhanaGroupAccess } from '@/lib/pwSadhanaGroupAccess';
 import { residentTemplateMode, wasFolkResidentOnDate, wasFolkScholarOnDate } from '../lib/folkResidencyHistory';
 
 const USER_FIELDS = ['status', 'id', 'userId', 'fullName', 'displayName', 'name', 'email', 'phone', 'segment', 'isPrabhupadaWorldUser', 'isFolkUser', 'isFolkLead', 'sadhanaMentor', 'ashrayLevel', 'residency', 'residencyApproved', 'temporaryResidencyEnabled', 'temporaryResidency', 'residencyJoinDate', 'scholarSince', 'residentSince', 'currentStreak', 'lastStreakUpdatedAt', 'guide', 'role', 'isBvSuperAdmin', 'isBvAdmin', 'isPwAdmin', 'pwChantingTarget', 'pwReadingTarget', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
@@ -1065,7 +1066,10 @@ export default createEndpoint({
       });
     }
 
-    users = users.filter(user => canViewPwSadhana(context.user, user, false));
+    const canViewInGroup = pwSadhanaGroupAccess(context.user, input.groupId);
+    const visibility = await Promise.all(users.map(user => canViewPwSadhana(context.user, user, false) ||
+      (input.segment === 'PW' && (bvslMode || input.groupId) && canViewInGroup(user))));
+    users = users.filter((_, index) => visibility[index]);
     const reportGuideScope = hostelScope || residencyMentorScope;
     const availableGuidesPromise = reportGuideScope ? Promise.resolve(reportGuideScope.availableGuides) : getGuides.execute({ input: { segment: input.segment || 'ALL' }, context })
       .then(result => result.guides.map(guide => ({ guideId: guide.guideId, guideName: guide.name })));

@@ -234,6 +234,7 @@ test('super admin reports include admins and exclude every super admin; admin re
 
 test('private reports reject direct entry, profile, chart, meeting-context and attendance requests, including Auth aliases', async t => {
   const { writes, fixtures } = database(t);
+  fixtures.BvGroupMembers = fixtures.BvGroupMembers.filter(row => row.user !== peerAdmin.id);
   for (const actor of [peerAdmin, rgf, folk]) {
     for (const userId of [admin.id, admin.userId, admin.firebaseUid]) {
       await assert.rejects(run(progress, actor, { userId, days: 7 }), denied);
@@ -256,6 +257,36 @@ test('private reports reject direct entry, profile, chart, meeting-context and a
   assert.equal(adminRow.pwTargets, null);
   await run(recalculate, peerAdmin, { startDate: date, userIds: [admin.firebaseUid] });
   assert.ok(!writes.some(write => write.table === 'SadhanaEntries'));
+});
+
+test('shared PW group grants Sadhana reads to a peer Admin and the assigned RGF', async t => {
+  const { fixtures, writes } = database(t);
+  assert.equal((await run(detail, peerAdmin, { entryId: `ENTRY-${admin.id}` })).found, true);
+  Object.assign(fixtures.BvGroups[0], { subFacilitatorId: admin.firebaseUid, rgsfId: admin.userId });
+  // Staff may be listed directly on the group without a membership row.
+  fixtures.BvGroupMembers = fixtures.BvGroupMembers.filter(row => row.user !== admin.id);
+  for (const actor of [peerAdmin, { ...rgf, isBvSupervisor: true }]) {
+    const profile = await run(profileReport, actor, { userId: admin.userId });
+    assert.equal(profile.user.dbId, admin.id);
+    assert.equal(profile.recentEntries[0].entryId, `ENTRY-${admin.id}`);
+    const chart = await run(progress, actor, { userId: admin.firebaseUid, startDate: date, endDate: date });
+    assert.equal(chart.entries.length, 1);
+    assert.equal((await run(detail, actor, { userId: admin.userId, entryDate: date })).found, true);
+    assert.equal((await run(detail, actor, { entryId: `ENTRY-${admin.id}` })).found, true);
+    await assert.rejects(run(attendance, actor, { userId: admin.id, entryDate: date, attendedMinutes: 20, sessionMinutes: 30 }), denied);
+    await assert.rejects(run(detail, actor, { entryId: `ENTRY-${peerSuper.id}` }), denied);
+  }
+  const groupReport = await run(report, rgf, { guideId: rgf.userId, date, reportType: 'daily', segment: 'PW', bvslMode: true, groupId: 'GROUP' });
+  assert.ok(groupReport.users.some((user: any) => user.id === admin.id && user.submitted));
+  assert.ok(!groupReport.users.some((user: any) => user.id === peerAdmin.id));
+  await assert.rejects(run(progress, member, { userId: admin.id }), denied);
+
+  const peerMembership = fixtures.BvGroupMembers.find(row => row.user === peerAdmin.id);
+  peerMembership.status = 'Removed';
+  await assert.rejects(run(profileReport, { ...peerAdmin, bvGroupId: 'GROUP' }, { userId: admin.id }), denied);
+  fixtures.BvGroups[0].isActive = false;
+  await assert.rejects(run(profileReport, rgf, { userId: admin.id }), denied);
+  assert.equal(writes.length, 0);
 });
 
 test('group monitoring and missing reports hide admin records linked through legacy Auth IDs', async t => {

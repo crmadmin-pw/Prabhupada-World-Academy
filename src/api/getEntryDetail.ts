@@ -2,6 +2,7 @@ import { getFolkHostelSadhanaScope } from '../lib/folkHostelSadhanaScope';
 import { getSadhanaMentorResidencyScope } from '../lib/sadhanaMentorResidencyScope';
 import { z } from 'zod';
 import { canViewPwSadhana, PW_SADHANA_PRIVACY_FIELDS } from '@/lib/pwSadhanaPrivacy';
+import { pwSadhanaGroupAccess } from '@/lib/pwSadhanaGroupAccess';
 import { findSadhanaSubject } from '@/lib/sadhanaSubject';
 import { AppError, createEndpoint, SadhanaEntries } from '@/lib/backend-sdk';
 import { getScopedHierarchyUserIds, HIERARCHY_IDENTITY_FIELDS, isUserInHierarchy } from '@/lib/hierarchyUtils';
@@ -103,6 +104,7 @@ export default createEndpoint({
     const callerKeys = new Set([context.user.id, context.user.userId, context.user.uid].filter(Boolean).map(String));
     const assertCanView = async (owner: any, ownerId: string) => {
       if (!canViewPwSadhana(context.user, owner)) {
+        if (await pwSadhanaGroupAccess(context.user)(owner)) return;
         throw new AppError({ code: 'FORBIDDEN', message: 'This sadhana report is private' });
       }
       const isOwn = [owner?.id, owner?.userId, ownerId].some(value => value && callerKeys.has(String(value)));
@@ -127,9 +129,14 @@ export default createEndpoint({
       if (userRecord) {
         await assertCanView(userRecord, userRecord.id);
         owner = userRecord;
-        entry = await SadhanaEntries.findOne({
-          filters: { user: userRecord.id, entryDate: input.entryDate },
-        });
+        // The calendar uses a profile ID, but a migrated entry can be stored
+        // against its public ID or Auth UID.
+        const ownerIds = [...new Set(HIERARCHY_IDENTITY_FIELDS.flatMap(field => userRecord[field] ?? [])
+          .filter((value): value is string => typeof value === 'string' && !!value.trim()))];
+        for (const user of ownerIds) {
+          entry = await SadhanaEntries.findOne({ filters: { user, entryDate: input.entryDate } });
+          if (entry) break;
+        }
       }
     }
 

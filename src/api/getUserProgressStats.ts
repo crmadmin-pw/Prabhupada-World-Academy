@@ -1,13 +1,14 @@
 import { z } from 'zod';
 import { AppError, createEndpoint, Users, SadhanaEntries, BvAttendance } from '@/lib/backend-sdk';
 import { canViewPwSadhana, PW_SADHANA_PRIVACY_FIELDS } from '@/lib/pwSadhanaPrivacy';
+import { pwSadhanaGroupAccess } from '@/lib/pwSadhanaGroupAccess';
 import { findSadhanaSubject } from '@/lib/sadhanaSubject';
 import { daysAgo, getTodayIST } from '../lib/streakUtils';
 import { fillingSameDayApplies } from '@/lib/userUtils';
 import { isPwSadhanaUser } from '@/lib/sadhanaDepartment';
 import { pwFieldPercent, pwOverallPercent, pwRecordedMinutes, pwScoreFromFieldValues, pwTarget } from '@/lib/pwSadhana';
 
-const USER_FIELDS = [...PW_SADHANA_PRIVACY_FIELDS, 'id', 'userId', 'email', 'segment', 'isPrabhupadaWorldUser', 'ashrayLevel', 'residencyApproved', 'residencyGuideVerified', 'residency', 'selectedFolkResidency', 'temporaryResidencyEnabled', 'temporaryResidency', 'pwChantingTarget', 'pwReadingTarget', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
+const USER_FIELDS = [...PW_SADHANA_PRIVACY_FIELDS, 'id', 'userId', 'email', 'status', 'segment', 'isPrabhupadaWorldUser', 'ashrayLevel', 'residencyApproved', 'residencyGuideVerified', 'residency', 'selectedFolkResidency', 'temporaryResidencyEnabled', 'temporaryResidency', 'pwChantingTarget', 'pwReadingTarget', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
 const USER_IDENTITY_FIELDS = ['id', 'userId', 'email', 'uid', 'authUid', 'firebaseUid', 'firebaseUserId', 'firebaseAuthUid', 'authId', 'authUserId', 'firebaseId', 'firebaseAuthId', 'firebase_id'];
 const ENTRY_FIELDS = [
   'id', 'user', 'entryDate', 'scorePercent', 'totalScore', 'maxScore', 'roundsCount', 'spReadingMinutes',
@@ -446,7 +447,7 @@ export default createEndpoint({
         isScholar = foundIsScholar;
       } else targetUser = { id: targetUserId };
 
-    if (!canViewPwSadhana(context.user, targetUser)) {
+    if (!canViewPwSadhana(context.user, targetUser) && !await pwSadhanaGroupAccess(context.user)(targetUser)) {
       throw new AppError({ code: 'FORBIDDEN', message: 'This sadhana report is private' });
     }
     const entryOwnerIds = userIdentityAliases(targetUser);
