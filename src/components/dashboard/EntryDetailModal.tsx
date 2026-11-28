@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 import { getEntryDetail, getBvPreachingEntry, GetEntryDetailOutputType, GetBvPreachingEntryOutputType } from '@/lib/endpoints-sdk';
 
@@ -96,19 +97,26 @@ export default function EntryDetailModal({ userId, entryDate, onClose }: Props) 
   const [loading, setLoading] = useState(false);
   const [entry, setEntry] = useState<EntryData | null>(null);
   const [bvEntry, setBvEntry] = useState<BvEntry | null>(null);
+  const [entryError, setEntryError] = useState(false);
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
+    setEntry(null);
+    setBvEntry(null);
+    setEntryError(false);
     if (!entryDate) { setEntry(null); setBvEntry(null); return; }
     setLoading(true);
     Promise.all([
       (getEntryDetail as any)({ userId, entryDate })
-        .then((res: any) => setEntry(res.found ? res.entry ?? null : null))
-        .catch(() => setEntry(null)),
+        .then((res: any) => { if (!cancelled) setEntry(res.found ? res.entry ?? null : null); })
+        .catch(() => { if (!cancelled) setEntryError(true); }),
       (getBvPreachingEntry as any)({ userId, entryDate })
-        .then((res: any) => setBvEntry(res.found ? res.entry ?? null : null))
-        .catch(() => setBvEntry(null)),
-    ]).finally(() => setLoading(false));
-  }, [userId, entryDate]);
+        .then((res: any) => { if (!cancelled) setBvEntry(res.found ? res.entry ?? null : null); })
+        .catch(() => { if (!cancelled) setBvEntry(null); }),
+    ]).finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [userId, entryDate, retry]);
 
   const open = !!entryDate;
 
@@ -130,7 +138,14 @@ export default function EntryDetailModal({ userId, entryDate, onClose }: Props) 
           </div>
         )}
 
-        {!loading && !entry && !bvEntry && (
+        {!loading && entryError && (
+          <div role="alert" className="space-y-3 text-center py-4">
+            <p className="text-muted-foreground text-sm">Unable to load this Sadhana entry. Please try again.</p>
+            <Button variant="outline" onClick={() => setRetry(value => value + 1)}>Retry Sadhana entry</Button>
+          </div>
+        )}
+
+        {!loading && !entryError && !entry && !bvEntry && (
           <p className="text-muted-foreground text-sm py-4 text-center">No entry found for this date.</p>
         )}
 
@@ -145,7 +160,7 @@ export default function EntryDetailModal({ userId, entryDate, onClose }: Props) 
                 {entry ? (
                   <SadhanaContent entry={entry} />
                 ) : (
-                  <p className="text-muted-foreground text-sm py-4 text-center">No Sadhana entry for this date.</p>
+                  !entryError && <p className="text-muted-foreground text-sm py-4 text-center">No Sadhana entry for this date.</p>
                 )}
               </TabsContent>
               <TabsContent value="bv" className="mt-3">

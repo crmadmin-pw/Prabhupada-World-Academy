@@ -289,6 +289,28 @@ test('shared PW group grants Sadhana reads to a peer Admin and the assigned RGF'
   assert.equal(writes.length, 0);
 });
 
+test('calendar detail resolves a public-ID placeholder to the registered Admin before reading or authorizing', async t => {
+  const { fixtures, writes } = database(t);
+  const publicId = 'USER-228';
+  fixtures.Users.find(row => row.id === admin.id).userId = publicId;
+  fixtures.Users.push({ id: publicId, role: 'User', isBvAdmin: false,
+    isBvSubFacilitator: true, bvReportingFacilitatorId: member.userId });
+  Object.assign(fixtures.BvGroups[0], { subFacilitatorId: admin.firebaseUid, rgsfId: publicId });
+  const profile = await run(profileReport, rgf, { userId: publicId });
+  const popup = await run(detail, rgf, { userId: publicId, entryDate: date });
+  assert.equal(popup.found, true);
+  assert.equal(popup.entry.entryId, profile.recentEntries[0].entryId);
+  assert.ok(popup.entry.fields.length > 0);
+  assert.equal((await run(detail, rgf, { userId: profile.user.dbId, entryDate: date })).found, true);
+  await assert.rejects(run(detail, member, { userId: publicId, entryDate: date }), denied);
+  // Old entries owned by the public ID must use the real Admin's privacy flags too.
+  fixtures.SadhanaEntries.find(row => row.entryId === `ENTRY-${admin.id}`).user = publicId;
+  await assert.rejects(run(detail, member, { entryId: `ENTRY-${admin.id}` }), denied);
+  assert.equal((await run(detail, rgf, { userId: publicId, entryDate: date })).found, true);
+  assert.equal((await run(detail, rgf, { userId: publicId, entryDate: '1900-01-01' })).found, false);
+  assert.equal(writes.length, 0);
+});
+
 test('group monitoring and missing reports hide admin records linked through legacy Auth IDs', async t => {
   const { fixtures } = database(t);
   fixtures.Guides = [{ id: 'guide', guideId: 'GUIDE', fullName: 'Guide', segment: 'PW' }];

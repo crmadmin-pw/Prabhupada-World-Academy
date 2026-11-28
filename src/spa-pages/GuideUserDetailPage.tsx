@@ -403,7 +403,7 @@ export default function GuideUserDetailPage() {
 
         {userId && (
           <EntryDetailModal
-            userId={userId}
+            userId={data.user.dbId || data.user.userId || userId}
             entryDate={selectedEntryDate}
             onClose={() => setSelectedEntryDate(null)}
           />
