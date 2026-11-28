@@ -9,7 +9,7 @@ import { folkGuideIdentityRefs, isPrabhupadaWorldDirectoryMember, organizational
 import { getDashboardHierarchyScope, isHierarchyAdmin, isHierarchySuperAdmin, isPwDepartmentAdmin, readScopedUsers } from '../lib/hierarchyUtils';
 import getGuides from './getGuides';
 import getAllResidencies from './getAllResidencies';
-import { resolveBvGroupMemberUsers } from '../lib/bvGroupMemberScope';
+import { resolveBvDepartmentFacilitatorUsers, resolveBvGroupMemberUsers } from '../lib/bvGroupMemberScope';
 import { NON_RESIDENT_FIELDS } from '../config/sadhanaFields';
 import { computeStreak, getTodayIST, daysAgo } from '../lib/streakUtils';
 import { getGuideScope } from '../lib/guideScope';
@@ -810,9 +810,15 @@ export default createEndpoint({
       && !bvslMode && !mentorMode && !facilitatorMode
       && isPwDepartmentAdmin(context.user)
       && !isHierarchySuperAdmin(context.user);
+    // The admin BV overview covers active PW groups, including groups whose
+    // facilitators report to another admin. Personal dashboards stay scoped.
+    const pwGroupStaffReport = input.segment === 'PW' && callerDepartment === 'PW'
+      && !!facilitatorMode && !bvslMode && !mentorMode
+      && isPwDepartmentAdmin(context.user) && !isHierarchySuperAdmin(context.user)
+      && String(context.user.status).toLowerCase() === 'active';
     const residencyMentorScope = await getSadhanaMentorResidencyScope(context.user);
     const hostelScope = !bvslMode && !mentorMode && !facilitatorMode ? await getFolkHostelSadhanaScope(context.user) : null;
-    const hierarchyPromise = hostelScope || residencyMentorScope || pwDepartmentSadhana ? Promise.resolve(null) : getDashboardHierarchyScope(context.user, inputGuideId);
+    const hierarchyPromise = hostelScope || residencyMentorScope || pwDepartmentSadhana || pwGroupStaffReport ? Promise.resolve(null) : getDashboardHierarchyScope(context.user, inputGuideId);
     void hierarchyPromise.catch(() => {});
     const mentorRecord = isPwMentor
       ? (await Users.findOne({ id: context.user.id, fields: ['id', 'userId', 'email'] })
@@ -899,6 +905,9 @@ export default createEndpoint({
       users = await readFolkHostelSadhanaUsers(hostelScope, USER_FIELDS, input.filterGuideId);
     } else if (residencyMentorScope) {
       users = await readFolkHostelSadhanaUsers(residencyMentorScope, USER_FIELDS, input.filterGuideId);
+    } else if (pwGroupStaffReport) {
+      const staff = await resolveBvDepartmentFacilitatorUsers('PW', USER_FIELDS, input.groupId);
+      users = staff.filter(user => String(user.status).toLowerCase() === 'active' && organizationalDepartment(user) === 'PW');
     } else if (facilitatorMode) {
       users = await resolveBvAdminFacilitators(context.user, inputGuideId, USER_FIELDS, input.segment);
     } else if (isPwMentor) {

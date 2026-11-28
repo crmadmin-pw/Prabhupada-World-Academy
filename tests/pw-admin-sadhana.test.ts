@@ -323,3 +323,18 @@ test('group monitoring and missing reports hide admin records linked through leg
   assert.ok(absent.members.some((user: any) => user.userId === member.id));
   assert.ok(absent.members.every((user: any) => ![admin.id, admin.firebaseUid, peerAdmin.id, superAdmin.id, peerSuper.id].includes(user.userId)));
 });
+
+test('PW admin BV staff report includes assigned facilitators outside personal hierarchy', async t => {
+  const { fixtures } = database(t);
+  const assistant = { ...member, id: 'assistant', userId: 'ASSISTANT', email: 'assistant@example.test' };
+  fixtures.Users.push(assistant);
+  Object.assign(fixtures.BvGroups[0], { subFacilitatorId: assistant.userId, guide: 'other-admin' });
+  fixtures.BvGroups.push({ id: 'retired', segment: 'PW', isActive: false, bvslLeader: member.id },
+    { id: 'outside', segment: 'FOLK', isActive: true, bvslLeader: folk.id });
+  const input = { guideId: admin.userId, segment: 'PW', facilitatorMode: true, date, reportType: 'daily' };
+  const result = await run(report, { ...admin, isBvSubFacilitator: true }, input);
+  assert.deepEqual(result.users.map((u: any) => u.id).sort(), [assistant.id, rgf.id].sort());
+  assert.ok(result.users.some((u: any) => u.id === rgf.id && u.submitted));
+  const narrowed = await run(report, rgf, input);
+  assert.equal(narrowed.users.length, 0);
+});
